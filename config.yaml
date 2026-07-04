@@ -1,0 +1,35 @@
+# PivotTrader Configuration
+
+# Active Database configuration
+database:
+  db_path: "market_data.db"
+
+# Data Provider Configuration (Toggle between: "YFINANCE" or "IBKR")
+provider:
+  selected: "YFINANCE"
+  price_provider: "YFINANCE"  # Use "YFINANCE" for fast daily bar downloads, or "IBKR"
+  ibkr:
+    host: "127.0.0.1"
+    port: 7496  # Matches active TWS socket setting
+    client_id: 1
+
+# Universe Filtering Constraints (US Liquids)
+universe_rules:
+  min_price: 5.00
+  min_volume_sma_50: 300000
+  exchanges:
+    - "NYSE"
+    - "NASDAQ"
+
+# Relative Strength (RS) Criteria
+momentum_filters:
+  min_rs_percentile: 70  # Minervini baseline (top 30% of relative strength score)
+
+# Fundamental Acceleration Criteria
+fundamental_filters:
+  min_eps_growth_qoq: 20  # Minimum QoQ EPS growth percentage
+
+# Watchlist Export Options
+export:
+  file_name: "Minervini_VCP_Candidates.txt"
+  delimiter: ", "
