@@ -19,7 +19,7 @@ PivotTrader/
 │   ├── requirements.md
 │   └── design.md
 ├── config.yaml
-├── market_data.db            # Local DuckDB database file (Git ignored)
+├── data.db                   # Local DuckDB database file (Git ignored)
 ├── requirements.txt
 ├── main.py                   # CLI Execution Entrypoint
 └── src/
@@ -221,7 +221,7 @@ sequenceDiagram
     participant Prov as Data Provider (yfinance/IBKR)
     participant Eng as Engine Processor
     
-    CLI->>DB: Open/Verify market_data.db
+    CLI->>DB: Open/Verify data.db
     CLI->>Prov: Connect & Fetch active universe
     Prov-->>CLI: Return tickers (NYSE/NASDAQ)
     
@@ -289,7 +289,7 @@ The runtime parameters will reside inside a root-level `config.yaml` file to sep
 
 # Active Database Configuration
 database:
-  db_path: "market_data.db"
+  db_path: "data.db"
 
 # Data Provider Configuration (Toggle between: "YFINANCE" or "IBKR")
 provider:

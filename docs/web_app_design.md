@@ -16,17 +16,17 @@ To ensure separation of concerns and portability, the application uses a decoupl
 ```mermaid
 graph TD
     UI[Frontend: React + Vite + Vanilla CSS] -->|REST API Requests| API[Backend: FastAPI]
-    API -->|Read-Only Connection| DB[(DuckDB: market_data.db)]
+    API -->|Read-Only Connection| DB[(DuckDB: data.db)]
     Screen[Pipeline: main.py CLI] -->|Read-Write Connection| DB
 ```
 
 ### 2.1 DuckDB Concurrency Strategy (Crucial Design Point)
 DuckDB enforces a single-writer, multiple-reader locking mechanism:
-* **The Problem:** If the backend web server opens `market_data.db` in read-write mode, the background scheduler/script `main.py` will fail with a `Database Locked` error.
+* **The Problem:** If the backend web server opens `data.db` in read-write mode, the background scheduler/script `main.py` will fail with a `Database Locked` error.
 * **The Solution:** The FastAPI backend will establish connection objects using the `read_only=True` parameter:
   ```python
   import duckdb
-  conn = duckdb.connect("market_data.db", read_only=True)
+  conn = duckdb.connect("data.db", read_only=True)
   ```
   This allows the web API to serve concurrent client requests while the background screening pipeline successfully writes updates.
 
@@ -93,7 +93,7 @@ To support the future portfolio tracking phase, we will expand the database sche
 
 ### 5.1 Trading Database Schema Extensions
 
-We will introduce a new table `trading_records` inside `market_data.db` to handle transactions:
+We will introduce a new table `trading_records` inside `data.db` to handle transactions:
 
 ```sql
 CREATE TABLE IF NOT EXISTS trading_records (
