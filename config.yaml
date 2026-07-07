@@ -2,7 +2,7 @@
 
 # Active Database configuration
 database:
-  db_path: "market_data.db"
+  db_path: "data.db"
 
 # Data Provider Configuration (Toggle between: "YFINANCE" or "IBKR")
 provider:

@@ -35,8 +35,41 @@ function CandlestickChart({ data, height = 280 }) {
       wickUpColor: '#10b981',
       wickDownColor: '#ef4444',
     });
-    
+
     candlestickSeries.setData(data);
+
+    // 1. Add SMA 50 Line Series
+    const sma50Series = chart.addLineSeries({
+      color: '#3b82f6',
+      lineWidth: 1.5,
+      title: 'SMA 50',
+    });
+    const sma50Data = data
+      .filter(d => d.sma_50 !== null && d.sma_50 !== undefined)
+      .map(d => ({ time: d.time, value: d.sma_50 }));
+    sma50Series.setData(sma50Data);
+
+    // 2. Add SMA 150 Line Series
+    const sma150Series = chart.addLineSeries({
+      color: '#f59e0b',
+      lineWidth: 1.5,
+      title: 'SMA 150',
+    });
+    const sma150Data = data
+      .filter(d => d.sma_150 !== null && d.sma_150 !== undefined)
+      .map(d => ({ time: d.time, value: d.sma_150 }));
+    sma150Series.setData(sma150Data);
+
+    // 3. Add SMA 200 Line Series
+    const sma200Series = chart.addLineSeries({
+      color: '#ec4899',
+      lineWidth: 2,
+      title: 'SMA 200',
+    });
+    const sma200Data = data
+      .filter(d => d.sma_200 !== null && d.sma_200 !== undefined)
+      .map(d => ({ time: d.time, value: d.sma_200 }));
+    sma200Series.setData(sma200Data);
 
     window.addEventListener('resize', handleResize);
 
@@ -77,15 +110,23 @@ function App() {
   const [sqlQuery, setSqlQuery] = useState("SELECT * FROM symbols LIMIT 5;");
   const [sqlResult, setSqlResult] = useState(null);
   const [loadingSql, setLoadingSql] = useState(false);
-  const [selectedStrategy, setSelectedStrategy] = useState('minervini');
+  const [enforceStage2, setEnforceStage2] = useState(true);
+  const [enablePowerPlay, setEnablePowerPlay] = useState(false);
+  const [enableIpoBase, setEnableIpoBase] = useState(false);
+  const [enableVcpSetup, setEnableVcpSetup] = useState(false);
   const [minRsFilter, setMinRsFilter] = useState(70);
   const [minEpsGrowthFilter, setMinEpsGrowthFilter] = useState(20.0);
   const [minPriceFilter, setMinPriceFilter] = useState(5.0);
   const [minVolFilter, setMinVolFilter] = useState(300000);
   const [minAdrFilter, setMinAdrFilter] = useState(0.0);
+  const [syncPrices, setSyncPrices] = useState(true);
+  const [syncFundamentals, setSyncFundamentals] = useState(false);
   const [minPpRunupFilter, setMinPpRunupFilter] = useState(100.0);
   const [maxPpDrawdownFilter, setMaxPpDrawdownFilter] = useState(25.0);
   const [maxPpVolRatioFilter, setMaxPpVolRatioFilter] = useState(1.0);
+  const [maxIpoAgeFilter, setMaxIpoAgeFilter] = useState(756);
+  const [maxIpoDistFilter, setMaxIpoDistFilter] = useState(20.0);
+  const [maxIpoDepthFilter, setMaxIpoDepthFilter] = useState(35.0);
   const [inspectorSymbol, setInspectorSymbol] = useState('');
   const [inspectorDetail, setInspectorDetail] = useState(null);
   const [inspectorPrices, setInspectorPrices] = useState([]);
@@ -170,8 +211,8 @@ function App() {
       // 1. Skip if user is typing in a form input, textarea or select
       const activeEl = document.activeElement;
       if (activeEl && (
-        activeEl.tagName === 'INPUT' || 
-        activeEl.tagName === 'TEXTAREA' || 
+        activeEl.tagName === 'INPUT' ||
+        activeEl.tagName === 'TEXTAREA' ||
         activeEl.tagName === 'SELECT'
       )) {
         return;
@@ -183,12 +224,12 @@ function App() {
       // 3. Intercept alphanumeric characters
       if (/^[a-zA-Z0-9]$/.test(e.key)) {
         e.preventDefault();
-        
+
         // Focus the input
         if (inspectorInputRef.current) {
           inspectorInputRef.current.focus();
         }
-        
+
         // Append input character to symbol search state
         setInspectorSymbol(prev => (prev + e.key).toUpperCase());
       }
@@ -223,7 +264,14 @@ function App() {
   // Trigger sync run
   const handleTriggerSync = async () => {
     try {
-      await fetch(`${API_BASE}/api/screen/run`, { method: 'POST' });
+      await fetch(`${API_BASE}/api/screen/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          skip_prices: !syncPrices,
+          skip_fundamentals: !syncFundamentals
+        })
+      });
       fetchSyncStatus();
     } catch (e) {
       console.error("Error triggering sync: ", e);
@@ -307,17 +355,35 @@ function App() {
     }
   };
 
+
+
+  // Export symbols to TradingView file
   const filteredCandidates = candidates.filter(c => {
+    // 1. Core Filters (Global)
     if (c.close < minPriceFilter) return false;
     if (c.vol_50d_ma < minVolFilter) return false;
-    if (c.rs_rank < minRsFilter) return false;
     if (c.adr_20d !== null && c.adr_20d !== undefined && c.adr_20d < minAdrFilter) return false;
-
-    if (selectedStrategy === 'minervini') {
-      if (c.eps_qoq_growth === null || c.eps_qoq_growth === undefined) return false;
-      if (c.eps_qoq_growth < minEpsGrowthFilter) return false;
+    if (!enablePowerPlay && !enableIpoBase) {
+      if (c.rs_rank !== null && c.rs_rank !== undefined && c.rs_rank < minRsFilter) return false;
     }
-    if (selectedStrategy === 'powerplay') {
+    if (c.eps_qoq_growth !== null && c.eps_qoq_growth !== undefined && c.eps_qoq_growth < minEpsGrowthFilter) return false;
+
+    // 2. Baseline Stage 2 Trend Template
+    if (enforceStage2) {
+      const isRecentIpo = enableIpoBase && c.ipo_days_count !== null && c.ipo_days_count !== undefined && c.ipo_days_count <= maxIpoAgeFilter;
+      if (isRecentIpo) {
+        // For recent IPOs, require close > SMA 50 if SMA 50 exists, waive SMA 150/200
+        if (c.sma_50 !== null && c.sma_50 !== undefined && c.close < c.sma_50) return false;
+      } else {
+        // For established listings, require standard Stage 2 alignment
+        if (c.sma_50 === null || c.sma_150 === null || c.sma_200 === null) return false;
+        if (c.sma_50 <= c.sma_150 || c.sma_150 <= c.sma_200) return false;
+        if (c.close < c.sma_50) return false; // Enforce price above SMA 50
+      }
+    }
+
+    // 3. Power Play Overlay
+    if (enablePowerPlay) {
       if (c.pp_runup_pct === null || c.pp_runup_pct === undefined || c.pp_runup_pct < minPpRunupFilter) return false;
       if (c.pp_drawdown_pct === null || c.pp_drawdown_pct === undefined || c.pp_drawdown_pct > maxPpDrawdownFilter) return false;
       if (c.volume && c.vol_50d_ma) {
@@ -325,6 +391,24 @@ function App() {
         if (volRatio > maxPpVolRatioFilter) return false;
       }
     }
+
+    // 4. IPO Base Overlay
+    if (enableIpoBase) {
+      if (c.ipo_days_count === null || c.ipo_days_count === undefined) return false;
+      if (c.ipo_days_count < 10 || c.ipo_days_count > maxIpoAgeFilter) return false;
+      
+      if (c.ipo_drawdown_from_high === null || c.ipo_drawdown_from_high === undefined) return false;
+      if (c.ipo_drawdown_from_high > maxIpoDistFilter) return false;
+
+      if (c.ipo_base_depth === null || c.ipo_base_depth === undefined) return false;
+      if (c.ipo_base_depth > maxIpoDepthFilter) return false;
+    }
+
+    // 5. VCP Overlay
+    if (enableVcpSetup) {
+      if (!c.vcp_is_setup) return false;
+    }
+
     return true;
   });
 
@@ -357,19 +441,19 @@ function App() {
           <div className="logo-text">PivotTrader</div>
         </div>
         <ul className="nav-links">
-          <li 
+          <li
             className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
             onClick={() => setActiveTab('dashboard')}
           >
             Dashboard
           </li>
-          <li 
+          <li
             className={`nav-item ${activeTab === 'candidates' ? 'active' : ''}`}
             onClick={() => setActiveTab('candidates')}
           >
             Screen ({filteredCandidates.length})
           </li>
-          <li 
+          <li
             className={`nav-item ${activeTab === 'inspector' ? 'active' : ''}`}
             onClick={() => {
               setActiveTab('inspector');
@@ -381,13 +465,13 @@ function App() {
           >
             Stock Inspector
           </li>
-          <li 
+          <li
             className={`nav-item ${activeTab === 'sql' ? 'active' : ''}`}
             onClick={() => setActiveTab('sql')}
           >
             SQL Console
           </li>
-          <li 
+          <li
             className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
             onClick={() => setActiveTab('settings')}
           >
@@ -398,22 +482,48 @@ function App() {
 
       {/* Main Content Area */}
       <div className="main-content">
-        
+
         {/* Render Tab Views */}
         {activeTab === 'dashboard' && (
           <div>
-            <div className="header-section">
+            <div className="header-section" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div className="header-title">
                 <h1>Dashboard Summary</h1>
                 <p>Status of your local embedded DuckDB datasets</p>
               </div>
-              <button 
-                className="btn btn-primary" 
-                onClick={handleTriggerSync}
-                disabled={syncStatus.status === 'running'}
-              >
-                {syncStatus.status === 'running' ? 'Running Screen Sync...' : 'Sync Database Tickers'}
-              </button>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', color: 'var(--text-primary)' }}>
+                    <input
+                      type="checkbox"
+                      checked={syncPrices}
+                      onChange={(e) => setSyncPrices(e.target.checked)}
+                      disabled={syncStatus.status === 'running'}
+                      style={{ cursor: 'pointer', accentColor: 'var(--accent-color)' }}
+                    />
+                    📈 Sync Price Data
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', color: 'var(--text-primary)' }}>
+                    <input
+                      type="checkbox"
+                      checked={syncFundamentals}
+                      onChange={(e) => setSyncFundamentals(e.target.checked)}
+                      disabled={syncStatus.status === 'running'}
+                      style={{ cursor: 'pointer', accentColor: 'var(--accent-color)' }}
+                    />
+                    📊 Sync Fundamentals
+                  </label>
+                </div>
+
+                <button
+                  className="btn btn-primary"
+                  onClick={handleTriggerSync}
+                  disabled={syncStatus.status === 'running' || (!syncPrices && !syncFundamentals)}
+                >
+                  {syncStatus.status === 'running' ? 'Running Screen Sync...' : 'Sync Database Tickers'}
+                </button>
+              </div>
             </div>
 
             {/* Ingestion progress bar */}
@@ -424,11 +534,11 @@ function App() {
                   <span style={{ color: 'var(--accent-color)' }}>{getProgressFromLogs(syncStatus.log_output).toFixed(1)}%</span>
                 </h3>
                 <div style={{ background: 'rgba(255, 255, 255, 0.05)', borderRadius: '10px', height: '16px', overflow: 'hidden', position: 'relative', border: '1px solid var(--border-color)' }}>
-                  <div style={{ 
-                    background: 'linear-gradient(90deg, var(--accent-color), var(--accent-success))', 
-                    height: '100%', 
-                    width: `${getProgressFromLogs(syncStatus.log_output)}%`, 
-                    transition: 'width 0.5s ease-out' 
+                  <div style={{
+                    background: 'linear-gradient(90deg, var(--accent-color), var(--accent-success))',
+                    height: '100%',
+                    width: `${getProgressFromLogs(syncStatus.log_output)}%`,
+                    transition: 'width 0.5s ease-out'
                   }} />
                 </div>
               </div>
@@ -472,8 +582,8 @@ function App() {
                 <h1>Screen Candidates</h1>
                 <p>US Stocks passing RS percentiles & EPS QoQ acceleration guidelines</p>
               </div>
-              <button 
-                className="btn btn-secondary" 
+              <button
+                className="btn btn-secondary"
                 onClick={handleExportTradingView}
                 disabled={filteredCandidates.length === 0}
               >
@@ -484,76 +594,230 @@ function App() {
             {/* Interactive Strategy & Filter controls */}
             <div className="glass-card" style={{ marginBottom: '24px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{ fontSize: '15px', fontWeight: '600', color: 'var(--text-primary)' }}>Screening Strategy:</span>
-                  <select 
-                    value={selectedStrategy} 
-                    onChange={(e) => setSelectedStrategy(e.target.value)}
-                    style={{ padding: '8px 16px', borderRadius: 'var(--border-radius-md)', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)', outline: 'none', fontWeight: '500' }}
-                  >
-                    <option value="minervini">Mark Minervini Stage 2 Screen</option>
-                    <option value="momentum">High Momentum Leaders (Technical Only)</option>
-                    <option value="powerplay">Mark Minervini Power Play Screen</option>
-                  </select>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap' }}>
+                  {/* Baseline Stage 2 Toggle */}
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>
+                    <input
+                      type="checkbox"
+                      checked={enforceStage2}
+                      onChange={(e) => setEnforceStage2(e.target.checked)}
+                      style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--accent-color)' }}
+                    />
+                    📈 Baseline Stage 2 Trend
+                  </label>
+
+                  <span style={{ color: 'rgba(255, 255, 255, 0.1)', fontSize: '16px' }}>|</span>
+
+                  {/* Setup Overlay Checkboxes */}
+                  <span style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Setup Overlays:</span>
+                  
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '500', color: 'var(--text-primary)' }}>
+                    <input
+                      type="checkbox"
+                      checked={enablePowerPlay}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setEnablePowerPlay(val);
+                        if (val) {
+                          setEnableIpoBase(false);
+                          setEnableVcpSetup(false);
+                        }
+                      }}
+                      style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--accent-color)' }}
+                    />
+                    🚀 Power Play
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '500', color: 'var(--text-primary)' }}>
+                    <input
+                      type="checkbox"
+                      checked={enableIpoBase}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setEnableIpoBase(val);
+                        if (val) {
+                          setEnablePowerPlay(false);
+                          setEnableVcpSetup(false);
+                        }
+                      }}
+                      style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--accent-color)' }}
+                    />
+                    📅 IPO Base
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '500', color: 'var(--text-primary)' }}>
+                    <input
+                      type="checkbox"
+                      checked={enableVcpSetup}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setEnableVcpSetup(val);
+                        if (val) {
+                          setEnablePowerPlay(false);
+                          setEnableIpoBase(false);
+                        }
+                      }}
+                      style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--accent-color)' }}
+                    />
+                    ⚡ VCP Setup
+                  </label>
                 </div>
                 <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
                   Showing <strong>{filteredCandidates.length}</strong> of <strong>{candidates.length}</strong> ranked stocks
                 </span>
               </div>
 
+              {/* Active Strategy Rules Description Box */}
+              <div style={{
+                padding: '16px',
+                background: 'rgba(30, 41, 59, 0.4)',
+                border: '1px dashed rgba(148, 163, 184, 0.2)',
+                borderRadius: '8px'
+              }}>
+                <h4 style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-color)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Active Screening Filters
+                </h4>
+                <div style={{ display: 'flex', gap: '12px 24px', flexWrap: 'wrap', fontSize: '13px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: 'var(--accent-color)' }}>📈</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>Price:</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>&ge; ${minPriceFilter.toFixed(2)}</strong>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: 'var(--accent-color)' }}>📊</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>Vol SMA (50d):</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>&ge; {minVolFilter.toLocaleString()}</strong>
+                  </div>
+                  {enforceStage2 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ color: 'var(--accent-success)' }}>⚡</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>Trend Template:</span>
+                      <strong style={{ color: 'var(--text-primary)' }}>
+                        {enableIpoBase ? 'SMA(50) [Waive SMA 150/200 on IPOs]' : 'SMA(50) > SMA(150) > SMA(200)'}
+                      </strong>
+                    </div>
+                  )}
+                  {!enablePowerPlay && !enableIpoBase && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ color: 'var(--accent-success)' }}>⚡</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>RS Percentile:</span>
+                      <strong style={{ color: 'var(--text-primary)' }}>&ge; {minRsFilter}th</strong>
+                    </div>
+                  )}
+                  {minAdrFilter > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ color: 'var(--accent-color)' }}>🌀</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>Daily ADR:</span>
+                      <strong style={{ color: 'var(--text-primary)' }}>&ge; {minAdrFilter.toFixed(1)}%</strong>
+                    </div>
+                  )}
+                  {enableVcpSetup && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ color: 'var(--accent-success)' }}>🌀</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>Pattern:</span>
+                      <strong style={{ color: 'var(--text-primary)' }}>VCP Contraction</strong>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: 'var(--accent-warning)' }}>💰</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>QoQ EPS Growth:</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>&ge; {minEpsGrowthFilter}%</strong>
+                  </div>
+                  {enablePowerPlay && (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ color: 'var(--accent-success)' }}>🚀</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>8w Run-up:</span>
+                        <strong style={{ color: 'var(--text-primary)' }}>&ge; {minPpRunupFilter}%</strong>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ color: 'var(--accent-danger)' }}>📉</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>Max Drawdown:</span>
+                        <strong style={{ color: 'var(--text-primary)' }}>&le; {maxPpDrawdownFilter}%</strong>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ color: 'var(--accent-success)' }}>📉</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>Max Base Vol:</span>
+                        <strong style={{ color: 'var(--text-primary)' }}>&le; {maxPpVolRatioFilter.toFixed(2)}x SMA</strong>
+                      </div>
+                    </>
+                  )}
+                  {enableIpoBase && (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ color: 'var(--accent-color)' }}>📅</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>Max IPO Age:</span>
+                        <strong style={{ color: 'var(--text-primary)' }}>{maxIpoAgeFilter} days</strong>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ color: 'var(--accent-success)' }}>🎯</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>Max Dist from High:</span>
+                        <strong style={{ color: 'var(--text-primary)' }}>{maxIpoDistFilter}%</strong>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ color: 'var(--accent-danger)' }}>📉</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>Max Base Drawdown:</span>
+                        <strong style={{ color: 'var(--text-primary)' }}>&le; {maxIpoDepthFilter}%</strong>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
               {/* Dynamic Parameter Sliders / Inputs */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
-                {/* 1. Relative Strength */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>
-                    Min Relative Strength Rank ({minRsFilter}):
-                  </label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input 
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={minRsFilter}
-                      onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 0)}
-                      style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
-                    />
-                    <input 
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={minRsFilter}
-                      onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 0)}
-                      style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                    />
-                  </div>
-                </div>
-
-                {/* 2. EPS Growth QoQ (Only for Minervini Strategy) */}
-                {selectedStrategy === 'minervini' && (
+                {/* 1. Relative Strength (Global) */}
+                {!enablePowerPlay && !enableIpoBase && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>
-                      Min QoQ EPS Growth ({minEpsGrowthFilter}%):
+                      Min Relative Strength Rank ({minRsFilter}):
                     </label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input 
+                      <input
                         type="range"
-                        min="-50"
-                        max="200"
-                        value={minEpsGrowthFilter}
-                        onChange={(e) => setMinEpsGrowthFilter(parseFloat(e.target.value) || 0)}
+                        min="0"
+                        max="100"
+                        value={minRsFilter}
+                        onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 0)}
                         style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
                       />
-                      <input 
+                      <input
                         type="number"
-                        min="-100"
-                        max="1000"
-                        value={minEpsGrowthFilter}
-                        onChange={(e) => setMinEpsGrowthFilter(parseFloat(e.target.value) || 0)}
+                        min="0"
+                        max="100"
+                        value={minRsFilter}
+                        onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 0)}
                         style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
                       />
                     </div>
                   </div>
                 )}
+
+                {/* 2. EPS Growth QoQ (Global) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>
+                    Min QoQ EPS Growth ({minEpsGrowthFilter}%):
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="range"
+                      min="-50"
+                      max="200"
+                      value={minEpsGrowthFilter}
+                      onChange={(e) => setMinEpsGrowthFilter(parseFloat(e.target.value) || 0)}
+                      style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
+                    />
+                    <input
+                      type="number"
+                      min="-100"
+                      max="1000"
+                      value={minEpsGrowthFilter}
+                      onChange={(e) => setMinEpsGrowthFilter(parseFloat(e.target.value) || 0)}
+                      style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                    />
+                  </div>
+                </div>
+
 
                 {/* 3. Min Price */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -561,7 +825,7 @@ function App() {
                     Min Stock Price (${minPriceFilter.toFixed(2)}):
                   </label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input 
+                    <input
                       type="range"
                       min="1"
                       max="100"
@@ -569,7 +833,7 @@ function App() {
                       onChange={(e) => setMinPriceFilter(parseFloat(e.target.value) || 0)}
                       style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
                     />
-                    <input 
+                    <input
                       type="number"
                       min="0"
                       max="1000"
@@ -586,7 +850,7 @@ function App() {
                     Min 50d Vol MA ({(minVolFilter / 1000).toFixed(0)}k):
                   </label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input 
+                    <input
                       type="range"
                       min="50000"
                       max="2000000"
@@ -595,7 +859,7 @@ function App() {
                       onChange={(e) => setMinVolFilter(parseInt(e.target.value) || 0)}
                       style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
                     />
-                    <input 
+                    <input
                       type="number"
                       min="0"
                       max="10000000"
@@ -612,7 +876,7 @@ function App() {
                     Min ADR (20d) ({minAdrFilter.toFixed(1)}%):
                   </label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input 
+                    <input
                       type="range"
                       min="0"
                       max="10"
@@ -621,7 +885,7 @@ function App() {
                       onChange={(e) => setMinAdrFilter(parseFloat(e.target.value) || 0)}
                       style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
                     />
-                    <input 
+                    <input
                       type="number"
                       min="0"
                       max="20"
@@ -634,7 +898,7 @@ function App() {
                 </div>
 
                 {/* Power Play Sliders */}
-                {selectedStrategy === 'powerplay' && (
+                {enablePowerPlay && (
                   <>
                     {/* Min Power Play Run-up */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -642,7 +906,7 @@ function App() {
                         Min Run-up in Last 8w ({minPpRunupFilter}%):
                       </label>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <input 
+                        <input
                           type="range"
                           min="50"
                           max="200"
@@ -651,7 +915,7 @@ function App() {
                           onChange={(e) => setMinPpRunupFilter(parseFloat(e.target.value) || 0)}
                           style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
                         />
-                        <input 
+                        <input
                           type="number"
                           min="10"
                           max="1000"
@@ -668,7 +932,7 @@ function App() {
                         Max Base Drawdown ({maxPpDrawdownFilter}%):
                       </label>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <input 
+                        <input
                           type="range"
                           min="10"
                           max="40"
@@ -677,7 +941,7 @@ function App() {
                           onChange={(e) => setMaxPpDrawdownFilter(parseFloat(e.target.value) || 0)}
                           style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
                         />
-                        <input 
+                        <input
                           type="number"
                           min="5"
                           max="50"
@@ -694,7 +958,7 @@ function App() {
                         Max Base Vol vs 50d SMA ({maxPpVolRatioFilter.toFixed(2)}x):
                       </label>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <input 
+                        <input
                           type="range"
                           min="0.2"
                           max="1.5"
@@ -703,13 +967,96 @@ function App() {
                           onChange={(e) => setMaxPpVolRatioFilter(parseFloat(e.target.value) || 0)}
                           style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
                         />
-                        <input 
+                        <input
                           type="number"
                           min="0.1"
                           max="5.0"
                           step="0.1"
                           value={maxPpVolRatioFilter}
                           onChange={(e) => setMaxPpVolRatioFilter(parseFloat(e.target.value) || 0)}
+                          style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* IPO Base Sliders */}
+                {enableIpoBase && (
+                  <>
+                    {/* Max IPO Age */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>
+                        Max IPO Age ({maxIpoAgeFilter} days):
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="range"
+                          min="30"
+                          max="1000"
+                          step="10"
+                          value={maxIpoAgeFilter}
+                          onChange={(e) => setMaxIpoAgeFilter(parseInt(e.target.value) || 0)}
+                          style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
+                        />
+                        <input
+                          type="number"
+                          min="10"
+                          max="1000"
+                          value={maxIpoAgeFilter}
+                          onChange={(e) => setMaxIpoAgeFilter(parseInt(e.target.value) || 0)}
+                          style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Max Distance from IPO High */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>
+                        Max Dist from High ({maxIpoDistFilter}%):
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="range"
+                          min="5"
+                          max="40"
+                          step="1"
+                          value={maxIpoDistFilter}
+                          onChange={(e) => setMaxIpoDistFilter(parseFloat(e.target.value) || 0)}
+                          style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
+                        />
+                        <input
+                          type="number"
+                          min="1"
+                          max="50"
+                          value={maxIpoDistFilter}
+                          onChange={(e) => setMaxIpoDistFilter(parseFloat(e.target.value) || 0)}
+                          style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Max IPO Base Drawdown */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>
+                        Max Base Drawdown ({maxIpoDepthFilter}%):
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <input
+                          type="range"
+                          min="10"
+                          max="50"
+                          step="1"
+                          value={maxIpoDepthFilter}
+                          onChange={(e) => setMaxIpoDepthFilter(parseFloat(e.target.value) || 0)}
+                          style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
+                        />
+                        <input
+                          type="number"
+                          min="5"
+                          max="80"
+                          value={maxIpoDepthFilter}
+                          onChange={(e) => setMaxIpoDepthFilter(parseFloat(e.target.value) || 0)}
                           style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
                         />
                       </div>
@@ -727,21 +1074,26 @@ function App() {
                     <th>Ticker</th>
                     <th>Price</th>
                     <th>Vol 50d MA</th>
-                    {selectedStrategy === 'powerplay' ? (
+                    <th>RS Score</th>
+                    <th>RS Percentile</th>
+                    <th>ADR (20d)</th>
+                    <th>EPS QoQ Growth</th>
+                    <th>Report Qtr</th>
+                    {enablePowerPlay && (
                       <>
                         <th>Run Up %</th>
                         <th>Drawdown %</th>
                         <th>Vol vs SMA</th>
                       </>
-                    ) : (
+                    )}
+                    {enableIpoBase && (
                       <>
-                        <th>RS Score</th>
-                        <th>RS Percentile</th>
-                        <th>ADR (20d)</th>
-                        <th>EPS QoQ Growth</th>
-                        <th>Report Qtr</th>
+                        <th>IPO Age</th>
+                        <th>Dist from High</th>
+                        <th>Base Depth</th>
                       </>
                     )}
+                    <th>VCP Setup</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -750,7 +1102,24 @@ function App() {
                       <td style={{ fontWeight: 'bold', color: 'var(--accent-color)' }}>{c.symbol}</td>
                       <td>${c.close.toFixed(2)}</td>
                       <td>{c.vol_50d_ma.toLocaleString()}</td>
-                      {selectedStrategy === 'powerplay' ? (
+                      <td>{c.rs_score ? c.rs_score.toFixed(4) : 'N/A'}</td>
+                      <td>
+                        <span className="pill pill-success">{c.rs_rank}</span>
+                      </td>
+                      <td style={{ fontWeight: '500' }}>
+                        {c.adr_20d !== null && c.adr_20d !== undefined ? `${c.adr_20d.toFixed(2)}%` : 'N/A'}
+                      </td>
+                      <td style={{ color: c.eps_qoq_growth !== null && c.eps_qoq_growth !== undefined ? (c.eps_qoq_growth >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)') : 'var(--text-secondary)' }}>
+                        {c.eps_qoq_growth !== null && c.eps_qoq_growth !== undefined ? `${c.eps_qoq_growth >= 0 ? '+' : ''}${c.eps_qoq_growth.toFixed(1)}%` : 'N/A'}
+                      </td>
+                      <td>
+                        {c.fiscal_quarter ? (
+                          <span className="pill pill-primary">{c.fiscal_quarter}</span>
+                        ) : (
+                          <span style={{ color: 'var(--text-secondary)' }}>N/A</span>
+                        )}
+                      </td>
+                      {enablePowerPlay && (
                         <>
                           <td style={{ color: 'var(--accent-success)', fontWeight: '600' }}>
                             +{c.pp_runup_pct !== null && c.pp_runup_pct !== undefined ? c.pp_runup_pct.toFixed(0) : '0'}%
@@ -762,32 +1131,34 @@ function App() {
                             {c.volume && c.vol_50d_ma ? `${(c.volume / c.vol_50d_ma).toFixed(2)}x` : 'N/A'}
                           </td>
                         </>
-                      ) : (
+                      )}
+                      {enableIpoBase && (
                         <>
-                          <td>{c.rs_score.toFixed(4)}</td>
-                          <td>
-                            <span className="pill pill-success">{c.rs_rank}</span>
+                          <td style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
+                            {c.ipo_days_count} days
                           </td>
-                          <td style={{ fontWeight: '500' }}>
-                            {c.adr_20d !== null && c.adr_20d !== undefined ? `${c.adr_20d.toFixed(2)}%` : 'N/A'}
+                          <td style={{ color: 'var(--accent-success)', fontWeight: '600' }}>
+                            {c.ipo_drawdown_from_high !== null && c.ipo_drawdown_from_high !== undefined ? `${c.ipo_drawdown_from_high.toFixed(1)}%` : '0%'}
                           </td>
-                          <td style={{ color: c.eps_qoq_growth !== null && c.eps_qoq_growth !== undefined ? (c.eps_qoq_growth >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)') : 'var(--text-secondary)' }}>
-                            {c.eps_qoq_growth !== null && c.eps_qoq_growth !== undefined ? `${c.eps_qoq_growth >= 0 ? '+' : ''}${c.eps_qoq_growth.toFixed(1)}%` : 'N/A'}
-                          </td>
-                          <td>
-                            {c.fiscal_quarter ? (
-                              <span className="pill pill-primary">{c.fiscal_quarter}</span>
-                            ) : (
-                              <span style={{ color: 'var(--text-secondary)' }}>N/A</span>
-                            )}
+                          <td style={{ color: 'var(--accent-danger)', fontWeight: '600' }}>
+                            -{c.ipo_base_depth !== null && c.ipo_base_depth !== undefined ? `${c.ipo_base_depth.toFixed(1)}%` : '0%'}
                           </td>
                         </>
                       )}
+                      <td>
+                        {c.vcp_is_setup ? (
+                          <span className="pill pill-success" style={{ fontStyle: 'italic', fontWeight: 'bold' }}>
+                            {c.vcp_troughs}T ({c.vcp_depths.replace(/,/g, ' / ') + '%'})
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-secondary)' }}>No</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                   {filteredCandidates.length === 0 && (
                     <tr>
-                      <td colSpan={selectedStrategy === 'powerplay' ? 6 : 8} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                      <td colSpan={9 + (enablePowerPlay ? 3 : 0) + (enableIpoBase ? 3 : 0)} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
                         No candidates matching current config rules found in database cache. Run "Sync Database Tickers" to evaluate stocks.
                       </td>
                     </tr>
@@ -811,7 +1182,7 @@ function App() {
             <div className="glass-card" style={{ marginBottom: '24px', display: 'flex', gap: '16px', alignItems: 'center' }}>
               <div className="form-group" style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: '12px', margin: 0 }}>
                 <span style={{ fontWeight: '500', whiteSpace: 'nowrap' }}>Search Ticker:</span>
-                <input 
+                <input
                   ref={inspectorInputRef}
                   type="text"
                   placeholder="e.g. AAPL, LESL, NVDA"
@@ -825,7 +1196,7 @@ function App() {
                   style={{ flex: 1, textTransform: 'uppercase' }}
                 />
               </div>
-              <button 
+              <button
                 className="btn btn-primary"
                 onClick={() => handleInspectorSearch(inspectorSymbol)}
                 disabled={searchingInspector}
@@ -938,7 +1309,7 @@ function App() {
             </div>
 
             <div className="glass-card">
-              <textarea 
+              <textarea
                 className="sql-textarea"
                 value={sqlQuery}
                 onChange={(e) => setSqlQuery(e.target.value)}
@@ -1002,8 +1373,8 @@ function App() {
               <form onSubmit={handleSaveConfig} className="form-grid">
                 <div className="form-group">
                   <label>Primary / Fundamental Data Provider</label>
-                  <select 
-                    value={config.provider_selected} 
+                  <select
+                    value={config.provider_selected}
                     onChange={(e) => setConfig({ ...config, provider_selected: e.target.value })}
                   >
                     <option value="YFINANCE">Yahoo Finance (Free & No Limits)</option>
@@ -1012,8 +1383,8 @@ function App() {
                 </div>
                 <div className="form-group">
                   <label>Price Ingestion Provider</label>
-                  <select 
-                    value={config.price_provider_selected} 
+                  <select
+                    value={config.price_provider_selected}
                     onChange={(e) => setConfig({ ...config, price_provider_selected: e.target.value })}
                   >
                     <option value="YFINANCE">Yahoo Finance (Recommended: Multi-threaded & Fast)</option>
@@ -1022,8 +1393,8 @@ function App() {
                 </div>
                 <div className="form-group">
                   <label>Minimum Stock Price ($)</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     step="0.01"
                     value={config.min_price}
                     onChange={(e) => setConfig({ ...config, min_price: parseFloat(e.target.value) })}
@@ -1031,30 +1402,30 @@ function App() {
                 </div>
                 <div className="form-group">
                   <label>Minimum 50-day SMA Volume</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     value={config.min_volume_sma_50}
                     onChange={(e) => setConfig({ ...config, min_volume_sma_50: parseInt(e.target.value) })}
                   />
                 </div>
                 <div className="form-group">
                   <label>Minervini Min RS Percentile Rank (70 = Top 30%)</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     value={config.min_rs_percentile}
                     onChange={(e) => setConfig({ ...config, min_rs_percentile: parseInt(e.target.value) })}
                   />
                 </div>
                 <div className="form-group">
                   <label>Minimum QoQ EPS Growth (%)</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     step="0.1"
                     value={config.min_eps_growth_qoq}
                     onChange={(e) => setConfig({ ...config, min_eps_growth_qoq: parseFloat(e.target.value) })}
                   />
                 </div>
-                
+
                 <div style={{ gridColumn: '1 / -1', marginTop: '16px' }}>
                   <button type="submit" className="btn btn-primary">Save Configurations</button>
                 </div>
@@ -1090,8 +1461,8 @@ function App() {
             </div>
 
             <div style={{ padding: '0 0 16px 0', borderBottom: '1px solid var(--border-color)', marginBottom: '16px' }}>
-              <button 
-                className="btn btn-secondary" 
+              <button
+                className="btn btn-secondary"
                 onClick={() => {
                   setSelectedStock(null);
                   setActiveTab('inspector');

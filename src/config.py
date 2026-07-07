@@ -31,7 +31,7 @@ class Config:
 
     @property
     def db_path(self) -> str:
-        return self.get("database.db_path", "market_data.db")
+        return self.get("database.db_path", "data.db")
 
     @property
     def provider_selected(self) -> str:

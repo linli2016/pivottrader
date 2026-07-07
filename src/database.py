@@ -43,6 +43,16 @@ class DatabaseManager:
                     adr_20d DOUBLE,
                     pp_runup_pct DOUBLE,
                     pp_drawdown_pct DOUBLE,
+                    sma_50 DOUBLE,
+                    sma_150 DOUBLE,
+                    sma_200 DOUBLE,
+                    vcp_is_setup BOOLEAN,
+                    vcp_troughs INTEGER,
+                    vcp_depths VARCHAR,
+                    ipo_days_count INTEGER,
+                    ipo_all_time_high DOUBLE,
+                    ipo_drawdown_from_high DOUBLE,
+                    ipo_base_depth DOUBLE,
                     PRIMARY KEY (symbol, date)
                 );
             """)
@@ -58,6 +68,46 @@ class DatabaseManager:
                 pass
             try:
                 conn.execute("ALTER TABLE daily_bars ADD COLUMN pp_drawdown_pct DOUBLE;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN sma_50 DOUBLE;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN sma_150 DOUBLE;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN sma_200 DOUBLE;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN vcp_is_setup BOOLEAN;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN vcp_troughs INTEGER;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN vcp_depths VARCHAR;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN ipo_days_count INTEGER;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN ipo_all_time_high DOUBLE;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN ipo_drawdown_from_high DOUBLE;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN ipo_base_depth DOUBLE;")
             except Exception:
                 pass
             

@@ -18,6 +18,8 @@ def main():
     parser.add_argument("--provider", choices=["YFINANCE", "IBKR"], help="Override data provider specified in config")
     parser.add_argument("--limit-tickers", type=int, help="Limit the universe size for rapid testing/debugging")
     parser.add_argument("--force-full", action="store_true", help="Force fetch full 550-day history for all active tickers")
+    parser.add_argument("--skip-prices", action="store_true", help="Skip historical daily bars price synchronization")
+    parser.add_argument("--skip-fundamentals", action="store_true", help="Skip quarterly fundamental statements synchronization")
     args = parser.parse_args()
 
     print("=" * 60)
@@ -96,46 +98,49 @@ def main():
         active_symbols = [item["symbol"] for item in universe]
 
         # 5. Incremental Daily Bars Ingestion
-        print("\n[Step 2/5] Syncing historical daily bars...")
-        last_dates = db.get_last_bar_dates()
-        
-        # Split tickers into new vs existing to optimize downloads
-        new_symbols = []
-        existing_symbols = []
-        
-        for symbol in active_symbols:
-            if symbol not in last_dates or args.force_full:
-                new_symbols.append(symbol)
-            else:
-                existing_symbols.append(symbol)
-                
-        # Base historical lookup threshold (550 days calendar ~= 378 trading days)
-        full_lookback_date = (datetime.now() - timedelta(days=550)).strftime("%Y-%m-%d")
-
-        # Ingest new symbols
-        if new_symbols:
-            print(f"Fetching full lookback ({full_lookback_date}) for {len(new_symbols)} new tickers...")
-            new_bars = price_provider.fetch_daily_bars(new_symbols, full_lookback_date)
-            if not new_bars.empty:
-                print(f"Upserting {len(new_bars)} rows for new tickers...")
-                db.upsert_daily_bars(new_bars)
-            else:
-                print("No new price bars fetched.")
-
-        # Ingest existing symbols incrementally
-        if existing_symbols:
-            # Find earliest date among existing symbols to request delta
-            earliest_last_date = min(last_dates[sym] for sym in existing_symbols)
-            # Subtract 5 days overlap buffer to avoid missing adjustments or weekend gaps
-            delta_start_date = (datetime.strptime(earliest_last_date, "%Y-%m-%d") - timedelta(days=5)).strftime("%Y-%m-%d")
+        if args.skip_prices:
+            print("\n[Step 2/5] Skipping daily bars price synchronization as requested (--skip-prices).")
+        else:
+            print("\n[Step 2/5] Syncing historical daily bars...")
+            last_dates = db.get_last_bar_dates()
             
-            print(f"Syncing daily bars incrementally since {delta_start_date} for {len(existing_symbols)} tickers...")
-            delta_bars = price_provider.fetch_daily_bars(existing_symbols, delta_start_date)
-            if not delta_bars.empty:
-                print(f"Upserting {len(delta_bars)} rows for existing tickers...")
-                db.upsert_daily_bars(delta_bars)
-            else:
-                print("No incremental bars fetched.")
+            # Split tickers into new vs existing to optimize downloads
+            new_symbols = []
+            existing_symbols = []
+            
+            for symbol in active_symbols:
+                if symbol not in last_dates or args.force_full:
+                    new_symbols.append(symbol)
+                else:
+                    existing_symbols.append(symbol)
+                    
+            # Base historical lookup threshold (550 days calendar ~= 378 trading days)
+            full_lookback_date = (datetime.now() - timedelta(days=550)).strftime("%Y-%m-%d")
+
+            # Ingest new symbols
+            if new_symbols:
+                print(f"Fetching full lookback ({full_lookback_date}) for {len(new_symbols)} new tickers...")
+                new_bars = price_provider.fetch_daily_bars(new_symbols, full_lookback_date)
+                if not new_bars.empty:
+                    print(f"Upserting {len(new_bars)} rows for new tickers...")
+                    db.upsert_daily_bars(new_bars)
+                else:
+                    print("No new price bars fetched.")
+
+            # Ingest existing symbols incrementally
+            if existing_symbols:
+                # Find earliest date among existing symbols to request delta
+                earliest_last_date = min(last_dates[sym] for sym in existing_symbols)
+                # Subtract 5 days overlap buffer to avoid missing adjustments or weekend gaps
+                delta_start_date = (datetime.strptime(earliest_last_date, "%Y-%m-%d") - timedelta(days=5)).strftime("%Y-%m-%d")
+                
+                print(f"Syncing daily bars incrementally since {delta_start_date} for {len(existing_symbols)} tickers...")
+                delta_bars = price_provider.fetch_daily_bars(existing_symbols, delta_start_date)
+                if not delta_bars.empty:
+                    print(f"Upserting {len(delta_bars)} rows for existing tickers...")
+                    db.upsert_daily_bars(delta_bars)
+                else:
+                    print("No incremental bars fetched.")
 
         # 6. Relative Strength Scoring & Ranking
         print("\n[Step 3/5] Computing momentum scores & percentile ranks...")
@@ -153,18 +158,21 @@ def main():
             return
 
         # 7. Targeted Fundamental Acceleration Screening
-        print("\n[Step 4/5] Fetching and evaluating quarterly fundamental statement changes...")
-        cand_symbols = [c["symbol"] for c in momentum_candidates]
-        
-        # Dynamic optimization: Fetch statements specifically for top RS candidates
-        print(f"Fetching quarterly statements for top {len(cand_symbols)} momentum leaders...")
-        fundamentals_df = fundamental_provider.fetch_quarterly_fundamentals(cand_symbols)
-        
-        if not fundamentals_df.empty:
-            print(f"Upserting quarterly fundamentals for candidates...")
-            db.upsert_quarterly_fundamentals(fundamentals_df)
+        if args.skip_fundamentals:
+            print("\n[Step 4/5] Skipping quarterly fundamental statements synchronization as requested (--skip-fundamentals).")
         else:
-            print("Warning: No fundamental statements could be retrieved.")
+            print("\n[Step 4/5] Fetching and evaluating quarterly fundamental statement changes...")
+            cand_symbols = [c["symbol"] for c in momentum_candidates]
+            
+            # Dynamic optimization: Fetch statements specifically for top RS candidates
+            print(f"Fetching quarterly statements for top {len(cand_symbols)} momentum leaders...")
+            fundamentals_df = fundamental_provider.fetch_quarterly_fundamentals(cand_symbols)
+            
+            if not fundamentals_df.empty:
+                print(f"Upserting quarterly fundamentals for candidates...")
+                db.upsert_quarterly_fundamentals(fundamentals_df)
+            else:
+                print("Warning: No fundamental statements could be retrieved.")
 
         print("\n[Sync Process] All datasets successfully synchronized and updated.")
 

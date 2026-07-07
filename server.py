@@ -36,7 +36,7 @@ def save_config_raw(data: Dict[str, Any]) -> None:
 
 def get_db_path() -> str:
     config = load_config_raw()
-    return config.get("database", {}).get("db_path", "market_data.db")
+    return config.get("database", {}).get("db_path", "data.db")
 
 def get_read_only_conn():
     """Establishes a thread-safe read-only connection to DuckDB."""
@@ -59,6 +59,10 @@ class ConfigUpdateSchema(BaseModel):
 class SQLQuerySchema(BaseModel):
     query: str
 
+class SyncTriggerSchema(BaseModel):
+    skip_prices: bool = False
+    skip_fundamentals: bool = False
+
 # ----------------- Global State -----------------
 screen_status = {
     "status": "idle", # idle, running, completed, failed
@@ -69,7 +73,7 @@ screen_status = {
 }
 screen_lock = threading.Lock()
 
-def run_screener_subprocess():
+def run_screener_subprocess(skip_prices: bool = False, skip_fundamentals: bool = False):
     global screen_status
     with screen_lock:
         screen_status["status"] = "running"
@@ -80,6 +84,10 @@ def run_screener_subprocess():
 
     # Call the python main.py pipeline
     cmd = [sys.executable, "main.py"]
+    if skip_prices:
+        cmd.append("--skip-prices")
+    if skip_fundamentals:
+        cmd.append("--skip-fundamentals")
     try:
         process = subprocess.Popen(
             cmd,
@@ -164,7 +172,7 @@ def get_candidates():
                 FROM quarterly_fundamentals
             ),
             ranked_bars AS (
-                SELECT symbol, close, volume, vol_50d_ma, rs_score, rs_rank, adr_20d, pp_runup_pct, pp_drawdown_pct
+                SELECT symbol, close, volume, vol_50d_ma, rs_score, rs_rank, adr_20d, pp_runup_pct, pp_drawdown_pct, sma_50, sma_150, sma_200, vcp_is_setup, vcp_troughs, vcp_depths, ipo_days_count, ipo_all_time_high, ipo_drawdown_from_high, ipo_base_depth
                 FROM daily_bars
                 WHERE date = (SELECT val FROM latest_date_const)
             )
@@ -183,7 +191,17 @@ def get_candidates():
                 r.adr_20d,
                 r.pp_runup_pct,
                 r.pp_drawdown_pct,
-                r.volume
+                r.volume,
+                r.sma_50,
+                r.sma_150,
+                r.sma_200,
+                r.vcp_is_setup,
+                r.vcp_troughs,
+                r.vcp_depths,
+                r.ipo_days_count,
+                r.ipo_all_time_high,
+                r.ipo_drawdown_from_high,
+                r.ipo_base_depth
             FROM ranked_bars r
             LEFT JOIN latest_fundamentals f ON r.symbol = f.symbol AND f.rn = 1
             JOIN symbols s ON r.symbol = s.symbol
@@ -217,7 +235,17 @@ def get_candidates():
                     "adr_20d": row[11],
                     "pp_runup_pct": row[12],
                     "pp_drawdown_pct": row[13],
-                    "volume": row[14]
+                    "volume": row[14],
+                    "sma_50": row[15],
+                    "sma_150": row[16],
+                    "sma_200": row[17],
+                    "vcp_is_setup": bool(row[18]) if row[18] is not None else False,
+                    "vcp_troughs": row[19],
+                    "vcp_depths": row[20],
+                    "ipo_days_count": row[21],
+                    "ipo_all_time_high": row[22],
+                    "ipo_drawdown_from_high": row[23],
+                    "ipo_base_depth": row[24]
                 })
             return candidates
     except Exception as e:
@@ -290,7 +318,7 @@ def get_stock_prices(symbol: str, limit: int = 252):
     try:
         with get_read_only_conn() as conn:
             bars = conn.execute("""
-                SELECT date, open, high, low, close, volume
+                SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200
                 FROM daily_bars
                 WHERE symbol = ?
                 ORDER BY date ASC
@@ -308,7 +336,10 @@ def get_stock_prices(symbol: str, limit: int = 252):
                     "high": row[2],
                     "low": row[3],
                     "close": row[4],
-                    "volume": row[5]
+                    "volume": row[5],
+                    "sma_50": row[6],
+                    "sma_150": row[7],
+                    "sma_200": row[8]
                 })
             return bars_list
     except Exception as e:
@@ -361,14 +392,18 @@ def update_config(payload: ConfigUpdateSchema):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/screen/run")
-def trigger_screening_run(background_tasks: BackgroundTasks):
+def trigger_screening_run(background_tasks: BackgroundTasks, payload: SyncTriggerSchema):
     """Triggers the screening pipeline in the background."""
     global screen_status
     with screen_lock:
         if screen_status["status"] == "running":
             return {"message": "Screening pipeline is already running", "status": screen_status}
             
-    background_tasks.add_task(run_screener_subprocess)
+    background_tasks.add_task(
+        run_screener_subprocess, 
+        skip_prices=payload.skip_prices, 
+        skip_fundamentals=payload.skip_fundamentals
+    )
     return {"message": "Screening pipeline triggered in background", "status": "running"}
 
 @app.get("/api/screen/status")

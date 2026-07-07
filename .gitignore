@@ -14,8 +14,7 @@ __pycache__/
 *.db
 *.db.wal
 *.db.tmp
-market_data.db
-PivotTrader.db
+data.db
 *.txt
 Minervini_VCP_Candidates.txt
 
