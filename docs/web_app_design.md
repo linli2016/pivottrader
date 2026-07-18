@@ -17,12 +17,12 @@ To ensure separation of concerns and portability, the application uses a decoupl
 graph TD
     UI[Frontend: React + Vite + Vanilla CSS] -->|REST API Requests| API[Backend: FastAPI]
     API -->|Read-Only Connection| DB[(DuckDB: data.db)]
-    Screen[Pipeline: main.py CLI] -->|Read-Write Connection| DB
+    Screen[Pipeline: src.pipeline CLI] -->|Read-Write Connection| DB
 ```
 
 ### 2.1 DuckDB Concurrency Strategy (Crucial Design Point)
 DuckDB enforces a single-writer, multiple-reader locking mechanism:
-* **The Problem:** If the backend web server opens `data.db` in read-write mode, the background scheduler/script `main.py` will fail with a `Database Locked` error.
+* **The Problem:** If the backend web server opens `data.db` in read-write mode, the background scheduler/script `src/pipeline.py` will fail with a `Database Locked` error.
 * **The Solution:** The FastAPI backend will establish connection objects using the `read_only=True` parameter:
   ```python
   import duckdb
@@ -46,7 +46,8 @@ The backend will expose a clean REST API written in Python using **FastAPI** and
 | **`GET`** | `/api/stocks/{symbol}/prices` | Retrieve historical daily bars (for charting). |
 | **`GET`** | `/api/config` | Retrieve current runtime config criteria. |
 | **`POST`** | `/api/config` | Update parameters inside `config.yaml`. |
-| **`POST`** | `/api/screen/run` | Trigger a new background data fetch and calculation scan. |
+| **`POST`** | `/api/sync/run` | Trigger a new background data fetch and calculation scan. |
+| **`GET`** | `/api/sync/status` | Retrieve background screening run logs and status. |
 | **`POST`** | `/api/sql/query` | Execute raw SQL statements directly on the read-only database. |
 
 ---

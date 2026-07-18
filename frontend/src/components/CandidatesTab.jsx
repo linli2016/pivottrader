@@ -1,0 +1,841 @@
+import React from 'react';
+
+export default function CandidatesTab({
+  candidates,
+  filteredCandidates,
+  minPriceFilter,
+  setMinPriceFilter,
+  minVolFilter,
+  setMinVolFilter,
+  minRsFilter,
+  setMinRsFilter,
+  minEpsGrowthFilter,
+  setMinEpsGrowthFilter,
+  minAtrFilter,
+  setMinAtrFilter,
+  enforceStage2,
+  setEnforceStage2,
+  enablePowerPlay,
+  setEnablePowerPlay,
+  enableIpoBase,
+  setEnableIpoBase,
+  enableVcpSetup,
+  setEnableVcpSetup,
+  minPpRunupFilter,
+  setMinPpRunupFilter,
+  maxPpDrawdownFilter,
+  setMaxPpDrawdownFilter,
+  maxPpVolRatioFilter,
+  setMaxPpVolRatioFilter,
+  maxIpoAgeFilter,
+  setMaxIpoAgeFilter,
+  maxIpoDistFilter,
+  setMaxIpoDistFilter,
+  maxIpoDepthFilter,
+  setMaxIpoDepthFilter,
+  // Optional checkbox states & setters
+  enablePpRunup,
+  setEnablePpRunup,
+  enablePpDrawdown,
+  setEnablePpDrawdown,
+  enablePpVolRatio,
+  setEnablePpVolRatio,
+  enableIpoAge,
+  setEnableIpoAge,
+  enableIpoDist,
+  setEnableIpoDist,
+  enableIpoDepth,
+  setEnableIpoDepth,
+  enableVcpEpsGrowth,
+  setEnableVcpEpsGrowth,
+  enableVcpRsPercentile,
+  setEnableVcpRsPercentile,
+  enableVcpPattern,
+  setEnableVcpPattern,
+  enableRsNewHigh,
+  setEnableRsNewHigh,
+  enableAtr,
+  setEnableAtr,
+  handleSelectStock,
+}) {
+
+  const handleExportTradingView = () => {
+    if (filteredCandidates.length === 0) {
+      alert("No candidates to export!");
+      return;
+    }
+    const content = filteredCandidates.map(c => {
+      const exchange = c.exchange ? `${c.exchange}:` : '';
+      return `${exchange}${c.symbol}`;
+    }).join('\n');
+
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `PivotTrader_Watchlist_${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div>
+      <div className="header-section">
+        <div className="header-title">
+          <h1>Screen Candidates</h1>
+          <p>US Stocks passing RS percentiles & EPS QoQ acceleration guidelines</p>
+        </div>
+        <button
+          className="btn btn-secondary"
+          onClick={handleExportTradingView}
+          disabled={filteredCandidates.length === 0}
+        >
+          Export to TradingView
+        </button>
+      </div>
+
+      {/* Interactive Strategy & Filter controls */}
+      <div className="glass-card" style={{ marginBottom: '24px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap' }}>
+            {/* Baseline Stage 2 Toggle */}
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'default', fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>
+              <input
+                type="checkbox"
+                checked={true}
+                disabled={true}
+                style={{ cursor: 'not-allowed', width: '16px', height: '16px', accentColor: 'var(--accent-color)' }}
+              />
+              📈 Stage 2 Trend
+            </label>
+
+            <span style={{ color: 'rgba(255, 255, 255, 0.1)', fontSize: '16px' }}>|</span>
+
+            {/* Setup Overlay Checkboxes */}
+            <span style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Setup Overlays:</span>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '500', color: 'var(--text-primary)' }}>
+              <input
+                type="checkbox"
+                checked={enablePowerPlay}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setEnablePowerPlay(val);
+                  if (val) {
+                    setEnableIpoBase(false);
+                    setEnableVcpSetup(false);
+                  }
+                }}
+                style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--accent-color)' }}
+              />
+              🚀 Power Play
+            </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '500', color: 'var(--text-primary)' }}>
+              <input
+                type="checkbox"
+                checked={enableIpoBase}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setEnableIpoBase(val);
+                  if (val) {
+                    setEnablePowerPlay(false);
+                    setEnableVcpSetup(false);
+                  }
+                }}
+                style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--accent-color)' }}
+              />
+              📅 IPO Base
+            </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '500', color: 'var(--text-primary)' }}>
+              <input
+                type="checkbox"
+                checked={enableVcpSetup}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setEnableVcpSetup(val);
+                  if (val) {
+                    setEnablePowerPlay(false);
+                    setEnableIpoBase(false);
+                  }
+                }}
+                style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--accent-color)' }}
+              />
+              ⚡ VCP Setup
+            </label>
+          </div>
+          <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+            Showing <strong>{filteredCandidates.length}</strong> of <strong>{candidates.length}</strong> ranked stocks
+          </span>
+        </div>
+
+        {/* Active Strategy Rules Description Box */}
+        <div style={{
+          padding: '16px',
+          background: 'rgba(30, 41, 59, 0.4)',
+          border: '1px dashed rgba(148, 163, 184, 0.2)',
+          borderRadius: '8px'
+        }}>
+          <h4 style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-color)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Active Screening Filters
+          </h4>
+          <div style={{ display: 'flex', gap: '12px 24px', flexWrap: 'wrap', fontSize: '13px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ color: 'var(--accent-color)' }}>📈</span>
+              <span style={{ color: 'var(--text-secondary)' }}>Price:</span>
+              <strong style={{ color: 'var(--text-primary)' }}>&ge; ${minPriceFilter.toFixed(2)}</strong>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ color: 'var(--accent-color)' }}>📊</span>
+              <span style={{ color: 'var(--text-secondary)' }}>Vol SMA (50d):</span>
+              <strong style={{ color: 'var(--text-primary)' }}>&ge; {minVolFilter.toLocaleString()}</strong>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ color: 'var(--accent-success)' }}>⚡</span>
+              <span style={{ color: 'var(--text-secondary)' }}>Trend Template:</span>
+              <strong style={{ color: 'var(--text-primary)' }}>
+                {enableIpoBase && enableIpoAge ? 'SMA(50) [Waive SMA 150/200 on IPOs]' : 'SMA(50) > SMA(150) > SMA(200)'}
+              </strong>
+            </div>
+            {enableAtr && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ color: 'var(--accent-color)' }}>🌀</span>
+                <span style={{ color: 'var(--text-secondary)' }}>Daily ATR:</span>
+                <strong style={{ color: 'var(--text-primary)' }}>&ge; {minAtrFilter.toFixed(1)}%</strong>
+              </div>
+            )}
+            {enableRsNewHigh && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ color: 'var(--accent-success)' }}>📈</span>
+                <span style={{ color: 'var(--text-secondary)' }}>RS Rank:</span>
+                <strong style={{ color: 'var(--text-primary)' }}>New High</strong>
+              </div>
+            )}
+            {enablePowerPlay && (
+              <>
+                {enablePpRunup && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: 'var(--accent-success)' }}>🚀</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>8w Run-up:</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>&ge; {minPpRunupFilter}%</strong>
+                  </div>
+                )}
+                {enablePpDrawdown && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: 'var(--accent-danger)' }}>📉</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>Max Drawdown:</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>&le; {maxPpDrawdownFilter}%</strong>
+                  </div>
+                )}
+                {enablePpVolRatio && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: 'var(--accent-success)' }}>📉</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>Max Base Vol:</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>&le; {maxPpVolRatioFilter.toFixed(2)}x SMA</strong>
+                  </div>
+                )}
+              </>
+            )}
+            {enableIpoBase && (
+              <>
+                {enableIpoAge && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: 'var(--accent-color)' }}>📅</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>Max IPO Age:</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>{maxIpoAgeFilter} days</strong>
+                  </div>
+                )}
+                {enableIpoDist && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: 'var(--accent-success)' }}>🎯</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>Max Dist from High:</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>{maxIpoDistFilter}%</strong>
+                  </div>
+                )}
+                {enableIpoDepth && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: 'var(--accent-danger)' }}>📉</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>Max Base Drawdown:</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>&le; {maxIpoDepthFilter}%</strong>
+                  </div>
+                )}
+              </>
+            )}
+            {enableVcpSetup && (
+              <>
+                {enableVcpEpsGrowth && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: 'var(--accent-warning)' }}>💰</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>QoQ EPS Growth:</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>&ge; {minEpsGrowthFilter}%</strong>
+                  </div>
+                )}
+                {enableVcpRsPercentile && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: 'var(--accent-success)' }}>⚡</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>RS Percentile:</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>&ge; {minRsFilter}th</strong>
+                  </div>
+                )}
+                {enableVcpPattern && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: 'var(--accent-success)' }}>🌀</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>Pattern:</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>VCP Contraction</strong>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Dynamic Parameter Sliders / Inputs */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
+          {/* ========================================== */}
+          {/* 1. Stage 2 Baseline (Mandatory Inputs) */}
+          {/* ========================================== */}
+
+          {/* Min Price */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>
+              📌 Min Stock Price (${minPriceFilter.toFixed(2)}):
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="range"
+                min="1"
+                max="100"
+                value={minPriceFilter}
+                onChange={(e) => setMinPriceFilter(parseFloat(e.target.value) || 0)}
+                style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
+              />
+              <input
+                type="number"
+                min="0"
+                max="1000"
+                value={minPriceFilter}
+                onChange={(e) => setMinPriceFilter(parseFloat(e.target.value) || 0)}
+                style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+              />
+            </div>
+          </div>
+
+          {/* Min 50d Volume MA */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>
+              📊 Min 50d Vol MA ({(minVolFilter / 1000).toFixed(0)}k):
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="range"
+                min="50000"
+                max="2000000"
+                step="50000"
+                value={minVolFilter}
+                onChange={(e) => setMinVolFilter(parseInt(e.target.value) || 0)}
+                style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
+              />
+              <input
+                type="number"
+                min="0"
+                max="10000000"
+                value={minVolFilter}
+                onChange={(e) => setMinVolFilter(parseInt(e.target.value) || 0)}
+                style={{ width: '70px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+              />
+            </div>
+          </div>
+
+          {/* Daily ATR (Optional Global/Stage 2 filter) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableAtr ? 1 : 0.5 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={enableAtr}
+                onChange={(e) => setEnableAtr(e.target.checked)}
+                style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+              />
+              Min ATR (20d) ({minAtrFilter.toFixed(1)}%):
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="range"
+                min="0"
+                max="10"
+                step="0.1"
+                value={minAtrFilter}
+                disabled={!enableAtr}
+                onChange={(e) => setMinAtrFilter(parseFloat(e.target.value) || 0)}
+                style={{ flex: 1, cursor: enableAtr ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+              />
+              <input
+                type="number"
+                min="0"
+                max="20"
+                step="0.1"
+                value={minAtrFilter}
+                disabled={!enableAtr}
+                onChange={(e) => setMinAtrFilter(parseFloat(e.target.value) || 0)}
+                style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+              />
+            </div>
+          </div>
+
+          {/* RS Ranking at New High (Global Filter) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableRsNewHigh ? 1 : 0.5 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={enableRsNewHigh}
+                onChange={(e) => setEnableRsNewHigh(e.target.checked)}
+                style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+              />
+              RS Ranking at New High
+            </label>
+            <div style={{
+              padding: '8px 12px',
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '4px',
+              fontSize: '13px',
+              color: enableRsNewHigh ? 'var(--accent-success)' : 'var(--text-secondary)',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              height: '38px',
+              boxSizing: 'border-box'
+            }}>
+              {enableRsNewHigh ? '📈 RS Rank at 252-day High' : '⚪ New High Waived'}
+            </div>
+          </div>
+
+          {/* ========================================== */}
+          {/* 2. Power Play Sliders (Visible if selected) */}
+          {/* ========================================== */}
+          {enablePowerPlay && (
+            <>
+              {/* Min Power Play Run-up */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enablePpRunup ? 1 : 0.5 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={enablePpRunup}
+                    onChange={(e) => setEnablePpRunup(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  />
+                  Min 8w Run-up ({minPpRunupFilter}%):
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="range"
+                    min="50"
+                    max="200"
+                    step="5"
+                    value={minPpRunupFilter}
+                    disabled={!enablePpRunup}
+                    onChange={(e) => setMinPpRunupFilter(parseFloat(e.target.value) || 0)}
+                    style={{ flex: 1, cursor: enablePpRunup ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                  />
+                  <input
+                    type="number"
+                    min="10"
+                    max="1000"
+                    value={minPpRunupFilter}
+                    disabled={!enablePpRunup}
+                    onChange={(e) => setMinPpRunupFilter(parseFloat(e.target.value) || 0)}
+                    style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                  />
+                </div>
+              </div>
+
+              {/* Max Power Play Drawdown */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enablePpDrawdown ? 1 : 0.5 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={enablePpDrawdown}
+                    onChange={(e) => setEnablePpDrawdown(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  />
+                  Max Drawdown ({maxPpDrawdownFilter}%):
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="range"
+                    min="10"
+                    max="40"
+                    step="1"
+                    value={maxPpDrawdownFilter}
+                    disabled={!enablePpDrawdown}
+                    onChange={(e) => setMaxPpDrawdownFilter(parseFloat(e.target.value) || 0)}
+                    style={{ flex: 1, cursor: enablePpDrawdown ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                  />
+                  <input
+                    type="number"
+                    min="5"
+                    max="50"
+                    value={maxPpDrawdownFilter}
+                    disabled={!enablePpDrawdown}
+                    onChange={(e) => setMaxPpDrawdownFilter(parseFloat(e.target.value) || 0)}
+                    style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                  />
+                </div>
+              </div>
+
+              {/* Max Volume Contraction */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enablePpVolRatio ? 1 : 0.5 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={enablePpVolRatio}
+                    onChange={(e) => setEnablePpVolRatio(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  />
+                  Max Base Vol ({maxPpVolRatioFilter.toFixed(2)}x):
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="range"
+                    min="0.2"
+                    max="1.5"
+                    step="0.05"
+                    value={maxPpVolRatioFilter}
+                    disabled={!enablePpVolRatio}
+                    onChange={(e) => setMaxPpVolRatioFilter(parseFloat(e.target.value) || 0)}
+                    style={{ flex: 1, cursor: enablePpVolRatio ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                  />
+                  <input
+                    type="number"
+                    min="0.1"
+                    max="5.0"
+                    step="0.1"
+                    value={maxPpVolRatioFilter}
+                    disabled={!enablePpVolRatio}
+                    onChange={(e) => setMaxPpVolRatioFilter(parseFloat(e.target.value) || 0)}
+                    style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ========================================== */}
+          {/* 3. IPO Base Sliders (Visible if selected) */}
+          {/* ========================================== */}
+          {enableIpoBase && (
+            <>
+              {/* Max IPO Age */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableIpoAge ? 1 : 0.5 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={enableIpoAge}
+                    onChange={(e) => setEnableIpoAge(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  />
+                  Max IPO Age ({maxIpoAgeFilter} days):
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="range"
+                    min="30"
+                    max="1000"
+                    step="10"
+                    value={maxIpoAgeFilter}
+                    disabled={!enableIpoAge}
+                    onChange={(e) => setMaxIpoAgeFilter(parseInt(e.target.value) || 0)}
+                    style={{ flex: 1, cursor: enableIpoAge ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                  />
+                  <input
+                    type="number"
+                    min="10"
+                    max="1000"
+                    value={maxIpoAgeFilter}
+                    disabled={!enableIpoAge}
+                    onChange={(e) => setMaxIpoAgeFilter(parseInt(e.target.value) || 0)}
+                    style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                  />
+                </div>
+              </div>
+
+              {/* Max Distance from IPO High */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableIpoDist ? 1 : 0.5 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={enableIpoDist}
+                    onChange={(e) => setEnableIpoDist(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  />
+                  Max Dist from High ({maxIpoDistFilter}%):
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="range"
+                    min="5"
+                    max="40"
+                    step="1"
+                    value={maxIpoDistFilter}
+                    disabled={!enableIpoDist}
+                    onChange={(e) => setMaxIpoDistFilter(parseFloat(e.target.value) || 0)}
+                    style={{ flex: 1, cursor: enableIpoDist ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    value={maxIpoDistFilter}
+                    disabled={!enableIpoDist}
+                    onChange={(e) => setMaxIpoDistFilter(parseFloat(e.target.value) || 0)}
+                    style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                  />
+                </div>
+              </div>
+
+              {/* Max IPO Base Drawdown */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableIpoDepth ? 1 : 0.5 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={enableIpoDepth}
+                    onChange={(e) => setEnableIpoDepth(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  />
+                  Max Base Drawdown ({maxIpoDepthFilter}%):
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="range"
+                    min="10"
+                    max="50"
+                    step="1"
+                    value={maxIpoDepthFilter}
+                    disabled={!enableIpoDepth}
+                    onChange={(e) => setMaxIpoDepthFilter(parseFloat(e.target.value) || 0)}
+                    style={{ flex: 1, cursor: enableIpoDepth ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                  />
+                  <input
+                    type="number"
+                    min="5"
+                    max="80"
+                    value={maxIpoDepthFilter}
+                    disabled={!enableIpoDepth}
+                    onChange={(e) => setMaxIpoDepthFilter(parseFloat(e.target.value) || 0)}
+                    style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ========================================== */}
+          {/* 4. VCP Setup Sliders (Visible if selected) */}
+          {/* ========================================== */}
+          {enableVcpSetup && (
+            <>
+              {/* RS Percentile Rank */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableVcpRsPercentile ? 1 : 0.5 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={enableVcpRsPercentile}
+                    onChange={(e) => setEnableVcpRsPercentile(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  />
+                  Min RS Rank ({minRsFilter}):
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={minRsFilter}
+                    disabled={!enableVcpRsPercentile}
+                    onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 0)}
+                    style={{ flex: 1, cursor: enableVcpRsPercentile ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={minRsFilter}
+                    disabled={!enableVcpRsPercentile}
+                    onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 0)}
+                    style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                  />
+                </div>
+              </div>
+
+              {/* QoQ EPS Growth */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableVcpEpsGrowth ? 1 : 0.5 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={enableVcpEpsGrowth}
+                    onChange={(e) => setEnableVcpEpsGrowth(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  />
+                  Min QoQ EPS Growth ({minEpsGrowthFilter}%):
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="range"
+                    min="-50"
+                    max="200"
+                    value={minEpsGrowthFilter}
+                    disabled={!enableVcpEpsGrowth}
+                    onChange={(e) => setMinEpsGrowthFilter(parseFloat(e.target.value) || 0)}
+                    style={{ flex: 1, cursor: enableVcpEpsGrowth ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                  />
+                  <input
+                    type="number"
+                    min="-100"
+                    max="1000"
+                    value={minEpsGrowthFilter}
+                    disabled={!enableVcpEpsGrowth}
+                    onChange={(e) => setMinEpsGrowthFilter(parseFloat(e.target.value) || 0)}
+                    style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                  />
+                </div>
+              </div>
+
+              {/* VCP Contraction Pattern */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableVcpPattern ? 1 : 0.5 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={enableVcpPattern}
+                    onChange={(e) => setEnableVcpPattern(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  />
+                  VCP Contraction Pattern
+                </label>
+                <div style={{
+                  padding: '8px 12px',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  color: enableVcpPattern ? 'var(--accent-success)' : 'var(--text-secondary)',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  height: '100%',
+                  boxSizing: 'border-box'
+                }}>
+                  {enableVcpPattern ? '🌀 Pattern Recognition Active' : '⚪ Pattern Recognition Waived'}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Candidates Table */}
+      <div className="table-container">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Ticker</th>
+              <th>Price</th>
+              <th>Vol 50d MA</th>
+              <th>RS Score</th>
+              <th>RS Percentile</th>
+              <th>ATR (20d)</th>
+              <th>EPS QoQ Growth</th>
+              <th>Report Qtr</th>
+              {enablePowerPlay && (
+                <>
+                  <th>Run Up %</th>
+                  <th>Drawdown %</th>
+                  <th>Vol vs SMA</th>
+                </>
+              )}
+              {enableIpoBase && (
+                <>
+                  <th>IPO Age</th>
+                  <th>Dist from High</th>
+                  <th>Base Depth</th>
+                </>
+              )}
+              <th>VCP Setup</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredCandidates.map((c, i) => (
+              <tr key={i} onClick={() => handleSelectStock(c)} style={{ cursor: 'pointer' }}>
+                <td style={{ fontWeight: 'bold', color: 'var(--accent-color)' }}>{c.symbol}</td>
+                <td>${c.close.toFixed(2)}</td>
+                <td>{c.vol_50d_ma.toLocaleString()}</td>
+                <td>{c.rs_score ? c.rs_score.toFixed(4) : 'N/A'}</td>
+                <td>
+                  <span className="pill pill-success">{c.rs_rank}</span>
+                </td>
+                <td style={{ fontWeight: '500' }}>
+                  {c.atr_20d !== null && c.atr_20d !== undefined ? `${c.atr_20d.toFixed(2)}%` : 'N/A'}
+                </td>
+                <td style={{ color: c.eps_qoq_growth !== null && c.eps_qoq_growth !== undefined ? (c.eps_qoq_growth >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)') : 'var(--text-secondary)' }}>
+                  {c.eps_qoq_growth !== null && c.eps_qoq_growth !== undefined ? `${c.eps_qoq_growth >= 0 ? '+' : ''}${c.eps_qoq_growth.toFixed(1)}%` : 'N/A'}
+                </td>
+                <td>
+                  {c.fiscal_quarter ? (
+                    <span className="pill pill-primary">{c.fiscal_quarter}</span>
+                  ) : (
+                    <span style={{ color: 'var(--text-secondary)' }}>N/A</span>
+                  )}
+                </td>
+                {enablePowerPlay && (
+                  <>
+                    <td style={{ color: 'var(--accent-success)', fontWeight: '600' }}>
+                      +{c.pp_runup_pct !== null && c.pp_runup_pct !== undefined ? c.pp_runup_pct.toFixed(0) : '0'}%
+                    </td>
+                    <td style={{ color: 'var(--accent-danger)', fontWeight: '600' }}>
+                      -{c.pp_drawdown_pct !== null && c.pp_drawdown_pct !== undefined ? c.pp_drawdown_pct.toFixed(1) : '0'}%
+                    </td>
+                    <td style={{ color: c.volume / c.vol_50d_ma < 0.6 ? 'var(--accent-success)' : 'var(--text-secondary)' }}>
+                      {c.volume && c.vol_50d_ma ? `${(c.volume / c.vol_50d_ma).toFixed(2)}x` : 'N/A'}
+                    </td>
+                  </>
+                )}
+                {enableIpoBase && (
+                  <>
+                    <td style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
+                      {c.ipo_days_count} days
+                    </td>
+                    <td style={{ color: 'var(--accent-success)', fontWeight: '600' }}>
+                      {c.ipo_drawdown_from_high !== null && c.ipo_drawdown_from_high !== undefined ? `${c.ipo_drawdown_from_high.toFixed(1)}%` : '0%'}
+                    </td>
+                    <td style={{ color: 'var(--accent-danger)', fontWeight: '600' }}>
+                      -{c.ipo_base_depth !== null && c.ipo_base_depth !== undefined ? `${c.ipo_base_depth.toFixed(1)}%` : '0%'}
+                    </td>
+                  </>
+                )}
+                <td>
+                  {c.vcp_is_setup ? (
+                    <span className="pill pill-success" style={{ fontStyle: 'italic', fontWeight: 'bold' }}>
+                      {c.vcp_troughs}T ({c.vcp_depths.replace(/,/g, ' / ') + '%'})
+                    </span>
+                  ) : (
+                    <span style={{ color: 'var(--text-secondary)' }}>No</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {filteredCandidates.length === 0 && (
+              <tr>
+                <td colSpan={9 + (enablePowerPlay ? 3 : 0) + (enableIpoBase ? 3 : 0)} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  No candidates matching current config rules found in database cache. Run "Sync Database Tickers" to evaluate stocks.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

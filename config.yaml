@@ -15,7 +15,7 @@ provider:
 
 # Universe Filtering Constraints (US Liquids)
 universe_rules:
-  min_price: 5.00
+  min_price: 12.00
   min_volume_sma_50: 300000
   exchanges:
     - "NYSE"

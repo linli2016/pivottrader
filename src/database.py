@@ -23,9 +23,15 @@ class DatabaseManager:
                     name VARCHAR,
                     asset_type VARCHAR NOT NULL,
                     active BOOLEAN DEFAULT TRUE,
+                    ipo_date VARCHAR,
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+            
+            try:
+                conn.execute("ALTER TABLE symbols ADD COLUMN ipo_date VARCHAR;")
+            except Exception:
+                pass
             
             # 2. Historical Daily Bars Table
             conn.execute("""
@@ -41,6 +47,7 @@ class DatabaseManager:
                     rs_score DOUBLE,
                     rs_rank INTEGER,
                     adr_20d DOUBLE,
+                    atr_20d DOUBLE,
                     pp_runup_pct DOUBLE,
                     pp_drawdown_pct DOUBLE,
                     sma_50 DOUBLE,
@@ -60,6 +67,10 @@ class DatabaseManager:
             # Migration: add columns if daily_bars already exists
             try:
                 conn.execute("ALTER TABLE daily_bars ADD COLUMN adr_20d DOUBLE;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN atr_20d DOUBLE;")
             except Exception:
                 pass
             try:
@@ -133,7 +144,7 @@ class DatabaseManager:
         df = pd.DataFrame(symbols_data)
         
         # Ensure correct column ordering and existence
-        columns = ["symbol", "exchange", "name", "asset_type", "active"]
+        columns = ["symbol", "exchange", "name", "asset_type", "active", "ipo_date"]
         for col in columns:
             if col not in df.columns:
                 df[col] = None if col != "active" else True
@@ -144,11 +155,36 @@ class DatabaseManager:
             # Using DuckDB's pandas integration
             conn.execute("CREATE OR REPLACE TEMP TABLE temp_symbols AS SELECT * FROM df")
             conn.execute("""
-                INSERT OR REPLACE INTO symbols (symbol, exchange, name, asset_type, active, last_updated)
-                SELECT symbol, exchange, name, asset_type, active, CURRENT_TIMESTAMP
+                INSERT INTO symbols (symbol, exchange, name, asset_type, active, ipo_date, last_updated)
+                SELECT symbol, exchange, name, asset_type, active, CAST(ipo_date AS VARCHAR), CURRENT_TIMESTAMP as last_updated
                 FROM temp_symbols
+                ON CONFLICT (symbol) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    exchange = EXCLUDED.exchange,
+                    asset_type = EXCLUDED.asset_type,
+                    active = EXCLUDED.active,
+                    ipo_date = COALESCE(symbols.ipo_date, CAST(EXCLUDED.ipo_date AS VARCHAR)),
+                    last_updated = EXCLUDED.last_updated
             """)
             conn.execute("DROP TABLE temp_symbols")
+
+    def get_symbols_missing_ipo_date(self) -> List[str]:
+        """Returns a list of active symbols that do not have an IPO date in the symbols table."""
+        with self.get_connection() as conn:
+            res = conn.execute("SELECT symbol FROM symbols WHERE ipo_date IS NULL AND active = TRUE").fetchall()
+            return [r[0] for r in res]
+
+    def update_symbol_ipo_date(self, symbol: str, ipo_date: str) -> None:
+        """Updates the IPO date for a specific symbol."""
+        with self.get_connection() as conn:
+            conn.execute("UPDATE symbols SET ipo_date = ?, last_updated = CURRENT_TIMESTAMP WHERE symbol = ?", [ipo_date, symbol])
+
+    def update_multiple_symbol_ipo_dates(self, ipo_dates: List[Tuple[str, str]]) -> None:
+        """Updates the IPO dates for multiple symbols in a single transaction."""
+        if not ipo_dates:
+            return
+        with self.get_connection() as conn:
+            conn.executemany("UPDATE symbols SET ipo_date = ?, last_updated = CURRENT_TIMESTAMP WHERE symbol = ?", ipo_dates)
 
     def upsert_daily_bars(self, df: pd.DataFrame) -> None:
         """Inserts or updates daily price bars using a pandas DataFrame."""

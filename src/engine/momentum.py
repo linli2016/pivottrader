@@ -8,13 +8,13 @@ class MomentumEngine:
     def get_connection(self):
         return duckdb.connect(self.db_path)
 
-    def detect_vcp(self, prices: List[float], dates: List[Any], window: int = 4) -> dict:
+    def detect_vcp(self, highs: List[float], lows: List[float], dates: List[Any], window: int = 4) -> dict:
         """
         Detects Volatility Contraction Pattern (VCP) in price history.
-        Expects prices and dates to be in chronological ascending order.
+        Expects highs, lows, and dates to be in chronological ascending order.
         Returns a dict with VCP metrics or None.
         """
-        n = len(prices)
+        n = len(highs)
         if n < window * 2 + 5:
             return None
             
@@ -23,11 +23,12 @@ class MomentumEngine:
         
         # 1. Identify local extrema
         for i in range(window, n - window):
-            chunk = prices[i - window : i + window + 1]
-            if prices[i] == max(chunk):
-                peaks.append((i, prices[i], dates[i]))
-            elif prices[i] == min(chunk):
-                troughs.append((i, prices[i], dates[i]))
+            high_chunk = highs[i - window : i + window + 1]
+            low_chunk = lows[i - window : i + window + 1]
+            if highs[i] == max(high_chunk):
+                peaks.append((i, highs[i], dates[i]))
+            elif lows[i] == min(low_chunk):
+                troughs.append((i, lows[i], dates[i]))
                 
         # 2. Sort and alternate peaks/troughs
         all_extrema = sorted(
@@ -90,19 +91,120 @@ class MomentumEngine:
             
         return None
 
-    def compute_relative_strength(self, min_price: float = 5.00, min_vol_sma: int = 300000, min_rank: int = 70) -> List[Dict[str, Any]]:
+    def calculate_and_store_momentum_metrics(self) -> None:
         """
         Executes vectorized SQL calculations in DuckDB to:
-        1. Calculate 50-day average volume.
-        2. Calculate 3M, 6M, 9M, 12M rate of returns.
-        3. Weight price performance to yield Momentum Scores.
-        4. Apply relative percentile ranking across the entire liquid universe for the latest date.
-        5. Write metrics back to 'daily_bars' table.
-        6. Return passing candidates.
+        1. Calculate 50-day average volume, SMAs (50, 150, 200) and ATR% historically for all dates.
+        2. Calculate weighted Momentum Scores & Percentile RS Ranks historically (using PARTITION BY date).
+        3. Store these historical metrics directly in daily_bars.
+        4. For the latest date candidates, calculate VCP and Power Play / IPO base drawdowns in python, and store.
         """
-        query_calculate_and_rank = f"""
+        query_update_historical = """
+            WITH price_lags_raw AS (
+                SELECT
+                    db.rowid as r_id,
+                    db.symbol,
+                    db.date,
+                    db.close,
+                    db.high,
+                    db.low,
+                    db.volume,
+                    LAG(db.close, 1) OVER (PARTITION BY db.symbol ORDER BY db.date) as prev_close
+                FROM daily_bars db
+            ),
+            price_lags_base AS (
+                SELECT 
+                    r_id,
+                    symbol,
+                    date,
+                    close,
+                    high,
+                    low,
+                    volume,
+                    AVG(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 49 PRECEDING AND CURRENT ROW) as sma_50,
+                    AVG(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 149 PRECEDING AND CURRENT ROW) as sma_150,
+                    AVG(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 199 PRECEDING AND CURRENT ROW) as sma_200,
+                    AVG(volume) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 49 PRECEDING AND CURRENT ROW) as vol_50d_ma,
+                    GREATEST(
+                        high - low,
+                        COALESCE(ABS(high - prev_close), 0),
+                        COALESCE(ABS(low - prev_close), 0)
+                    ) as tr,
+                    LAG(close, 63) OVER (PARTITION BY symbol ORDER BY date) as close_3m,
+                    LAG(close, 126) OVER (PARTITION BY symbol ORDER BY date) as close_6m,
+                    LAG(close, 189) OVER (PARTITION BY symbol ORDER BY date) as close_9m,
+                    LAG(close, 252) OVER (PARTITION BY symbol ORDER BY date) as close_12m
+                FROM price_lags_raw
+            ),
+            price_lags_derived AS (
+                SELECT
+                    r_id,
+                    symbol,
+                    date,
+                    close,
+                    vol_50d_ma,
+                    AVG(tr) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) / NULLIF(close, 0) * 100 as atr_20d,
+                    sma_50,
+                    sma_150,
+                    sma_200,
+                    (close - COALESCE(close_3m, close)) / NULLIF(COALESCE(close_3m, close), 0) as ret_3m,
+                    (close - COALESCE(close_6m, close)) / NULLIF(COALESCE(close_6m, close), 0) as ret_6m,
+                    (close - COALESCE(close_9m, close)) / NULLIF(COALESCE(close_9m, close), 0) as ret_9m,
+                    (close - COALESCE(close_12m, close)) / NULLIF(COALESCE(close_12m, close), 0) as ret_12m
+                FROM price_lags_base
+            ),
+            weighted_scores AS (
+                SELECT
+                    r_id,
+                    date,
+                    vol_50d_ma,
+                    atr_20d,
+                    sma_50,
+                    sma_150,
+                    sma_200,
+                    (COALESCE(ret_3m, 0) * 0.4) + 
+                    (COALESCE(ret_6m, 0) * 0.2) + 
+                    (COALESCE(ret_9m, 0) * 0.2) + 
+                    (COALESCE(ret_12m, 0) * 0.2) as rs_score
+                FROM price_lags_derived
+            ),
+            percentile_ranks AS (
+                SELECT
+                    r_id,
+                    vol_50d_ma,
+                    atr_20d,
+                    sma_50,
+                    sma_150,
+                    sma_200,
+                    rs_score,
+                    CAST(PERCENT_RANK() OVER (PARTITION BY date ORDER BY rs_score) * 100 AS INTEGER) as rs_rank
+                FROM weighted_scores
+            )
+            UPDATE daily_bars
+            SET
+                sma_50 = src.sma_50,
+                sma_150 = src.sma_150,
+                sma_200 = src.sma_200,
+                vol_50d_ma = src.vol_50d_ma,
+                adr_20d = src.atr_20d,
+                atr_20d = src.atr_20d,
+                rs_score = src.rs_score,
+                rs_rank = src.rs_rank
+            FROM percentile_ranks src
+            WHERE daily_bars.rowid = src.r_id;
+        """
+
+        query_latest_metrics = """
             WITH latest_date_const AS (
                 SELECT MAX(date) as val FROM daily_bars
+            ),
+            price_lags_raw AS (
+                SELECT
+                    db.*,
+                    s.ipo_date,
+                    LAG(db.close, 1) OVER (PARTITION BY db.symbol ORDER BY db.date) as prev_close
+                FROM daily_bars db
+                LEFT JOIN symbols s ON db.symbol = s.symbol
             ),
             price_lags_base AS (
                 SELECT 
@@ -112,29 +214,28 @@ class MomentumEngine:
                     high,
                     low,
                     volume,
-                    -- Rolling price moving averages for Stage 2
-                    AVG(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 49 PRECEDING AND CURRENT ROW) as sma_50,
-                    AVG(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 149 PRECEDING AND CURRENT ROW) as sma_150,
-                    AVG(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 199 PRECEDING AND CURRENT ROW) as sma_200,
-                    -- Rolling 50-day simple moving average of volume
-                    AVG(volume) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 49 PRECEDING AND CURRENT ROW) as vol_50d_ma,
-                    -- Rolling 20-day Average Daily Range (ADR%)
-                    AVG((high - low) / NULLIF(low, 0) * 100) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) as adr_20d,
-                    -- Rolling 20-day peak close
-                    MAX(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) as running_peak_20d,
-                    -- Helper rolling metrics for Power Play
-                    MAX(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) as max_close_20d,
-                    MIN(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 39 PRECEDING AND CURRENT ROW) as min_close_40d,
-                    -- Close prices at trading day offsets (63, 126, 189, 252)
-                    LAG(close, 63) OVER (PARTITION BY symbol ORDER BY date) as close_3m,
-                    LAG(close, 126) OVER (PARTITION BY symbol ORDER BY date) as close_6m,
-                    LAG(close, 189) OVER (PARTITION BY symbol ORDER BY date) as close_9m,
-                    LAG(close, 252) OVER (PARTITION BY symbol ORDER BY date) as close_12m,
+                    vol_50d_ma,
+                    sma_50,
+                    sma_150,
+                    sma_200,
+                    rs_score,
+                    rs_rank,
+                    atr_20d,
+                    -- Rolling 30-day peak high and its date
+                    MAX(high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as running_peak_30d,
+                    ARG_MAX(date, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as peak_date_30d,
+                    -- Daily run-up % from lowest low in prior 40 days
+                    (high - MIN(low) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 39 PRECEDING AND CURRENT ROW)) / 
+                    NULLIF(MIN(low) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 39 PRECEDING AND CURRENT ROW), 0) * 100 as daily_runup_pct,
                     -- IPO base metrics calculations
-                    COUNT(*) OVER (PARTITION BY symbol) as ipo_days_count,
-                    MAX(close) OVER (PARTITION BY symbol) as ipo_all_time_high,
-                    MAX(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) as running_peak_all_time
-                FROM daily_bars
+                    COALESCE(
+                        DATEDIFF('day', CAST(ipo_date AS DATE), date),
+                        DATEDIFF('day', MIN(date) OVER (PARTITION BY symbol), date)
+                    ) as ipo_days_count,
+                    -- Running peak high and its date for IPO base depth
+                    MAX(high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) as running_peak_all_time,
+                    ARG_MAX(date, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) as ath_date
+                FROM price_lags_raw
             ),
             price_lags_derived AS (
                 SELECT
@@ -143,22 +244,22 @@ class MomentumEngine:
                     close,
                     volume,
                     vol_50d_ma,
-                    adr_20d,
+                    atr_20d,
                     sma_50,
                     sma_150,
                     sma_200,
-                    close_3m,
-                    close_6m,
-                    close_9m,
-                    close_12m,
-                    max_close_20d,
-                    LAG(min_close_40d, 20) OVER (PARTITION BY symbol ORDER BY date) as pp_min_close_prior_40d,
-                    -- Power play drawdown %: max correction from a rolling peak close in last 20 days
-                    MAX((running_peak_20d - close) / NULLIF(running_peak_20d, 0) * 100) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) as pp_drawdown_pct,
+                    rs_score,
+                    rs_rank,
+                    running_peak_30d,
+                    -- Power play run up %: the runup on the peak high day of the last 30 days
+                    ARG_MAX(daily_runup_pct, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as pp_runup_pct,
+                    -- Power play drawdown %: correction from 30-day peak high to lowest low on or after peak date
+                    (running_peak_30d - (SELECT MIN(d.low) FROM daily_bars d WHERE d.symbol = price_lags_base.symbol AND d.date >= price_lags_base.peak_date_30d AND d.date <= price_lags_base.date)) / NULLIF(running_peak_30d, 0) * 100 as pp_drawdown_pct,
                     -- IPO base fields
                     ipo_days_count,
-                    ipo_all_time_high,
-                    MAX((running_peak_all_time - close) / NULLIF(running_peak_all_time, 0) * 100) OVER (PARTITION BY symbol) as ipo_base_depth
+                    running_peak_all_time as ipo_all_time_high,
+                    -- IPO base depth: correction from all-time high to lowest low on or after ATH date
+                    (running_peak_all_time - (SELECT MIN(d.low) FROM daily_bars d WHERE d.symbol = price_lags_base.symbol AND d.date >= price_lags_base.ath_date AND d.date <= price_lags_base.date)) / NULLIF(running_peak_all_time, 0) * 100 as ipo_base_depth
                 FROM price_lags_base
             ),
             returns_calc AS (
@@ -168,90 +269,47 @@ class MomentumEngine:
                     close,
                     volume,
                     vol_50d_ma,
-                    adr_20d,
+                    atr_20d,
                     sma_50,
                     sma_150,
                     sma_200,
+                    rs_score,
+                    rs_rank,
                     pp_drawdown_pct,
-                    (close - close_3m) / NULLIF(close_3m, 0) as ret_3m,
-                    (close - close_6m) / NULLIF(close_6m, 0) as ret_6m,
-                    (close - close_9m) / NULLIF(close_9m, 0) as ret_9m,
-                    (close - close_12m) / NULLIF(close_12m, 0) as ret_12m,
-                    -- Power play run up %: peak of last 20 days vs 40-day low prior to last 20 days
-                    (max_close_20d - pp_min_close_prior_40d) / NULLIF(pp_min_close_prior_40d, 0) * 100 as pp_runup_pct,
-                    -- IPO base fields
+                    pp_runup_pct,
                     ipo_days_count,
                     ipo_all_time_high,
                     (ipo_all_time_high - close) / NULLIF(ipo_all_time_high, 0) * 100 as ipo_drawdown_from_high,
                     ipo_base_depth
                 FROM price_lags_derived
                 WHERE date = (SELECT val FROM latest_date_const)
-            ),
-            weighted_scores AS (
-                SELECT
-                    symbol,
-                    date,
-                    close,
-                    vol_50d_ma,
-                    adr_20d,
-                    pp_runup_pct,
-                    pp_drawdown_pct,
-                    sma_50,
-                    sma_150,
-                    sma_200,
-                    ipo_days_count,
-                    ipo_all_time_high,
-                    ipo_drawdown_from_high,
-                    ipo_base_depth,
-                    (COALESCE(ret_3m, 0) * 0.4) + 
-                    (COALESCE(ret_6m, 0) * 0.2) + 
-                    (COALESCE(ret_9m, 0) * 0.2) + 
-                    (COALESCE(ret_12m, 0) * 0.2) as rs_score
-                FROM returns_calc
-            ),
-            percentile_ranks AS (
-                SELECT
-                    symbol,
-                    date,
-                    close,
-                    vol_50d_ma,
-                    adr_20d,
-                    pp_runup_pct,
-                    pp_drawdown_pct,
-                    sma_50,
-                    sma_150,
-                    sma_200,
-                    ipo_days_count,
-                    ipo_all_time_high,
-                    ipo_drawdown_from_high,
-                    ipo_base_depth,
-                    rs_score,
-                    CAST(PERCENT_RANK() OVER (ORDER BY rs_score) * 100 AS INTEGER) as rs_rank
-                FROM weighted_scores
             )
-            SELECT symbol, date, close, vol_50d_ma, rs_score, rs_rank, adr_20d, pp_runup_pct, pp_drawdown_pct, sma_50, sma_150, sma_200, ipo_days_count, ipo_all_time_high, ipo_drawdown_from_high, ipo_base_depth
-            FROM percentile_ranks
-            ORDER BY rs_rank DESC;
+            SELECT symbol, date, close, vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, sma_50, sma_150, sma_200, ipo_days_count, ipo_all_time_high, ipo_drawdown_from_high, ipo_base_depth
+            FROM returns_calc;
         """
         
-        candidates = []
         with self.get_connection() as conn:
-            # 1. Execute calculation and retrieve results in memory
-            results = conn.execute(query_calculate_and_rank).fetchall()
+            # 1. Run historical metric update for all dates
+            print("Calculating and updating historical SMAs and RS metrics...")
+            conn.execute(query_update_historical)
             
-            # 2. Update the daily_bars table with calculated values for matched date
+            # 2. Execute VCP and Power Play evaluations on latest date candidates
+            print("Running VCP and drawdown updates on the latest date's candidates...")
+            results = conn.execute(query_latest_metrics).fetchall()
+            
+            # 3. Update the daily_bars table with calculated VCP/PowerPlay/IPO values for matched date
             if results:
-                # 2.1 Fetch historical closes for VCP analysis
+                # 3.1 Fetch historical high, low, close for VCP analysis
                 history_rows = conn.execute("""
-                    SELECT symbol, date, close 
+                    SELECT symbol, date, high, low, close 
                     FROM daily_bars 
                     ORDER BY symbol, date ASC
                 """).fetchall()
                 
                 from collections import defaultdict
                 symbol_history = defaultdict(list)
-                for sym, dt, close in history_rows:
-                    symbol_history[sym].append((close, dt))
+                for sym, dt, high, low, close in history_rows:
+                    symbol_history[sym].append((high, low, close, dt))
                     
                 # Evaluate VCP for each candidate row in results
                 results_with_vcp = []
@@ -261,20 +319,21 @@ class MomentumEngine:
                     v_res = {"vcp_is_setup": False, "vcp_troughs": None, "vcp_depths": None}
                     
                     if len(history) >= 20:
-                        prices = [h[0] for h in history]
-                        dates = [h[1] for h in history]
-                        v_detected = self.detect_vcp(prices, dates, window=4)
+                        highs = [h[0] for h in history]
+                        lows = [h[1] for h in history]
+                        dates = [h[3] for h in history]
+                        v_detected = self.detect_vcp(highs, lows, dates, window=4)
                         if v_detected:
                             v_res = v_detected
                             
-                    # row: symbol, date, close, vol_50d_ma, rs_score, rs_rank, adr_20d, pp_runup_pct, pp_drawdown_pct, sma_50, sma_150, sma_200, ipo_days, ipo_ath, ipo_dfh, ipo_depth
+                    # row: symbol, date, close, vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, sma_50, sma_150, sma_200, ipo_days, ipo_ath, ipo_dfh, ipo_depth
                     results_with_vcp.append(list(row) + [v_res["vcp_is_setup"], v_res["vcp_troughs"], v_res["vcp_depths"]])
 
                 # Store in a temporary table to execute bulk update
                 import pandas as pd
                 temp_df = pd.DataFrame(results_with_vcp, columns=[
                     "symbol", "date", "close", "vol_50d_ma", "rs_score", "rs_rank", 
-                    "adr_20d", "pp_runup_pct", "pp_drawdown_pct", "sma_50", "sma_150", "sma_200",
+                    "atr_20d", "pp_runup_pct", "pp_drawdown_pct", "sma_50", "sma_150", "sma_200",
                     "ipo_days_count", "ipo_all_time_high", "ipo_drawdown_from_high", "ipo_base_depth",
                     "vcp_is_setup", "vcp_troughs", "vcp_depths"
                 ])
@@ -284,15 +343,8 @@ class MomentumEngine:
                 conn.execute("""
                     UPDATE daily_bars
                     SET 
-                        vol_50d_ma = src.vol_50d_ma,
-                        rs_score = src.rs_score,
-                        rs_rank = src.rs_rank,
-                        adr_20d = src.adr_20d,
                         pp_runup_pct = src.pp_runup_pct,
                         pp_drawdown_pct = src.pp_drawdown_pct,
-                        sma_50 = src.sma_50,
-                        sma_150 = src.sma_150,
-                        sma_200 = src.sma_200,
                         vcp_is_setup = src.vcp_is_setup,
                         vcp_troughs = src.vcp_troughs,
                         vcp_depths = src.vcp_depths,
@@ -304,31 +356,51 @@ class MomentumEngine:
                     WHERE daily_bars.symbol = src.symbol AND daily_bars.date = src.date
                 """)
                 conn.execute("DROP TABLE temp_updates")
-                
-                # 3. Filter candidates passing price, volume and min_rank thresholds
-                for row in results_with_vcp:
-                    symbol, date, close, vol_50d, score, rank, adr, pp_runup, pp_drawdown, sma_50, sma_150, sma_200, ipo_days, ipo_ath, ipo_dfh, ipo_depth, vcp_is_setup, vcp_troughs, vcp_depths = row
-                    if close >= min_price and vol_50d >= min_vol_sma and rank >= min_rank:
-                        candidates.append({
-                            "symbol": symbol,
-                            "date": date.strftime("%Y-%m-%d") if date else None,
-                            "close": close,
-                            "vol_50d_ma": vol_50d,
-                            "rs_score": score,
-                            "rs_rank": rank,
-                            "adr_20d": adr,
-                            "pp_runup_pct": pp_runup,
-                            "pp_drawdown_pct": pp_drawdown,
-                            "sma_50": sma_50,
-                            "sma_150": sma_150,
-                            "sma_200": sma_200,
-                            "vcp_is_setup": bool(vcp_is_setup),
-                            "vcp_troughs": vcp_troughs,
-                            "vcp_depths": vcp_depths,
-                            "ipo_days_count": ipo_days,
-                            "ipo_all_time_high": ipo_ath,
-                            "ipo_drawdown_from_high": ipo_dfh,
-                            "ipo_base_depth": ipo_depth
-                        })
-                        
+
+    def get_momentum_candidates(self, min_price: float = 5.00, min_vol_sma: int = 300000, min_rank: int = 70) -> List[Dict[str, Any]]:
+        """
+        Retrieves candidates passing price, volume, and momentum rank thresholds from daily_bars
+        for the latest date in the database.
+        """
+        query = """
+            WITH latest_date_const AS (
+                SELECT MAX(date) as val FROM daily_bars
+            )
+            SELECT 
+                symbol, date, close, vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, 
+                sma_50, sma_150, sma_200, vcp_is_setup, vcp_troughs, vcp_depths, 
+                ipo_days_count, ipo_all_time_high, ipo_drawdown_from_high, ipo_base_depth
+            FROM daily_bars
+            WHERE date = (SELECT val FROM latest_date_const)
+              AND close >= ?
+              AND vol_50d_ma >= ?
+              AND rs_rank >= ?
+            ORDER BY rs_rank DESC;
+        """
+        
+        candidates = []
+        with self.get_connection() as conn:
+            res = conn.execute(query, [min_price, min_vol_sma, min_rank]).fetchall()
+            for row in res:
+                candidates.append({
+                    "symbol": row[0],
+                    "date": row[1].strftime("%Y-%m-%d") if row[1] else None,
+                    "close": row[2],
+                    "vol_50d_ma": row[3],
+                    "rs_score": row[4],
+                    "rs_rank": row[5],
+                    "atr_20d": row[6],
+                    "pp_runup_pct": row[7],
+                    "pp_drawdown_pct": row[8],
+                    "sma_50": row[9],
+                    "sma_150": row[10],
+                    "sma_200": row[11],
+                    "vcp_is_setup": bool(row[12]) if row[12] is not None else False,
+                    "vcp_troughs": row[13],
+                    "vcp_depths": row[14],
+                    "ipo_days_count": row[15],
+                    "ipo_all_time_high": row[16],
+                    "ipo_drawdown_from_high": row[17],
+                    "ipo_base_depth": row[18]
+                })
         return candidates

@@ -23,14 +23,14 @@ It features a decoupled architecture combining a vectorized Python/DuckDB analys
 │   ├── engine/
 │   │   └── momentum.py       # Vectorized SQL calculations & VCP detection
 │   ├── config.py             # Global configurations parser
-│   └── database.py           # DuckDB schema and migration manager
+│   ├── database.py           # DuckDB schema and migration manager
+│   └── pipeline.py           # Ingestion pipeline & database orchestrator
 ├── frontend/                 # React Vite SPA Web Application
 │   ├── src/
 │   │   └── App.jsx           # Main screening board, dashboard, and Stock Inspector UI
 │   └── dist/                 # Compiled static asset bundles served by FastAPI
 ├── config.yaml               # Active parameters configuration file
 ├── server.py                 # FastAPI REST API Backend server
-├── main.py                   # Data Ingestion scheduler / Database synchronizer
 ├── data.db                   # Local embedded DuckDB file (Git ignored)
 └── README.md                 # Project documentation
 ```
@@ -72,7 +72,7 @@ npm install
 PivotTrader runs off a local DuckDB cache (`data.db`). Before running the server, sync yfinance price histories and quarterly statement details:
 ```bash
 # Run ingestion sync (Step 2 daily bars + Step 4 statements + Step 5 sweeps)
-python3 main.py
+python3 -m src.pipeline
 ```
 > [!TIP]
 > On subsequent daily runs, you can skip slow statement fetches by checking the **Sync Price Data** checkbox on the dashboard to trigger rapid price-only ingestion.

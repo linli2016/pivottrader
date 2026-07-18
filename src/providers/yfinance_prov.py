@@ -99,7 +99,7 @@ class YFinanceProvider(AbstractDataProvider):
             sys.stdout.flush()
             try:
                 # yf.download performs multi-threaded requests
-                df = yf.download(batch, start=start_date, group_by='ticker', threads=True, progress=False)
+                df = yf.download(batch, start=start_date, group_by='ticker', threads=True, progress=False, actions=True)
                 if df.empty:
                     continue
                 
@@ -109,28 +109,34 @@ class YFinanceProvider(AbstractDataProvider):
                     if "Close" in df.columns:
                         sym_df = df.copy().reset_index()
                         sym_df["symbol"] = sym
+                        if "Stock Splits" not in sym_df.columns:
+                            sym_df["Stock Splits"] = 0.0
                         sym_df = sym_df.rename(columns={
                             "Date": "date", "Open": "open", "High": "high", 
-                            "Low": "low", "Close": "close", "Volume": "volume"
+                            "Low": "low", "Close": "close", "Volume": "volume",
+                            "Stock Splits": "stock_splits"
                         })
                         sym_df["date"] = pd.to_datetime(sym_df["date"]).dt.date
                         # Drop row instances missing closing price
                         sym_df = sym_df.dropna(subset=["close"])
-                        all_bars.append(sym_df[["symbol", "date", "open", "high", "low", "close", "volume"]])
+                        all_bars.append(sym_df[["symbol", "date", "open", "high", "low", "close", "volume", "stock_splits"]])
                 else:
                     for sym in batch:
                         if sym not in df.columns.levels[0]:
                             continue
                         sym_df = df[sym].copy().reset_index()
                         sym_df["symbol"] = sym
+                        if "Stock Splits" not in sym_df.columns:
+                            sym_df["Stock Splits"] = 0.0
                         sym_df = sym_df.rename(columns={
                             "Date": "date", "Open": "open", "High": "high", 
-                            "Low": "low", "Close": "close", "Volume": "volume"
+                            "Low": "low", "Close": "close", "Volume": "volume",
+                            "Stock Splits": "stock_splits"
                         })
                         sym_df["date"] = pd.to_datetime(sym_df["date"]).dt.date
                         sym_df = sym_df.dropna(subset=["close"])
                         if not sym_df.empty:
-                            all_bars.append(sym_df[["symbol", "date", "open", "high", "low", "close", "volume"]])
+                            all_bars.append(sym_df[["symbol", "date", "open", "high", "low", "close", "volume", "stock_splits"]])
                             
                 # Micro sleep cooling to avoid IP ban triggers
                 time.sleep(0.5)

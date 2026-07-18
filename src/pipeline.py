@@ -1,7 +1,7 @@
 import argparse
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 
 from src.config import Config
@@ -9,8 +9,7 @@ from src.database import DatabaseManager
 from src.providers.yfinance_prov import YFinanceProvider
 from src.providers.ibkr_prov import IBKRProvider
 from src.engine.momentum import MomentumEngine
-from src.engine.fundamental import FundamentalEngine
-from src.exporter import TradingViewExporter
+
 
 def main():
     parser = argparse.ArgumentParser(description="PivotTrader: High-Performance Momentum & Fundamental Screener")
@@ -95,6 +94,48 @@ def main():
         print("Upserting ticker directories into database...")
         db.upsert_symbols(universe)
         
+        # Synchronize IPO Dates from yfinance (Incremental & Parallelized)
+        missing_ipo_symbols = db.get_symbols_missing_ipo_date()
+        if missing_ipo_symbols:
+            print(f"\nEvaluating IPO Dates: {len(missing_ipo_symbols)} symbols missing IPO date in database...")
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            import yfinance as yf
+            
+            def fetch_single_ipo_date(symbol: str):
+                try:
+                    import requests
+                    url = f"https://query2.finance.yahoo.com/v8/finance/chart/{symbol}"
+                    headers = {"User-Agent": "Mozilla/5.0"}
+                    r = requests.get(url, headers=headers, timeout=5)
+                    if r.status_code == 200:
+                        data = r.json()
+                        result = data.get("chart", {}).get("result")
+                        if result and len(result) > 0:
+                            first_trade_sec = result[0].get("meta", {}).get("firstTradeDate")
+                            if first_trade_sec:
+                                dt = datetime.fromtimestamp(first_trade_sec, tz=timezone.utc)
+                                return symbol, dt.strftime("%Y-%m-%d")
+                except Exception:
+                    pass
+                return symbol, None
+
+            print(f"Fetching IPO dates from Yahoo Finance using parallel workers...")
+            results = []
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = {executor.submit(fetch_single_ipo_date, sym): sym for sym in missing_ipo_symbols}
+                
+                for i, future in enumerate(as_completed(futures), 1):
+                    sym, ipo_date = future.result()
+                    if ipo_date:
+                        results.append((ipo_date, sym))
+                    
+                    if i % 100 == 0 or i == len(missing_ipo_symbols):
+                        print(f"Progress: {i}/{len(missing_ipo_symbols)} symbols evaluated, {len(results)} dates retrieved.")
+            
+            if results:
+                print(f"Saving {len(results)} IPO dates to database...")
+                db.update_multiple_symbol_ipo_dates(results)
+        
         active_symbols = [item["symbol"] for item in universe]
 
         # 5. Incremental Daily Bars Ingestion
@@ -137,15 +178,43 @@ def main():
                 print(f"Syncing daily bars incrementally since {delta_start_date} for {len(existing_symbols)} tickers...")
                 delta_bars = price_provider.fetch_daily_bars(existing_symbols, delta_start_date)
                 if not delta_bars.empty:
-                    print(f"Upserting {len(delta_bars)} rows for existing tickers...")
-                    db.upsert_daily_bars(delta_bars)
+                    # Detect if any tickers underwent stock splits in the delta window
+                    split_symbols = []
+                    if "stock_splits" in delta_bars.columns:
+                        split_rows = delta_bars[delta_bars["stock_splits"] > 0]
+                        if not split_rows.empty:
+                            split_symbols = split_rows["symbol"].unique().tolist()
+                    
+                    if split_symbols:
+                        print(f"\n⚠️ Stock splits detected for: {split_symbols}")
+                        print(f"Purging and refetching full {full_lookback_date} history for split-adjusted consistency...")
+                        
+                        # 1. Fetch full lookback for the split tickers
+                        adjusted_bars = price_provider.fetch_daily_bars(split_symbols, full_lookback_date)
+                        if not adjusted_bars.empty:
+                            # 2. Delete existing history for these tickers from the database to purge unadjusted data
+                            with db.get_connection() as conn:
+                                symbols_str = ", ".join(f"'{s}'" for s in split_symbols)
+                                conn.execute(f"DELETE FROM daily_bars WHERE symbol IN ({symbols_str})")
+                            
+                            # 3. Upsert the fully adjusted historical prices
+                            db.upsert_daily_bars(adjusted_bars)
+                            print(f"Updated full split-adjusted history for: {split_symbols}")
+                            
+                            # 4. Remove these split tickers' incremental rows from delta_bars to avoid redundant upserts
+                            delta_bars = delta_bars[~delta_bars["symbol"].isin(split_symbols)]
+                    
+                    if not delta_bars.empty:
+                        print(f"Upserting {len(delta_bars)} rows for existing tickers...")
+                        db.upsert_daily_bars(delta_bars)
                 else:
                     print("No incremental bars fetched.")
 
         # 6. Relative Strength Scoring & Ranking
         print("\n[Step 3/5] Computing momentum scores & percentile ranks...")
         mom_engine = MomentumEngine(db_path)
-        momentum_candidates = mom_engine.compute_relative_strength(
+        mom_engine.calculate_and_store_momentum_metrics()
+        momentum_candidates = mom_engine.get_momentum_candidates(
             min_price=config.min_price,
             min_vol_sma=config.min_volume_sma_50,
             min_rank=config.min_rs_percentile

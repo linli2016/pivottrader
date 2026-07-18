@@ -21,11 +21,11 @@ PivotTrader/
 ├── config.yaml
 ├── data.db                   # Local DuckDB database file (Git ignored)
 ├── requirements.txt
-├── main.py                   # CLI Execution Entrypoint
 └── src/
     ├── __init__.py
     ├── config.py             # Config parser and validation schema
     ├── database.py           # DuckDB connection manager & DDL runner
+    ├── pipeline.py           # Ingestion pipeline & database orchestrator
     ├── providers/
     │   ├── __init__.py
     │   ├── base.py           # Abstract Base Class for data providers
@@ -212,11 +212,11 @@ FROM weighted_score;
 
 ## 6. Execution Flow & Sequence
 
-The orchestrator (`main.py`) controls step-by-step processing to minimize API usage:
+The orchestrator (`src/pipeline.py`) controls step-by-step processing to minimize API usage:
 
 ```mermaid
 sequenceDiagram
-    participant CLI as CLI (main.py)
+    participant CLI as CLI (src.pipeline)
     participant DB as Connection Manager
     participant Prov as Data Provider (yfinance/IBKR)
     participant Eng as Engine Processor
