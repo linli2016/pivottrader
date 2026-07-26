@@ -255,6 +255,8 @@ class MomentumEngine:
                     ARG_MAX(daily_runup_pct, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as pp_runup_pct,
                     -- Power play drawdown %: correction from 30-day peak high to lowest low on or after peak date
                     (running_peak_30d - (SELECT MIN(d.low) FROM daily_bars d WHERE d.symbol = price_lags_base.symbol AND d.date >= price_lags_base.peak_date_30d AND d.date <= price_lags_base.date)) / NULLIF(running_peak_30d, 0) * 100 as pp_drawdown_pct,
+                    -- Power play days since 30-day peak high
+                    DATEDIFF('day', peak_date_30d, date) as pp_days_since_peak,
                     -- IPO base fields
                     ipo_days_count,
                     running_peak_all_time as ipo_all_time_high,
@@ -277,6 +279,7 @@ class MomentumEngine:
                     rs_rank,
                     pp_drawdown_pct,
                     pp_runup_pct,
+                    pp_days_since_peak,
                     ipo_days_count,
                     ipo_all_time_high,
                     (ipo_all_time_high - close) / NULLIF(ipo_all_time_high, 0) * 100 as ipo_drawdown_from_high,
@@ -284,7 +287,7 @@ class MomentumEngine:
                 FROM price_lags_derived
                 WHERE date = (SELECT val FROM latest_date_const)
             )
-            SELECT symbol, date, close, vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, sma_50, sma_150, sma_200, ipo_days_count, ipo_all_time_high, ipo_drawdown_from_high, ipo_base_depth
+            SELECT symbol, date, close, vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, pp_days_since_peak, sma_50, sma_150, sma_200, ipo_days_count, ipo_all_time_high, ipo_drawdown_from_high, ipo_base_depth
             FROM returns_calc;
         """
         
@@ -326,14 +329,14 @@ class MomentumEngine:
                         if v_detected:
                             v_res = v_detected
                             
-                    # row: symbol, date, close, vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, sma_50, sma_150, sma_200, ipo_days, ipo_ath, ipo_dfh, ipo_depth
+                    # row: symbol, date, close, vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, pp_days_since_peak, sma_50, sma_150, sma_200, ipo_days, ipo_ath, ipo_dfh, ipo_depth
                     results_with_vcp.append(list(row) + [v_res["vcp_is_setup"], v_res["vcp_troughs"], v_res["vcp_depths"]])
 
                 # Store in a temporary table to execute bulk update
                 import pandas as pd
                 temp_df = pd.DataFrame(results_with_vcp, columns=[
                     "symbol", "date", "close", "vol_50d_ma", "rs_score", "rs_rank", 
-                    "atr_20d", "pp_runup_pct", "pp_drawdown_pct", "sma_50", "sma_150", "sma_200",
+                    "atr_20d", "pp_runup_pct", "pp_drawdown_pct", "pp_days_since_peak", "sma_50", "sma_150", "sma_200",
                     "ipo_days_count", "ipo_all_time_high", "ipo_drawdown_from_high", "ipo_base_depth",
                     "vcp_is_setup", "vcp_troughs", "vcp_depths"
                 ])
@@ -345,6 +348,7 @@ class MomentumEngine:
                     SET 
                         pp_runup_pct = src.pp_runup_pct,
                         pp_drawdown_pct = src.pp_drawdown_pct,
+                        pp_days_since_peak = src.pp_days_since_peak,
                         vcp_is_setup = src.vcp_is_setup,
                         vcp_troughs = src.vcp_troughs,
                         vcp_depths = src.vcp_depths,

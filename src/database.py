@@ -60,6 +60,7 @@ class DatabaseManager:
                     ipo_all_time_high DOUBLE,
                     ipo_drawdown_from_high DOUBLE,
                     ipo_base_depth DOUBLE,
+                    pp_days_since_peak INTEGER,
                     PRIMARY KEY (symbol, date)
                 );
             """)
@@ -79,6 +80,10 @@ class DatabaseManager:
                 pass
             try:
                 conn.execute("ALTER TABLE daily_bars ADD COLUMN pp_drawdown_pct DOUBLE;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN pp_days_since_peak INTEGER;")
             except Exception:
                 pass
             try:

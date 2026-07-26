@@ -57,6 +57,7 @@ function App() {
   // Optional filter checkbox states
   const [enablePpRunup, setEnablePpRunup] = useState(true);
   const [enablePpDrawdown, setEnablePpDrawdown] = useState(true);
+  const [enablePpDaysSincePeak, setEnablePpDaysSincePeak] = useState(true);
   const [enablePpVolRatio, setEnablePpVolRatio] = useState(false);
 
   const [enableIpoAge, setEnableIpoAge] = useState(true);
@@ -73,6 +74,7 @@ function App() {
   // Power play inputs
   const [minPpRunupFilter, setMinPpRunupFilter] = useState(100.0);
   const [maxPpDrawdownFilter, setMaxPpDrawdownFilter] = useState(25.0);
+  const [minPpDaysSincePeakFilter, setMinPpDaysSincePeakFilter] = useState(12);
   const [maxPpVolRatioFilter, setMaxPpVolRatioFilter] = useState(0.5);
 
   // IPO base inputs
@@ -283,6 +285,7 @@ function App() {
     enableVcpSetup,
     minPpRunupFilter,
     maxPpDrawdownFilter,
+    minPpDaysSincePeakFilter,
     maxPpVolRatioFilter,
     maxIpoAgeFilter,
     maxIpoDistFilter,
@@ -290,6 +293,7 @@ function App() {
     // Optional checkbox states
     enablePpRunup,
     enablePpDrawdown,
+    enablePpDaysSincePeak,
     enablePpVolRatio,
     enableIpoAge,
     enableIpoDist,
@@ -390,6 +394,8 @@ function App() {
             setMinPpRunupFilter={setMinPpRunupFilter}
             maxPpDrawdownFilter={maxPpDrawdownFilter}
             setMaxPpDrawdownFilter={setMaxPpDrawdownFilter}
+            minPpDaysSincePeakFilter={minPpDaysSincePeakFilter}
+            setMinPpDaysSincePeakFilter={setMinPpDaysSincePeakFilter}
             maxPpVolRatioFilter={maxPpVolRatioFilter}
             setMaxPpVolRatioFilter={setMaxPpVolRatioFilter}
             maxIpoAgeFilter={maxIpoAgeFilter}
@@ -403,6 +409,8 @@ function App() {
             setEnablePpRunup={setEnablePpRunup}
             enablePpDrawdown={enablePpDrawdown}
             setEnablePpDrawdown={setEnablePpDrawdown}
+            enablePpDaysSincePeak={enablePpDaysSincePeak}
+            setEnablePpDaysSincePeak={setEnablePpDaysSincePeak}
             enablePpVolRatio={enablePpVolRatio}
             setEnablePpVolRatio={setEnablePpVolRatio}
             enableIpoAge={enableIpoAge}

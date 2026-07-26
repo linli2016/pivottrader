@@ -62,7 +62,7 @@ class DatabaseService:
             ),
             ranked_bars AS (
                 SELECT 
-                    symbol, close, volume, vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, sma_50, sma_150, sma_200, vcp_is_setup, vcp_troughs, vcp_depths, ipo_days_count, ipo_all_time_high, ipo_drawdown_from_high, ipo_base_depth,
+                    symbol, close, volume, vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, pp_days_since_peak, sma_50, sma_150, sma_200, vcp_is_setup, vcp_troughs, vcp_depths, ipo_days_count, ipo_all_time_high, ipo_drawdown_from_high, ipo_base_depth,
                     (rs_rank >= COALESCE(
                         (
                             SELECT MAX(d.rs_rank) 
@@ -90,6 +90,7 @@ class DatabaseService:
                 r.atr_20d,
                 r.pp_runup_pct,
                 r.pp_drawdown_pct,
+                r.pp_days_since_peak,
                 r.volume,
                 r.sma_50,
                 r.sma_150,
@@ -136,18 +137,19 @@ class DatabaseService:
                     "atr_20d": row[11],
                     "pp_runup_pct": row[12],
                     "pp_drawdown_pct": row[13],
-                    "volume": row[14],
-                    "sma_50": row[15],
-                    "sma_150": row[16],
-                    "sma_200": row[17],
-                    "vcp_is_setup": bool(row[18]) if row[18] is not None else False,
-                    "vcp_troughs": row[19],
-                    "vcp_depths": row[20],
-                    "ipo_days_count": row[21],
-                    "ipo_all_time_high": row[22],
-                    "ipo_drawdown_from_high": row[23],
-                    "ipo_base_depth": row[24],
-                    "rs_rank_is_new_high": bool(row[25]) if row[25] is not None else False
+                    "pp_days_since_peak": row[14],
+                    "volume": row[15],
+                    "sma_50": row[16],
+                    "sma_150": row[17],
+                    "sma_200": row[18],
+                    "vcp_is_setup": bool(row[19]) if row[19] is not None else False,
+                    "vcp_troughs": row[20],
+                    "vcp_depths": row[21],
+                    "ipo_days_count": row[22],
+                    "ipo_all_time_high": row[23],
+                    "ipo_drawdown_from_high": row[24],
+                    "ipo_base_depth": row[25],
+                    "rs_rank_is_new_high": bool(row[26]) if row[26] is not None else False
                 })
             return candidates
 

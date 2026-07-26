@@ -25,6 +25,8 @@ export default function CandidatesTab({
   setMinPpRunupFilter,
   maxPpDrawdownFilter,
   setMaxPpDrawdownFilter,
+  minPpDaysSincePeakFilter,
+  setMinPpDaysSincePeakFilter,
   maxPpVolRatioFilter,
   setMaxPpVolRatioFilter,
   maxIpoAgeFilter,
@@ -38,6 +40,8 @@ export default function CandidatesTab({
   setEnablePpRunup,
   enablePpDrawdown,
   setEnablePpDrawdown,
+  enablePpDaysSincePeak,
+  setEnablePpDaysSincePeak,
   enablePpVolRatio,
   setEnablePpVolRatio,
   enableIpoAge,
@@ -101,12 +105,12 @@ export default function CandidatesTab({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap' }}>
             {/* Baseline Stage 2 Toggle */}
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'default', fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>
               <input
                 type="checkbox"
-                checked={true}
-                disabled={true}
-                style={{ cursor: 'not-allowed', width: '16px', height: '16px', accentColor: 'var(--accent-color)' }}
+                checked={enforceStage2}
+                onChange={(e) => setEnforceStage2(e.target.checked)}
+                style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--accent-color)' }}
               />
               📈 Stage 2 Trend
             </label>
@@ -126,6 +130,9 @@ export default function CandidatesTab({
                   if (val) {
                     setEnableIpoBase(false);
                     setEnableVcpSetup(false);
+                    setEnforceStage2(false);
+                  } else {
+                    setEnforceStage2(true);
                   }
                 }}
                 style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--accent-color)' }}
@@ -172,6 +179,74 @@ export default function CandidatesTab({
           </span>
         </div>
 
+        {/* Currently Selected Setup Criteria Text Section */}
+        <div style={{
+          padding: '16px 20px',
+          background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%)',
+          border: '1px solid rgba(56, 189, 248, 0.25)',
+          borderRadius: '8px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '10px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+            <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#38bdf8', letterSpacing: '0.5px', textTransform: 'uppercase', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              📋 Currently Selected Setup Criteria
+            </h4>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.06)', padding: '3px 10px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
+              {enablePowerPlay ? '🚀 Power Play' : enableIpoBase ? '📅 IPO Base' : enableVcpSetup ? '⚡ VCP Setup' : '📈 Stage 2 Trend Baseline'}
+            </span>
+          </div>
+
+          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.5' }}>
+            {enablePowerPlay && 'Screening for high-velocity momentum stocks undergoing shallow high-level consolidations after a massive price expansion.'}
+            {enableIpoBase && 'Screening for young, recently listed growth stocks constructing their initial primary base after going public.'}
+            {enableVcpSetup && 'Screening for Mark Minervini\'s signature Volatility Contraction Pattern (VCP), where overhead supply dries up through contracting swings.'}
+            {!enablePowerPlay && !enableIpoBase && !enableVcpSetup && 'Screening for classic Minervini Stage 2 uptrend stocks in confirmed institutional mark-up phases.'}
+          </p>
+
+          {enablePowerPlay ? (
+            <ol style={{ margin: '4px 0 0 0', paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px', color: 'var(--text-primary)', lineHeight: '1.5' }}>
+              <li>
+                <strong>Explosive Price Move:</strong> An explosive price move commences on huge volume that shoots the stock price up 100 percent or more in less than eight weeks. This generally occurs after a period of relative dormancy. <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>(Active Filter: &ge; {minPpRunupFilter}% run-up{enablePpRunup ? '' : ' - Disabled'})</span>
+              </li>
+              <li>
+                <strong>Tight Consolidation:</strong> The stock price then moves sideways in a relatively tight range, not correcting more than 20 to 25 percentage over a period of three to six weeks (some can emerge after only 12 days). <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>(Active Filter: &le; {maxPpDrawdownFilter}% drawdown, peak &ge; {minPpDaysSincePeakFilter}d prior{enablePpDrawdown && enablePpDaysSincePeak ? '' : ' - Partially Disabled'})</span>
+              </li>
+              <li>
+                <strong>Volume Contraction:</strong> With the base (usually just days before a breakout), volume will contract considerably. <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>{enablePpVolRatio ? `(Active Filter: \u2264 ${maxPpVolRatioFilter.toFixed(2)}x 50d Vol MA)` : '(Filter Disabled)'}</span>
+              </li>
+            </ol>
+          ) : (
+            <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
+              {enableIpoBase && (
+                <>
+                  <li><strong>Listing Age:</strong> IPO trading history between 10 and {maxIpoAgeFilter} days {enableIpoAge ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>Proximity to High:</strong> Distance from all-time IPO high &le; {maxIpoDistFilter}% {enableIpoDist ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>Base Depth Bounded:</strong> Maximum base depth correction &le; {maxIpoDepthFilter}% {enableIpoDepth ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>Trend Baseline:</strong> Close &ge; SMA(50) (SMA 150/200 waived due to limited history)</li>
+                </>
+              )}
+              {enableVcpSetup && (
+                <>
+                  <li><strong>Contraction Progression:</strong> Sequential narrowing price swings (D₁ &gt; D₂ &gt; D₃) with final contraction &le; 10% {enableVcpPattern ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>Relative Strength:</strong> RS Percentile Rank &ge; {minRsFilter}th percentile {enableVcpRsPercentile ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>Earnings Growth:</strong> QoQ Diluted EPS Growth &ge; {minEpsGrowthFilter}% {enableVcpEpsGrowth ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>Trend Baseline:</strong> Enforces Stage 2 Trend Template (Close &gt; SMA 50 &gt; SMA 150 &gt; SMA 200)</li>
+                </>
+              )}
+              {!enablePowerPlay && !enableIpoBase && !enableVcpSetup && (
+                <>
+                  <li><strong>Moving Average Alignment:</strong> Close &gt; SMA(50) &gt; SMA(150) &gt; SMA(200) {enforceStage2 ? '(Enforced)' : '(Disabled)'}</li>
+                  <li><strong>Liquidity Baseline:</strong> Min stock price &ge; ${minPriceFilter.toFixed(2)} and 50d Volume MA &ge; {minVolFilter.toLocaleString()}</li>
+                  <li><strong>Relative Strength:</strong> {enableRsNewHigh ? 'Must be making a 52-week RS Rank High' : 'RS Rank calculated dynamically'}</li>
+                  {enableAtr && <li><strong>Daily ATR:</strong> &ge; {minAtrFilter.toFixed(1)}%</li>}
+                </>
+              )}
+            </ul>
+          )}
+        </div>
+
         {/* Active Strategy Rules Description Box */}
         <div style={{
           padding: '16px',
@@ -194,10 +269,14 @@ export default function CandidatesTab({
               <strong style={{ color: 'var(--text-primary)' }}>&ge; {minVolFilter.toLocaleString()}</strong>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ color: 'var(--accent-success)' }}>⚡</span>
+              <span style={{ color: enforceStage2 ? 'var(--accent-success)' : 'var(--text-secondary)' }}>⚡</span>
               <span style={{ color: 'var(--text-secondary)' }}>Trend Template:</span>
-              <strong style={{ color: 'var(--text-primary)' }}>
-                {enableIpoBase && enableIpoAge ? 'SMA(50) [Waive SMA 150/200 on IPOs]' : 'SMA(50) > SMA(150) > SMA(200)'}
+              <strong style={{ color: enforceStage2 ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                {!enforceStage2
+                  ? 'Disabled (Optional)'
+                  : enableIpoBase && enableIpoAge
+                  ? 'SMA(50) [Waive SMA 150/200 on IPOs]'
+                  : 'SMA(50) > SMA(150) > SMA(200)'}
               </strong>
             </div>
             {enableAtr && (
@@ -481,6 +560,40 @@ export default function CandidatesTab({
                     value={maxPpDrawdownFilter}
                     disabled={!enablePpDrawdown}
                     onChange={(e) => setMaxPpDrawdownFilter(parseFloat(e.target.value) || 0)}
+                    style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                  />
+                </div>
+              </div>
+
+              {/* Min Days Since Peak (Consolidation Age) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enablePpDaysSincePeak ? 1 : 0.5 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={enablePpDaysSincePeak}
+                    onChange={(e) => setEnablePpDaysSincePeak(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  />
+                  Min Days Since Peak ({minPpDaysSincePeakFilter}d):
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="range"
+                    min="1"
+                    max="40"
+                    step="1"
+                    value={minPpDaysSincePeakFilter}
+                    disabled={!enablePpDaysSincePeak}
+                    onChange={(e) => setMinPpDaysSincePeakFilter(parseInt(e.target.value) || 0)}
+                    style={{ flex: 1, cursor: enablePpDaysSincePeak ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={minPpDaysSincePeakFilter}
+                    disabled={!enablePpDaysSincePeak}
+                    onChange={(e) => setMinPpDaysSincePeakFilter(parseInt(e.target.value) || 0)}
                     style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
                   />
                 </div>
