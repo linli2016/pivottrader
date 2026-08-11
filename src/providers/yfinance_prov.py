@@ -62,7 +62,9 @@ class YFinanceProvider(AbstractDataProvider):
                         "exchange": exchange,
                         "name": name,
                         "asset_type": "Common Stock",
-                        "active": True
+                        "active": True,
+                        "sector": sector,
+                        "industry": industry
                     })
                 return clean_data
             except Exception as e:
@@ -72,6 +74,33 @@ class YFinanceProvider(AbstractDataProvider):
         tickers.extend(get_and_clean(nyse_url, "NYSE"))
         tickers.extend(get_and_clean(nasdaq_url, "NASDAQ"))
         
+        # Add Sector & Industry Benchmark ETFs
+        sector_etfs = [
+            {"symbol": "XLK", "exchange": "NYSE", "name": "Technology Select Sector SPDR", "asset_type": "ETF", "active": True, "sector": "Technology", "industry": "Technology ETF"},
+            {"symbol": "XLF", "exchange": "NYSE", "name": "Financial Select Sector SPDR", "asset_type": "ETF", "active": True, "sector": "Financials", "industry": "Financials ETF"},
+            {"symbol": "XLV", "exchange": "NYSE", "name": "Health Care Select Sector SPDR", "asset_type": "ETF", "active": True, "sector": "Health Care", "industry": "Health Care ETF"},
+            {"symbol": "XLY", "exchange": "NYSE", "name": "Consumer Discretionary SPDR", "asset_type": "ETF", "active": True, "sector": "Consumer Discretionary", "industry": "Consumer Discretionary ETF"},
+            {"symbol": "XLP", "exchange": "NYSE", "name": "Consumer Staples Select Sector SPDR", "asset_type": "ETF", "active": True, "sector": "Consumer Staples", "industry": "Consumer Staples ETF"},
+            {"symbol": "XLE", "exchange": "NYSE", "name": "Energy Select Sector SPDR", "asset_type": "ETF", "active": True, "sector": "Energy", "industry": "Energy ETF"},
+            {"symbol": "XLI", "exchange": "NYSE", "name": "Industrial Select Sector SPDR", "asset_type": "ETF", "active": True, "sector": "Industrials", "industry": "Industrials ETF"},
+            {"symbol": "XLB", "exchange": "NYSE", "name": "Materials Select Sector SPDR", "asset_type": "ETF", "active": True, "sector": "Basic Materials", "industry": "Basic Materials ETF"},
+            {"symbol": "XLU", "exchange": "NYSE", "name": "Utilities Select Sector SPDR", "asset_type": "ETF", "active": True, "sector": "Utilities", "industry": "Utilities ETF"},
+            {"symbol": "XLRE", "exchange": "NYSE", "name": "Real Estate Select Sector SPDR", "asset_type": "ETF", "active": True, "sector": "Real Estate", "industry": "Real Estate ETF"},
+            {"symbol": "XLC", "exchange": "NYSE", "name": "Communication Services SPDR", "asset_type": "ETF", "active": True, "sector": "Communication Services", "industry": "Communication Services ETF"},
+            {"symbol": "SMH", "exchange": "NASDAQ", "name": "VanEck Semiconductor ETF", "asset_type": "ETF", "active": True, "sector": "Technology", "industry": "Semiconductors ETF"},
+            {"symbol": "XBI", "exchange": "NYSE", "name": "SPDR S&P Biotech ETF", "asset_type": "ETF", "active": True, "sector": "Health Care", "industry": "Biotech ETF"},
+            {"symbol": "IGV", "exchange": "NYSE", "name": "iShares Tech-Software ETF", "asset_type": "ETF", "active": True, "sector": "Technology", "industry": "Software ETF"},
+            {"symbol": "KRE", "exchange": "NYSE", "name": "SPDR S&P Regional Banking ETF", "asset_type": "ETF", "active": True, "sector": "Financials", "industry": "Regional Banking ETF"},
+            {"symbol": "XOP", "exchange": "NYSE", "name": "SPDR S&P Oil & Gas Exploration ETF", "asset_type": "ETF", "active": True, "sector": "Energy", "industry": "Oil & Gas ETF"},
+            {"symbol": "XRT", "exchange": "NYSE", "name": "SPDR S&P Retail ETF", "asset_type": "ETF", "active": True, "sector": "Consumer Discretionary", "industry": "Retail ETF"},
+            {"symbol": "ITB", "exchange": "NYSE", "name": "iShares U.S. Home Construction ETF", "asset_type": "ETF", "active": True, "sector": "Consumer Discretionary", "industry": "Homebuilders ETF"},
+            {"symbol": "ITA", "exchange": "NYSE", "name": "iShares U.S. Aerospace & Defense ETF", "asset_type": "ETF", "active": True, "sector": "Industrials", "industry": "Aerospace & Defense ETF"},
+            {"symbol": "SPY", "exchange": "NYSE", "name": "SPDR S&P 500 ETF Trust", "asset_type": "ETF", "active": True, "sector": "Market Index", "industry": "S&P 500 ETF"},
+            {"symbol": "QQQ", "exchange": "NASDAQ", "name": "Invesco QQQ Trust", "asset_type": "ETF", "active": True, "sector": "Market Index", "industry": "Nasdaq 100 ETF"},
+            {"symbol": "IWM", "exchange": "NYSE", "name": "iShares Russell 2000 ETF", "asset_type": "ETF", "active": True, "sector": "Market Index", "industry": "Small Cap ETF"}
+        ]
+        tickers.extend(sector_etfs)
+
         # De-duplicate ticker listings
         seen = set()
         unique_tickers = []

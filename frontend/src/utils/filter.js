@@ -16,6 +16,7 @@ export function filterCandidates(candidates, filters) {
     enablePowerPlay,
     enableIpoBase,
     enableVcpSetup,
+    enableDarvasBox,
     minPpRunupFilter,
     maxPpDrawdownFilter,
     minPpDaysSincePeakFilter,
@@ -23,6 +24,7 @@ export function filterCandidates(candidates, filters) {
     maxIpoAgeFilter,
     maxIpoDistFilter,
     maxIpoDepthFilter,
+    maxDarvasWidthFilter,
     // Optional checkboxes states
     enablePpRunup,
     enablePpDrawdown,
@@ -34,8 +36,20 @@ export function filterCandidates(candidates, filters) {
     enableVcpEpsGrowth,
     enableVcpRsPercentile,
     enableVcpPattern,
+    enableDarvasPattern,
+    enableDarvasWidth,
     enableRsNewHigh,
     enableAtr,
+    // New Leaders setup states
+    enableNewLeaders,
+    max52wDistFilter,
+    minSurgeOffLowFilter,
+    minNewLeadersRsFilter,
+    enable52wDist,
+    enableSurgeOffLow,
+    enableNewLeadersRs,
+    enableNewLeaders52wHigh,
+    enableNewLeadersBase,
   } = filters;
 
   return candidates.filter(c => {
@@ -111,6 +125,37 @@ export function filterCandidates(candidates, filters) {
       }
       if (enableVcpPattern) {
         if (!c.vcp_is_setup) return false;
+      }
+      // Current price must be within 15% range of 52-week high
+      if (c.dist_from_52w_high !== null && c.dist_from_52w_high !== undefined && c.dist_from_52w_high > 15.0) return false;
+    }
+
+    // 5. Darvas Box Setup Overlay
+    if (enableDarvasBox) {
+      if (enableDarvasPattern) {
+        if (!c.darvas_is_setup) return false;
+      }
+      if (enableDarvasWidth) {
+        if (c.darvas_box_width_pct === null || c.darvas_box_width_pct === undefined || c.darvas_box_width_pct > maxDarvasWidthFilter) return false;
+      }
+    }
+
+    // 6. New Leaders Setup Overlay (Minervini Market Correction Leader Turnover)
+    if (enableNewLeaders) {
+      if (enable52wDist) {
+        if (c.dist_from_52w_high === null || c.dist_from_52w_high === undefined || c.dist_from_52w_high > max52wDistFilter) return false;
+      }
+      if (enableSurgeOffLow) {
+        if (c.surge_off_low_pct === null || c.surge_off_low_pct === undefined || c.surge_off_low_pct < minSurgeOffLowFilter) return false;
+      }
+      if (enableNewLeadersRs) {
+        if (c.rs_rank === null || c.rs_rank === undefined || c.rs_rank < minNewLeadersRsFilter) return false;
+      }
+      if (enableNewLeaders52wHigh) {
+        if (!c.is_52w_high && (c.dist_from_52w_high === null || c.dist_from_52w_high > 3.0)) return false;
+      }
+      if (enableNewLeadersBase) {
+        if (!c.vcp_is_setup && !c.darvas_is_setup && !c.rs_rank_is_new_high) return false;
       }
     }
 

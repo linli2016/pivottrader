@@ -5,6 +5,8 @@ import CandidatesTab from './components/CandidatesTab';
 import InspectorTab from './components/InspectorTab';
 import SqlConsoleTab from './components/SqlConsoleTab';
 import SettingsTab from './components/SettingsTab';
+import MarketMonitorTab from './components/MarketMonitorTab';
+import SectorCompareTab from './components/SectorCompareTab';
 import StockDetailDrawer from './components/StockDetailDrawer';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
@@ -53,6 +55,8 @@ function App() {
   const [enablePowerPlay, setEnablePowerPlay] = useState(false);
   const [enableIpoBase, setEnableIpoBase] = useState(false);
   const [enableVcpSetup, setEnableVcpSetup] = useState(false);
+  const [enableDarvasBox, setEnableDarvasBox] = useState(false);
+  const [enableNewLeaders, setEnableNewLeaders] = useState(false);
 
   // Optional filter checkbox states
   const [enablePpRunup, setEnablePpRunup] = useState(true);
@@ -67,9 +71,20 @@ function App() {
   const [enableVcpEpsGrowth, setEnableVcpEpsGrowth] = useState(true);
   const [enableVcpRsPercentile, setEnableVcpRsPercentile] = useState(true);
   const [enableVcpPattern, setEnableVcpPattern] = useState(true);
+
+  const [enableDarvasPattern, setEnableDarvasPattern] = useState(true);
+  const [enableDarvasWidth, setEnableDarvasWidth] = useState(true);
+
   const [enableRsNewHigh, setEnableRsNewHigh] = useState(false);
 
   const [enableAtr, setEnableAtr] = useState(false);
+
+  // New Leaders optional filter checkboxes
+  const [enable52wDist, setEnable52wDist] = useState(true);
+  const [enableSurgeOffLow, setEnableSurgeOffLow] = useState(true);
+  const [enableNewLeadersRs, setEnableNewLeadersRs] = useState(true);
+  const [enableNewLeaders52wHigh, setEnableNewLeaders52wHigh] = useState(false);
+  const [enableNewLeadersBase, setEnableNewLeadersBase] = useState(true);
 
   // Power play inputs
   const [minPpRunupFilter, setMinPpRunupFilter] = useState(100.0);
@@ -81,6 +96,14 @@ function App() {
   const [maxIpoAgeFilter, setMaxIpoAgeFilter] = useState(350);
   const [maxIpoDistFilter, setMaxIpoDistFilter] = useState(25.0);
   const [maxIpoDepthFilter, setMaxIpoDepthFilter] = useState(35.0);
+
+  // Darvas Box inputs
+  const [maxDarvasWidthFilter, setMaxDarvasWidthFilter] = useState(25.0);
+
+  // New Leaders inputs
+  const [max52wDistFilter, setMax52wDistFilter] = useState(25.0);
+  const [minSurgeOffLowFilter, setMinSurgeOffLowFilter] = useState(20.0);
+  const [minNewLeadersRsFilter, setMinNewLeadersRsFilter] = useState(80);
 
   // Full inspector state
   const [inspectorSymbol, setInspectorSymbol] = useState('');
@@ -283,6 +306,8 @@ function App() {
     enablePowerPlay,
     enableIpoBase,
     enableVcpSetup,
+    enableDarvasBox,
+    enableNewLeaders,
     minPpRunupFilter,
     maxPpDrawdownFilter,
     minPpDaysSincePeakFilter,
@@ -290,6 +315,10 @@ function App() {
     maxIpoAgeFilter,
     maxIpoDistFilter,
     maxIpoDepthFilter,
+    maxDarvasWidthFilter,
+    max52wDistFilter,
+    minSurgeOffLowFilter,
+    minNewLeadersRsFilter,
     // Optional checkbox states
     enablePpRunup,
     enablePpDrawdown,
@@ -301,8 +330,15 @@ function App() {
     enableVcpEpsGrowth,
     enableVcpRsPercentile,
     enableVcpPattern,
+    enableDarvasPattern,
+    enableDarvasWidth,
     enableRsNewHigh,
     enableAtr,
+    enable52wDist,
+    enableSurgeOffLow,
+    enableNewLeadersRs,
+    enableNewLeaders52wHigh,
+    enableNewLeadersBase,
   };
   const filteredCandidates = filterCandidates(candidates, activeFilters);
 
@@ -320,6 +356,18 @@ function App() {
             onClick={() => setActiveTab('dashboard')}
           >
             Dashboard
+          </li>
+          <li
+            className={`nav-item ${activeTab === 'market-monitor' ? 'active' : ''}`}
+            onClick={() => setActiveTab('market-monitor')}
+          >
+            Market Monitor
+          </li>
+          <li
+            className={`nav-item ${activeTab === 'sector-compare' ? 'active' : ''}`}
+            onClick={() => setActiveTab('sector-compare')}
+          >
+            Sector Compare
           </li>
           <li
             className={`nav-item ${activeTab === 'candidates' ? 'active' : ''}`}
@@ -368,6 +416,14 @@ function App() {
           />
         )}
 
+        {activeTab === 'market-monitor' && (
+          <MarketMonitorTab />
+        )}
+
+        {activeTab === 'sector-compare' && (
+          <SectorCompareTab onSelectStock={handleSelectStock} />
+        )}
+
         {activeTab === 'candidates' && (
           <CandidatesTab
             candidates={candidates}
@@ -390,6 +446,10 @@ function App() {
             setEnableIpoBase={setEnableIpoBase}
             enableVcpSetup={enableVcpSetup}
             setEnableVcpSetup={setEnableVcpSetup}
+            enableDarvasBox={enableDarvasBox}
+            setEnableDarvasBox={setEnableDarvasBox}
+            enableNewLeaders={enableNewLeaders}
+            setEnableNewLeaders={setEnableNewLeaders}
             minPpRunupFilter={minPpRunupFilter}
             setMinPpRunupFilter={setMinPpRunupFilter}
             maxPpDrawdownFilter={maxPpDrawdownFilter}
@@ -404,6 +464,14 @@ function App() {
             setMaxIpoDistFilter={setMaxIpoDistFilter}
             maxIpoDepthFilter={maxIpoDepthFilter}
             setMaxIpoDepthFilter={setMaxIpoDepthFilter}
+            maxDarvasWidthFilter={maxDarvasWidthFilter}
+            setMaxDarvasWidthFilter={setMaxDarvasWidthFilter}
+            max52wDistFilter={max52wDistFilter}
+            setMax52wDistFilter={setMax52wDistFilter}
+            minSurgeOffLowFilter={minSurgeOffLowFilter}
+            setMinSurgeOffLowFilter={setMinSurgeOffLowFilter}
+            minNewLeadersRsFilter={minNewLeadersRsFilter}
+            setMinNewLeadersRsFilter={setMinNewLeadersRsFilter}
             // Optional checkbox states & setters
             enablePpRunup={enablePpRunup}
             setEnablePpRunup={setEnablePpRunup}
@@ -425,10 +493,24 @@ function App() {
             setEnableVcpRsPercentile={setEnableVcpRsPercentile}
             enableVcpPattern={enableVcpPattern}
             setEnableVcpPattern={setEnableVcpPattern}
+            enableDarvasPattern={enableDarvasPattern}
+            setEnableDarvasPattern={setEnableDarvasPattern}
+            enableDarvasWidth={enableDarvasWidth}
+            setEnableDarvasWidth={setEnableDarvasWidth}
             enableRsNewHigh={enableRsNewHigh}
             setEnableRsNewHigh={setEnableRsNewHigh}
             enableAtr={enableAtr}
             setEnableAtr={setEnableAtr}
+            enable52wDist={enable52wDist}
+            setEnable52wDist={setEnable52wDist}
+            enableSurgeOffLow={enableSurgeOffLow}
+            setEnableSurgeOffLow={setEnableSurgeOffLow}
+            enableNewLeadersRs={enableNewLeadersRs}
+            setEnableNewLeadersRs={setEnableNewLeadersRs}
+            enableNewLeaders52wHigh={enableNewLeaders52wHigh}
+            setEnableNewLeaders52wHigh={setEnableNewLeaders52wHigh}
+            enableNewLeadersBase={enableNewLeadersBase}
+            setEnableNewLeadersBase={setEnableNewLeadersBase}
             handleSelectStock={handleSelectStock}
           />
         )}

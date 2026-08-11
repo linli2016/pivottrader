@@ -106,3 +106,29 @@ def get_sync_status():
 def execute_sql_query(payload: SQLQuerySchema):
     """Executes a raw SQL query on the database in read-only mode."""
     return db_service.execute_sql_query(payload.query)
+
+@router.get("/api/market-monitor")
+def get_market_monitor(limit: int = 252):
+    """Retrieve Stockbee Market Monitor daily breadth metrics and regime summary across the entire market."""
+    try:
+        return db_service.get_market_monitor(limit=limit)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/sectors/etfs")
+def get_sector_etfs():
+    """Retrieve Sector ETF performance, RS Rank, and RS Rank Changes (1W, 1M, 3M)."""
+    try:
+        return db_service.get_sector_etf_performance()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/sectors/{sector_name}/stocks")
+def get_sector_stocks(sector_name: str):
+    """Retrieve active candidate stocks matching a specific sector or industry group."""
+    try:
+        return db_service.get_sector_stocks(sector_name)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+

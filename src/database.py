@@ -24,12 +24,22 @@ class DatabaseManager:
                     asset_type VARCHAR NOT NULL,
                     active BOOLEAN DEFAULT TRUE,
                     ipo_date VARCHAR,
+                    sector VARCHAR,
+                    industry VARCHAR,
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
             
             try:
                 conn.execute("ALTER TABLE symbols ADD COLUMN ipo_date VARCHAR;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE symbols ADD COLUMN sector VARCHAR;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE symbols ADD COLUMN industry VARCHAR;")
             except Exception:
                 pass
             
@@ -61,6 +71,14 @@ class DatabaseManager:
                     ipo_drawdown_from_high DOUBLE,
                     ipo_base_depth DOUBLE,
                     pp_days_since_peak INTEGER,
+                    darvas_is_setup BOOLEAN,
+                    darvas_box_top DOUBLE,
+                    darvas_box_bottom DOUBLE,
+                    darvas_box_width_pct DOUBLE,
+                    high_52w DOUBLE,
+                    dist_from_52w_high DOUBLE,
+                    surge_off_low_pct DOUBLE,
+                    is_52w_high BOOLEAN,
                     PRIMARY KEY (symbol, date)
                 );
             """)
@@ -126,6 +144,38 @@ class DatabaseManager:
                 conn.execute("ALTER TABLE daily_bars ADD COLUMN ipo_base_depth DOUBLE;")
             except Exception:
                 pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN darvas_is_setup BOOLEAN;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN darvas_box_top DOUBLE;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN darvas_box_bottom DOUBLE;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN darvas_box_width_pct DOUBLE;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN high_52w DOUBLE;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN dist_from_52w_high DOUBLE;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN surge_off_low_pct DOUBLE;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE daily_bars ADD COLUMN is_52w_high BOOLEAN;")
+            except Exception:
+                pass
             
             
             # 3. Historical Quarterly Fundamentals Table
@@ -149,7 +199,7 @@ class DatabaseManager:
         df = pd.DataFrame(symbols_data)
         
         # Ensure correct column ordering and existence
-        columns = ["symbol", "exchange", "name", "asset_type", "active", "ipo_date"]
+        columns = ["symbol", "exchange", "name", "asset_type", "active", "ipo_date", "sector", "industry"]
         for col in columns:
             if col not in df.columns:
                 df[col] = None if col != "active" else True
@@ -160,8 +210,8 @@ class DatabaseManager:
             # Using DuckDB's pandas integration
             conn.execute("CREATE OR REPLACE TEMP TABLE temp_symbols AS SELECT * FROM df")
             conn.execute("""
-                INSERT INTO symbols (symbol, exchange, name, asset_type, active, ipo_date, last_updated)
-                SELECT symbol, exchange, name, asset_type, active, CAST(ipo_date AS VARCHAR), CURRENT_TIMESTAMP as last_updated
+                INSERT INTO symbols (symbol, exchange, name, asset_type, active, ipo_date, sector, industry, last_updated)
+                SELECT symbol, exchange, name, asset_type, active, CAST(ipo_date AS VARCHAR), CAST(sector AS VARCHAR), CAST(industry AS VARCHAR), CURRENT_TIMESTAMP as last_updated
                 FROM temp_symbols
                 ON CONFLICT (symbol) DO UPDATE SET
                     name = EXCLUDED.name,
@@ -169,6 +219,8 @@ class DatabaseManager:
                     asset_type = EXCLUDED.asset_type,
                     active = EXCLUDED.active,
                     ipo_date = COALESCE(symbols.ipo_date, CAST(EXCLUDED.ipo_date AS VARCHAR)),
+                    sector = COALESCE(EXCLUDED.sector, symbols.sector),
+                    industry = COALESCE(EXCLUDED.industry, symbols.industry),
                     last_updated = EXCLUDED.last_updated
             """)
             conn.execute("DROP TABLE temp_symbols")

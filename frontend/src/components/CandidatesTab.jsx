@@ -21,6 +21,10 @@ export default function CandidatesTab({
   setEnableIpoBase,
   enableVcpSetup,
   setEnableVcpSetup,
+  enableDarvasBox,
+  setEnableDarvasBox,
+  enableNewLeaders,
+  setEnableNewLeaders,
   minPpRunupFilter,
   setMinPpRunupFilter,
   maxPpDrawdownFilter,
@@ -35,6 +39,14 @@ export default function CandidatesTab({
   setMaxIpoDistFilter,
   maxIpoDepthFilter,
   setMaxIpoDepthFilter,
+  maxDarvasWidthFilter,
+  setMaxDarvasWidthFilter,
+  max52wDistFilter,
+  setMax52wDistFilter,
+  minSurgeOffLowFilter,
+  setMinSurgeOffLowFilter,
+  minNewLeadersRsFilter,
+  setMinNewLeadersRsFilter,
   // Optional checkbox states & setters
   enablePpRunup,
   setEnablePpRunup,
@@ -56,10 +68,24 @@ export default function CandidatesTab({
   setEnableVcpRsPercentile,
   enableVcpPattern,
   setEnableVcpPattern,
+  enableDarvasPattern,
+  setEnableDarvasPattern,
+  enableDarvasWidth,
+  setEnableDarvasWidth,
   enableRsNewHigh,
   setEnableRsNewHigh,
   enableAtr,
   setEnableAtr,
+  enable52wDist,
+  setEnable52wDist,
+  enableSurgeOffLow,
+  setEnableSurgeOffLow,
+  enableNewLeadersRs,
+  setEnableNewLeadersRs,
+  enableNewLeaders52wHigh,
+  setEnableNewLeaders52wHigh,
+  enableNewLeadersBase,
+  setEnableNewLeadersBase,
   handleSelectStock,
 }) {
 
@@ -102,25 +128,25 @@ export default function CandidatesTab({
 
       {/* Interactive Strategy & Filter controls */}
       <div className="glass-card" style={{ marginBottom: '24px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '18px', flexWrap: 'nowrap', overflowX: 'auto', flex: 1 }}>
             {/* Baseline Stage 2 Toggle */}
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
               <input
                 type="checkbox"
                 checked={enforceStage2}
                 onChange={(e) => setEnforceStage2(e.target.checked)}
-                style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--accent-color)' }}
+                style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: 'var(--accent-color)' }}
               />
               📈 Stage 2 Trend
             </label>
 
-            <span style={{ color: 'rgba(255, 255, 255, 0.1)', fontSize: '16px' }}>|</span>
+            <span style={{ color: 'rgba(255, 255, 255, 0.15)', fontSize: '14px' }}>|</span>
 
             {/* Setup Overlay Checkboxes */}
-            <span style={{ fontSize: '13px', fontWeight: '500', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Setup Overlays:</span>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Setups:</span>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '500', color: 'var(--text-primary)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
               <input
                 type="checkbox"
                 checked={enablePowerPlay}
@@ -130,17 +156,19 @@ export default function CandidatesTab({
                   if (val) {
                     setEnableIpoBase(false);
                     setEnableVcpSetup(false);
+                    setEnableDarvasBox(false);
+                    setEnableNewLeaders(false);
                     setEnforceStage2(false);
                   } else {
                     setEnforceStage2(true);
                   }
                 }}
-                style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--accent-color)' }}
+                style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: 'var(--accent-color)' }}
               />
               🚀 Power Play
             </label>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '500', color: 'var(--text-primary)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
               <input
                 type="checkbox"
                 checked={enableIpoBase}
@@ -150,14 +178,16 @@ export default function CandidatesTab({
                   if (val) {
                     setEnablePowerPlay(false);
                     setEnableVcpSetup(false);
+                    setEnableDarvasBox(false);
+                    setEnableNewLeaders(false);
                   }
                 }}
-                style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--accent-color)' }}
+                style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: 'var(--accent-color)' }}
               />
               📅 IPO Base
             </label>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '500', color: 'var(--text-primary)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
               <input
                 type="checkbox"
                 checked={enableVcpSetup}
@@ -167,16 +197,55 @@ export default function CandidatesTab({
                   if (val) {
                     setEnablePowerPlay(false);
                     setEnableIpoBase(false);
+                    setEnableDarvasBox(false);
+                    setEnableNewLeaders(false);
                   }
                 }}
-                style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: 'var(--accent-color)' }}
+                style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: 'var(--accent-color)' }}
               />
               ⚡ VCP Setup
             </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+              <input
+                type="checkbox"
+                checked={enableDarvasBox}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setEnableDarvasBox(val);
+                  if (val) {
+                    setEnablePowerPlay(false);
+                    setEnableIpoBase(false);
+                    setEnableVcpSetup(false);
+                    setEnableNewLeaders(false);
+                    setEnforceStage2(true);
+                  }
+                }}
+                style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: 'var(--accent-color)' }}
+              />
+              📦 Darvas Box
+            </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+              <input
+                type="checkbox"
+                checked={enableNewLeaders}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setEnableNewLeaders(val);
+                  if (val) {
+                    setEnablePowerPlay(false);
+                    setEnableIpoBase(false);
+                    setEnableVcpSetup(false);
+                    setEnableDarvasBox(false);
+                    setEnforceStage2(true);
+                  }
+                }}
+                style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: 'var(--accent-color)' }}
+              />
+              🌟 New Leaders
+            </label>
           </div>
-          <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
-            Showing <strong>{filteredCandidates.length}</strong> of <strong>{candidates.length}</strong> ranked stocks
-          </span>
         </div>
 
         {/* Currently Selected Setup Criteria Text Section */}
@@ -193,16 +262,23 @@ export default function CandidatesTab({
             <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#38bdf8', letterSpacing: '0.5px', textTransform: 'uppercase', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
               📋 Currently Selected Setup Criteria
             </h4>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.06)', padding: '3px 10px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
-              {enablePowerPlay ? '🚀 Power Play' : enableIpoBase ? '📅 IPO Base' : enableVcpSetup ? '⚡ VCP Setup' : '📈 Stage 2 Trend Baseline'}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.06)', padding: '3px 10px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                {enablePowerPlay ? '🚀 Power Play' : enableIpoBase ? '📅 IPO Base' : enableVcpSetup ? '⚡ VCP Setup' : enableDarvasBox ? '📦 Darvas Box' : enableNewLeaders ? '🌟 New Leaders' : '📈 Stage 2 Trend Baseline'}
+              </span>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: '#38bdf8', background: 'rgba(56, 189, 248, 0.12)', padding: '3px 10px', borderRadius: '12px', border: '1px solid rgba(56, 189, 248, 0.3)', whiteSpace: 'nowrap' }}>
+                Showing {filteredCandidates.length.toLocaleString()} / {candidates.length.toLocaleString()} stocks
+              </span>
+            </div>
           </div>
 
           <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.5' }}>
             {enablePowerPlay && 'Screening for high-velocity momentum stocks undergoing shallow high-level consolidations after a massive price expansion.'}
             {enableIpoBase && 'Screening for young, recently listed growth stocks constructing their initial primary base after going public.'}
             {enableVcpSetup && 'Screening for Mark Minervini\'s signature Volatility Contraction Pattern (VCP), where overhead supply dries up through contracting swings.'}
-            {!enablePowerPlay && !enableIpoBase && !enableVcpSetup && 'Screening for classic Minervini Stage 2 uptrend stocks in confirmed institutional mark-up phases.'}
+            {enableDarvasBox && 'Screening for Nicolas Darvas\'s Box strategy, identifying stocks consolidating in tight support/resistance boxes within confirmed Phase 2 uptrends.'}
+            {enableNewLeaders && 'Screening for market correction turn leadership—stocks trading near 52-week highs that corrected the least and surged off market lows with top relative strength.'}
+            {!enablePowerPlay && !enableIpoBase && !enableVcpSetup && !enableDarvasBox && !enableNewLeaders && 'Screening for classic Minervini Stage 2 uptrend stocks in confirmed institutional mark-up phases.'}
           </p>
 
           {enablePowerPlay ? (
@@ -229,13 +305,30 @@ export default function CandidatesTab({
               )}
               {enableVcpSetup && (
                 <>
-                  <li><strong>Contraction Progression:</strong> Sequential narrowing price swings (D₁ &gt; D₂ &gt; D₃) with final contraction &le; 10% {enableVcpPattern ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>52-Week High Proximity:</strong> Current price is within 15% of the 52-week high (Active)</li>
+                  <li><strong>Contractions from 52w High:</strong> At least 2 contractions ($T_1, T_2$) from 52-week high point to now {enableVcpPattern ? '(Active)' : '(Disabled)'}</li>
                   <li><strong>Relative Strength:</strong> RS Percentile Rank &ge; {minRsFilter}th percentile {enableVcpRsPercentile ? '(Active)' : '(Disabled)'}</li>
                   <li><strong>Earnings Growth:</strong> QoQ Diluted EPS Growth &ge; {minEpsGrowthFilter}% {enableVcpEpsGrowth ? '(Active)' : '(Disabled)'}</li>
                   <li><strong>Trend Baseline:</strong> Enforces Stage 2 Trend Template (Close &gt; SMA 50 &gt; SMA 150 &gt; SMA 200)</li>
                 </>
               )}
-              {!enablePowerPlay && !enableIpoBase && !enableVcpSetup && (
+              {enableDarvasBox && (
+                <>
+                  <li><strong>Box Formation:</strong> Unbreached 3-day peak (Box Top) and 3-day floor (Box Bottom) {enableDarvasPattern ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>Max Box Height:</strong> Box width (Top - Bottom) / Top &le; {maxDarvasWidthFilter}% {enableDarvasWidth ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>Phase 2 Baseline:</strong> Enforces Stage 2 Trend Template (Close &gt; SMA 50 &gt; SMA 150 &gt; SMA 200) by default</li>
+                </>
+              )}
+              {enableNewLeaders && (
+                <>
+                  <li><strong>52-Week High Proximity:</strong> Trading within &le; {max52wDistFilter}% of 52-week high {enable52wDist ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>Surge off Lows:</strong> Rebound &ge; {minSurgeOffLowFilter}% off recent 60-day market low {enableSurgeOffLow ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>Relative Strength:</strong> Leader RS Percentile Rank &ge; {minNewLeadersRsFilter}th percentile {enableNewLeadersRs ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>52-Week High List:</strong> {enableNewLeaders52wHigh ? 'Must be touching/hitting 52-week high (Active)' : 'Near or touching 52-week high list'}</li>
+                  <li><strong>Uptrend & Base Context:</strong> Consolidating or base-building in Stage 2 uptrend {enableNewLeadersBase ? '(Enforced)' : '(Disabled)'}</li>
+                </>
+              )}
+              {!enablePowerPlay && !enableIpoBase && !enableVcpSetup && !enableDarvasBox && !enableNewLeaders && (
                 <>
                   <li><strong>Moving Average Alignment:</strong> Close &gt; SMA(50) &gt; SMA(150) &gt; SMA(200) {enforceStage2 ? '(Enforced)' : '(Disabled)'}</li>
                   <li><strong>Liquidity Baseline:</strong> Min stock price &ge; ${minPriceFilter.toFixed(2)} and 50d Volume MA &ge; {minVolFilter.toLocaleString()}</li>
@@ -846,6 +939,213 @@ export default function CandidatesTab({
               </div>
             </>
           )}
+
+          {/* ========================================== */}
+          {/* 5. Darvas Box Sliders (Visible if selected) */}
+          {/* ========================================== */}
+          {enableDarvasBox && (
+            <>
+              {/* Max Darvas Box Width % */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableDarvasWidth ? 1 : 0.5 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={enableDarvasWidth}
+                    onChange={(e) => setEnableDarvasWidth(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  />
+                  Max Box Width ({maxDarvasWidthFilter}%):
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="range"
+                    min="5"
+                    max="50"
+                    step="1"
+                    value={maxDarvasWidthFilter}
+                    disabled={!enableDarvasWidth}
+                    onChange={(e) => setMaxDarvasWidthFilter(parseFloat(e.target.value) || 0)}
+                    style={{ flex: 1, cursor: enableDarvasWidth ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                  />
+                  <input
+                    type="number"
+                    min="5"
+                    max="80"
+                    value={maxDarvasWidthFilter}
+                    disabled={!enableDarvasWidth}
+                    onChange={(e) => setMaxDarvasWidthFilter(parseFloat(e.target.value) || 0)}
+                    style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                  />
+                </div>
+              </div>
+
+              {/* Darvas Pattern Recognition */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableDarvasPattern ? 1 : 0.5 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={enableDarvasPattern}
+                    onChange={(e) => setEnableDarvasPattern(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  />
+                  Darvas Box Pattern Recognition
+                </label>
+                <div style={{
+                  padding: '8px 12px',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  color: enableDarvasPattern ? 'var(--accent-success)' : 'var(--text-secondary)',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  height: '100%',
+                  boxSizing: 'border-box'
+                }}>
+                  {enableDarvasPattern ? '📦 Pattern Recognition Active' : '⚪ Pattern Recognition Waived'}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ========================================== */}
+          {/* 6. New Leaders Sliders (Visible if selected) */}
+          {/* ========================================== */}
+          {enableNewLeaders && (
+            <>
+              {/* Max Distance from 52w High % */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enable52wDist ? 1 : 0.5 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={enable52wDist}
+                    onChange={(e) => setEnable52wDist(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  />
+                  Max Dist from 52w High ({max52wDistFilter}%):
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="range"
+                    min="5"
+                    max="40"
+                    step="1"
+                    value={max52wDistFilter}
+                    disabled={!enable52wDist}
+                    onChange={(e) => setMax52wDistFilter(parseFloat(e.target.value) || 0)}
+                    style={{ flex: 1, cursor: enable52wDist ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    value={max52wDistFilter}
+                    disabled={!enable52wDist}
+                    onChange={(e) => setMax52wDistFilter(parseFloat(e.target.value) || 0)}
+                    style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                  />
+                </div>
+              </div>
+
+              {/* Min Surge off Market Low % */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableSurgeOffLow ? 1 : 0.5 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={enableSurgeOffLow}
+                    onChange={(e) => setEnableSurgeOffLow(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  />
+                  Min Surge off Market Low ({minSurgeOffLowFilter}%):
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="range"
+                    min="5"
+                    max="100"
+                    step="5"
+                    value={minSurgeOffLowFilter}
+                    disabled={!enableSurgeOffLow}
+                    onChange={(e) => setMinSurgeOffLowFilter(parseFloat(e.target.value) || 0)}
+                    style={{ flex: 1, cursor: enableSurgeOffLow ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max="300"
+                    value={minSurgeOffLowFilter}
+                    disabled={!enableSurgeOffLow}
+                    onChange={(e) => setMinSurgeOffLowFilter(parseFloat(e.target.value) || 0)}
+                    style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                  />
+                </div>
+              </div>
+
+              {/* Leader RS Rank */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableNewLeadersRs ? 1 : 0.5 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={enableNewLeadersRs}
+                    onChange={(e) => setEnableNewLeadersRs(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  />
+                  Min Leader RS Rank ({minNewLeadersRsFilter}):
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="range"
+                    min="50"
+                    max="99"
+                    value={minNewLeadersRsFilter}
+                    disabled={!enableNewLeadersRs}
+                    onChange={(e) => setMinNewLeadersRsFilter(parseInt(e.target.value) || 0)}
+                    style={{ flex: 1, cursor: enableNewLeadersRs ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={minNewLeadersRsFilter}
+                    disabled={!enableNewLeadersRs}
+                    onChange={(e) => setMinNewLeadersRsFilter(parseInt(e.target.value) || 0)}
+                    style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                  />
+                </div>
+              </div>
+
+              {/* 52-Week High List Toggle */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableNewLeaders52wHigh ? 1 : 0.5 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={enableNewLeaders52wHigh}
+                    onChange={(e) => setEnableNewLeaders52wHigh(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  />
+                  52-Week High List Requirement
+                </label>
+                <div style={{
+                  padding: '8px 12px',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  color: enableNewLeaders52wHigh ? 'var(--accent-success)' : 'var(--text-secondary)',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  height: '100%',
+                  boxSizing: 'border-box'
+                }}>
+                  {enableNewLeaders52wHigh ? '🔥 Must be hitting 52w High' : '⚪ Near 52w High (Within Dist %)'}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -855,6 +1155,7 @@ export default function CandidatesTab({
           <thead>
             <tr>
               <th>Ticker</th>
+              <th>Sector / Industry</th>
               <th>Price</th>
               <th>Vol 50d MA</th>
               <th>RS Score</th>
@@ -876,13 +1177,27 @@ export default function CandidatesTab({
                   <th>Base Depth</th>
                 </>
               )}
+              {enableNewLeaders && (
+                <>
+                  <th>52w High Dist</th>
+                  <th>Surge off Low</th>
+                  <th>52w High Status</th>
+                </>
+              )}
               <th>VCP Setup</th>
+              <th>Darvas Box</th>
             </tr>
           </thead>
           <tbody>
             {filteredCandidates.map((c, i) => (
               <tr key={i} onClick={() => handleSelectStock(c)} style={{ cursor: 'pointer' }}>
                 <td style={{ fontWeight: 'bold', color: 'var(--accent-color)' }}>{c.symbol}</td>
+                <td>
+                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {c.sector ? `${c.sector}${c.sector_rank ? ` (${c.sector_rank})` : ''}` : 'N/A'}
+                  </span>
+                  <span style={{ fontSize: '11px', display: 'block', color: 'var(--text-secondary)' }}>{c.industry || 'N/A'}</span>
+                </td>
                 <td>${c.close.toFixed(2)}</td>
                 <td>{c.vol_50d_ma.toLocaleString()}</td>
                 <td>{c.rs_score ? c.rs_score.toFixed(4) : 'N/A'}</td>
@@ -928,6 +1243,23 @@ export default function CandidatesTab({
                     </td>
                   </>
                 )}
+                {enableNewLeaders && (
+                  <>
+                    <td style={{ color: c.dist_from_52w_high !== null && c.dist_from_52w_high <= 15 ? 'var(--accent-success)' : 'var(--text-primary)', fontWeight: '600' }}>
+                      {c.dist_from_52w_high !== null && c.dist_from_52w_high !== undefined ? `${c.dist_from_52w_high.toFixed(1)}%` : '0%'}
+                    </td>
+                    <td style={{ color: 'var(--accent-success)', fontWeight: '600' }}>
+                      +{c.surge_off_low_pct !== null && c.surge_off_low_pct !== undefined ? `${c.surge_off_low_pct.toFixed(1)}%` : '0%'}
+                    </td>
+                    <td>
+                      {c.is_52w_high ? (
+                        <span className="pill pill-success" style={{ fontWeight: 'bold' }}>🔥 52w High</span>
+                      ) : (
+                        <span style={{ color: 'var(--text-secondary)' }}>Near High</span>
+                      )}
+                    </td>
+                  </>
+                )}
                 <td>
                   {c.vcp_is_setup ? (
                     <span className="pill pill-success" style={{ fontStyle: 'italic', fontWeight: 'bold' }}>
@@ -937,11 +1269,20 @@ export default function CandidatesTab({
                     <span style={{ color: 'var(--text-secondary)' }}>No</span>
                   )}
                 </td>
+                <td>
+                  {c.darvas_is_setup ? (
+                    <span className="pill pill-success" style={{ fontStyle: 'italic', fontWeight: 'bold' }}>
+                      📦 ${c.darvas_box_bottom?.toFixed(2)} - ${c.darvas_box_top?.toFixed(2)} ({c.darvas_box_width_pct?.toFixed(1)}%)
+                    </span>
+                  ) : (
+                    <span style={{ color: 'var(--text-secondary)' }}>No</span>
+                  )}
+                </td>
               </tr>
             ))}
             {filteredCandidates.length === 0 && (
               <tr>
-                <td colSpan={9 + (enablePowerPlay ? 3 : 0) + (enableIpoBase ? 3 : 0)} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                <td colSpan={10 + (enablePowerPlay ? 3 : 0) + (enableIpoBase ? 3 : 0) + (enableNewLeaders ? 3 : 0)} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
                   No candidates matching current config rules found in database cache. Run "Sync Database Tickers" to evaluate stocks.
                 </td>
               </tr>

@@ -1,5 +1,6 @@
 import os
 import duckdb
+import pandas as pd
 from typing import Dict, Any, List
 from .config import config_service
 
@@ -62,7 +63,7 @@ class DatabaseService:
             ),
             ranked_bars AS (
                 SELECT 
-                    symbol, close, volume, vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, pp_days_since_peak, sma_50, sma_150, sma_200, vcp_is_setup, vcp_troughs, vcp_depths, ipo_days_count, ipo_all_time_high, ipo_drawdown_from_high, ipo_base_depth,
+                    symbol, close, volume, vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, pp_days_since_peak, sma_50, sma_150, sma_200, vcp_is_setup, vcp_troughs, vcp_depths, ipo_days_count, ipo_all_time_high, ipo_drawdown_from_high, ipo_base_depth, darvas_is_setup, darvas_box_top, darvas_box_bottom, darvas_box_width_pct,
                     (rs_rank >= COALESCE(
                         (
                             SELECT MAX(d.rs_rank) 
@@ -71,7 +72,11 @@ class DatabaseService:
                               AND d.date < db.date 
                               AND d.date >= db.date - INTERVAL 252 DAY
                         ), 0
-                    )) as rs_rank_is_new_high
+                    )) as rs_rank_is_new_high,
+                    (SELECT MAX(d.high) FROM daily_bars d WHERE d.symbol = db.symbol AND d.date <= db.date AND d.date >= db.date - INTERVAL 252 DAY) as high_52w,
+                    ROUND((( (SELECT MAX(d.high) FROM daily_bars d WHERE d.symbol = db.symbol AND d.date <= db.date AND d.date >= db.date - INTERVAL 252 DAY) - db.close) / NULLIF((SELECT MAX(d.high) FROM daily_bars d WHERE d.symbol = db.symbol AND d.date <= db.date AND d.date >= db.date - INTERVAL 252 DAY), 0)) * 100.0, 2) as dist_from_52w_high,
+                    ROUND(((db.close - (SELECT MIN(d.low) FROM daily_bars d WHERE d.symbol = db.symbol AND d.date <= db.date AND d.date >= db.date - INTERVAL 60 DAY)) / NULLIF((SELECT MIN(d.low) FROM daily_bars d WHERE d.symbol = db.symbol AND d.date <= db.date AND d.date >= db.date - INTERVAL 60 DAY), 0)) * 100.0, 2) as surge_off_low_pct,
+                    (db.high >= COALESCE((SELECT MAX(d.high) FROM daily_bars d WHERE d.symbol = db.symbol AND d.date < db.date AND d.date >= db.date - INTERVAL 252 DAY), 0)) as is_52w_high
                 FROM daily_bars db
                 WHERE date = (SELECT val FROM latest_date_const)
             )
@@ -102,7 +107,17 @@ class DatabaseService:
                 r.ipo_all_time_high,
                 r.ipo_drawdown_from_high,
                 r.ipo_base_depth,
-                r.rs_rank_is_new_high
+                r.darvas_is_setup,
+                r.darvas_box_top,
+                r.darvas_box_bottom,
+                r.darvas_box_width_pct,
+                r.rs_rank_is_new_high,
+                r.high_52w,
+                r.dist_from_52w_high,
+                r.surge_off_low_pct,
+                r.is_52w_high,
+                s.sector,
+                s.industry
             FROM ranked_bars r
             LEFT JOIN latest_fundamentals f ON r.symbol = f.symbol AND f.rn = 1
             JOIN symbols s ON r.symbol = s.symbol
@@ -116,11 +131,50 @@ class DatabaseService:
             table_names = [t[0] for t in tables]
             if "daily_bars" not in table_names:
                 return []
-                
+
+            # Calculate sector ranks from Sector ETFs
+            sector_etf_map = {
+                'XLK': 'Technology',
+                'XLE': 'Energy',
+                'XLV': 'Health Care',
+                'XLI': 'Industrials',
+                'XLB': 'Basic Materials',
+                'XLF': 'Finance',
+                'XLRE': 'Real Estate',
+                'XLP': 'Consumer Staples',
+                'XLY': 'Consumer Discretionary',
+                'XLU': 'Utilities',
+                'XLC': 'Telecommunications'
+            }
+            
+            sector_ranks = {}
+            try:
+                etf_rows = conn.execute("""
+                    WITH etf_bars AS (
+                        SELECT d.symbol, d.rs_rank,
+                               ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date DESC) as rn
+                        FROM daily_bars d
+                        WHERE d.symbol IN ('XLK', 'XLF', 'XLV', 'XLY', 'XLP', 'XLE', 'XLI', 'XLB', 'XLU', 'XLRE', 'XLC')
+                    )
+                    SELECT symbol, rs_rank FROM etf_bars WHERE rn = 1 ORDER BY rs_rank DESC
+                """).fetchall()
+                for rank_idx, (etf_sym, etf_rs) in enumerate(etf_rows, 1):
+                    sec_name = sector_etf_map.get(etf_sym)
+                    if sec_name:
+                        sector_ranks[sec_name] = rank_idx
+                        if sec_name == 'Finance':
+                            sector_ranks['Financials'] = rank_idx
+                        elif sec_name == 'Telecommunications':
+                            sector_ranks['Communication Services'] = rank_idx
+            except Exception as e:
+                print(f"Error calculating sector ranks: {e}")
+
             res = conn.execute(query).fetchall()
             
             candidates = []
             for row in res:
+                sec_val = row[35]
+                sec_rank = sector_ranks.get(sec_val) if sec_val else None
                 candidates.append({
                     "symbol": row[0],
                     "close": row[1],
@@ -149,7 +203,18 @@ class DatabaseService:
                     "ipo_all_time_high": row[23],
                     "ipo_drawdown_from_high": row[24],
                     "ipo_base_depth": row[25],
-                    "rs_rank_is_new_high": bool(row[26]) if row[26] is not None else False
+                    "darvas_is_setup": bool(row[26]) if row[26] is not None else False,
+                    "darvas_box_top": row[27],
+                    "darvas_box_bottom": row[28],
+                    "darvas_box_width_pct": row[29],
+                    "rs_rank_is_new_high": bool(row[30]) if row[30] is not None else False,
+                    "high_52w": row[31],
+                    "dist_from_52w_high": row[32],
+                    "surge_off_low_pct": row[33],
+                    "is_52w_high": bool(row[34]) if row[34] is not None else False,
+                    "sector": sec_val,
+                    "sector_rank": sec_rank,
+                    "industry": row[36]
                 })
             return candidates
 
@@ -440,4 +505,222 @@ class DatabaseService:
                 "count": 0
             }
 
+    def get_market_monitor(self, limit: int = 252) -> Dict[str, Any]:
+        """Calculates Stockbee Market Monitor metrics across the entire market universe."""
+        query = """
+            WITH daily_gains AS (
+                SELECT 
+                    symbol,
+                    date,
+                    close,
+                    LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) as prev_close,
+                    LAG(close, 20) OVER (PARTITION BY symbol ORDER BY date) as close_20d_ago,
+                    LAG(close, 65) OVER (PARTITION BY symbol ORDER BY date) as close_65d_ago
+                FROM daily_bars
+            ),
+            daily_counts AS (
+                SELECT 
+                    date,
+                    COUNT(CASE WHEN prev_close > 0 AND ((close - prev_close)/prev_close)*100 >= 4.0 THEN 1 END) as gainers_4pct,
+                    COUNT(CASE WHEN prev_close > 0 AND ((close - prev_close)/prev_close)*100 <= -4.0 THEN 1 END) as losers_4pct,
+                    COUNT(CASE WHEN close_20d_ago > 0 AND ((close - close_20d_ago)/close_20d_ago)*100 >= 25.0 THEN 1 END) as up_25pct_1m,
+                    COUNT(CASE WHEN close_20d_ago > 0 AND ((close - close_20d_ago)/close_20d_ago)*100 <= -25.0 THEN 1 END) as down_25pct_1m,
+                    COUNT(CASE WHEN close_65d_ago > 0 AND ((close - close_65d_ago)/close_65d_ago)*100 >= 25.0 THEN 1 END) as up_25pct_3m,
+                    COUNT(CASE WHEN close_65d_ago > 0 AND ((close - close_65d_ago)/close_65d_ago)*100 <= -25.0 THEN 1 END) as down_25pct_3m,
+                    COUNT(CASE WHEN close_20d_ago > 0 AND ((close - close_20d_ago)/close_20d_ago)*100 >= 50.0 THEN 1 END) as up_50pct_1m,
+                    COUNT(CASE WHEN close_65d_ago > 0 AND ((close - close_65d_ago)/close_65d_ago)*100 >= 50.0 THEN 1 END) as up_50pct_3m,
+                    COUNT(CASE WHEN close_65d_ago > 0 AND ((close - close_65d_ago)/close_65d_ago)*100 <= -50.0 THEN 1 END) as down_50pct_3m
+                FROM daily_gains
+                GROUP BY date
+                ORDER BY date ASC
+            )
+            SELECT * FROM daily_counts;
+        """
+        try:
+            with self.get_read_only_conn() as conn:
+                df = conn.execute(query).df()
+                
+            if df.empty:
+                return {"summary": {}, "daily_data": []}
+
+            # Convert date column to string YYYY-MM-DD
+            df['date_str'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
+
+            # Calculate 13-day EMA of 4% UP and 4% DOWN
+            df['ema_13_up'] = df['gainers_4pct'].ewm(span=13, adjust=False).mean().round(1)
+            df['ema_13_down'] = df['losers_4pct'].ewm(span=13, adjust=False).mean().round(1)
+            df['net_4pct'] = df['gainers_4pct'] - df['losers_4pct']
+            df['ratio_4pct'] = (df['gainers_4pct'] / df['losers_4pct'].replace(0, 1)).round(2)
+
+            # Sort descending for response (latest date first)
+            df_desc = df.sort_values(by='date', ascending=False)
+            
+            # Filter limit
+            if limit and limit > 0:
+                df_desc = df_desc.head(limit)
+
+            daily_list = []
+            for _, row in df_desc.iterrows():
+                daily_list.append({
+                    "date": str(row['date_str']),
+                    "gainers_4pct": int(row['gainers_4pct']),
+                    "losers_4pct": int(row['losers_4pct']),
+                    "net_4pct": int(row['net_4pct']),
+                    "ratio_4pct": float(row['ratio_4pct']),
+                    "up_25pct_1m": int(row['up_25pct_1m']),
+                    "down_25pct_1m": int(row['down_25pct_1m']),
+                    "up_25pct_3m": int(row['up_25pct_3m']),
+                    "down_25pct_3m": int(row['down_25pct_3m']),
+                    "up_50pct_1m": int(row['up_50pct_1m']),
+                    "up_50pct_3m": int(row['up_50pct_3m']),
+                    "down_50pct_3m": int(row['down_50pct_3m']),
+                    "ema_13_up": float(row['ema_13_up']),
+                    "ema_13_down": float(row['ema_13_down'])
+                })
+
+            # Calculate overall Regime Status & Metrics
+            latest = daily_list[0] if daily_list else {}
+            last_5 = daily_list[:5]
+            sum_5d_net = sum(r["net_4pct"] for r in last_5) if last_5 else 0
+
+            regime = "Neutral / Transition"
+            if latest.get("gainers_4pct", 0) >= 2 * max(latest.get("losers_4pct", 1), 1) and latest.get("gainers_4pct", 0) > 300:
+                regime = "Bullish Thrust / Expansion"
+            elif latest.get("up_25pct_1m", 0) > latest.get("down_25pct_1m", 0) * 1.5:
+                regime = "Bullish Expansion"
+            elif latest.get("losers_4pct", 0) >= 2 * max(latest.get("gainers_4pct", 1), 1) and latest.get("losers_4pct", 0) > 300:
+                regime = "Bearish Distribution / Contraction"
+            elif latest.get("down_25pct_1m", 0) > latest.get("up_25pct_1m", 0) * 1.5:
+                regime = "Bearish Contraction"
+
+            summary = {
+                "latest_date": latest.get("date"),
+                "latest_gainers_4pct": latest.get("gainers_4pct"),
+                "latest_losers_4pct": latest.get("losers_4pct"),
+                "latest_ratio_4pct": latest.get("ratio_4pct"),
+                "sum_5d_net_4pct": sum_5d_net,
+                "latest_up_25pct_1m": latest.get("up_25pct_1m"),
+                "latest_down_25pct_1m": latest.get("down_25pct_1m"),
+                "latest_up_25pct_3m": latest.get("up_25pct_3m"),
+                "latest_down_25pct_3m": latest.get("down_25pct_3m"),
+                "regime": regime
+            }
+
+            return {"summary": summary, "daily_data": daily_list}
+        except Exception as e:
+            return {"error": str(e), "summary": {}, "daily_data": []}
+
+    def get_sector_etf_performance(self) -> List[Dict[str, Any]]:
+        """Calculates performance, RS Score, RS Rank, and RS Rank Changes for primary Sector ETFs."""
+        etf_symbols = ['XLK', 'XLF', 'XLV', 'XLY', 'XLP', 'XLE', 'XLI', 'XLB', 'XLU', 'XLRE', 'XLC', 'SPY', 'QQQ']
+        symbols_str = ', '.join(f"'{s}'" for s in etf_symbols)
+
+        query = f"""
+            WITH etf_bars AS (
+                SELECT 
+                    d.symbol,
+                    d.date,
+                    d.close,
+                    d.rs_score,
+                    d.rs_rank,
+                    s.name,
+                    s.sector,
+                    s.industry,
+                    ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date DESC) as rn_desc
+                FROM daily_bars d
+                JOIN symbols s ON d.symbol = s.symbol
+                WHERE d.symbol IN ({symbols_str})
+            ),
+            latest_etfs AS (
+                SELECT * FROM etf_bars WHERE rn_desc = 1
+            ),
+            bars_5d_ago AS (
+                SELECT symbol, close as close_5d, rs_rank as rs_rank_5d FROM etf_bars WHERE rn_desc = 6
+            ),
+            bars_20d_ago AS (
+                SELECT symbol, close as close_20d, rs_rank as rs_rank_20d FROM etf_bars WHERE rn_desc = 21
+            ),
+            bars_65d_ago AS (
+                SELECT symbol, close as close_65d, rs_rank as rs_rank_65d FROM etf_bars WHERE rn_desc = 66
+            )
+            SELECT 
+                l.symbol,
+                l.name,
+                l.sector,
+                l.industry,
+                l.close,
+                l.rs_score,
+                l.rs_rank,
+                ROUND(((l.close - b5.close_5d) / NULLIF(b5.close_5d, 0)) * 100.0, 2) as ret_1w_pct,
+                COALESCE((l.rs_rank - b5.rs_rank_5d), 0) as delta_rs_1w,
+                ROUND(((l.close - b20.close_20d) / NULLIF(b20.close_20d, 0)) * 100.0, 2) as ret_1m_pct,
+                COALESCE((l.rs_rank - b20.rs_rank_20d), 0) as delta_rs_1m,
+                ROUND(((l.close - b65.close_65d) / NULLIF(b65.close_65d, 0)) * 100.0, 2) as ret_3m_pct,
+                COALESCE((l.rs_rank - b65.rs_rank_65d), 0) as delta_rs_3m
+            FROM latest_etfs l
+            LEFT JOIN bars_5d_ago b5 ON l.symbol = b5.symbol
+            LEFT JOIN bars_20d_ago b20 ON l.symbol = b20.symbol
+            LEFT JOIN bars_65d_ago b65 ON l.symbol = b65.symbol
+            ORDER BY delta_rs_1w DESC;
+        """
+        try:
+            with self.get_read_only_conn() as conn:
+                res = conn.execute(query).fetchall()
+                cols = [c[0] for c in conn.description]
+
+            etf_list = []
+            for row in res:
+                r_dict = dict(zip(cols, row))
+                etf_list.append(r_dict)
+
+            return etf_list
+        except Exception as e:
+            print(f"Error getting sector ETF performance: {e}")
+            return []
+
+    def get_sector_stocks(self, sector_name: str) -> List[Dict[str, Any]]:
+        """Retrieves candidate stocks belonging to a specific sector or industry."""
+        all_cands = self.get_candidates()
+        if not sector_name or sector_name.upper() == 'ALL':
+            return all_cands
+
+        etf_matchers = {
+            'XLK': ('Technology', None),
+            'SMH': ('Technology', 'Semiconductors'),
+            'IGV': ('Technology', 'Software'),
+            'XLF': ('Finance', None),
+            'KRE': ('Finance', 'Banks'),
+            'XLV': ('Health Care', None),
+            'XBI': ('Health Care', 'Biotechnology'),
+            'XLY': ('Consumer Discretionary', None),
+            'XRT': ('Consumer Discretionary', 'Retail'),
+            'ITB': ('Consumer Discretionary', 'Building'),
+            'XLE': ('Energy', None),
+            'XOP': ('Energy', 'Oil'),
+            'XLI': ('Industrials', None),
+            'ITA': ('Industrials', 'Military'),
+            'XLB': ('Basic Materials', None),
+            'XLU': ('Utilities', None),
+            'XLRE': ('Real Estate', None),
+            'XLC': ('Telecommunications', None),
+        }
+
+        sec_upper = sector_name.strip().upper()
+        target_sec, target_ind = etf_matchers.get(sec_upper, (sec_upper, None))
+
+        filtered = []
+        for c in all_cands:
+            c_sec = (c.get("sector") or "").strip().upper()
+            c_ind = (c.get("industry") or "").strip().upper()
+            
+            if target_ind:
+                if target_ind.upper() in c_ind:
+                    filtered.append(c)
+            else:
+                if target_sec in c_sec or c_sec in target_sec or target_sec in c_ind:
+                    filtered.append(c)
+
+        return filtered
+
 db_service = DatabaseService(config_service)
+
