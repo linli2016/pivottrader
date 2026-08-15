@@ -29,6 +29,13 @@ momentum_filters:
 fundamental_filters:
   min_eps_growth_qoq: 20  # Minimum QoQ EPS growth percentage
 
+# Qullamaggie 3 Setups Configuration
+qullamaggie_setups:
+  min_ep_gap_pct: 8.0
+  min_ep_rel_vol: 2.5
+  min_parabolic_runup_pct: 40.0
+  min_parabolic_ema_ext_pct: 18.0
+
 # Watchlist Export Options
 export:
   file_name: "Minervini_VCP_Candidates.txt"

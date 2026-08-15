@@ -25,6 +25,38 @@ export default function CandidatesTab({
   setEnableDarvasBox,
   enableNewLeaders,
   setEnableNewLeaders,
+  enableQullamaggieBreakout,
+  setEnableQullamaggieBreakout,
+  enableEpisodicPivot,
+  setEnableEpisodicPivot,
+  enableParabolicShort,
+  setEnableParabolicShort,
+  enableParabolicLong,
+  setEnableParabolicLong,
+  min1mRetFilter,
+  setMin1mRetFilter,
+  enable1mRet,
+  setEnable1mRet,
+  enableEmaSurfing,
+  setEnableEmaSurfing,
+  minEpGapFilter,
+  setMinEpGapFilter,
+  enableEpGap,
+  setEnableEpGap,
+  minEpRelVolFilter,
+  setMinEpRelVolFilter,
+  enableEpRelVol,
+  setEnableEpRelVol,
+  enableEpFlag,
+  setEnableEpFlag,
+  minParabolicRunupFilter,
+  setMinParabolicRunupFilter,
+  enableParabolicRunup,
+  setEnableParabolicRunup,
+  minParabolicEmaDistFilter,
+  setMinParabolicEmaDistFilter,
+  enableParabolicEmaDist,
+  setEnableParabolicEmaDist,
   minPpRunupFilter,
   setMinPpRunupFilter,
   maxPpDrawdownFilter,
@@ -88,6 +120,8 @@ export default function CandidatesTab({
   setEnableNewLeadersBase,
   handleSelectStock,
 }) {
+  const [showSetupGuideModal, setShowSetupGuideModal] = React.useState(false);
+  const [activeGuideTab, setActiveGuideTab] = React.useState('qullamaggie_breakout');
 
   const handleExportTradingView = () => {
     if (filteredCandidates.length === 0) {
@@ -128,8 +162,9 @@ export default function CandidatesTab({
 
       {/* Interactive Strategy & Filter controls */}
       <div className="glass-card" style={{ marginBottom: '24px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '18px', flexWrap: 'nowrap', overflowX: 'auto', flex: 1 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
+          {/* Line 1: Baseline & Standard Setups */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '18px', flexWrap: 'wrap' }}>
             {/* Baseline Stage 2 Toggle */}
             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
               <input
@@ -143,8 +178,8 @@ export default function CandidatesTab({
 
             <span style={{ color: 'rgba(255, 255, 255, 0.15)', fontSize: '14px' }}>|</span>
 
-            {/* Setup Overlay Checkboxes */}
-            <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Setups:</span>
+            {/* Standard Setup Overlay Checkboxes */}
+            <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Standard Setups:</span>
 
             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
               <input
@@ -158,6 +193,9 @@ export default function CandidatesTab({
                     setEnableVcpSetup(false);
                     setEnableDarvasBox(false);
                     setEnableNewLeaders(false);
+                    setEnableQullamaggieBreakout(false);
+                    setEnableEpisodicPivot(false);
+                    setEnableParabolicShort(false);
                     setEnforceStage2(false);
                   } else {
                     setEnforceStage2(true);
@@ -180,6 +218,9 @@ export default function CandidatesTab({
                     setEnableVcpSetup(false);
                     setEnableDarvasBox(false);
                     setEnableNewLeaders(false);
+                    setEnableQullamaggieBreakout(false);
+                    setEnableEpisodicPivot(false);
+                    setEnableParabolicShort(false);
                   }
                 }}
                 style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: 'var(--accent-color)' }}
@@ -199,6 +240,9 @@ export default function CandidatesTab({
                     setEnableIpoBase(false);
                     setEnableDarvasBox(false);
                     setEnableNewLeaders(false);
+                    setEnableQullamaggieBreakout(false);
+                    setEnableEpisodicPivot(false);
+                    setEnableParabolicShort(false);
                   }
                 }}
                 style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: 'var(--accent-color)' }}
@@ -218,6 +262,9 @@ export default function CandidatesTab({
                     setEnableIpoBase(false);
                     setEnableVcpSetup(false);
                     setEnableNewLeaders(false);
+                    setEnableQullamaggieBreakout(false);
+                    setEnableEpisodicPivot(false);
+                    setEnableParabolicShort(false);
                     setEnforceStage2(true);
                   }
                 }}
@@ -238,12 +285,86 @@ export default function CandidatesTab({
                     setEnableIpoBase(false);
                     setEnableVcpSetup(false);
                     setEnableDarvasBox(false);
+                    setEnableQullamaggieBreakout(false);
+                    setEnableEpisodicPivot(false);
+                    setEnableParabolicShort(false);
                     setEnforceStage2(true);
                   }
                 }}
                 style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: 'var(--accent-color)' }}
               />
               🌟 New Leaders
+            </label>
+          </div>
+
+          {/* Line 2: Qullamaggie Setups */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '18px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '12px', fontWeight: '700', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Qullamaggie Setups:</span>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#f59e0b', whiteSpace: 'nowrap' }}>
+              <input
+                type="checkbox"
+                checked={enableQullamaggieBreakout}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setEnableQullamaggieBreakout(val);
+                  if (val) {
+                    setEnablePowerPlay(false);
+                    setEnableIpoBase(false);
+                    setEnableVcpSetup(false);
+                    setEnableDarvasBox(false);
+                    setEnableNewLeaders(false);
+                    setEnableEpisodicPivot(false);
+                    setEnableParabolicShort(false);
+                  }
+                }}
+                style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: '#f59e0b' }}
+              />
+              🎯 Qullamaggie Breakout
+            </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#ec4899', whiteSpace: 'nowrap' }}>
+              <input
+                type="checkbox"
+                checked={enableEpisodicPivot}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setEnableEpisodicPivot(val);
+                  if (val) {
+                    setEnablePowerPlay(false);
+                    setEnableIpoBase(false);
+                    setEnableVcpSetup(false);
+                    setEnableDarvasBox(false);
+                    setEnableNewLeaders(false);
+                    setEnableQullamaggieBreakout(false);
+                    setEnableParabolicShort(false);
+                  }
+                }}
+                style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: '#ec4899' }}
+              />
+              ⚡ Episodic Pivot (EP)
+            </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#ef4444', whiteSpace: 'nowrap' }}>
+              <input
+                type="checkbox"
+                checked={enableParabolicShort}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setEnableParabolicShort(val);
+                  if (val) {
+                    setEnablePowerPlay(false);
+                    setEnableIpoBase(false);
+                    setEnableVcpSetup(false);
+                    setEnableDarvasBox(false);
+                    setEnableNewLeaders(false);
+                    setEnableQullamaggieBreakout(false);
+                    setEnableEpisodicPivot(false);
+                  }
+                }}
+                style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: '#ef4444' }}
+              />
+              📉 Parabolic Short
             </label>
           </div>
         </div>
@@ -263,8 +384,39 @@ export default function CandidatesTab({
               📋 Currently Selected Setup Criteria
             </h4>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                onClick={() => {
+                  if (enableQullamaggieBreakout) setActiveGuideTab('qullamaggie_breakout');
+                  else if (enableEpisodicPivot) setActiveGuideTab('episodic_pivot');
+                  else if (enableParabolicShort) setActiveGuideTab('parabolic_short');
+                  else if (enablePowerPlay) setActiveGuideTab('power_play');
+                  else if (enableIpoBase) setActiveGuideTab('ipo_base');
+                  else if (enableVcpSetup) setActiveGuideTab('vcp');
+                  else if (enableDarvasBox) setActiveGuideTab('darvas');
+                  else if (enableNewLeaders) setActiveGuideTab('new_leaders');
+                  else setActiveGuideTab('stage2');
+                  setShowSetupGuideModal(true);
+                }}
+                style={{
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  padding: '4px 12px',
+                  background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(236, 72, 153, 0.2) 100%)',
+                  border: '1px solid rgba(245, 158, 11, 0.5)',
+                  color: '#f59e0b',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 2px 8px rgba(245, 158, 11, 0.2)'
+                }}
+              >
+                📖 Setup Guide & Rules
+              </button>
               <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.06)', padding: '3px 10px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                {enablePowerPlay ? '🚀 Power Play' : enableIpoBase ? '📅 IPO Base' : enableVcpSetup ? '⚡ VCP Setup' : enableDarvasBox ? '📦 Darvas Box' : enableNewLeaders ? '🌟 New Leaders' : '📈 Stage 2 Trend Baseline'}
+                {enablePowerPlay ? '🚀 Power Play' : enableIpoBase ? '📅 IPO Base' : enableVcpSetup ? '⚡ VCP Setup' : enableDarvasBox ? '📦 Darvas Box' : enableNewLeaders ? '🌟 New Leaders' : enableQullamaggieBreakout ? '🎯 Qullamaggie Breakout' : enableEpisodicPivot ? '⚡ Episodic Pivot (EP)' : enableParabolicShort ? '📉 Parabolic Short' : '📈 Stage 2 Trend Baseline'}
               </span>
               <span style={{ fontSize: '12px', fontWeight: 600, color: '#38bdf8', background: 'rgba(56, 189, 248, 0.12)', padding: '3px 10px', borderRadius: '12px', border: '1px solid rgba(56, 189, 248, 0.3)', whiteSpace: 'nowrap' }}>
                 Showing {filteredCandidates.length.toLocaleString()} / {candidates.length.toLocaleString()} stocks
@@ -278,7 +430,10 @@ export default function CandidatesTab({
             {enableVcpSetup && 'Screening for Mark Minervini\'s signature Volatility Contraction Pattern (VCP), where overhead supply dries up through contracting swings.'}
             {enableDarvasBox && 'Screening for Nicolas Darvas\'s Box strategy, identifying stocks consolidating in tight support/resistance boxes within confirmed Phase 2 uptrends.'}
             {enableNewLeaders && 'Screening for market correction turn leadership—stocks trading near 52-week highs that corrected the least and surged off market lows with top relative strength.'}
-            {!enablePowerPlay && !enableIpoBase && !enableVcpSetup && !enableDarvasBox && !enableNewLeaders && 'Screening for classic Minervini Stage 2 uptrend stocks in confirmed institutional mark-up phases.'}
+            {enableQullamaggieBreakout && 'Screening for Kristjan Qullamaggie\'s classic Momentum Breakout—top 1-month & 3-month performance leaders consolidating tightly while surfing the rising 10/20 EMA.'}
+            {enableEpisodicPivot && 'Screening for Kristjan Qullamaggie\'s Episodic Pivots (EP)—game-changing fundamental gap-ups (>=8%) on massive relative volume (>=2.5x) breaking out of long bases.'}
+            {enableParabolicShort && 'Screening for Kristjan Qullamaggie\'s Parabolic Shorts—stocks that surged +40%+ over 3-10 days and extended >=18% above 10 EMA setting up mean-reversion short setups.'}
+            {!enablePowerPlay && !enableIpoBase && !enableVcpSetup && !enableDarvasBox && !enableNewLeaders && !enableQullamaggieBreakout && !enableEpisodicPivot && !enableParabolicShort && 'Screening for classic Minervini Stage 2 uptrend stocks in confirmed institutional mark-up phases.'}
           </p>
 
           {enablePowerPlay ? (
@@ -1157,7 +1312,9 @@ export default function CandidatesTab({
               <th>Ticker</th>
               <th>Sector / Industry</th>
               <th>Price</th>
+              <th>1M Ret %</th>
               <th>Vol 50d MA</th>
+              <th>RelVol</th>
               <th>RS Score</th>
               <th>RS Percentile</th>
               <th>ATR (20d)</th>
@@ -1184,8 +1341,7 @@ export default function CandidatesTab({
                   <th>52w High Status</th>
                 </>
               )}
-              <th>VCP Setup</th>
-              <th>Darvas Box</th>
+              <th>Setups & Patterns</th>
             </tr>
           </thead>
           <tbody>
@@ -1199,7 +1355,13 @@ export default function CandidatesTab({
                   <span style={{ fontSize: '11px', display: 'block', color: 'var(--text-secondary)' }}>{c.industry || 'N/A'}</span>
                 </td>
                 <td>${c.close.toFixed(2)}</td>
+                <td style={{ color: c.ret_1m !== null && c.ret_1m !== undefined ? (c.ret_1m >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)') : 'var(--text-secondary)', fontWeight: '600' }}>
+                  {c.ret_1m !== null && c.ret_1m !== undefined ? `${c.ret_1m >= 0 ? '+' : ''}${c.ret_1m.toFixed(1)}%` : 'N/A'}
+                </td>
                 <td>{c.vol_50d_ma.toLocaleString()}</td>
+                <td style={{ color: c.rel_vol_50d >= 2.5 ? 'var(--accent-success)' : 'var(--text-primary)', fontWeight: c.rel_vol_50d >= 2.5 ? 'bold' : 'normal' }}>
+                  {c.rel_vol_50d !== null && c.rel_vol_50d !== undefined ? `${c.rel_vol_50d.toFixed(1)}x` : '1.0x'}
+                </td>
                 <td>{c.rs_score ? c.rs_score.toFixed(4) : 'N/A'}</td>
                 <td>
                   <span className="pill pill-success">{c.rs_rank}</span>
@@ -1261,28 +1423,37 @@ export default function CandidatesTab({
                   </>
                 )}
                 <td>
-                  {c.vcp_is_setup ? (
-                    <span className="pill pill-success" style={{ fontStyle: 'italic', fontWeight: 'bold' }}>
-                      {c.vcp_troughs}T ({c.vcp_depths.replace(/,/g, ' / ') + '%'})
-                    </span>
-                  ) : (
-                    <span style={{ color: 'var(--text-secondary)' }}>No</span>
-                  )}
-                </td>
-                <td>
-                  {c.darvas_is_setup ? (
-                    <span className="pill pill-success" style={{ fontStyle: 'italic', fontWeight: 'bold' }}>
-                      📦 ${c.darvas_box_bottom?.toFixed(2)} - ${c.darvas_box_top?.toFixed(2)} ({c.darvas_box_width_pct?.toFixed(1)}%)
-                    </span>
-                  ) : (
-                    <span style={{ color: 'var(--text-secondary)' }}>No</span>
-                  )}
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    {c.ep_is_setup && (
+                      <span className="pill" style={{ background: 'rgba(236, 72, 153, 0.2)', color: '#ec4899', border: '1px solid rgba(236, 72, 153, 0.4)', fontWeight: 'bold' }}>
+                        ⚡ EP (+{c.ep_gap_pct?.toFixed(1)}%, {c.ep_rel_vol?.toFixed(1)}x)
+                      </span>
+                    )}
+                    {c.parabolic_short_is_setup && (
+                      <span className="pill" style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.4)', fontWeight: 'bold' }}>
+                        📉 Para Short (+{c.parabolic_runup_pct?.toFixed(0)}%)
+                      </span>
+                    )}
+                    {c.vcp_is_setup && (
+                      <span className="pill pill-success" style={{ fontStyle: 'italic', fontWeight: 'bold' }}>
+                        🌀 VCP {c.vcp_troughs}T ({c.vcp_depths?.replace(/,/g, ' / ') + '%'})
+                      </span>
+                    )}
+                    {c.darvas_is_setup && (
+                      <span className="pill pill-success" style={{ fontStyle: 'italic', fontWeight: 'bold' }}>
+                        📦 Box (${c.darvas_box_bottom?.toFixed(2)}-${c.darvas_box_top?.toFixed(2)})
+                      </span>
+                    )}
+                    {!c.ep_is_setup && !c.parabolic_short_is_setup && !c.vcp_is_setup && !c.darvas_is_setup && (
+                      <span style={{ color: 'var(--text-secondary)' }}>Stage 2 Base</span>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
             {filteredCandidates.length === 0 && (
               <tr>
-                <td colSpan={10 + (enablePowerPlay ? 3 : 0) + (enableIpoBase ? 3 : 0) + (enableNewLeaders ? 3 : 0)} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                <td colSpan={12 + (enablePowerPlay ? 3 : 0) + (enableIpoBase ? 3 : 0) + (enableNewLeaders ? 3 : 0)} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
                   No candidates matching current config rules found in database cache. Run "Sync Database Tickers" to evaluate stocks.
                 </td>
               </tr>
@@ -1290,6 +1461,323 @@ export default function CandidatesTab({
           </tbody>
         </table>
       </div>
+
+      {/* Setup Strategy Guide Modal */}
+      {showSetupGuideModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.85)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 9999,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '20px'
+        }}
+        onClick={() => setShowSetupGuideModal(false)}
+        >
+          <div style={{
+            width: '100%',
+            maxWidth: '920px',
+            maxHeight: '90vh',
+            background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+            border: '1px solid rgba(56, 189, 248, 0.3)',
+            borderRadius: '12px',
+            boxShadow: '0 25px 60px rgba(0, 0, 0, 0.8)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}
+          onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div style={{
+              padding: '18px 24px',
+              borderBottom: '1px solid var(--border-color)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'rgba(30, 41, 59, 0.6)'
+            }}>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#38bdf8', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  📖 Setup Strategy Guide & Execution Rules
+                </h2>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+                  Comprehensive breakdown of quantitative filters, trading rules, and original strategy rationale.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <a
+                  href="https://qullamaggie.com/my-3-timeless-setups-that-have-made-me-tens-of-millions/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    padding: '6px 12px',
+                    background: 'rgba(245, 158, 11, 0.15)',
+                    border: '1px solid rgba(245, 158, 11, 0.4)',
+                    color: '#f59e0b',
+                    borderRadius: '6px',
+                    textDecoration: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  🌐 Qullamaggie Original Blog Post ↗
+                </a>
+
+                <button
+                  onClick={() => setShowSetupGuideModal(false)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-secondary)',
+                    fontSize: '22px',
+                    cursor: 'pointer',
+                    padding: '0 4px',
+                    lineHeight: 1
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Sub-Header Navigation Tabs */}
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '6px',
+              padding: '12px 24px',
+              borderBottom: '1px solid var(--border-color)',
+              background: 'rgba(15, 23, 42, 0.8)',
+            }}>
+              {[
+                { id: 'qullamaggie_breakout', label: '🎯 Qullamaggie Breakout', color: '#f59e0b' },
+                { id: 'episodic_pivot', label: '⚡ Episodic Pivot (EP)', color: '#ec4899' },
+                { id: 'parabolic_short', label: '📉 Parabolic Short & Long', color: '#ef4444' },
+                { id: 'power_play', label: '🚀 Power Play', color: '#38bdf8' },
+                { id: 'vcp', label: '⚡ VCP Setup', color: '#10b981' },
+                { id: 'darvas', label: '📦 Darvas Box', color: '#8b5cf6' },
+                { id: 'new_leaders', label: '🌟 New Leaders', color: '#eab308' },
+                { id: 'ipo_base', label: '📅 IPO Base', color: '#06b6d4' },
+                { id: 'stage2', label: '📈 Stage 2 Baseline', color: '#94a3b8' },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveGuideTab(tab.id)}
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    borderRadius: '6px',
+                    whiteSpace: 'nowrap',
+                    cursor: 'pointer',
+                    border: activeGuideTab === tab.id ? `1px solid ${tab.color}` : '1px solid rgba(255,255,255,0.1)',
+                    background: activeGuideTab === tab.id ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.03)',
+                    color: activeGuideTab === tab.id ? tab.color : 'var(--text-secondary)'
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Modal Body / Scrollable Content */}
+            <div style={{
+              padding: '24px',
+              flex: 1,
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '20px',
+              color: '#f8fafc',
+              fontSize: '13px',
+              lineHeight: '1.6'
+            }}>
+              {/* General Qullamaggie Risk & Sizing Rules Banner */}
+              {['qullamaggie_breakout', 'episodic_pivot', 'parabolic_short'].includes(activeGuideTab) && (
+                <div style={{
+                  padding: '14px 18px',
+                  background: 'rgba(245, 158, 11, 0.08)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px'
+                }}>
+                  <h4 style={{ margin: 0, fontSize: '13px', color: '#f59e0b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    💡 Kristjan Qullamaggie's Position Sizing & Risk Rules
+                  </h4>
+                  <blockquote style={{ margin: '4px 0 0 0', paddingLeft: '12px', borderLeft: '3px solid #f59e0b', color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '12px' }}>
+                    "I don't believe you should ever have more than 30% of your account overnight in any stock or ETF. Most of my positions are 10-20% of account size. My risk on most trades is usually 0.25-1%. I rarely risk more than 1% of my account on any trade."
+                  </blockquote>
+                </div>
+              )}
+
+              {/* Tab 1: Qullamaggie Breakout */}
+              {activeGuideTab === 'qullamaggie_breakout' && (
+                <>
+                  <div>
+                    <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#f59e0b', margin: '0 0 8px 0' }}>
+                      🎯 Breakouts (High-Tight Flag / Momentum Consolidation)
+                    </h3>
+                    <p style={{ color: 'var(--text-secondary)' }}>
+                      <em>"If you study thousands of the biggest winning stocks over the past 100 years they tend to move in stair steps. Meaning they will make a 20-50%+ move, pull back and go sideways for a while, then make another move."</em>
+                    </p>
+                  </div>
+
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <h4 style={{ color: '#38bdf8', marginTop: 0 }}>Step 1: Finding Leading Stocks</h4>
+                    <p style={{ margin: 0 }}>
+                      Scan for the top 1% or 2% of stocks that are up the most over 3 timeframes: <strong>1-Month</strong>, <strong>3-Month</strong>, and <strong>6-Month</strong>.
+                    </p>
+                  </div>
+
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <h4 style={{ color: '#38bdf8', marginTop: 0 }}>The 3 Steps to the Setup</h4>
+                    <ol style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <li><strong>Big Expansion Leg:</strong> A massive move higher (+30% to +100%+) within the prior 1-3 months.</li>
+                      <li><strong>Orderly Pullback:</strong> An orderly pullback/consolidation with higher lows and tightening range (2 weeks to 2 months), while "surfing" the rising 10-day and 20-day EMAs.</li>
+                      <li><strong>Range Expansion:</strong> A breakout out of the tight consolidation level.</li>
+                    </ol>
+                  </div>
+
+                  <div style={{ background: 'rgba(245, 158, 11, 0.05)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
+                    <h4 style={{ color: '#f59e0b', marginTop: 0 }}>Trade Execution & Rules</h4>
+                    <ol style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <li><strong>Watchlist & Alerts:</strong> Prepare watchlist before open, calculate exact share count based on risk (0.25-1% of account).</li>
+                      <li><strong>Entry Trigger:</strong> Enter on Opening Range Highs (1-min, 5-min, or 60-min ORH, or daily breakout).</li>
+                      <li><strong>Stop Loss:</strong> Stop is ALWAYS Low of Day (LOD). Stop must NOT be wider than 1 ATR or ADR of the stock.</li>
+                      <li><strong>Profit Taking & Trailing Exit:</strong> Sell 1/3 to 1/2 of position after 3-5 days. Move stop to break-even. Trail the rest with the 10-day EMA (exit on first daily CLOSE below 10 EMA).</li>
+                    </ol>
+                  </div>
+                </>
+              )}
+
+              {/* Tab 2: Episodic Pivot */}
+              {activeGuideTab === 'episodic_pivot' && (
+                <>
+                  <div>
+                    <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#ec4899', margin: '0 0 8px 0' }}>
+                      ⚡ The Episodic Pivot (EP)
+                    </h3>
+                    <p style={{ color: 'var(--text-secondary)' }}>
+                      <em>"The Episodic Pivot is triggered by unexpected positive news that creates a significant shift in market perception. When unexpected good news hits a stock—particularly one that has been previously neglected—it acts as a catalyst for substantial, prolonged price moves that can last for months or even years."</em>
+                    </p>
+                  </div>
+
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <h4 style={{ color: '#ec4899', marginTop: 0 }}>Key Characteristics of an EP</h4>
+                    <ul style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <li><strong>The Fundamental Catalyst:</strong> Blockbuster quarterly earnings/revenue beat, massive guidance raise, FDA drug approval, or major contract win.</li>
+                      <li><strong>Explosive Opening Gap:</strong> Price gaps up <strong>&ge; 8% to 15%+</strong> at market open.</li>
+                      <li><strong>Volume Explosion:</strong> Day-1 volume explodes to <strong>&ge; 2.5x to 5.0x+</strong> the 50-day average volume.</li>
+                      <li><strong>Multi-Month Prior Base:</strong> Emerging out of a sideways, multi-month neglected base pattern.</li>
+                    </ul>
+                  </div>
+
+                  <div style={{ background: 'rgba(236, 72, 153, 0.05)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(236, 72, 153, 0.2)' }}>
+                    <h4 style={{ color: '#ec4899', marginTop: 0 }}>Trade Execution</h4>
+                    <ol style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <li><strong>Entry:</strong> Buy at the open or on Opening Range High (ORH) of the first 1-min / 5-min candle.</li>
+                      <li><strong>Stop Loss:</strong> Set stop at Low of Day (LOD) or VWAP failure.</li>
+                      <li><strong>Exit:</strong> Take partial profits after 3-5 days, trail remaining position with 10-day / 20-day EMA.</li>
+                    </ol>
+                  </div>
+                </>
+              )}
+
+              {/* Tab 3: Parabolic Short */}
+              {activeGuideTab === 'parabolic_short' && (
+                <>
+                  <div>
+                    <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#ef4444', margin: '0 0 8px 0' }}>
+                      📉 The Parabolic Short (and Long)
+                    </h3>
+                    <p style={{ color: 'var(--text-secondary)' }}>
+                      <em>"The Parabolic Short is a high-risk, high-reward strategy based on the concept that stocks stretched too far, too fast become like 'stretched rubber bands' that are prone to powerful snapbacks. Moves involve a stock going up 50-100%+ in days/weeks (large cap) or 300-1000%+ (small cap)."</em>
+                    </p>
+                  </div>
+
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <h4 style={{ color: '#ef4444', marginTop: 0 }}>Parabolic Short Setup Criteria</h4>
+                    <ul style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <li><strong>Vertical Acceleration:</strong> +40% to +100%+ run-up over 3-10 days without consolidation.</li>
+                      <li><strong>EMA Extension:</strong> Price extended <strong>&ge; 18% to 25%+</strong> above its rising 10-day EMA.</li>
+                      <li><strong>Short Trigger:</strong> Wait for momentum exhaustion—first red day, breaking previous day low, or 5-min VWAP breakdown.</li>
+                      <li><strong>Stop & Target:</strong> Stop is strictly set at High of Day (HOD). Cover target is mean-reversion to the 10-day and 20-day EMAs.</li>
+                    </ul>
+                  </div>
+
+                  <div style={{ background: 'rgba(239, 68, 68, 0.05)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                    <h4 style={{ color: '#ef4444', marginTop: 0 }}>Parabolic Longs (Oversold Bounce)</h4>
+                    <p style={{ margin: 0 }}>
+                      After a parabolic short setup crashes a stock down <strong>50% to 60%+ in 3-5 days</strong>, look for an entry on Opening Range Highs (ORH) for a fast 50-100% mean-reversion bounce back to the moving averages.
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {/* Tab 4: Power Play */}
+              {activeGuideTab === 'power_play' && (
+                <>
+                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#38bdf8', margin: '0 0 8px 0' }}>🚀 Power Play (High Tight Flag)</h3>
+                  <p>Minervini's most explosive setup: stock shoots up 100%+ in less than 8 weeks, followed by a tight high-level consolidation (&le;25% depth) for at least 12 trading days while volume contracts heavily.</p>
+                </>
+              )}
+
+              {/* Tab 5: VCP Setup */}
+              {activeGuideTab === 'vcp' && (
+                <>
+                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#10b981', margin: '0 0 8px 0' }}>⚡ Volatility Contraction Pattern (VCP)</h3>
+                  <p>Minervini's signature pattern: supply dries up through contracting swings (T1 &gt; T2 &gt; T3) near 52-week highs with final contraction &le; 10-12% and RS Rank &ge; 70.</p>
+                </>
+              )}
+
+              {/* Tab 6: Darvas Box */}
+              {activeGuideTab === 'darvas' && (
+                <>
+                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#8b5cf6', margin: '0 0 8px 0' }}>📦 Nicolas Darvas Box Setup</h3>
+                  <p>Stock consolidates in a well-defined rectangular price box (unbreached 3-day top & bottom, box width &le; 25%) during a confirmed Stage 2 uptrend.</p>
+                </>
+              )}
+
+              {/* Tab 7: New Leaders */}
+              {activeGuideTab === 'new_leaders' && (
+                <>
+                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#eab308', margin: '0 0 8px 0' }}>🌟 New Leaders (Market Low Turn)</h3>
+                  <p>Stocks demonstrating resilience during market corrections: trading near 52-week highs (&le;25%), surging sharply off market lows (&ge;20%), and leading with top RS rank (&ge;80).</p>
+                </>
+              )}
+
+              {/* Tab 8: IPO Base */}
+              {activeGuideTab === 'ipo_base' && (
+                <>
+                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#06b6d4', margin: '0 0 8px 0' }}>📅 IPO Base Setup</h3>
+                  <p>Recently listed companies (10 to 350 trading days age) building their first primary base within 25% of all-time highs.</p>
+                </>
+              )}
+
+              {/* Tab 9: Stage 2 Baseline */}
+              {activeGuideTab === 'stage2' && (
+                <>
+                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#94a3b8', margin: '0 0 8px 0' }}>📈 Stage 2 Trend Baseline</h3>
+                  <p>Minervini Trend Template: Stock Price &gt; 50d SMA &gt; 150d SMA &gt; 200d SMA with 200d SMA trending upward for at least 1 month.</p>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

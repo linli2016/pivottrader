@@ -159,6 +159,41 @@ export function filterCandidates(candidates, filters) {
       }
     }
 
+    // 7. Qullamaggie Breakout Setup Overlay
+    if (filters.enableQullamaggieBreakout) {
+      if (filters.enable1mRet && filters.min1mRetFilter !== undefined) {
+        if (c.ret_1m === null || c.ret_1m === undefined || c.ret_1m < filters.min1mRetFilter) return false;
+      }
+      if (filters.enableEmaSurfing) {
+        if (c.ema_10 && c.close < c.ema_10 * 0.97 && c.ema_20 && c.close < c.ema_20 * 0.97) return false;
+      }
+    }
+
+    // 8. Episodic Pivot (EP) Setup Overlay
+    if (filters.enableEpisodicPivot) {
+      if (filters.enableEpGap && filters.minEpGapFilter !== undefined) {
+        if (c.gap_pct === null || c.gap_pct === undefined || c.gap_pct < filters.minEpGapFilter) return false;
+      }
+      if (filters.enableEpRelVol && filters.minEpRelVolFilter !== undefined) {
+        if (c.rel_vol_50d === null || c.rel_vol_50d === undefined || c.rel_vol_50d < filters.minEpRelVolFilter) return false;
+      }
+      if (filters.enableEpFlag && !c.ep_is_setup) return false;
+    }
+
+    // 9. Parabolic Extension Overlay (Short & Long)
+    if (filters.enableParabolicShort) {
+      if (filters.enableParabolicRunup && filters.minParabolicRunupFilter !== undefined) {
+        if (c.parabolic_runup_pct === null || c.parabolic_runup_pct === undefined || c.parabolic_runup_pct < filters.minParabolicRunupFilter) return false;
+      }
+      if (filters.enableParabolicEmaDist && filters.minParabolicEmaDistFilter !== undefined) {
+        if (c.dist_ema10_pct === null || c.dist_ema10_pct === undefined || c.dist_ema10_pct < filters.minParabolicEmaDistFilter) return false;
+      }
+    }
+
+    if (filters.enableParabolicLong) {
+      if (!c.parabolic_long_is_setup && (c.dist_ema10_pct === null || c.dist_ema10_pct > -18.0)) return false;
+    }
+
     return true;
   });
 }

@@ -222,13 +222,81 @@ class MomentumEngine:
             "darvas_box_width_pct": round(width_pct, 2)
         }
 
+    def detect_episodic_pivot(self, opens: List[float], highs: List[float], lows: List[float], closes: List[float], volumes: List[float], dates: List[Any]) -> dict:
+        """
+        Detects Episodic Pivot (EP) setup on the latest trading day.
+        Criteria:
+        1. Gap Up % >= 8.0% (Open vs Previous Close).
+        2. Relative Volume >= 2.5x 50-day average volume.
+        """
+        n = len(closes)
+        if n < 51:
+            return None
+
+        prev_close = closes[-2]
+        today_open = opens[-1]
+        today_vol = volumes[-1]
+        vol_50d = sum(volumes[-51:-1]) / 50.0
+
+        if prev_close <= 0 or vol_50d <= 0:
+            return None
+
+        gap_pct = ((today_open - prev_close) / prev_close) * 100.0
+        rel_vol = today_vol / vol_50d
+
+        if gap_pct >= 8.0 and rel_vol >= 2.5:
+            return {
+                "ep_is_setup": True,
+                "ep_gap_pct": round(gap_pct, 2),
+                "ep_rel_vol": round(rel_vol, 2)
+            }
+        return None
+
+    def detect_parabolic_extension(self, highs: List[float], lows: List[float], closes: List[float], dates: List[Any], ema_10_val: float) -> dict:
+        """
+        Detects Parabolic Short / Long setups.
+        Short Criteria:
+        1. Fast 3 to 10 day gain >= +40%.
+        2. Distance above 10-day EMA >= +18%.
+        Long Criteria:
+        1. Fast 3 to 10 day drop <= -30%.
+        2. Distance below 10-day EMA <= -18%.
+        """
+        n = len(closes)
+        if n < 10 or not ema_10_val or ema_10_val <= 0:
+            return None
+
+        window_highs = highs[-10:]
+        window_lows = lows[-10:]
+        current_close = closes[-1]
+
+        max_h = max(window_highs)
+        min_l = min(window_lows)
+
+        runup_pct = ((max_h - min_l) / min_l) * 100.0 if min_l > 0 else 0.0
+        drop_pct = ((max_h - min_l) / max_h) * 100.0 if max_h > 0 else 0.0
+
+        dist_ema10_pct = ((current_close - ema_10_val) / ema_10_val) * 100.0
+
+        is_short = runup_pct >= 40.0 and dist_ema10_pct >= 18.0
+        is_long = drop_pct >= 30.0 and dist_ema10_pct <= -18.0
+
+        if is_short or is_long:
+            return {
+                "parabolic_short_is_setup": is_short,
+                "parabolic_long_is_setup": is_long,
+                "parabolic_runup_pct": round(runup_pct, 2) if is_short else round(-drop_pct, 2),
+                "dist_ema10_pct": round(dist_ema10_pct, 2)
+            }
+        return None
+
     def calculate_and_store_momentum_metrics(self) -> None:
         """
         Executes vectorized SQL calculations in DuckDB to:
         1. Calculate 50-day average volume, SMAs (50, 150, 200) and ATR% historically for all dates.
         2. Calculate weighted Momentum Scores & Percentile RS Ranks historically (using PARTITION BY date).
         3. Store these historical metrics directly in daily_bars.
-        4. For the latest date candidates, calculate VCP and Power Play / IPO base drawdowns in python, and store.
+        4. For the latest date candidates, calculate VCP, Darvas Box, EP, and Parabolic metrics in python, and store.
         """
         query_update_historical = """
             WITH price_lags_raw AS (
@@ -236,6 +304,7 @@ class MomentumEngine:
                     db.rowid as r_id,
                     db.symbol,
                     db.date,
+                    db.open,
                     db.close,
                     db.high,
                     db.low,
@@ -248,10 +317,12 @@ class MomentumEngine:
                     r_id,
                     symbol,
                     date,
+                    open,
                     close,
                     high,
                     low,
                     volume,
+                    prev_close,
                     AVG(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 49 PRECEDING AND CURRENT ROW) as sma_50,
                     AVG(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 149 PRECEDING AND CURRENT ROW) as sma_150,
                     AVG(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 199 PRECEDING AND CURRENT ROW) as sma_200,
@@ -261,6 +332,7 @@ class MomentumEngine:
                         COALESCE(ABS(high - prev_close), 0),
                         COALESCE(ABS(low - prev_close), 0)
                     ) as tr,
+                    LAG(close, 21) OVER (PARTITION BY symbol ORDER BY date) as close_1m,
                     LAG(close, 63) OVER (PARTITION BY symbol ORDER BY date) as close_3m,
                     LAG(close, 126) OVER (PARTITION BY symbol ORDER BY date) as close_6m,
                     LAG(close, 189) OVER (PARTITION BY symbol ORDER BY date) as close_9m,
@@ -278,10 +350,13 @@ class MomentumEngine:
                     sma_50,
                     sma_150,
                     sma_200,
+                    (close - COALESCE(close_1m, close)) / NULLIF(COALESCE(close_1m, close), 0) * 100 as ret_1m,
                     (close - COALESCE(close_3m, close)) / NULLIF(COALESCE(close_3m, close), 0) as ret_3m,
                     (close - COALESCE(close_6m, close)) / NULLIF(COALESCE(close_6m, close), 0) as ret_6m,
                     (close - COALESCE(close_9m, close)) / NULLIF(COALESCE(close_9m, close), 0) as ret_9m,
-                    (close - COALESCE(close_12m, close)) / NULLIF(COALESCE(close_12m, close), 0) as ret_12m
+                    (close - COALESCE(close_12m, close)) / NULLIF(COALESCE(close_12m, close), 0) as ret_12m,
+                    ROUND((open - prev_close) / NULLIF(prev_close, 0) * 100.0, 2) as gap_pct,
+                    ROUND(volume / NULLIF(vol_50d_ma, 0), 2) as rel_vol_50d
                 FROM price_lags_base
             ),
             weighted_scores AS (
@@ -293,6 +368,9 @@ class MomentumEngine:
                     sma_50,
                     sma_150,
                     sma_200,
+                    ret_1m,
+                    gap_pct,
+                    rel_vol_50d,
                     (COALESCE(ret_3m, 0) * 0.4) + 
                     (COALESCE(ret_6m, 0) * 0.2) + 
                     (COALESCE(ret_9m, 0) * 0.2) + 
@@ -307,6 +385,9 @@ class MomentumEngine:
                     sma_50,
                     sma_150,
                     sma_200,
+                    ret_1m,
+                    gap_pct,
+                    rel_vol_50d,
                     rs_score,
                     CAST(PERCENT_RANK() OVER (PARTITION BY date ORDER BY rs_score) * 100 AS INTEGER) as rs_rank
                 FROM weighted_scores
@@ -319,6 +400,9 @@ class MomentumEngine:
                 vol_50d_ma = src.vol_50d_ma,
                 adr_20d = src.atr_20d,
                 atr_20d = src.atr_20d,
+                ret_1m = src.ret_1m,
+                gap_pct = src.gap_pct,
+                rel_vol_50d = src.rel_vol_50d,
                 rs_score = src.rs_score,
                 rs_rank = src.rs_rank
             FROM percentile_ranks src
@@ -352,6 +436,9 @@ class MomentumEngine:
                     rs_score,
                     rs_rank,
                     atr_20d,
+                    ret_1m,
+                    gap_pct,
+                    rel_vol_50d,
                     -- Rolling 30-day peak high and its date
                     MAX(high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as running_peak_30d,
                     ARG_MAX(date, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as peak_date_30d,
@@ -376,6 +463,9 @@ class MomentumEngine:
                     volume,
                     vol_50d_ma,
                     atr_20d,
+                    ret_1m,
+                    gap_pct,
+                    rel_vol_50d,
                     sma_50,
                     sma_150,
                     sma_200,
@@ -403,6 +493,9 @@ class MomentumEngine:
                     volume,
                     vol_50d_ma,
                     atr_20d,
+                    ret_1m,
+                    gap_pct,
+                    rel_vol_50d,
                     sma_50,
                     sma_150,
                     sma_200,
@@ -418,7 +511,7 @@ class MomentumEngine:
                 FROM price_lags_derived
                 WHERE date = (SELECT val FROM latest_date_const)
             )
-            SELECT symbol, date, close, vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, pp_days_since_peak, sma_50, sma_150, sma_200, ipo_days_count, ipo_all_time_high, ipo_drawdown_from_high, ipo_base_depth
+            SELECT symbol, date, close, vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, pp_days_since_peak, sma_50, sma_150, sma_200, ipo_days_count, ipo_all_time_high, ipo_drawdown_from_high, ipo_base_depth, ret_1m, gap_pct, rel_vol_50d
             FROM returns_calc;
         """
         
@@ -431,54 +524,88 @@ class MomentumEngine:
             print("Running VCP and drawdown updates on the latest date's candidates...")
             results = conn.execute(query_latest_metrics).fetchall()
             
-            # 3. Update the daily_bars table with calculated VCP/PowerPlay/IPO values for matched date
+            # 3. Update the daily_bars table with calculated VCP/PowerPlay/IPO/Qullamaggie values for matched date
             if results:
-                # 3.1 Fetch historical high, low, close for VCP analysis
+                # 3.1 Fetch historical bars for VCP, EP, EMA, and Parabolic analysis
                 history_rows = conn.execute("""
-                    SELECT symbol, date, high, low, close 
+                    SELECT symbol, date, open, high, low, close, volume 
                     FROM daily_bars 
                     ORDER BY symbol, date ASC
                 """).fetchall()
                 
                 from collections import defaultdict
+                import pandas as pd
+
                 symbol_history = defaultdict(list)
-                for sym, dt, high, low, close in history_rows:
-                    symbol_history[sym].append((high, low, close, dt))
+                for sym, dt, op, high, low, close, vol in history_rows:
+                    symbol_history[sym].append((op, high, low, close, vol, dt))
                     
-                # Evaluate VCP & Darvas Box for each candidate row in results
+                # Evaluate setups for each candidate row in results
                 results_with_setups = []
                 for row in results:
                     symbol = row[0]
                     history = symbol_history.get(symbol, [])
                     v_res = {"vcp_is_setup": False, "vcp_troughs": None, "vcp_depths": None}
                     d_res = {"darvas_is_setup": False, "darvas_box_top": None, "darvas_box_bottom": None, "darvas_box_width_pct": None}
+                    ep_res = {"ep_is_setup": False, "ep_gap_pct": None, "ep_rel_vol": None}
+                    para_res = {"parabolic_short_is_setup": False, "parabolic_long_is_setup": False, "parabolic_runup_pct": None, "dist_ema10_pct": None}
                     
+                    ema_10_val = None
+                    ema_20_val = None
+                    dist_ema10_pct = None
+                    dist_ema20_pct = None
+
                     if len(history) >= 20:
-                        highs = [h[0] for h in history]
-                        lows = [h[1] for h in history]
-                        closes = [h[2] for h in history]
-                        dates = [h[3] for h in history]
+                        opens = [h[0] for h in history]
+                        highs = [h[1] for h in history]
+                        lows = [h[2] for h in history]
+                        closes = [h[3] for h in history]
+                        volumes = [h[4] for h in history]
+                        dates = [h[5] for h in history]
+
+                        # Calculate EMA 10 & EMA 20
+                        closes_series = pd.Series(closes)
+                        ema_10_series = closes_series.ewm(span=10, adjust=False).mean()
+                        ema_20_series = closes_series.ewm(span=20, adjust=False).mean()
+                        
+                        ema_10_val = round(float(ema_10_series.iloc[-1]), 2)
+                        ema_20_val = round(float(ema_20_series.iloc[-1]), 2)
+                        if ema_10_val > 0:
+                            dist_ema10_pct = round(((closes[-1] - ema_10_val) / ema_10_val) * 100.0, 2)
+                        if ema_20_val > 0:
+                            dist_ema20_pct = round(((closes[-1] - ema_20_val) / ema_20_val) * 100.0, 2)
+
                         v_detected = self.detect_vcp(highs, lows, dates, closes=closes, window=3)
                         if v_detected:
                             v_res = v_detected
                         d_detected = self.detect_darvas_box(highs, lows, closes, dates, window=3)
                         if d_detected:
                             d_res = d_detected
+                        ep_detected = self.detect_episodic_pivot(opens, highs, lows, closes, volumes, dates)
+                        if ep_detected:
+                            ep_res = ep_detected
+                        para_detected = self.detect_parabolic_extension(highs, lows, closes, dates, ema_10_val)
+                        if para_detected:
+                            para_res = para_detected
                             
-                    # row: symbol, date, close, vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, pp_days_since_peak, sma_50, sma_150, sma_200, ipo_days, ipo_ath, ipo_dfh, ipo_depth
                     results_with_setups.append(list(row) + [
                         v_res["vcp_is_setup"], v_res["vcp_troughs"], v_res["vcp_depths"],
-                        d_res["darvas_is_setup"], d_res["darvas_box_top"], d_res["darvas_box_bottom"], d_res["darvas_box_width_pct"]
+                        d_res["darvas_is_setup"], d_res["darvas_box_top"], d_res["darvas_box_bottom"], d_res["darvas_box_width_pct"],
+                        ema_10_val, ema_20_val, dist_ema10_pct, dist_ema20_pct,
+                        ep_res["ep_is_setup"], ep_res["ep_gap_pct"], ep_res["ep_rel_vol"],
+                        para_res["parabolic_short_is_setup"], para_res["parabolic_long_is_setup"], para_res["parabolic_runup_pct"]
                     ])
 
                 # Store in a temporary table to execute bulk update
-                import pandas as pd
                 temp_df = pd.DataFrame(results_with_setups, columns=[
                     "symbol", "date", "close", "vol_50d_ma", "rs_score", "rs_rank", 
                     "atr_20d", "pp_runup_pct", "pp_drawdown_pct", "pp_days_since_peak", "sma_50", "sma_150", "sma_200",
-                    "ipo_days_count", "ipo_all_time_high", "ipo_drawdown_from_high", "ipo_base_depth",
+                    "ipo_days_count", "ipo_all_time_high", "ipo_drawdown_from_high", "ipo_base_depth", "ret_1m", "gap_pct", "rel_vol_50d",
                     "vcp_is_setup", "vcp_troughs", "vcp_depths",
-                    "darvas_is_setup", "darvas_box_top", "darvas_box_bottom", "darvas_box_width_pct"
+                    "darvas_is_setup", "darvas_box_top", "darvas_box_bottom", "darvas_box_width_pct",
+                    "ema_10", "ema_20", "dist_ema10_pct", "dist_ema20_pct",
+                    "ep_is_setup", "ep_gap_pct", "ep_rel_vol",
+                    "parabolic_short_is_setup", "parabolic_long_is_setup", "parabolic_runup_pct"
                 ])
                 conn.execute("CREATE OR REPLACE TEMP TABLE temp_updates AS SELECT * FROM temp_df")
                 
@@ -499,7 +626,17 @@ class MomentumEngine:
                         darvas_is_setup = src.darvas_is_setup,
                         darvas_box_top = src.darvas_box_top,
                         darvas_box_bottom = src.darvas_box_bottom,
-                        darvas_box_width_pct = src.darvas_box_width_pct
+                        darvas_box_width_pct = src.darvas_box_width_pct,
+                        ema_10 = src.ema_10,
+                        ema_20 = src.ema_20,
+                        dist_ema10_pct = src.dist_ema10_pct,
+                        dist_ema20_pct = src.dist_ema20_pct,
+                        ep_is_setup = src.ep_is_setup,
+                        ep_gap_pct = src.ep_gap_pct,
+                        ep_rel_vol = src.ep_rel_vol,
+                        parabolic_short_is_setup = src.parabolic_short_is_setup,
+                        parabolic_long_is_setup = src.parabolic_long_is_setup,
+                        parabolic_runup_pct = src.parabolic_runup_pct
                     FROM temp_updates src
                     WHERE daily_bars.symbol = src.symbol AND daily_bars.date = src.date
                 """)

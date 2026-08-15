@@ -57,6 +57,26 @@ function App() {
   const [enableVcpSetup, setEnableVcpSetup] = useState(false);
   const [enableDarvasBox, setEnableDarvasBox] = useState(false);
   const [enableNewLeaders, setEnableNewLeaders] = useState(false);
+  const [enableQullamaggieBreakout, setEnableQullamaggieBreakout] = useState(false);
+  const [enableEpisodicPivot, setEnableEpisodicPivot] = useState(false);
+  const [enableParabolicShort, setEnableParabolicShort] = useState(false);
+  const [enableParabolicLong, setEnableParabolicLong] = useState(false);
+
+  // Qullamaggie setup inputs
+  const [min1mRetFilter, setMin1mRetFilter] = useState(20.0);
+  const [enable1mRet, setEnable1mRet] = useState(true);
+  const [enableEmaSurfing, setEnableEmaSurfing] = useState(true);
+
+  const [minEpGapFilter, setMinEpGapFilter] = useState(8.0);
+  const [enableEpGap, setEnableEpGap] = useState(true);
+  const [minEpRelVolFilter, setMinEpRelVolFilter] = useState(2.5);
+  const [enableEpRelVol, setEnableEpRelVol] = useState(true);
+  const [enableEpFlag, setEnableEpFlag] = useState(true);
+
+  const [minParabolicRunupFilter, setMinParabolicRunupFilter] = useState(40.0);
+  const [enableParabolicRunup, setEnableParabolicRunup] = useState(true);
+  const [minParabolicEmaDistFilter, setMinParabolicEmaDistFilter] = useState(18.0);
+  const [enableParabolicEmaDist, setEnableParabolicEmaDist] = useState(true);
 
   // Optional filter checkbox states
   const [enablePpRunup, setEnablePpRunup] = useState(true);
@@ -308,6 +328,10 @@ function App() {
     enableVcpSetup,
     enableDarvasBox,
     enableNewLeaders,
+    enableQullamaggieBreakout,
+    enableEpisodicPivot,
+    enableParabolicShort,
+    enableParabolicLong,
     minPpRunupFilter,
     maxPpDrawdownFilter,
     minPpDaysSincePeakFilter,
@@ -319,6 +343,18 @@ function App() {
     max52wDistFilter,
     minSurgeOffLowFilter,
     minNewLeadersRsFilter,
+    min1mRetFilter,
+    enable1mRet,
+    enableEmaSurfing,
+    minEpGapFilter,
+    enableEpGap,
+    minEpRelVolFilter,
+    enableEpRelVol,
+    enableEpFlag,
+    minParabolicRunupFilter,
+    enableParabolicRunup,
+    minParabolicEmaDistFilter,
+    enableParabolicEmaDist,
     // Optional checkbox states
     enablePpRunup,
     enablePpDrawdown,
@@ -450,6 +486,38 @@ function App() {
             setEnableDarvasBox={setEnableDarvasBox}
             enableNewLeaders={enableNewLeaders}
             setEnableNewLeaders={setEnableNewLeaders}
+            enableQullamaggieBreakout={enableQullamaggieBreakout}
+            setEnableQullamaggieBreakout={setEnableQullamaggieBreakout}
+            enableEpisodicPivot={enableEpisodicPivot}
+            setEnableEpisodicPivot={setEnableEpisodicPivot}
+            enableParabolicShort={enableParabolicShort}
+            setEnableParabolicShort={setEnableParabolicShort}
+            enableParabolicLong={enableParabolicLong}
+            setEnableParabolicLong={setEnableParabolicLong}
+            min1mRetFilter={min1mRetFilter}
+            setMin1mRetFilter={setMin1mRetFilter}
+            enable1mRet={enable1mRet}
+            setEnable1mRet={setEnable1mRet}
+            enableEmaSurfing={enableEmaSurfing}
+            setEnableEmaSurfing={setEnableEmaSurfing}
+            minEpGapFilter={minEpGapFilter}
+            setMinEpGapFilter={setMinEpGapFilter}
+            enableEpGap={enableEpGap}
+            setEnableEpGap={setEnableEpGap}
+            minEpRelVolFilter={minEpRelVolFilter}
+            setMinEpRelVolFilter={setMinEpRelVolFilter}
+            enableEpRelVol={enableEpRelVol}
+            setEnableEpRelVol={setEnableEpRelVol}
+            enableEpFlag={enableEpFlag}
+            setEnableEpFlag={setEnableEpFlag}
+            minParabolicRunupFilter={minParabolicRunupFilter}
+            setMinParabolicRunupFilter={setMinParabolicRunupFilter}
+            enableParabolicRunup={enableParabolicRunup}
+            setEnableParabolicRunup={setEnableParabolicRunup}
+            minParabolicEmaDistFilter={minParabolicEmaDistFilter}
+            setMinParabolicEmaDistFilter={setMinParabolicEmaDistFilter}
+            enableParabolicEmaDist={enableParabolicEmaDist}
+            setEnableParabolicEmaDist={setEnableParabolicEmaDist}
             minPpRunupFilter={minPpRunupFilter}
             setMinPpRunupFilter={setMinPpRunupFilter}
             maxPpDrawdownFilter={maxPpDrawdownFilter}

@@ -79,103 +79,69 @@ class DatabaseManager:
                     dist_from_52w_high DOUBLE,
                     surge_off_low_pct DOUBLE,
                     is_52w_high BOOLEAN,
+                    ret_1m DOUBLE,
+                    ema_10 DOUBLE,
+                    ema_20 DOUBLE,
+                    dist_ema10_pct DOUBLE,
+                    dist_ema20_pct DOUBLE,
+                    gap_pct DOUBLE,
+                    rel_vol_50d DOUBLE,
+                    ep_is_setup BOOLEAN,
+                    ep_gap_pct DOUBLE,
+                    ep_rel_vol DOUBLE,
+                    parabolic_short_is_setup BOOLEAN,
+                    parabolic_long_is_setup BOOLEAN,
+                    parabolic_runup_pct DOUBLE,
+                    parabolic_drop_pct DOUBLE,
                     PRIMARY KEY (symbol, date)
                 );
             """)
             
             # Migration: add columns if daily_bars already exists
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN adr_20d DOUBLE;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN atr_20d DOUBLE;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN pp_runup_pct DOUBLE;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN pp_drawdown_pct DOUBLE;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN pp_days_since_peak INTEGER;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN sma_50 DOUBLE;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN sma_150 DOUBLE;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN sma_200 DOUBLE;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN vcp_is_setup BOOLEAN;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN vcp_troughs INTEGER;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN vcp_depths VARCHAR;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN ipo_days_count INTEGER;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN ipo_all_time_high DOUBLE;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN ipo_drawdown_from_high DOUBLE;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN ipo_base_depth DOUBLE;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN darvas_is_setup BOOLEAN;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN darvas_box_top DOUBLE;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN darvas_box_bottom DOUBLE;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN darvas_box_width_pct DOUBLE;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN high_52w DOUBLE;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN dist_from_52w_high DOUBLE;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN surge_off_low_pct DOUBLE;")
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE daily_bars ADD COLUMN is_52w_high BOOLEAN;")
-            except Exception:
-                pass
+            new_cols = [
+                ("adr_20d", "DOUBLE"),
+                ("atr_20d", "DOUBLE"),
+                ("pp_runup_pct", "DOUBLE"),
+                ("pp_drawdown_pct", "DOUBLE"),
+                ("pp_days_since_peak", "INTEGER"),
+                ("sma_50", "DOUBLE"),
+                ("sma_150", "DOUBLE"),
+                ("sma_200", "DOUBLE"),
+                ("vcp_is_setup", "BOOLEAN"),
+                ("vcp_troughs", "INTEGER"),
+                ("vcp_depths", "VARCHAR"),
+                ("ipo_days_count", "INTEGER"),
+                ("ipo_all_time_high", "DOUBLE"),
+                ("ipo_drawdown_from_high", "DOUBLE"),
+                ("ipo_base_depth", "DOUBLE"),
+                ("darvas_is_setup", "BOOLEAN"),
+                ("darvas_box_top", "DOUBLE"),
+                ("darvas_box_bottom", "DOUBLE"),
+                ("darvas_box_width_pct", "DOUBLE"),
+                ("high_52w", "DOUBLE"),
+                ("dist_from_52w_high", "DOUBLE"),
+                ("surge_off_low_pct", "DOUBLE"),
+                ("is_52w_high", "BOOLEAN"),
+                ("ret_1m", "DOUBLE"),
+                ("ema_10", "DOUBLE"),
+                ("ema_20", "DOUBLE"),
+                ("dist_ema10_pct", "DOUBLE"),
+                ("dist_ema20_pct", "DOUBLE"),
+                ("gap_pct", "DOUBLE"),
+                ("rel_vol_50d", "DOUBLE"),
+                ("ep_is_setup", "BOOLEAN"),
+                ("ep_gap_pct", "DOUBLE"),
+                ("ep_rel_vol", "DOUBLE"),
+                ("parabolic_short_is_setup", "BOOLEAN"),
+                ("parabolic_long_is_setup", "BOOLEAN"),
+                ("parabolic_runup_pct", "DOUBLE"),
+                ("parabolic_drop_pct", "DOUBLE"),
+            ]
+            for col_name, col_type in new_cols:
+                try:
+                    conn.execute(f"ALTER TABLE daily_bars ADD COLUMN {col_name} {col_type};")
+                except Exception:
+                    pass
             
             
             # 3. Historical Quarterly Fundamentals Table

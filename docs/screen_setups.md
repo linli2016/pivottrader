@@ -16,6 +16,9 @@ PivotTrader supports multiple setup overlays designed to identify superperforman
 | **IPO Base** | Primary base in young public companies | Listing age 10–350 days, distance from ATH $\le 25\%$, base depth $\le 35\%$ |
 | **Darvas Box** | Box consolidation in confirmed uptrends | 3-day unbreached Box Top & Bottom, Box Width $\le 25\%$ |
 | **New Leaders (Market Low Turn)** | Market correction turnover & leadership | 52-week high list / proximity ($\le 25\%$), strong surge off market lows ($\ge 20\%$), least corrected |
+| **Qullamaggie Breakout** | Momentum consolidation surfing 10/20 EMA | Top 1%–2% 1M/3M/6M gainers, +30-100%+ prior leg, tight EMA 10/20 surf, stop LOD $\le 1$ ATR |
+| **Episodic Pivot (EP)** | Fundamental catalyst news gap-up | Gap $\ge +8.0\%$, RelVol $\ge 2.5\text{x}$ 50d volume, prior 60-day base breakout |
+| **Parabolic Short & Long** | Mean-reversion after vertical expansion | +40%+ move in 3–10d, extended $\ge 18\%$ above 10 EMA (or -30% drop below 10 EMA) |
 
 ---
 
@@ -108,3 +111,32 @@ Historical market analysis proves that **over 96% of superperformance stocks eme
 - **`minNewLeadersRsFilter`**: Leader RS Rank $\ge 80$.
 - **`enableNewLeaders52wHigh`**: Optional flag requiring stock to touch/hit new 52-week high.
 - **`enableNewLeadersBase`**: Enforces Stage 2 trend alignment and pattern setup context.
+
+---
+
+## 7. Kristjan Qullamaggie's 3 Timeless Setups
+
+### 7.1 Qullamaggie Breakout Setup (Momentum Consolidation & EMA Surfing)
+- **Rationale**: Leading stocks move in stair steps (+30% to +100%+ move over 1–3 months, orderly pullback/consolidation surfing the 10/20 EMA, then a range expansion breakout).
+- **Quantitative Criteria**:
+  1. **Top Momentum Performance**: Top 1%–2% price performance leaders over 1-month (`ret_1m`), 3-month, and 6-month timeframes.
+  2. **Prior Expansion Leg**: $+30\text{--}100\%+$ gain within prior 40 trading days.
+  3. **Orderly EMA Surfing Consolidation**: Price pullback $\le 25\%$ depth, holding above rising 10 EMA or 20 EMA.
+  4. **Risk Management Rule**: Entry on Opening Range High (ORH), stop at Low of Day (LOD) bounded $\le 1$ ATR/ADR of stock.
+  5. **Trailing Exit Rule**: Sell 1/3 to 1/2 after 3–5 days, trail remaining position with a daily close below the 10-day EMA.
+
+### 7.2 Episodic Pivot (EP Setup)
+- **Rationale**: Fundamental catalyst (earnings/revenue beat, FDA approval, major contract) triggers a massive re-rating gap up out of a multi-month base on institutional buying.
+- **Quantitative Criteria**:
+  1. **Massive Gap Up**: Opening price gap $\ge +8.0\%$ above prior day close (`gap_pct`).
+  2. **Volume Explosion**: Relative volume $\ge 2.5\text{--}3.0\text{x}$ 50-day average volume (`rel_vol_50d`).
+  3. **Base Context**: Consolidating base prior to gap event.
+  4. **Fundamental Filter**: QoQ EPS / Revenue growth $\ge 20\%$ or fundamental catalyst tag.
+
+### 7.3 Parabolic Extension Setups (Short & Long)
+- **Rationale**: Extreme vertical advances (+40% to +200%+ in 3 to 10 days) leave stocks severely extended far above short-term moving averages. When momentum exhausts (first red day / breaking previous day low), mean-reversion pullbacks offer high R/R short setups.
+- **Quantitative Criteria**:
+  1. **Fast Runup Velocity**: Price gain $\ge +40.0\%$ over 3 to 10 trading days (`parabolic_runup_pct`).
+  2. **EMA Extension**: Distance above 10-day EMA $\ge +18.0\%$ (`dist_ema10_pct`).
+  3. **Parabolic Long (Oversold Bounce)**: Fast drop $\le -30.0\%$ over 3–10 days with distance below 10 EMA $\le -18.0\%$.
+

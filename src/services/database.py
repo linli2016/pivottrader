@@ -63,7 +63,7 @@ class DatabaseService:
             ),
             ranked_bars AS (
                 SELECT 
-                    symbol, close, volume, vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, pp_days_since_peak, sma_50, sma_150, sma_200, vcp_is_setup, vcp_troughs, vcp_depths, ipo_days_count, ipo_all_time_high, ipo_drawdown_from_high, ipo_base_depth, darvas_is_setup, darvas_box_top, darvas_box_bottom, darvas_box_width_pct,
+                    symbol, close, volume, vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, pp_days_since_peak, sma_50, sma_150, sma_200, vcp_is_setup, vcp_troughs, vcp_depths, ipo_days_count, ipo_all_time_high, ipo_drawdown_from_high, ipo_base_depth, darvas_is_setup, darvas_box_top, darvas_box_bottom, darvas_box_width_pct, ret_1m, ema_10, ema_20, dist_ema10_pct, dist_ema20_pct, gap_pct, rel_vol_50d, ep_is_setup, ep_gap_pct, ep_rel_vol, parabolic_short_is_setup, parabolic_long_is_setup, parabolic_runup_pct,
                     (rs_rank >= COALESCE(
                         (
                             SELECT MAX(d.rs_rank) 
@@ -116,6 +116,19 @@ class DatabaseService:
                 r.dist_from_52w_high,
                 r.surge_off_low_pct,
                 r.is_52w_high,
+                r.ret_1m,
+                r.ema_10,
+                r.ema_20,
+                r.dist_ema10_pct,
+                r.dist_ema20_pct,
+                r.gap_pct,
+                r.rel_vol_50d,
+                r.ep_is_setup,
+                r.ep_gap_pct,
+                r.ep_rel_vol,
+                r.parabolic_short_is_setup,
+                r.parabolic_long_is_setup,
+                r.parabolic_runup_pct,
                 s.sector,
                 s.industry
             FROM ranked_bars r
@@ -173,7 +186,7 @@ class DatabaseService:
             
             candidates = []
             for row in res:
-                sec_val = row[35]
+                sec_val = row[48]
                 sec_rank = sector_ranks.get(sec_val) if sec_val else None
                 candidates.append({
                     "symbol": row[0],
@@ -212,9 +225,22 @@ class DatabaseService:
                     "dist_from_52w_high": row[32],
                     "surge_off_low_pct": row[33],
                     "is_52w_high": bool(row[34]) if row[34] is not None else False,
+                    "ret_1m": row[35],
+                    "ema_10": row[36],
+                    "ema_20": row[37],
+                    "dist_ema10_pct": row[38],
+                    "dist_ema20_pct": row[39],
+                    "gap_pct": row[40],
+                    "rel_vol_50d": row[41],
+                    "ep_is_setup": bool(row[42]) if row[42] is not None else False,
+                    "ep_gap_pct": row[43],
+                    "ep_rel_vol": row[44],
+                    "parabolic_short_is_setup": bool(row[45]) if row[45] is not None else False,
+                    "parabolic_long_is_setup": bool(row[46]) if row[46] is not None else False,
+                    "parabolic_runup_pct": row[47],
                     "sector": sec_val,
                     "sector_rank": sec_rank,
-                    "industry": row[36]
+                    "industry": row[49]
                 })
             return candidates
 
