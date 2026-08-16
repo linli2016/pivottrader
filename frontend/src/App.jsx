@@ -8,6 +8,7 @@ import SettingsTab from './components/SettingsTab';
 import MarketMonitorTab from './components/MarketMonitorTab';
 import SectorCompareTab from './components/SectorCompareTab';
 import StockDetailDrawer from './components/StockDetailDrawer';
+import WatchlistsTab from './components/WatchlistsTab';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
@@ -15,6 +16,23 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [candidates, setCandidates] = useState([]);
   const [summary, setSummary] = useState(null);
+  const [watchlists, setWatchlists] = useState([]);
+
+  const fetchWatchlists = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/watchlists`);
+      if (res.ok) {
+        const data = await res.json();
+        setWatchlists(data);
+      }
+    } catch (e) {
+      console.error("Error fetching watchlists:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchWatchlists();
+  }, []);
   const [config, setConfig] = useState({
     min_price: 5.0,
     min_volume_sma_50: 300000,
@@ -382,60 +400,127 @@ function App() {
     <div className="app-container">
       {/* Sidebar Navigation */}
       <div className="sidebar-nav">
-        <div className="brand">
-          <span style={{ fontSize: '20px' }}>🛸</span>
-          <span>PivotTrader</span>
+        <div className="sidebar-top">
+          <div className="brand">
+            <div className="brand-icon">⚡</div>
+            <span className="brand-name">PivotTrader</span>
+            <span className="brand-badge">PRO</span>
+          </div>
+
+          <div className="nav-section">
+            <div className="nav-section-title">Overview</div>
+            <ul className="nav-menu">
+              <li
+                className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
+                onClick={() => setActiveTab('dashboard')}
+              >
+                <div className="nav-item-content">
+                  <span>📊</span>
+                  <span>Dashboard</span>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div className="nav-section">
+            <div className="nav-section-title">Daily Routine</div>
+            <ul className="nav-menu">
+              {/* 1. Market Monitor */}
+              <li
+                className={`nav-item ${activeTab === 'market-monitor' ? 'active' : ''}`}
+                onClick={() => setActiveTab('market-monitor')}
+              >
+                <div className="nav-item-content">
+                  <span>📈</span>
+                  <span>1. Market Monitor</span>
+                </div>
+              </li>
+
+              {/* 2. Sector Compare */}
+              <li
+                className={`nav-item ${activeTab === 'sector-compare' ? 'active' : ''}`}
+                onClick={() => setActiveTab('sector-compare')}
+              >
+                <div className="nav-item-content">
+                  <span>🌐</span>
+                  <span>2. Sector Compare</span>
+                </div>
+              </li>
+
+              {/* 3. Stock Screen */}
+              <li
+                className={`nav-item ${activeTab === 'candidates' ? 'active' : ''}`}
+                onClick={() => setActiveTab('candidates')}
+              >
+                <div className="nav-item-content">
+                  <span>🎯</span>
+                  <span>3. Stock Screen</span>
+                </div>
+                <span className="nav-badge emerald">{filteredCandidates.length}</span>
+              </li>
+
+              {/* 4. Watchlists */}
+              <li
+                className={`nav-item ${activeTab === 'watchlists' ? 'active' : ''}`}
+                onClick={() => setActiveTab('watchlists')}
+              >
+                <div className="nav-item-content">
+                  <span>⭐️</span>
+                  <span>4. My Watchlists</span>
+                </div>
+                <span className="nav-badge emerald">{watchlists.reduce((sum, w) => sum + (w.item_count || 0), 0)}</span>
+              </li>
+            </ul>
+          </div>
+
+          <div className="nav-section">
+            <div className="nav-section-title">Tools & Config</div>
+            <ul className="nav-menu">
+              <li
+                className={`nav-item ${activeTab === 'inspector' ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveTab('inspector');
+                  if (selectedStock && !inspectorSymbol) {
+                    setInspectorSymbol(selectedStock.symbol);
+                    handleInspectorSearch(selectedStock.symbol);
+                  }
+                }}
+              >
+                <div className="nav-item-content">
+                  <span>🔍</span>
+                  <span>Stock Inspector</span>
+                </div>
+              </li>
+              <li
+                className={`nav-item ${activeTab === 'sql' ? 'active' : ''}`}
+                onClick={() => setActiveTab('sql')}
+              >
+                <div className="nav-item-content">
+                  <span>💻</span>
+                  <span>SQL Console</span>
+                </div>
+              </li>
+              <li
+                className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
+                onClick={() => setActiveTab('settings')}
+              >
+                <div className="nav-item-content">
+                  <span>⚙️</span>
+                  <span>Configurations</span>
+                </div>
+              </li>
+            </ul>
+          </div>
         </div>
-        <ul className="nav-menu">
-          <li
-            className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
-            onClick={() => setActiveTab('dashboard')}
-          >
-            Dashboard
-          </li>
-          <li
-            className={`nav-item ${activeTab === 'market-monitor' ? 'active' : ''}`}
-            onClick={() => setActiveTab('market-monitor')}
-          >
-            Market Monitor
-          </li>
-          <li
-            className={`nav-item ${activeTab === 'sector-compare' ? 'active' : ''}`}
-            onClick={() => setActiveTab('sector-compare')}
-          >
-            Sector Compare
-          </li>
-          <li
-            className={`nav-item ${activeTab === 'candidates' ? 'active' : ''}`}
-            onClick={() => setActiveTab('candidates')}
-          >
-            Screen ({filteredCandidates.length})
-          </li>
-          <li
-            className={`nav-item ${activeTab === 'inspector' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('inspector');
-              if (selectedStock && !inspectorSymbol) {
-                setInspectorSymbol(selectedStock.symbol);
-                handleInspectorSearch(selectedStock.symbol);
-              }
-            }}
-          >
-            Stock Inspector
-          </li>
-          <li
-            className={`nav-item ${activeTab === 'sql' ? 'active' : ''}`}
-            onClick={() => setActiveTab('sql')}
-          >
-            SQL Console
-          </li>
-          <li
-            className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
-            onClick={() => setActiveTab('settings')}
-          >
-            Configurations
-          </li>
-        </ul>
+
+        {/* User Profile Footer */}
+        <div className="user-profile">
+          <div className="user-avatar">PT</div>
+          <div className="user-info">
+            <span className="user-name">Edge Trader</span>
+            <span className="user-role">Live Account</span>
+          </div>
+        </div>
       </div>
 
       {/* Main Content Area */}
@@ -449,6 +534,7 @@ function App() {
             syncStatus={syncStatus}
             handleTriggerSync={handleTriggerSync}
             summary={summary}
+            setActiveTab={setActiveTab}
           />
         )}
 
@@ -460,8 +546,18 @@ function App() {
           <SectorCompareTab onSelectStock={handleSelectStock} />
         )}
 
+        {activeTab === 'watchlists' && (
+          <WatchlistsTab
+            handleSelectStock={handleSelectStock}
+            watchlists={watchlists}
+            fetchWatchlists={fetchWatchlists}
+          />
+        )}
+
         {activeTab === 'candidates' && (
           <CandidatesTab
+            watchlists={watchlists}
+            fetchWatchlists={fetchWatchlists}
             candidates={candidates}
             filteredCandidates={filteredCandidates}
             minPriceFilter={minPriceFilter}

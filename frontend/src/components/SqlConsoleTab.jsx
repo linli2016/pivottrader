@@ -11,6 +11,11 @@ export default function SqlConsoleTab({
     <div className="sql-console">
       <div className="header-section">
         <div className="header-title">
+          <div className="header-subtitle-tag">
+            <span>DEVELOPER TOOL</span>
+            <span>•</span>
+            <span>DUCKDB READ-ONLY</span>
+          </div>
           <h1>SQL Query Console</h1>
           <p>Run custom analytical queries directly on your DuckDB database</p>
         </div>

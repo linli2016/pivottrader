@@ -9,6 +9,11 @@ export default function SettingsTab({
     <div>
       <div className="header-section">
         <div className="header-title">
+          <div className="header-subtitle-tag">
+            <span>SYSTEM SETTINGS</span>
+            <span>•</span>
+            <span>CONFIGURATIONS</span>
+          </div>
           <h1>Screener Configurations</h1>
           <p>Configure momentum thresholds, exchanges, and data providers</p>
         </div>

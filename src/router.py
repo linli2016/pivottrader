@@ -22,6 +22,12 @@ class SyncTriggerSchema(BaseModel):
     skip_prices: bool = False
     skip_fundamentals: bool = False
 
+class WatchlistCreateSchema(BaseModel):
+    name: str
+
+class WatchlistItemAddSchema(BaseModel):
+    symbol: str
+
 # ----------------- Endpoints -----------------
 
 @router.get("/api/summary")
@@ -128,6 +134,56 @@ def get_sector_stocks(sector_name: str):
     """Retrieve active candidate stocks matching a specific sector or industry group."""
     try:
         return db_service.get_sector_stocks(sector_name)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- Watchlist Endpoints -----------------
+
+@router.get("/api/watchlists")
+def get_watchlists():
+    """Retrieve all user watchlists and item counts."""
+    try:
+        return db_service.get_watchlists()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/watchlists")
+def create_watchlist(payload: WatchlistCreateSchema):
+    """Create a new watchlist."""
+    try:
+        return db_service.create_watchlist(payload.name)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/api/watchlists/{watchlist_id}")
+def delete_watchlist(watchlist_id: int):
+    """Delete a watchlist."""
+    try:
+        return db_service.delete_watchlist(watchlist_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/watchlists/{watchlist_id}/items")
+def get_watchlist_items(watchlist_id: int):
+    """Get all ticker items in a specific watchlist."""
+    try:
+        return db_service.get_watchlist_items(watchlist_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/watchlists/{watchlist_id}/items")
+def add_watchlist_item(watchlist_id: int, payload: WatchlistItemAddSchema):
+    """Add a stock symbol to a specific watchlist."""
+    try:
+        return db_service.add_watchlist_item(watchlist_id, payload.symbol)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/api/watchlists/{watchlist_id}/items/{symbol}")
+def remove_watchlist_item(watchlist_id: int, symbol: str):
+    """Remove a stock symbol from a watchlist."""
+    try:
+        return db_service.remove_watchlist_item(watchlist_id, symbol)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

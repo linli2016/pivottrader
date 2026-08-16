@@ -619,6 +619,40 @@ class DatabaseService:
             elif latest.get("down_25pct_1m", 0) > latest.get("up_25pct_1m", 0) * 1.5:
                 regime = "Bearish Contraction"
 
+            # Query latest benchmark prices for SPY and QQQ
+            benchmarks = {
+                "SPY": {"close": 0, "change_pct": 0},
+                "QQQ": {"close": 0, "change_pct": 0}
+            }
+            try:
+                bm_query = """
+                    WITH bm_bars AS (
+                        SELECT 
+                            symbol,
+                            date,
+                            close,
+                            LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) as prev_close,
+                            ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
+                        FROM daily_bars
+                        WHERE symbol IN ('SPY', 'QQQ')
+                    )
+                    SELECT symbol, close, prev_close
+                    FROM bm_bars
+                    WHERE rn = 1
+                """
+                with self.get_read_only_conn() as conn:
+                    bm_rows = conn.execute(bm_query).fetchall()
+                    for b_sym, b_close, b_prev in bm_rows:
+                        pct = 0.0
+                        if b_prev and b_prev > 0:
+                            pct = round(((b_close - b_prev) / b_prev) * 100, 2)
+                        benchmarks[b_sym] = {
+                            "close": round(b_close, 2),
+                            "change_pct": pct
+                        }
+            except Exception as e:
+                print(f"Error querying benchmark ETF stats: {e}")
+
             summary = {
                 "latest_date": latest.get("date"),
                 "latest_gainers_4pct": latest.get("gainers_4pct"),
@@ -629,7 +663,8 @@ class DatabaseService:
                 "latest_down_25pct_1m": latest.get("down_25pct_1m"),
                 "latest_up_25pct_3m": latest.get("up_25pct_3m"),
                 "latest_down_25pct_3m": latest.get("down_25pct_3m"),
-                "regime": regime
+                "regime": regime,
+                "benchmarks": benchmarks
             }
 
             return {"summary": summary, "daily_data": daily_list}
@@ -747,6 +782,121 @@ class DatabaseService:
                     filtered.append(c)
 
         return filtered
+
+    def get_watchlists(self) -> List[Dict[str, Any]]:
+        with self.get_read_only_conn() as conn:
+            tables = [t[0] for t in conn.execute("SHOW TABLES").fetchall()]
+            if "watchlists" not in tables:
+                return [{"id": 1, "name": "Default Watchlist", "created_at": None, "item_count": 0}]
+
+            query = """
+                SELECT w.id, w.name, w.created_at, COUNT(wi.symbol) as item_count
+                FROM watchlists w
+                LEFT JOIN watchlist_items wi ON w.id = wi.watchlist_id
+                GROUP BY w.id, w.name, w.created_at
+                ORDER BY w.id ASC
+            """
+            rows = conn.execute(query).fetchall()
+            return [
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "created_at": str(row[2]) if row[2] else None,
+                    "item_count": row[3]
+                }
+                for row in rows
+            ]
+
+    def create_watchlist(self, name: str) -> Dict[str, Any]:
+        db_path = self.get_db_path()
+        with duckdb.connect(db_path) as conn:
+            conn.execute("""
+                CREATE SEQUENCE IF NOT EXISTS seq_watchlist_id START 1;
+                CREATE TABLE IF NOT EXISTS watchlists (
+                    id INTEGER PRIMARY KEY DEFAULT nextval('seq_watchlist_id'),
+                    name VARCHAR NOT NULL UNIQUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            conn.execute("INSERT INTO watchlists (name) VALUES (?)", [name])
+            row = conn.execute("SELECT id, name, created_at FROM watchlists WHERE name = ?", [name]).fetchone()
+            return {"id": row[0], "name": row[1], "created_at": str(row[2]), "item_count": 0}
+
+    def delete_watchlist(self, watchlist_id: int) -> bool:
+        db_path = self.get_db_path()
+        with duckdb.connect(db_path) as conn:
+            conn.execute("DELETE FROM watchlist_items WHERE watchlist_id = ?", [watchlist_id])
+            conn.execute("DELETE FROM watchlists WHERE id = ?", [watchlist_id])
+            return True
+
+    def get_watchlist_items(self, watchlist_id: int) -> List[Dict[str, Any]]:
+        with self.get_read_only_conn() as conn:
+            tables = [t[0] for t in conn.execute("SHOW TABLES").fetchall()]
+            if "watchlist_items" not in tables:
+                return []
+
+            query = """
+                SELECT 
+                    s.symbol,
+                    s.name,
+                    s.exchange,
+                    s.sector,
+                    b.close,
+                    b.rs_rank,
+                    b.vol_50d_ma,
+                    b.volume,
+                    wi.added_at
+                FROM watchlist_items wi
+                JOIN symbols s ON wi.symbol = s.symbol
+                LEFT JOIN (
+                    SELECT db.*
+                    FROM daily_bars db
+                    INNER JOIN (
+                        SELECT symbol, MAX(date) as max_date
+                        FROM daily_bars
+                        GROUP BY symbol
+                    ) latest ON db.symbol = latest.symbol AND db.date = latest.max_date
+                ) b ON s.symbol = b.symbol
+                WHERE wi.watchlist_id = ?
+                ORDER BY wi.added_at DESC
+            """
+            rows = conn.execute(query, [watchlist_id]).fetchall()
+            return [
+                {
+                    "symbol": row[0],
+                    "name": row[1],
+                    "exchange": row[2],
+                    "sector": row[3],
+                    "close": row[4],
+                    "rs_rank": row[5],
+                    "vol_50d_ma": row[6],
+                    "volume": row[7],
+                    "added_at": str(row[8]) if row[8] else None
+                }
+                for row in rows
+            ]
+
+    def add_watchlist_item(self, watchlist_id: int, symbol: str) -> bool:
+        db_path = self.get_db_path()
+        with duckdb.connect(db_path) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS watchlist_items (
+                    watchlist_id INTEGER NOT NULL,
+                    symbol VARCHAR NOT NULL,
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (watchlist_id, symbol)
+                );
+            """)
+            symbol_upper = symbol.strip().upper()
+            conn.execute("INSERT OR IGNORE INTO watchlist_items (watchlist_id, symbol) VALUES (?, ?)", [watchlist_id, symbol_upper])
+            return True
+
+    def remove_watchlist_item(self, watchlist_id: int, symbol: str) -> bool:
+        db_path = self.get_db_path()
+        with duckdb.connect(db_path) as conn:
+            symbol_upper = symbol.strip().upper()
+            conn.execute("DELETE FROM watchlist_items WHERE watchlist_id = ? AND symbol = ?", [watchlist_id, symbol_upper])
+            return True
 
 db_service = DatabaseService(config_service)
 

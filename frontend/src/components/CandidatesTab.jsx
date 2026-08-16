@@ -1,6 +1,9 @@
 import React from 'react';
+import CandlestickChart from './CandlestickChart';
 
 export default function CandidatesTab({
+  watchlists = [],
+  fetchWatchlists,
   candidates,
   filteredCandidates,
   minPriceFilter,
@@ -123,6 +126,80 @@ export default function CandidatesTab({
   const [showSetupGuideModal, setShowSetupGuideModal] = React.useState(false);
   const [activeGuideTab, setActiveGuideTab] = React.useState('qullamaggie_breakout');
 
+  // Stock Browse Mode (Chart Flip) states
+  const [viewMode, setViewMode] = React.useState('browse'); // 'browse' or 'table'
+  const [browseIndex, setBrowseIndex] = React.useState(0);
+  const [browsePrices, setBrowsePrices] = React.useState([]);
+  const [loadingBrowsePrices, setLoadingBrowsePrices] = React.useState(false);
+  const [targetWatchlistId, setTargetWatchlistId] = React.useState(null);
+
+  const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
+
+  const currentCandidate = filteredCandidates[browseIndex] || null;
+
+  React.useEffect(() => {
+    if (watchlists && watchlists.length > 0 && !targetWatchlistId) {
+      setTargetWatchlistId(watchlists[0].id);
+    }
+  }, [watchlists]);
+
+  const fetchBrowsePrices = async (symbol) => {
+    if (!symbol) return;
+    setLoadingBrowsePrices(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/stocks/${symbol}/prices?limit=252`);
+      if (res.ok) {
+        const data = await res.json();
+        setBrowsePrices(data);
+      }
+    } catch (e) {
+      console.error("Error fetching browse prices:", e);
+    } finally {
+      setLoadingBrowsePrices(false);
+    }
+  };
+
+  React.useEffect(() => {
+    if (viewMode === 'browse' && currentCandidate) {
+      fetchBrowsePrices(currentCandidate.symbol);
+    }
+  }, [viewMode, browseIndex, currentCandidate?.symbol]);
+
+  // Keyboard Arrow Navigation Listener for Browse Mode (Up/Down or Left/Right)
+  React.useEffect(() => {
+    if (viewMode !== 'browse' || filteredCandidates.length === 0) return;
+    const handleKeyDown = (e) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        setBrowseIndex((prev) => Math.max(prev - 1, 0));
+      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        setBrowseIndex((prev) => Math.min(prev + 1, filteredCandidates.length - 1));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [viewMode, filteredCandidates.length]);
+
+  const handleQuickAddWatchlist = async (symbol) => {
+    if (!targetWatchlistId || !symbol) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/watchlists/${targetWatchlistId}/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol }),
+      });
+      if (res.ok) {
+        if (fetchWatchlists) fetchWatchlists();
+        const targetW = watchlists.find((w) => w.id === targetWatchlistId);
+        alert(`Saved ${symbol} to "${targetW?.name || 'Watchlist'}"!`);
+      }
+    } catch (e) {
+      alert(`Error saving to watchlist: ${e.message}`);
+    }
+  };
+
   const handleExportTradingView = () => {
     if (filteredCandidates.length === 0) {
       alert("No candidates to export!");
@@ -148,16 +225,43 @@ export default function CandidatesTab({
     <div>
       <div className="header-section">
         <div className="header-title">
-          <h1>Screen Candidates</h1>
+          <div className="header-subtitle-tag">
+            <span>STOCKS • 1D SCANNER</span>
+            <span>•</span>
+            <span>REALTIME FILTERS</span>
+          </div>
+          <h1>Candidates Screen</h1>
           <p>US Stocks passing RS percentiles & EPS QoQ acceleration guidelines</p>
         </div>
-        <button
-          className="btn btn-secondary"
-          onClick={handleExportTradingView}
-          disabled={filteredCandidates.length === 0}
-        >
-          Export to TradingView
-        </button>
+
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          {/* View Mode Segmented Control */}
+          <div className="segmented-control">
+            <button
+              className={`segmented-item ${viewMode === 'table' ? 'active' : ''}`}
+              onClick={() => setViewMode('table')}
+            >
+              📋 Table View
+            </button>
+            <button
+              className={`segmented-item ${viewMode === 'browse' ? 'active' : ''}`}
+              onClick={() => {
+                setViewMode('browse');
+                if (browseIndex >= filteredCandidates.length) setBrowseIndex(0);
+              }}
+            >
+              ⚡ Stock Browse Mode
+            </button>
+          </div>
+
+          <button
+            className="btn btn-secondary"
+            onClick={handleExportTradingView}
+            disabled={filteredCandidates.length === 0}
+          >
+            Export to TradingView
+          </button>
+        </div>
       </div>
 
       {/* Interactive Strategy & Filter controls */}
@@ -523,8 +627,8 @@ export default function CandidatesTab({
                 {!enforceStage2
                   ? 'Disabled (Optional)'
                   : enableIpoBase && enableIpoAge
-                  ? 'SMA(50) [Waive SMA 150/200 on IPOs]'
-                  : 'SMA(50) > SMA(150) > SMA(200)'}
+                    ? 'SMA(50) [Waive SMA 150/200 on IPOs]'
+                    : 'SMA(50) > SMA(150) > SMA(200)'}
               </strong>
             </div>
             {enableAtr && (
@@ -1304,163 +1408,329 @@ export default function CandidatesTab({
         </div>
       </div>
 
-      {/* Candidates Table */}
-      <div className="table-container">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Ticker</th>
-              <th>Sector / Industry</th>
-              <th>Price</th>
-              <th>1M Ret %</th>
-              <th>Vol 50d MA</th>
-              <th>RelVol</th>
-              <th>RS Score</th>
-              <th>RS Percentile</th>
-              <th>ATR (20d)</th>
-              <th>EPS QoQ Growth</th>
-              <th>Report Qtr</th>
-              {enablePowerPlay && (
-                <>
-                  <th>Run Up %</th>
-                  <th>Drawdown %</th>
-                  <th>Vol vs SMA</th>
-                </>
-              )}
-              {enableIpoBase && (
-                <>
-                  <th>IPO Age</th>
-                  <th>Dist from High</th>
-                  <th>Base Depth</th>
-                </>
-              )}
-              {enableNewLeaders && (
-                <>
-                  <th>52w High Dist</th>
-                  <th>Surge off Low</th>
-                  <th>52w High Status</th>
-                </>
-              )}
-              <th>Setups & Patterns</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredCandidates.map((c, i) => (
-              <tr key={i} onClick={() => handleSelectStock(c)} style={{ cursor: 'pointer' }}>
-                <td style={{ fontWeight: 'bold', color: 'var(--accent-color)' }}>{c.symbol}</td>
-                <td>
-                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                    {c.sector ? `${c.sector}${c.sector_rank ? ` (${c.sector_rank})` : ''}` : 'N/A'}
+      {/* Candidates View Mode Switcher: Browse Mode vs Datatable */}
+      {viewMode === 'browse' ? (
+        filteredCandidates.length === 0 ? (
+          <div className="glass-card" style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-secondary)', marginTop: '20px' }}>
+            No candidate stocks match your current active filters.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginTop: '20px' }}>
+            {/* Main Browse Column (Left) */}
+            <div style={{ flex: '1 1 700px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Header Bar for Selected Stock */}
+              <div className="glass-card" style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <h2 style={{ fontSize: '28px', fontWeight: 800, color: '#34d399', letterSpacing: '-0.5px', margin: 0 }}>
+                    {currentCandidate?.symbol}
+                  </h2>
+                  <div>
+                    <div style={{ fontSize: '15px', fontWeight: 600, color: '#ffffff' }}>
+                      {currentCandidate?.name || 'Company Name'}
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      {currentCandidate?.exchange || ''} • {currentCandidate?.sector || 'Sector'} ({currentCandidate?.industry || 'Industry'})
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <span className="pill pill-success" style={{ fontSize: '12px', padding: '4px 10px' }}>
+                    RS Rank: {currentCandidate?.rs_rank ?? 'N/A'}
                   </span>
-                  <span style={{ fontSize: '11px', display: 'block', color: 'var(--text-secondary)' }}>{c.industry || 'N/A'}</span>
-                </td>
-                <td>${c.close.toFixed(2)}</td>
-                <td style={{ color: c.ret_1m !== null && c.ret_1m !== undefined ? (c.ret_1m >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)') : 'var(--text-secondary)', fontWeight: '600' }}>
-                  {c.ret_1m !== null && c.ret_1m !== undefined ? `${c.ret_1m >= 0 ? '+' : ''}${c.ret_1m.toFixed(1)}%` : 'N/A'}
-                </td>
-                <td>{c.vol_50d_ma.toLocaleString()}</td>
-                <td style={{ color: c.rel_vol_50d >= 2.5 ? 'var(--accent-success)' : 'var(--text-primary)', fontWeight: c.rel_vol_50d >= 2.5 ? 'bold' : 'normal' }}>
-                  {c.rel_vol_50d !== null && c.rel_vol_50d !== undefined ? `${c.rel_vol_50d.toFixed(1)}x` : '1.0x'}
-                </td>
-                <td>{c.rs_score ? c.rs_score.toFixed(4) : 'N/A'}</td>
-                <td>
-                  <span className="pill pill-success">{c.rs_rank}</span>
-                </td>
-                <td style={{ fontWeight: '500' }}>
-                  {c.atr_20d !== null && c.atr_20d !== undefined ? `${c.atr_20d.toFixed(2)}%` : 'N/A'}
-                </td>
-                <td style={{ color: c.eps_qoq_growth !== null && c.eps_qoq_growth !== undefined ? (c.eps_qoq_growth >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)') : 'var(--text-secondary)' }}>
-                  {c.eps_qoq_growth !== null && c.eps_qoq_growth !== undefined ? `${c.eps_qoq_growth >= 0 ? '+' : ''}${c.eps_qoq_growth.toFixed(1)}%` : 'N/A'}
-                </td>
-                <td>
-                  {c.fiscal_quarter ? (
-                    <span className="pill pill-primary">{c.fiscal_quarter}</span>
-                  ) : (
-                    <span style={{ color: 'var(--text-secondary)' }}>N/A</span>
+
+                  {currentCandidate?.atr_20d !== null && currentCandidate?.atr_20d !== undefined && (
+                    <>
+                      <span className="pill" style={{ fontSize: '12px', padding: '4px 10px', background: 'rgba(59, 130, 246, 0.18)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 600 }}>
+                        ADR: {currentCandidate.atr_20d.toFixed(2)}%
+                      </span>
+                      {currentCandidate?.close ? (
+                        <span className="pill" style={{ fontSize: '12px', padding: '4px 10px', background: 'rgba(168, 85, 247, 0.18)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.3)', fontWeight: 600 }}>
+                          ATR: ${(currentCandidate.close * (currentCandidate.atr_20d / 100)).toFixed(2)}
+                        </span>
+                      ) : null}
+                    </>
                   )}
-                </td>
+
+                  {/* Add to Watchlist Quick Action */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <select
+                      value={targetWatchlistId || ''}
+                      onChange={(e) => setTargetWatchlistId(Number(e.target.value))}
+                      style={{
+                        background: 'rgba(0, 0, 0, 0.4)',
+                        color: 'var(--text-primary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 'var(--border-radius-md)',
+                        padding: '6px 10px',
+                        fontSize: '12px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {watchlists.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          ⭐️ {w.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() => handleQuickAddWatchlist(currentCandidate?.symbol)}
+                      disabled={!currentCandidate}
+                      style={{ padding: '6px 14px' }}
+                    >
+                      + Save to Watchlist
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Navigation Bar */}
+              <div className="glass-card" style={{ padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setBrowseIndex((prev) => Math.max(prev - 1, 0))}
+                  disabled={browseIndex === 0}
+                >
+                  ← Prev Stock
+                </button>
+                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Stock {browseIndex + 1} of {filteredCandidates.length}
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '12px' }}>
+                    (Tip: Use Keyboard ↑ / ↓ or ← / → Arrow Keys to flip)
+                  </span>
+                </span>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setBrowseIndex((prev) => Math.min(prev + 1, filteredCandidates.length - 1))}
+                  disabled={browseIndex >= filteredCandidates.length - 1}
+                >
+                  Next Stock
+                </button>
+              </div>
+
+              {/* Candlestick Chart Container */}
+              <div className="glass-card" style={{ padding: '20px' }}>
+                {loadingBrowsePrices ? (
+                  <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-secondary)' }}>
+                    Loading candlestick chart...
+                  </div>
+                ) : (
+                  <CandlestickChart
+                    data={browsePrices}
+                    height={480}
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Candidate List Ribbon (Right Column) */}
+            <div
+              className="glass-card"
+              style={{
+                flex: '0 0 280px',
+                maxHeight: '750px',
+                overflowY: 'auto',
+                padding: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+              }}
+            >
+              <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent-color)', textTransform: 'uppercase', marginBottom: '8px' }}>
+                Filtered Candidates ({filteredCandidates.length})
+              </h4>
+              {filteredCandidates.map((c, idx) => (
+                <div
+                  key={c.symbol}
+                  onClick={() => setBrowseIndex(idx)}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    background: idx === browseIndex ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.02)',
+                    border: idx === browseIndex ? '1px solid #10b981' : '1px solid var(--border-color)',
+                    display: 'flex',
+                    justify: 'space-between',
+                    alignItems: 'center',
+                    transition: 'var(--transition-smooth)'
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 700, color: idx === browseIndex ? '#34d399' : '#ffffff', fontSize: '14px' }}>
+                      {c.symbol}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      ${c.close?.toFixed(2)}
+                    </div>
+                  </div>
+                  <span className="pill pill-success" style={{ fontSize: '10px', padding: '2px 6px' }}>
+                    RS {c.rs_rank}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      ) : (
+        /* Candidates Table View (Classic) */
+        <div className="table-container">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Ticker</th>
+                <th>Sector / Industry</th>
+                <th>Price</th>
+                <th>1M Ret %</th>
+                <th>Vol 50d MA</th>
+                <th>RelVol</th>
+                <th>RS Score</th>
+                <th>RS Percentile</th>
+                <th>ATR (20d)</th>
+                <th>EPS QoQ Growth</th>
+                <th>Report Qtr</th>
                 {enablePowerPlay && (
                   <>
-                    <td style={{ color: 'var(--accent-success)', fontWeight: '600' }}>
-                      +{c.pp_runup_pct !== null && c.pp_runup_pct !== undefined ? c.pp_runup_pct.toFixed(0) : '0'}%
-                    </td>
-                    <td style={{ color: 'var(--accent-danger)', fontWeight: '600' }}>
-                      -{c.pp_drawdown_pct !== null && c.pp_drawdown_pct !== undefined ? c.pp_drawdown_pct.toFixed(1) : '0'}%
-                    </td>
-                    <td style={{ color: c.volume / c.vol_50d_ma < 0.6 ? 'var(--accent-success)' : 'var(--text-secondary)' }}>
-                      {c.volume && c.vol_50d_ma ? `${(c.volume / c.vol_50d_ma).toFixed(2)}x` : 'N/A'}
-                    </td>
+                    <th>Run Up %</th>
+                    <th>Drawdown %</th>
+                    <th>Vol vs SMA</th>
                   </>
                 )}
                 {enableIpoBase && (
                   <>
-                    <td style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
-                      {c.ipo_days_count} days
-                    </td>
-                    <td style={{ color: 'var(--accent-success)', fontWeight: '600' }}>
-                      {c.ipo_drawdown_from_high !== null && c.ipo_drawdown_from_high !== undefined ? `${c.ipo_drawdown_from_high.toFixed(1)}%` : '0%'}
-                    </td>
-                    <td style={{ color: 'var(--accent-danger)', fontWeight: '600' }}>
-                      -{c.ipo_base_depth !== null && c.ipo_base_depth !== undefined ? `${c.ipo_base_depth.toFixed(1)}%` : '0%'}
-                    </td>
+                    <th>IPO Age</th>
+                    <th>Dist from High</th>
+                    <th>Base Depth</th>
                   </>
                 )}
                 {enableNewLeaders && (
                   <>
-                    <td style={{ color: c.dist_from_52w_high !== null && c.dist_from_52w_high <= 15 ? 'var(--accent-success)' : 'var(--text-primary)', fontWeight: '600' }}>
-                      {c.dist_from_52w_high !== null && c.dist_from_52w_high !== undefined ? `${c.dist_from_52w_high.toFixed(1)}%` : '0%'}
-                    </td>
-                    <td style={{ color: 'var(--accent-success)', fontWeight: '600' }}>
-                      +{c.surge_off_low_pct !== null && c.surge_off_low_pct !== undefined ? `${c.surge_off_low_pct.toFixed(1)}%` : '0%'}
-                    </td>
-                    <td>
-                      {c.is_52w_high ? (
-                        <span className="pill pill-success" style={{ fontWeight: 'bold' }}>🔥 52w High</span>
-                      ) : (
-                        <span style={{ color: 'var(--text-secondary)' }}>Near High</span>
-                      )}
-                    </td>
+                    <th>52w High Dist</th>
+                    <th>Surge off Low</th>
+                    <th>52w High Status</th>
                   </>
                 )}
-                <td>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    {c.ep_is_setup && (
-                      <span className="pill" style={{ background: 'rgba(236, 72, 153, 0.2)', color: '#ec4899', border: '1px solid rgba(236, 72, 153, 0.4)', fontWeight: 'bold' }}>
-                        ⚡ EP (+{c.ep_gap_pct?.toFixed(1)}%, {c.ep_rel_vol?.toFixed(1)}x)
-                      </span>
-                    )}
-                    {c.parabolic_short_is_setup && (
-                      <span className="pill" style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.4)', fontWeight: 'bold' }}>
-                        📉 Para Short (+{c.parabolic_runup_pct?.toFixed(0)}%)
-                      </span>
-                    )}
-                    {c.vcp_is_setup && (
-                      <span className="pill pill-success" style={{ fontStyle: 'italic', fontWeight: 'bold' }}>
-                        🌀 VCP {c.vcp_troughs}T ({c.vcp_depths?.replace(/,/g, ' / ') + '%'})
-                      </span>
-                    )}
-                    {c.darvas_is_setup && (
-                      <span className="pill pill-success" style={{ fontStyle: 'italic', fontWeight: 'bold' }}>
-                        📦 Box (${c.darvas_box_bottom?.toFixed(2)}-${c.darvas_box_top?.toFixed(2)})
-                      </span>
-                    )}
-                    {!c.ep_is_setup && !c.parabolic_short_is_setup && !c.vcp_is_setup && !c.darvas_is_setup && (
-                      <span style={{ color: 'var(--text-secondary)' }}>Stage 2 Base</span>
-                    )}
-                  </div>
-                </td>
+                <th>Setups & Patterns</th>
               </tr>
-            ))}
-            {filteredCandidates.length === 0 && (
-              <tr>
-                <td colSpan={12 + (enablePowerPlay ? 3 : 0) + (enableIpoBase ? 3 : 0) + (enableNewLeaders ? 3 : 0)} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-                  No candidates matching current config rules found in database cache. Run "Sync Database Tickers" to evaluate stocks.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {filteredCandidates.map((c, i) => (
+                <tr key={i} onClick={() => handleSelectStock(c)} style={{ cursor: 'pointer' }}>
+                  <td style={{ fontWeight: 'bold', color: 'var(--accent-color)' }}>{c.symbol}</td>
+                  <td>
+                    <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {c.sector ? `${c.sector}${c.sector_rank ? ` (${c.sector_rank})` : ''}` : 'N/A'}
+                    </span>
+                    <span style={{ fontSize: '11px', display: 'block', color: 'var(--text-secondary)' }}>{c.industry || 'N/A'}</span>
+                  </td>
+                  <td>${c.close.toFixed(2)}</td>
+                  <td style={{ color: c.ret_1m !== null && c.ret_1m !== undefined ? (c.ret_1m >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)') : 'var(--text-secondary)', fontWeight: '600' }}>
+                    {c.ret_1m !== null && c.ret_1m !== undefined ? `${c.ret_1m >= 0 ? '+' : ''}${c.ret_1m.toFixed(1)}%` : 'N/A'}
+                  </td>
+                  <td>{c.vol_50d_ma.toLocaleString()}</td>
+                  <td style={{ color: c.rel_vol_50d >= 2.5 ? 'var(--accent-success)' : 'var(--text-primary)', fontWeight: c.rel_vol_50d >= 2.5 ? 'bold' : 'normal' }}>
+                    {c.rel_vol_50d !== null && c.rel_vol_50d !== undefined ? `${c.rel_vol_50d.toFixed(1)}x` : '1.0x'}
+                  </td>
+                  <td>{c.rs_score ? c.rs_score.toFixed(4) : 'N/A'}</td>
+                  <td>
+                    <span className="pill pill-success">{c.rs_rank}</span>
+                  </td>
+                  <td style={{ fontWeight: '500' }}>
+                    {c.atr_20d !== null && c.atr_20d !== undefined ? `${c.atr_20d.toFixed(2)}%` : 'N/A'}
+                  </td>
+                  <td style={{ color: c.eps_qoq_growth !== null && c.eps_qoq_growth !== undefined ? (c.eps_qoq_growth >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)') : 'var(--text-secondary)' }}>
+                    {c.eps_qoq_growth !== null && c.eps_qoq_growth !== undefined ? `${c.eps_qoq_growth >= 0 ? '+' : ''}${c.eps_qoq_growth.toFixed(1)}%` : 'N/A'}
+                  </td>
+                  <td>
+                    {c.fiscal_quarter ? (
+                      <span className="pill pill-primary">{c.fiscal_quarter}</span>
+                    ) : (
+                      <span style={{ color: 'var(--text-secondary)' }}>N/A</span>
+                    )}
+                  </td>
+                  {enablePowerPlay && (
+                    <>
+                      <td style={{ color: 'var(--accent-success)', fontWeight: '600' }}>
+                        +{c.pp_runup_pct !== null && c.pp_runup_pct !== undefined ? c.pp_runup_pct.toFixed(0) : '0'}%
+                      </td>
+                      <td style={{ color: 'var(--accent-danger)', fontWeight: '600' }}>
+                        -{c.pp_drawdown_pct !== null && c.pp_drawdown_pct !== undefined ? c.pp_drawdown_pct.toFixed(1) : '0'}%
+                      </td>
+                      <td style={{ color: c.volume / c.vol_50d_ma < 0.6 ? 'var(--accent-success)' : 'var(--text-secondary)' }}>
+                        {c.volume && c.vol_50d_ma ? `${(c.volume / c.vol_50d_ma).toFixed(2)}x` : 'N/A'}
+                      </td>
+                    </>
+                  )}
+                  {enableIpoBase && (
+                    <>
+                      <td style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
+                        {c.ipo_days_count} days
+                      </td>
+                      <td style={{ color: 'var(--accent-success)', fontWeight: '600' }}>
+                        {c.ipo_drawdown_from_high !== null && c.ipo_drawdown_from_high !== undefined ? `${c.ipo_drawdown_from_high.toFixed(1)}%` : '0%'}
+                      </td>
+                      <td style={{ color: 'var(--accent-danger)', fontWeight: '600' }}>
+                        -{c.ipo_base_depth !== null && c.ipo_base_depth !== undefined ? `${c.ipo_base_depth.toFixed(1)}%` : '0%'}
+                      </td>
+                    </>
+                  )}
+                  {enableNewLeaders && (
+                    <>
+                      <td style={{ color: c.dist_from_52w_high !== null && c.dist_from_52w_high <= 15 ? 'var(--accent-success)' : 'var(--text-primary)', fontWeight: '600' }}>
+                        {c.dist_from_52w_high !== null && c.dist_from_52w_high !== undefined ? `${c.dist_from_52w_high.toFixed(1)}%` : '0%'}
+                      </td>
+                      <td style={{ color: 'var(--accent-success)', fontWeight: '600' }}>
+                        +{c.surge_off_low_pct !== null && c.surge_off_low_pct !== undefined ? `${c.surge_off_low_pct.toFixed(1)}%` : '0%'}
+                      </td>
+                      <td>
+                        {c.is_52w_high ? (
+                          <span className="pill pill-success" style={{ fontWeight: 'bold' }}>🔥 52w High</span>
+                        ) : (
+                          <span style={{ color: 'var(--text-secondary)' }}>Near High</span>
+                        )}
+                      </td>
+                    </>
+                  )}
+                  <td>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                      {c.ep_is_setup && (
+                        <span className="pill" style={{ background: 'rgba(236, 72, 153, 0.2)', color: '#ec4899', border: '1px solid rgba(236, 72, 153, 0.4)', fontWeight: 'bold' }}>
+                          ⚡ EP (+{c.ep_gap_pct?.toFixed(1)}%, {c.ep_rel_vol?.toFixed(1)}x)
+                        </span>
+                      )}
+                      {c.parabolic_short_is_setup && (
+                        <span className="pill" style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.4)', fontWeight: 'bold' }}>
+                          📉 Para Short (+{c.parabolic_runup_pct?.toFixed(0)}%)
+                        </span>
+                      )}
+                      {c.vcp_is_setup && (
+                        <span className="pill pill-success" style={{ fontStyle: 'italic', fontWeight: 'bold' }}>
+                          🌀 VCP {c.vcp_troughs}T ({c.vcp_depths?.replace(/,/g, ' / ') + '%'})
+                        </span>
+                      )}
+                      {c.darvas_is_setup && (
+                        <span className="pill pill-success" style={{ fontStyle: 'italic', fontWeight: 'bold' }}>
+                          📦 Box (${c.darvas_box_bottom?.toFixed(2)}-${c.darvas_box_top?.toFixed(2)})
+                        </span>
+                      )}
+                      {!c.ep_is_setup && !c.parabolic_short_is_setup && !c.vcp_is_setup && !c.darvas_is_setup && (
+                        <span style={{ color: 'var(--text-secondary)' }}>Stage 2 Base</span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filteredCandidates.length === 0 && (
+                <tr>
+                  <td colSpan={12 + (enablePowerPlay ? 3 : 0) + (enableIpoBase ? 3 : 0) + (enableNewLeaders ? 3 : 0)} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                    No candidates matching current config rules found in database cache. Run "Sync Database Tickers" to evaluate stocks.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Setup Strategy Guide Modal */}
       {showSetupGuideModal && (
@@ -1478,7 +1748,7 @@ export default function CandidatesTab({
           alignItems: 'center',
           padding: '20px'
         }}
-        onClick={() => setShowSetupGuideModal(false)}
+          onClick={() => setShowSetupGuideModal(false)}
         >
           <div style={{
             width: '100%',
@@ -1492,7 +1762,7 @@ export default function CandidatesTab({
             flexDirection: 'column',
             overflow: 'hidden'
           }}
-          onClick={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
             <div style={{

@@ -66,9 +66,12 @@ export default function SectorCompareTab() {
       {/* Header */}
       <div className="header-section" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div className="header-title">
-          <h1 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span>🏢</span> Sector Strength & RS Rotation
-          </h1>
+          <div className="header-subtitle-tag">
+            <span>SECTOR RADAR</span>
+            <span>•</span>
+            <span>RS ROTATION</span>
+          </div>
+          <h1>Sector Strength & RS Rotation</h1>
           <p>Compare Relative Strength (RS Rank) & RS Changes (Δ RS) Across Primary Sector ETFs</p>
         </div>
 
@@ -93,73 +96,101 @@ export default function SectorCompareTab() {
       {!loading && !error && (
         <>
           {/* Summary Stat Cards */}
-          <div className="card-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', marginBottom: '28px' }}>
+          <div className="card-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', marginBottom: '28px' }}>
             {/* Top RS Sector */}
-            <div className="glass-card stat-card" style={{ borderLeft: '4px solid var(--accent-success)' }}>
-              <span className="stat-label">Top RS Leader Sector</span>
-              {topRsSector ? (
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '4px' }}>
-                    <span className="stat-value" style={{ color: 'var(--accent-success)' }}>{topRsSector.sector}</span>
-                    <span className="pill pill-success" style={{ fontSize: '11px' }}>{topRsSector.symbol} (RS {topRsSector.rs_rank})</span>
-                  </div>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>
-                    1M Return: {topRsSector.ret_1m_pct >= 0 ? `+${topRsSector.ret_1m_pct}%` : `${topRsSector.ret_1m_pct}%`}
-                  </span>
+            <div className="glass-card stat-card" style={{ borderLeft: '4px solid var(--accent-success)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                  <span className="stat-label">Top RS Leader Sector</span>
+                  {topRsSector && (
+                    <span className="pill pill-success" style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>
+                      {topRsSector.symbol} (RS {topRsSector.rs_rank})
+                    </span>
+                  )}
                 </div>
-              ) : 'N/A'}
+                {topRsSector ? (
+                  <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--accent-success)', lineHeight: 1.2, margin: '8px 0 6px 0', wordBreak: 'break-word' }}>
+                    {topRsSector.sector}
+                  </div>
+                ) : <div style={{ fontSize: '16px', margin: '8px 0' }}>N/A</div>}
+              </div>
+              {topRsSector && (
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  1M Return: {topRsSector.ret_1m_pct >= 0 ? `+${topRsSector.ret_1m_pct}%` : `${topRsSector.ret_1m_pct}%`}
+                </span>
+              )}
             </div>
 
             {/* 1W RS Rotation Leader */}
-            <div className="glass-card stat-card" style={{ borderLeft: '4px solid #3b82f6' }}>
-              <span className="stat-label">1-Week RS Rotation Leader</span>
-              {top1wGainer ? (
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '4px' }}>
-                    <span className="stat-value" style={{ color: '#3b82f6' }}>{top1wGainer.sector}</span>
-                    <span className="pill pill-success" style={{ fontSize: '11px', background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa' }}>
+            <div className="glass-card stat-card" style={{ borderLeft: '4px solid #3b82f6', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                  <span className="stat-label">1-Week RS Rotation Leader</span>
+                  {top1wGainer && (
+                    <span className="pill pill-success" style={{ fontSize: '11px', background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', whiteSpace: 'nowrap' }}>
                       +{top1wGainer.delta_rs_1w} Δ RS
                     </span>
-                  </div>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>
-                    {top1wGainer.symbol} (1W Return: {top1wGainer.ret_1w_pct >= 0 ? `+${top1wGainer.ret_1w_pct}%` : `${top1wGainer.ret_1w_pct}%`})
-                  </span>
+                  )}
                 </div>
-              ) : 'N/A'}
+                {top1wGainer ? (
+                  <div style={{ fontSize: '20px', fontWeight: 800, color: '#3b82f6', lineHeight: 1.2, margin: '8px 0 6px 0', wordBreak: 'break-word' }}>
+                    {top1wGainer.sector}
+                  </div>
+                ) : <div style={{ fontSize: '16px', margin: '8px 0' }}>N/A</div>}
+              </div>
+              {top1wGainer && (
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  {top1wGainer.symbol} (1W Return: {top1wGainer.ret_1w_pct >= 0 ? `+${top1wGainer.ret_1w_pct}%` : `${top1wGainer.ret_1w_pct}%`})
+                </span>
+              )}
             </div>
 
             {/* 1M RS Rotation Leader */}
-            <div className="glass-card stat-card" style={{ borderLeft: '4px solid #8b5cf6' }}>
-              <span className="stat-label">1-Month RS Rotation Leader</span>
-              {top1mGainer ? (
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '4px' }}>
-                    <span className="stat-value" style={{ color: '#8b5cf6' }}>{top1mGainer.sector}</span>
-                    <span className="pill" style={{ fontSize: '11px', background: 'rgba(139, 92, 246, 0.2)', color: '#c084fc' }}>
+            <div className="glass-card stat-card" style={{ borderLeft: '4px solid #8b5cf6', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                  <span className="stat-label">1-Month RS Rotation Leader</span>
+                  {top1mGainer && (
+                    <span className="pill" style={{ fontSize: '11px', background: 'rgba(139, 92, 246, 0.2)', color: '#c084fc', whiteSpace: 'nowrap' }}>
                       +{top1mGainer.delta_rs_1m} Δ RS
                     </span>
-                  </div>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>
-                    {top1mGainer.symbol} (1M Return: {top1mGainer.ret_1m_pct >= 0 ? `+${top1mGainer.ret_1m_pct}%` : `${top1mGainer.ret_1m_pct}%`})
-                  </span>
+                  )}
                 </div>
-              ) : 'N/A'}
+                {top1mGainer ? (
+                  <div style={{ fontSize: '20px', fontWeight: 800, color: '#8b5cf6', lineHeight: 1.2, margin: '8px 0 6px 0', wordBreak: 'break-word' }}>
+                    {top1mGainer.sector}
+                  </div>
+                ) : <div style={{ fontSize: '16px', margin: '8px 0' }}>N/A</div>}
+              </div>
+              {top1mGainer && (
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  {top1mGainer.symbol} (1M Return: {top1mGainer.ret_1m_pct >= 0 ? `+${top1mGainer.ret_1m_pct}%` : `${top1mGainer.ret_1m_pct}%`})
+                </span>
+              )}
             </div>
 
             {/* Lagging Sector */}
-            <div className="glass-card stat-card" style={{ borderLeft: '4px solid var(--accent-danger)' }}>
-              <span className="stat-label">Lagging Sector</span>
-              {laggingSector ? (
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '4px' }}>
-                    <span className="stat-value" style={{ color: 'var(--accent-danger)' }}>{laggingSector.sector}</span>
-                    <span className="pill pill-danger" style={{ fontSize: '11px' }}>{laggingSector.symbol} (RS {laggingSector.rs_rank})</span>
-                  </div>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>
-                    1M Return: {laggingSector.ret_1m_pct >= 0 ? `+${laggingSector.ret_1m_pct}%` : `${laggingSector.ret_1m_pct}%`}
-                  </span>
+            <div className="glass-card stat-card" style={{ borderLeft: '4px solid var(--accent-danger)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                  <span className="stat-label">Lagging Sector</span>
+                  {laggingSector && (
+                    <span className="pill pill-danger" style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>
+                      {laggingSector.symbol} (RS {laggingSector.rs_rank})
+                    </span>
+                  )}
                 </div>
-              ) : 'N/A'}
+                {laggingSector ? (
+                  <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--accent-danger)', lineHeight: 1.2, margin: '8px 0 6px 0', wordBreak: 'break-word' }}>
+                    {laggingSector.sector}
+                  </div>
+                ) : <div style={{ fontSize: '16px', margin: '8px 0' }}>N/A</div>}
+              </div>
+              {laggingSector && (
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  1M Return: {laggingSector.ret_1m_pct >= 0 ? `+${laggingSector.ret_1m_pct}%` : `${laggingSector.ret_1m_pct}%`}
+                </span>
+              )}
             </div>
           </div>
 
@@ -218,7 +249,7 @@ export default function SectorCompareTab() {
             </div>
 
             <div style={{ overflowX: 'auto', width: '100%' }}>
-              <table className="candidates-table" style={{ width: '100%', fontSize: '13px' }}>
+              <table className="data-table" style={{ width: '100%', fontSize: '13px' }}>
                 <thead>
                   <tr>
                     <th style={{ textAlign: 'center', width: '60px' }}>Rank</th>
@@ -346,7 +377,7 @@ export default function SectorCompareTab() {
                 Market Benchmarks Reference (SPY & QQQ)
               </h3>
               <div style={{ overflowX: 'auto', width: '100%' }}>
-                <table className="candidates-table" style={{ width: '100%', fontSize: '13px' }}>
+                <table className="data-table" style={{ width: '100%', fontSize: '13px' }}>
                   <thead>
                     <tr>
                       <th style={{ textAlign: 'left' }}>Benchmark Ticker</th>

@@ -15,6 +15,11 @@ export default function InspectorTab({
     <div>
       <div className="header-section">
         <div className="header-title">
+          <div className="header-subtitle-tag">
+            <span>DEEP ANALYZER</span>
+            <span>•</span>
+            <span>CHART & EPS</span>
+          </div>
           <h1>Stock Inspector</h1>
           <p>Inspect daily charts and EPS history for any stock in the database</p>
         </div>

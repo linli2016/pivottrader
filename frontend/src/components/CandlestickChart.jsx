@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { createChart, CandlestickSeries, LineSeries } from 'lightweight-charts';
+import { createChart, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
 
 // Helper to calculate Simple Moving Average (SMA)
 function calculateSMA(data, period) {
@@ -19,6 +19,28 @@ function calculateSMA(data, period) {
     }
   }
   return smaData;
+}
+
+// Helper to calculate Exponential Moving Average (EMA)
+function calculateEMA(data, period) {
+  if (!data || data.length < period) return [];
+  const emaData = [];
+  const multiplier = 2 / (period + 1);
+
+  let sum = 0;
+  for (let i = 0; i < period; i++) {
+    sum += data[i].close;
+  }
+  let prevEma = sum / period;
+  emaData.push({ time: data[period - 1].time, value: prevEma });
+
+  for (let i = period; i < data.length; i++) {
+    const currentClose = data[i].close;
+    const currentEma = (currentClose - prevEma) * multiplier + prevEma;
+    emaData.push({ time: data[i].time, value: currentEma });
+    prevEma = currentEma;
+  }
+  return emaData;
 }
 
 // --- Price Chart Component ---
@@ -46,7 +68,38 @@ export default function CandlestickChart({ data, height = 280 }) {
       width: chartContainerRef.current.clientWidth,
       height: height,
     });
-    chart.timeScale().fitContent();
+
+    // Configure main price scale with logarithmic scale (mode: 1) and bottom margin for volume
+    chart.priceScale('right').applyOptions({
+      mode: 1, // Logarithmic price scale
+      scaleMargins: {
+        top: 0.1,
+        bottom: 0.25,
+      },
+    });
+
+    // Add Volume Histogram Series at the bottom 20%
+    const volumeSeries = chart.addSeries(HistogramSeries, {
+      priceFormat: {
+        type: 'volume',
+      },
+      priceScaleId: 'volume',
+    });
+
+    chart.priceScale('volume').applyOptions({
+      scaleMargins: {
+        top: 0.8,
+        bottom: 0,
+      },
+      visible: false,
+    });
+
+    const volumeData = data.map(d => ({
+      time: d.time,
+      value: d.volume || 0,
+      color: (d.close >= d.open) ? 'rgba(16, 185, 129, 0.5)' : 'rgba(239, 68, 68, 0.5)',
+    }));
+    volumeSeries.setData(volumeData);
 
     const candlestickSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#10b981',
@@ -58,65 +111,59 @@ export default function CandlestickChart({ data, height = 280 }) {
 
     candlestickSeries.setData(data);
 
-    // 1. Add SMA 50 Line Series
+    // 1. EMA 10 Line (rgb(255, 152, 0), width 1)
+    const ema10Series = chart.addSeries(LineSeries, {
+      color: 'rgb(255, 152, 0)',
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    ema10Series.setData(calculateEMA(data, 10));
+
+    // 2. EMA 20 Line (rgb(189, 15, 15), width 1)
+    const ema20Series = chart.addSeries(LineSeries, {
+      color: 'rgb(189, 15, 15)',
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    ema20Series.setData(calculateEMA(data, 20));
+
+    // 3. SMA 50 Line (rgb(255, 235, 59), width 1)
     const sma50Series = chart.addSeries(LineSeries, {
-      color: '#3b82f6',
-      lineWidth: 1.5,
-      title: 'SMA 50',
+      color: 'rgb(255, 235, 59)',
+      lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,
     });
-    const sma50Data = calculateSMA(data, 50);
-    sma50Series.setData(sma50Data);
+    sma50Series.setData(calculateSMA(data, 50));
 
-    // 2. Add SMA 150 Line Series
+    // 4. SMA 150 Line (rgb(0, 255, 255), width 1)
     const sma150Series = chart.addSeries(LineSeries, {
-      color: '#f59e0b',
-      lineWidth: 1.5,
-      title: 'SMA 150',
+      color: 'rgb(0, 255, 255)',
+      lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,
     });
-    const sma150Data = calculateSMA(data, 150);
-    sma150Series.setData(sma150Data);
+    sma150Series.setData(calculateSMA(data, 150));
 
-    // 3. Add SMA 200 Line Series
-    const sma200Series = chart.addSeries(LineSeries, {
-      color: '#ec4899',
-      lineWidth: 2,
-      title: 'SMA 200',
+    // 5. SMA 220 Line (#dfe9df, width 1)
+    const sma220Series = chart.addSeries(LineSeries, {
+      color: '#dfe9df',
+      lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,
     });
-    const sma200Data = calculateSMA(data, 200);
-    sma200Series.setData(sma200Data);
+    sma220Series.setData(calculateSMA(data, 220));
 
-    // 4. Add RS Rank Line Series (on a separate left scale to avoid scale distortion)
-    const rsRankSeries = chart.addSeries(LineSeries, {
-      color: '#a855f7', // Violet/purple
-      lineWidth: 2,
-      title: 'RS Rank',
-      priceLineVisible: false,
-      lastValueVisible: true,
-      priceScaleId: 'left',
-    });
-
-    chart.priceScale('left').applyOptions({
-      visible: true,
-      title: 'RS Rank',
-      scaleMargins: {
-        top: 0.1,
-        bottom: 0.1,
-      },
-    });
-
-    const rsRankData = data
-      .filter(d => d.rs_rank !== null && d.rs_rank !== undefined)
-      .map(d => ({
-        time: d.time,
-        value: d.rs_rank
-      }));
-    rsRankSeries.setData(rsRankData);
+    // Show recent 9 months (~189 trading days) by default
+    chart.timeScale().fitContent();
+    if (data.length > 189) {
+      chart.timeScale().setVisibleLogicalRange({
+        from: data.length - 189,
+        to: data.length - 1,
+      });
+    }
 
     window.addEventListener('resize', handleResize);
 

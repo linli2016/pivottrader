@@ -29,6 +29,29 @@ class DatabaseManager:
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+
+            # 1b. Watchlists & Watchlist Items Tables
+            conn.execute("""
+                CREATE SEQUENCE IF NOT EXISTS seq_watchlist_id START 1;
+                CREATE TABLE IF NOT EXISTS watchlists (
+                    id INTEGER PRIMARY KEY DEFAULT nextval('seq_watchlist_id'),
+                    name VARCHAR NOT NULL UNIQUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS watchlist_items (
+                    watchlist_id INTEGER NOT NULL,
+                    symbol VARCHAR NOT NULL,
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (watchlist_id, symbol)
+                );
+            """)
+
+            res = conn.execute("SELECT COUNT(*) FROM watchlists").fetchone()
+            if res and res[0] == 0:
+                conn.execute("INSERT INTO watchlists (name) VALUES ('Default Watchlist')")
             
             try:
                 conn.execute("ALTER TABLE symbols ADD COLUMN ipo_date VARCHAR;")
@@ -291,3 +314,90 @@ class DatabaseManager:
                 if max_date:
                     result[symbol] = max_date.strftime("%Y-%m-%d")
         return result
+
+    def get_watchlists(self) -> List[Dict[str, Any]]:
+        with self.get_connection() as conn:
+            query = """
+                SELECT w.id, w.name, w.created_at, COUNT(wi.symbol) as item_count
+                FROM watchlists w
+                LEFT JOIN watchlist_items wi ON w.id = wi.watchlist_id
+                GROUP BY w.id, w.name, w.created_at
+                ORDER BY w.id ASC
+            """
+            rows = conn.execute(query).fetchall()
+            return [
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "created_at": str(row[2]) if row[2] else None,
+                    "item_count": row[3]
+                }
+                for row in rows
+            ]
+
+    def create_watchlist(self, name: str) -> Dict[str, Any]:
+        with self.get_connection() as conn:
+            conn.execute("INSERT INTO watchlists (name) VALUES (?)", [name])
+            row = conn.execute("SELECT id, name, created_at FROM watchlists WHERE name = ?", [name]).fetchone()
+            return {"id": row[0], "name": row[1], "created_at": str(row[2]), "item_count": 0}
+
+    def delete_watchlist(self, watchlist_id: int) -> bool:
+        with self.get_connection() as conn:
+            conn.execute("DELETE FROM watchlist_items WHERE watchlist_id = ?", [watchlist_id])
+            conn.execute("DELETE FROM watchlists WHERE id = ?", [watchlist_id])
+            return True
+
+    def get_watchlist_items(self, watchlist_id: int) -> List[Dict[str, Any]]:
+        with self.get_connection() as conn:
+            query = """
+                SELECT 
+                    s.symbol,
+                    s.name,
+                    s.exchange,
+                    s.sector,
+                    b.close,
+                    b.rs_rank,
+                    b.vol_50d_ma,
+                    b.volume,
+                    wi.added_at
+                FROM watchlist_items wi
+                JOIN symbols s ON wi.symbol = s.symbol
+                LEFT JOIN (
+                    SELECT db.*
+                    FROM daily_bars db
+                    INNER JOIN (
+                        SELECT symbol, MAX(date) as max_date
+                        FROM daily_bars
+                        GROUP BY symbol
+                    ) latest ON db.symbol = latest.symbol AND db.date = latest.max_date
+                ) b ON s.symbol = b.symbol
+                WHERE wi.watchlist_id = ?
+                ORDER BY wi.added_at DESC
+            """
+            rows = conn.execute(query, [watchlist_id]).fetchall()
+            return [
+                {
+                    "symbol": row[0],
+                    "name": row[1],
+                    "exchange": row[2],
+                    "sector": row[3],
+                    "close": row[4],
+                    "rs_rank": row[5],
+                    "vol_50d_ma": row[6],
+                    "volume": row[7],
+                    "added_at": str(row[8]) if row[8] else None
+                }
+                for row in rows
+            ]
+
+    def add_watchlist_item(self, watchlist_id: int, symbol: str) -> bool:
+        with self.get_connection() as conn:
+            symbol_upper = symbol.strip().upper()
+            conn.execute("INSERT OR IGNORE INTO watchlist_items (watchlist_id, symbol) VALUES (?, ?)", [watchlist_id, symbol_upper])
+            return True
+
+    def remove_watchlist_item(self, watchlist_id: int, symbol: str) -> bool:
+        with self.get_connection() as conn:
+            symbol_upper = symbol.strip().upper()
+            conn.execute("DELETE FROM watchlist_items WHERE watchlist_id = ? AND symbol = ?", [watchlist_id, symbol_upper])
+            return True
