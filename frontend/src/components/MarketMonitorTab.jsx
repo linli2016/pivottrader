@@ -37,12 +37,15 @@ export default function MarketMonitorTab() {
 
   // Helper for regime color & verdict guidance
   const getRegimeDetails = (regimeStr) => {
-    if (!regimeStr) return { color: '#94a3b8', badge: 'NEUTRAL', tag: 'STABLE TAPE', guidance: 'Gathering market data...' };
+    if (!regimeStr) return { color: '#94a3b8', light: 'YELLOW', badge: 'NEUTRAL', tag: 'STABLE TAPE', stance: 'GATHERING DATA', exposure: '50% Exposure', guidance: 'Gathering market data...' };
     if (regimeStr.includes('Bullish')) {
       return {
         color: '#10b981',
+        light: 'GREEN',
         badge: 'UPTREND / EXPANSION',
         tag: 'BULLISH TAPE',
+        stance: '🟢 GREEN LIGHT: AGGRESSIVE LONG',
+        exposure: '100% Position Sizing (Full Risk)',
         guidance: 'Healthy market environment: long momentum setups working cleanly. Stay long and stay selective with breakouts.',
         biasPct: Math.min(Math.round(((summary.latest_gainers_4pct || 300) / Math.max((summary.latest_gainers_4pct || 300) + (summary.latest_losers_4pct || 100), 1)) * 100), 98)
       };
@@ -50,16 +53,22 @@ export default function MarketMonitorTab() {
     if (regimeStr.includes('Bearish')) {
       return {
         color: '#f43f5e',
+        light: 'RED',
         badge: 'DOWNTREND / CAUTION',
         tag: 'DISTRIBUTION RISK',
+        stance: '🔴 RED LIGHT: DEFENSIVE / CASH',
+        exposure: '0–25% Sizing (Protect Capital)',
         guidance: 'Market under pressure / distribution: higher breakdown frequency. Reduce position sizes and protect open gains.',
         biasPct: Math.max(Math.round(((summary.latest_gainers_4pct || 50) / Math.max((summary.latest_gainers_4pct || 50) + (summary.latest_losers_4pct || 300), 1)) * 100), 12)
       };
     }
     return {
       color: '#f59e0b',
+      light: 'YELLOW',
       badge: 'CONSOLIDATION / MIXED',
       tag: 'MIXED BREADTH',
+      stance: '🟡 YELLOW LIGHT: SELECTIVE TRADING',
+      exposure: '50% Reduced Position Sizing',
       guidance: 'Mixed or range-bound market tape: selective breakouts working, but watch for sudden pullbacks.',
       biasPct: 52
     };
@@ -287,54 +296,137 @@ export default function MarketMonitorTab() {
       {!loading && !error && (
         <>
           {/* EdgeStacker Market Verdict Banner */}
-          <div className="glass-card" style={{ marginBottom: '24px', borderLeft: `5px solid ${regimeInfo.color}`, padding: '20px 24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div className="glass-card" style={{ marginBottom: '24px', borderLeft: `5px solid ${regimeInfo.color}`, padding: '24px 28px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', alignItems: 'center', gap: '24px' }}>
+              {/* Left Column: Market Tape & Guidance */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <span className="pill" style={{ background: `${regimeInfo.color}25`, color: regimeInfo.color, border: `1px solid ${regimeInfo.color}50` }}>
                     {regimeInfo.badge}
                   </span>
                   <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>As of {summary.latest_date}</span>
                 </div>
-                <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff' }}>Market Tape: {regimeInfo.tag}</h2>
-                <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)' }}>{regimeInfo.guidance}</p>
+                <h2 style={{ fontSize: '22px', fontWeight: '800', color: '#ffffff', margin: 0 }}>Market Tape: {regimeInfo.tag}</h2>
+                <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.55', maxWidth: '640px' }}>{regimeInfo.guidance}</p>
               </div>
 
-              {/* Index Benchmark Cards (SPY & QQQ) */}
-              <div style={{ display: 'flex', gap: '12px' }}>
-                {(() => {
-                  const spyPct = summary?.benchmarks?.SPY?.change_pct ?? 0;
-                  const spyClose = summary?.benchmarks?.SPY?.close;
-                  const spyIsUp = spyPct >= 0;
-                  return (
-                    <div style={{ background: 'rgba(0, 0, 0, 0.3)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px 16px', minWidth: '130px' }}>
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>BENCHMARK SPY</span>
-                      <div style={{ fontSize: '16px', fontWeight: 700, color: '#ffffff', marginTop: '2px' }}>
-                        SPY {spyClose ? <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>(${spyClose})</span> : null}
-                      </div>
-                      <span style={{ fontSize: '12px', color: spyIsUp ? '#34d399' : '#fb7185', fontWeight: 600 }}>
-                        {spyIsUp ? `+${spyPct.toFixed(2)}% 🟢` : `${spyPct.toFixed(2)}% 🔴`}
-                      </span>
-                    </div>
-                  );
-                })()}
+              {/* Right Column: Visual Traffic Light & Benchmarks */}
+              <div style={{ display: 'flex', gap: '14px', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                {/* Visual Traffic Light Widget */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '14px',
+                  background: 'rgba(0, 0, 0, 0.45)',
+                  border: `1.5px solid ${regimeInfo.color}70`,
+                  borderRadius: '12px',
+                  padding: '12px 18px',
+                  boxShadow: `0 0 20px ${regimeInfo.color}25`
+                }}>
+                  {/* Traffic Light Housing */}
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '5px',
+                    background: '#0f172a',
+                    padding: '7px 9px',
+                    borderRadius: '18px',
+                    border: '1px solid rgba(255, 255, 255, 0.12)'
+                  }}>
+                    {/* Green Lamp (Top) */}
+                    <div
+                      title="Green Light: Aggressive Long"
+                      style={{
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '50%',
+                        backgroundColor: regimeInfo.light === 'GREEN' ? '#10b981' : '#334155',
+                        boxShadow: regimeInfo.light === 'GREEN' ? '0 0 14px #10b981' : 'none',
+                        opacity: regimeInfo.light === 'GREEN' ? 1 : 0.25,
+                        transition: 'all 0.3s ease'
+                      }}
+                    />
+                    {/* Yellow Lamp (Middle) */}
+                    <div
+                      title="Yellow Light: Selective / Cautious"
+                      style={{
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '50%',
+                        backgroundColor: regimeInfo.light === 'YELLOW' ? '#f59e0b' : '#334155',
+                        boxShadow: regimeInfo.light === 'YELLOW' ? '0 0 14px #f59e0b' : 'none',
+                        opacity: regimeInfo.light === 'YELLOW' ? 1 : 0.25,
+                        transition: 'all 0.3s ease'
+                      }}
+                    />
+                    {/* Red Lamp (Bottom) */}
+                    <div
+                      title="Red Light: Defense / Cash"
+                      style={{
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '50%',
+                        backgroundColor: regimeInfo.light === 'RED' ? '#f43f5e' : '#334155',
+                        boxShadow: regimeInfo.light === 'RED' ? '0 0 14px #f43f5e' : 'none',
+                        opacity: regimeInfo.light === 'RED' ? 1 : 0.25,
+                        transition: 'all 0.3s ease'
+                      }}
+                    />
+                  </div>
 
-                {(() => {
-                  const qqqPct = summary?.benchmarks?.QQQ?.change_pct ?? 0;
-                  const qqqClose = summary?.benchmarks?.QQQ?.close;
-                  const qqqIsUp = qqqPct >= 0;
-                  return (
-                    <div style={{ background: 'rgba(0, 0, 0, 0.3)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px 16px', minWidth: '130px' }}>
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>BENCHMARK QQQ</span>
-                      <div style={{ fontSize: '16px', fontWeight: 700, color: '#ffffff', marginTop: '2px' }}>
-                        QQQ {qqqClose ? <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>(${qqqClose})</span> : null}
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                      Market Traffic Light
+                    </span>
+                    <span style={{ fontSize: '14px', fontWeight: 800, color: regimeInfo.color, marginTop: '2px' }}>
+                      {regimeInfo.stance}
+                    </span>
+                    <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)', marginTop: '2px' }}>
+                      Budget: {regimeInfo.exposure}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Index Benchmark Cards (SPY & QQQ) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {(() => {
+                    const spyPct = summary?.benchmarks?.SPY?.change_pct ?? 0;
+                    const spyClose = summary?.benchmarks?.SPY?.close;
+                    const spyIsUp = spyPct >= 0;
+                    return (
+                      <div style={{ background: 'rgba(0, 0, 0, 0.35)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 14px', minWidth: '135px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 700 }}>SPY</span>
+                          <span style={{ fontSize: '11.5px', color: spyIsUp ? '#34d399' : '#fb7185', fontWeight: 700 }}>
+                            {spyIsUp ? `+${spyPct.toFixed(2)}%` : `${spyPct.toFixed(2)}%`}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '14px', fontWeight: 700, color: '#ffffff', marginTop: '2px' }}>
+                          ${spyClose ?? '-'}
+                        </div>
                       </div>
-                      <span style={{ fontSize: '12px', color: qqqIsUp ? '#34d399' : '#fb7185', fontWeight: 600 }}>
-                        {qqqIsUp ? `+${qqqPct.toFixed(2)}% 🟢` : `${qqqPct.toFixed(2)}% 🔴`}
-                      </span>
-                    </div>
-                  );
-                })()}
+                    );
+                  })()}
+
+                  {(() => {
+                    const qqqPct = summary?.benchmarks?.QQQ?.change_pct ?? 0;
+                    const qqqClose = summary?.benchmarks?.QQQ?.close;
+                    const qqqIsUp = qqqPct >= 0;
+                    return (
+                      <div style={{ background: 'rgba(0, 0, 0, 0.35)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 14px', minWidth: '135px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 700 }}>QQQ</span>
+                          <span style={{ fontSize: '11.5px', color: qqqIsUp ? '#34d399' : '#fb7185', fontWeight: 700 }}>
+                            {qqqIsUp ? `+${qqqPct.toFixed(2)}%` : `${qqqPct.toFixed(2)}%`}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '14px', fontWeight: 700, color: '#ffffff', marginTop: '2px' }}>
+                          ${qqqClose ?? '-'}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
             </div>
           </div>
@@ -361,9 +453,19 @@ export default function MarketMonitorTab() {
                 <span style={{ fontSize: '16px', color: 'var(--text-muted)' }}>/</span>
                 <span className="stat-value" style={{ color: 'var(--accent-danger)' }}>{summary.latest_losers_4pct || 0}</span>
               </div>
-              <span style={{ fontSize: '12px', fontWeight: 600, color: summary.latest_ratio_4pct >= 2.0 ? 'var(--accent-success)' : summary.latest_ratio_4pct <= 0.5 ? 'var(--accent-danger)' : 'var(--text-secondary)' }}>
-                Ratio: {summary.latest_ratio_4pct}x
-              </span>
+              <div style={{ display: 'flex', gap: '8px', fontSize: '11px', fontWeight: 600, marginTop: '2px' }}>
+                <span style={{ color: summary.latest_ratio_4pct >= 2.0 ? 'var(--accent-success)' : summary.latest_ratio_4pct <= 0.5 ? 'var(--accent-danger)' : 'var(--text-secondary)' }}>
+                  1D: {summary.latest_ratio_4pct ?? '-'}x
+                </span>
+                <span style={{ color: 'var(--text-muted)' }}>•</span>
+                <span style={{ color: summary.latest_ratio_5d >= 2.0 ? 'var(--accent-success)' : summary.latest_ratio_5d <= 0.5 ? 'var(--accent-danger)' : 'var(--text-secondary)' }}>
+                  5D: {summary.latest_ratio_5d ?? '-'}x
+                </span>
+                <span style={{ color: 'var(--text-muted)' }}>•</span>
+                <span style={{ color: summary.latest_ratio_10d >= 2.0 ? 'var(--accent-success)' : summary.latest_ratio_10d <= 0.5 ? 'var(--accent-danger)' : 'var(--text-secondary)' }}>
+                  10D: {summary.latest_ratio_10d ?? '-'}x
+                </span>
+              </div>
             </div>
 
             {/* 1-Month 25% Breadth */}
@@ -421,7 +523,7 @@ export default function MarketMonitorTab() {
           </div>
 
           {/* Stockbee Market Monitor Data Table */}
-          <div className="glass-card" style={{ padding: '20px' }}>
+          <div className="glass-card" style={{ padding: '16px' }}>
             {(() => {
               const effectivePageSize = pageSize === 'all' ? dailyData.length || 1 : pageSize;
               const totalPages = Math.ceil(dailyData.length / effectivePageSize);
@@ -495,22 +597,24 @@ export default function MarketMonitorTab() {
                   </div>
 
                   <div style={{ overflowX: 'auto', width: '100%' }}>
-                    <table className="data-table" style={{ width: '100%' }}>
+                    <table className="data-table compact-table" style={{ width: '100%' }}>
                       <thead>
                         <tr>
                           <th style={{ textAlign: 'left' }}>Date</th>
-                          <th style={{ textAlign: 'right', color: '#34d399' }}>4% UP</th>
-                          <th style={{ textAlign: 'right', color: '#fb7185' }}>4% DOWN</th>
+                          <th style={{ textAlign: 'right', color: '#34d399' }}>4% ▲</th>
+                          <th style={{ textAlign: 'right', color: '#fb7185' }}>4% ▼</th>
                           <th style={{ textAlign: 'right' }}>Net 4%</th>
                           <th style={{ textAlign: 'right' }}>Ratio</th>
-                          <th style={{ textAlign: 'right' }}>25% UP 1M</th>
-                          <th style={{ textAlign: 'right' }}>25% DOWN 1M</th>
-                          <th style={{ textAlign: 'right' }}>25% UP 3M</th>
-                          <th style={{ textAlign: 'right' }}>25% DOWN 3M</th>
-                          <th style={{ textAlign: 'right' }}>50% UP 1M</th>
-                          <th style={{ textAlign: 'right' }}>50% UP 3M</th>
-                          <th style={{ textAlign: 'right' }}>13 EMA UP</th>
-                          <th style={{ textAlign: 'right' }}>13 EMA DOWN</th>
+                          <th style={{ textAlign: 'right', color: '#60a5fa' }}>5D Ratio</th>
+                          <th style={{ textAlign: 'right', color: '#818cf8' }}>10D Ratio</th>
+                          <th style={{ textAlign: 'right' }}>25% <span style={{ color: '#34d399' }}>▲</span> 1M</th>
+                          <th style={{ textAlign: 'right' }}>25% <span style={{ color: '#fb7185' }}>▼</span> 1M</th>
+                          <th style={{ textAlign: 'right' }}>25% <span style={{ color: '#34d399' }}>▲</span> 3M</th>
+                          <th style={{ textAlign: 'right' }}>25% <span style={{ color: '#fb7185' }}>▼</span> 3M</th>
+                          <th style={{ textAlign: 'right' }}>50% <span style={{ color: '#34d399' }}>▲</span> 1M</th>
+                          <th style={{ textAlign: 'right' }}>50% <span style={{ color: '#34d399' }}>▲</span> 3M</th>
+                          <th style={{ textAlign: 'right' }}>13 EMA <span style={{ color: '#34d399' }}>▲</span></th>
+                          <th style={{ textAlign: 'right' }}>13 EMA <span style={{ color: '#fb7185' }}>▼</span></th>
                         </tr>
                       </thead>
                       <tbody>
@@ -566,6 +670,28 @@ export default function MarketMonitorTab() {
                                 }}
                               >
                                 {row.ratio_4pct}x
+                              </td>
+
+                              {/* 5D Ratio */}
+                              <td
+                                style={{
+                                  textAlign: 'right',
+                                  fontWeight: 600,
+                                  color: row.ratio_5d >= 2.0 ? '#34d399' : row.ratio_5d <= 0.5 ? '#fb7185' : 'var(--text-primary)'
+                                }}
+                              >
+                                {row.ratio_5d}x
+                              </td>
+
+                              {/* 10D Ratio */}
+                              <td
+                                style={{
+                                  textAlign: 'right',
+                                  fontWeight: 600,
+                                  color: row.ratio_10d >= 2.0 ? '#34d399' : row.ratio_10d <= 0.5 ? '#fb7185' : 'var(--text-primary)'
+                                }}
+                              >
+                                {row.ratio_10d}x
                               </td>
 
                               {/* 25% UP 1M */}

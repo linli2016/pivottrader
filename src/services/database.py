@@ -580,6 +580,15 @@ class DatabaseService:
             df['net_4pct'] = df['gainers_4pct'] - df['losers_4pct']
             df['ratio_4pct'] = (df['gainers_4pct'] / df['losers_4pct'].replace(0, 1)).round(2)
 
+            # Rolling 5-day and 10-day sum ratio of 4% UP vs 4% DOWN
+            sum_5d_up = df['gainers_4pct'].rolling(window=5, min_periods=1).sum()
+            sum_5d_down = df['losers_4pct'].rolling(window=5, min_periods=1).sum()
+            df['ratio_5d'] = (sum_5d_up / sum_5d_down.replace(0, 1)).round(2)
+
+            sum_10d_up = df['gainers_4pct'].rolling(window=10, min_periods=1).sum()
+            sum_10d_down = df['losers_4pct'].rolling(window=10, min_periods=1).sum()
+            df['ratio_10d'] = (sum_10d_up / sum_10d_down.replace(0, 1)).round(2)
+
             # Sort descending for response (latest date first)
             df_desc = df.sort_values(by='date', ascending=False)
             
@@ -595,6 +604,8 @@ class DatabaseService:
                     "losers_4pct": int(row['losers_4pct']),
                     "net_4pct": int(row['net_4pct']),
                     "ratio_4pct": float(row['ratio_4pct']),
+                    "ratio_5d": float(row['ratio_5d']),
+                    "ratio_10d": float(row['ratio_10d']),
                     "up_25pct_1m": int(row['up_25pct_1m']),
                     "down_25pct_1m": int(row['down_25pct_1m']),
                     "up_25pct_3m": int(row['up_25pct_3m']),
@@ -652,14 +663,16 @@ class DatabaseService:
                             "close": round(b_close, 2),
                             "change_pct": pct
                         }
-            except Exception as e:
-                print(f"Error querying benchmark ETF stats: {e}")
+            except Exception as bm_err:
+                print(f"Error fetching benchmark info: {bm_err}")
 
             summary = {
                 "latest_date": latest.get("date"),
                 "latest_gainers_4pct": latest.get("gainers_4pct"),
                 "latest_losers_4pct": latest.get("losers_4pct"),
                 "latest_ratio_4pct": latest.get("ratio_4pct"),
+                "latest_ratio_5d": latest.get("ratio_5d"),
+                "latest_ratio_10d": latest.get("ratio_10d"),
                 "sum_5d_net_4pct": sum_5d_net,
                 "latest_up_25pct_1m": latest.get("up_25pct_1m"),
                 "latest_down_25pct_1m": latest.get("down_25pct_1m"),

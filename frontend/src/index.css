@@ -490,6 +490,26 @@ body {
   border-bottom: 1px solid var(--border-color);
 }
 
+.data-table.compact-table th,
+.data-table.compact-table td {
+  padding: 8px 5px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table.compact-table td {
+  white-space: nowrap;
+}
+
+.data-table.compact-table th {
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  padding: 8px 5px;
+  white-space: normal;
+  line-height: 1.25;
+  vertical-align: bottom;
+}
+
 .data-table th {
   background-color: rgba(0, 0, 0, 0.2);
   color: var(--text-muted);
