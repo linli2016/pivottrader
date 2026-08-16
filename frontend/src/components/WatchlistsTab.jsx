@@ -91,6 +91,24 @@ export default function WatchlistsTab({ handleSelectStock, watchlists, fetchWatc
     }
   };
 
+  const handleClearWatchlist = async () => {
+    if (!selectedWatchlistId) return;
+    const currentW = watchlists.find((w) => w.id === selectedWatchlistId);
+    const confirmClear = window.confirm(`Are you sure you want to clear all stocks from "${currentW?.name || 'Watchlist'}"?`);
+    if (!confirmClear) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) throw new Error('Failed to clear watchlist');
+      setItems([]);
+      if (fetchWatchlists) fetchWatchlists();
+    } catch (e) {
+      alert(`Error clearing watchlist: ${e.message}`);
+    }
+  };
+
   const handleExportTradingView = () => {
     if (items.length === 0) {
       alert('No stocks in this watchlist to export!');
@@ -206,11 +224,22 @@ export default function WatchlistsTab({ handleSelectStock, watchlists, fetchWatc
 
       {/* Watchlist Data Table */}
       <div className="glass-card" style={{ padding: '20px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
           <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#ffffff' }}>
             {activeWatchlist?.name || 'Watchlist'} ({items.length} Saved Stocks)
           </h3>
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Click any stock row to open detail chart</span>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            {items.length > 0 && (
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={handleClearWatchlist}
+                style={{ color: '#fb7185', borderColor: 'rgba(251, 113, 133, 0.3)', padding: '4px 12px', fontSize: '12px' }}
+              >
+                🧹 Clear All Stocks
+              </button>
+            )}
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Click any stock row to open detail chart</span>
+          </div>
         </div>
 
         {loading ? (

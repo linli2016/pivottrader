@@ -179,9 +179,17 @@ def add_watchlist_item(watchlist_id: int, payload: WatchlistItemAddSchema):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.delete("/api/watchlists/{watchlist_id}/items")
+def clear_watchlist_items(watchlist_id: int):
+    """Clear all stock symbols from a watchlist."""
+    try:
+        return db_service.clear_watchlist_items(watchlist_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.delete("/api/watchlists/{watchlist_id}/items/{symbol}")
 def remove_watchlist_item(watchlist_id: int, symbol: str):
-    """Remove a stock symbol from a watchlist."""
+    """Remove a single stock symbol from a watchlist."""
     try:
         return db_service.remove_watchlist_item(watchlist_id, symbol)
     except Exception as e:

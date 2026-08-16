@@ -397,7 +397,12 @@ class DatabaseManager:
             return True
 
     def remove_watchlist_item(self, watchlist_id: int, symbol: str) -> bool:
-        with self.get_connection() as conn:
-            symbol_upper = symbol.strip().upper()
+        symbol_upper = symbol.upper()
+        with duckdb.connect(self.db_path) as conn:
             conn.execute("DELETE FROM watchlist_items WHERE watchlist_id = ? AND symbol = ?", [watchlist_id, symbol_upper])
+            return True
+
+    def clear_watchlist_items(self, watchlist_id: int) -> bool:
+        with duckdb.connect(self.db_path) as conn:
+            conn.execute("DELETE FROM watchlist_items WHERE watchlist_id = ?", [watchlist_id])
             return True

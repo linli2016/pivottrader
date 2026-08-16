@@ -130,7 +130,8 @@ class DatabaseService:
                 r.parabolic_long_is_setup,
                 r.parabolic_runup_pct,
                 s.sector,
-                s.industry
+                s.industry,
+                s.name
             FROM ranked_bars r
             LEFT JOIN latest_fundamentals f ON r.symbol = f.symbol AND f.rn = 1
             JOIN symbols s ON r.symbol = s.symbol
@@ -190,6 +191,7 @@ class DatabaseService:
                 sec_rank = sector_ranks.get(sec_val) if sec_val else None
                 candidates.append({
                     "symbol": row[0],
+                    "name": row[50],
                     "close": row[1],
                     "vol_50d_ma": row[2],
                     "rs_score": row[3],
@@ -896,6 +898,12 @@ class DatabaseService:
         with duckdb.connect(db_path) as conn:
             symbol_upper = symbol.strip().upper()
             conn.execute("DELETE FROM watchlist_items WHERE watchlist_id = ? AND symbol = ?", [watchlist_id, symbol_upper])
+            return True
+
+    def clear_watchlist_items(self, watchlist_id: int) -> bool:
+        db_path = self.get_db_path()
+        with duckdb.connect(db_path) as conn:
+            conn.execute("DELETE FROM watchlist_items WHERE watchlist_id = ?", [watchlist_id])
             return True
 
 db_service = DatabaseService(config_service)
