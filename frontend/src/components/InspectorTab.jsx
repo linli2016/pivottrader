@@ -77,7 +77,7 @@ export default function InspectorTab({
                 RS Percentile: {inspectorDetail.rs_rank !== null ? inspectorDetail.rs_rank : 'N/A'}
               </span>
               <span className="pill pill-warning" style={{ background: 'rgba(245, 158, 11, 0.2)', color: 'var(--accent-warning)' }}>
-                ATR (20d): {inspectorDetail.atr_20d !== null && inspectorDetail.atr_20d !== undefined ? `${inspectorDetail.atr_20d.toFixed(2)}%` : 'N/A'}
+                ADTR (20d): {inspectorDetail.atr_20d !== null && inspectorDetail.atr_20d !== undefined ? `${inspectorDetail.atr_20d.toFixed(2)}%` : 'N/A'}
               </span>
               <span className="pill pill-primary" style={{ background: 'rgba(59, 130, 246, 0.2)', color: 'var(--accent-color)' }}>
                 RS Score: {inspectorDetail.rs_score !== null ? inspectorDetail.rs_score.toFixed(4) : 'N/A'}

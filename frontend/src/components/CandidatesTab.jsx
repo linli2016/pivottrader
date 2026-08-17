@@ -134,9 +134,39 @@ export default function CandidatesTab({
   const [loadingBrowsePrices, setLoadingBrowsePrices] = React.useState(false);
   const [showFiltersSection, setShowFiltersSection] = React.useState(false);
 
+  const selectedItemRef = React.useRef(null);
+  const leftColRef = React.useRef(null);
+  const [leftColHeight, setLeftColHeight] = React.useState(null);
+
   const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
   const currentCandidate = filteredCandidates[browseIndex] || null;
+
+  // Dynamically measure and match left column height
+  React.useLayoutEffect(() => {
+    if (viewMode === 'browse' && leftColRef.current) {
+      const updateHeight = () => {
+        if (leftColRef.current) {
+          setLeftColHeight(leftColRef.current.offsetHeight);
+        }
+      };
+      updateHeight();
+      const observer = new ResizeObserver(updateHeight);
+      observer.observe(leftColRef.current);
+      return () => observer.disconnect();
+    }
+  }, [viewMode, currentCandidate?.symbol]);
+
+  // Auto-scroll selected candidate stock into view in the Filtered Candidates list
+  React.useEffect(() => {
+    if (viewMode === 'browse' && selectedItemRef.current) {
+      selectedItemRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+        inline: 'nearest'
+      });
+    }
+  }, [browseIndex, viewMode, filteredCandidates.length]);
 
   React.useEffect(() => {
     if (watchlists && watchlists.length > 0 && !targetWatchlistId) {
@@ -701,11 +731,10 @@ export default function CandidatesTab({
                   </strong>
                 </div>
                 {enableAtr && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ color: 'var(--accent-color)' }}>🌀</span>
-                    <span style={{ color: 'var(--text-secondary)' }}>Daily ATR:</span>
+                  <span className="pill pill-secondary" style={{ fontSize: '12px' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Daily ADTR:</span>
                     <strong style={{ color: 'var(--text-primary)' }}>&ge; {minAtrFilter.toFixed(1)}%</strong>
-                  </div>
+                  </span>
                 )}
                 {enableRsNewHigh && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -858,7 +887,7 @@ export default function CandidatesTab({
                     onChange={(e) => setEnableAtr(e.target.checked)}
                     style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
                   />
-                  Min ATR (20d) ({minAtrFilter.toFixed(1)}%):
+                  Min ADTR (20d) ({minAtrFilter.toFixed(1)}%):
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <input
@@ -1486,9 +1515,9 @@ export default function CandidatesTab({
             No candidate stocks match your current active filters.
           </div>
         ) : (
-          <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginTop: '20px' }}>
+          <div style={{ display: 'flex', gap: '24px', marginTop: '20px', alignItems: 'flex-start' }}>
             {/* Main Browse Column (Left) */}
-            <div style={{ flex: '1 1 700px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div ref={leftColRef} style={{ flex: '1 1 700px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {/* Header Bar for Selected Stock */}
               <div className="glass-card" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 {/* Top Row: Symbol + Company Name (Left) & Stock Position Count (Far Right) */}
@@ -1521,7 +1550,7 @@ export default function CandidatesTab({
 
                   {currentCandidate?.atr_20d !== null && currentCandidate?.atr_20d !== undefined && (
                     <span className="pill" style={{ fontSize: '12px', padding: '4px 10px', background: 'rgba(59, 130, 246, 0.18)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 600 }}>
-                      ADR: {currentCandidate.atr_20d.toFixed(2)}% {currentCandidate.close ? `($${(currentCandidate.close * (currentCandidate.atr_20d / 100)).toFixed(2)})` : ''}
+                      ADTR: {currentCandidate.atr_20d.toFixed(2)}% {currentCandidate.close ? `($${(currentCandidate.close * (currentCandidate.atr_20d / 100)).toFixed(2)})` : ''}
                     </span>
                   )}
 
@@ -1584,31 +1613,42 @@ export default function CandidatesTab({
               className="glass-card"
               style={{
                 flex: '0 0 280px',
-                maxHeight: '750px',
-                overflowY: 'auto',
-                padding: '16px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '8px'
+                padding: '16px',
+                height: leftColHeight ? `${leftColHeight}px` : '650px',
+                boxSizing: 'border-box'
               }}
             >
-              <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent-color)', textTransform: 'uppercase', marginBottom: '8px' }}>
+              <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent-color)', textTransform: 'uppercase', marginBottom: '8px', flexShrink: 0 }}>
                 Filtered Candidates ({filteredCandidates.length})
               </h4>
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  minHeight: 0
+                }}
+              >
               {filteredCandidates.map((c, idx) => {
+                const isSelected = idx === browseIndex;
                 const isItemSaved = activeWatchlistSymbols.has(c.symbol.toUpperCase());
                 return (
                   <div
                     key={c.symbol}
+                    ref={isSelected ? selectedItemRef : null}
                     onClick={() => setBrowseIndex(idx)}
                     style={{
                       padding: '6px 10px',
                       borderRadius: '6px',
                       cursor: 'pointer',
-                      background: idx === browseIndex ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.02)',
-                      border: idx === browseIndex ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.05)',
+                      background: isSelected ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.02)',
+                      border: isSelected ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.05)',
                       display: 'flex',
-                      justify: 'space-between',
+                      justifyContent: 'space-between',
                       alignItems: 'center',
                       transition: 'var(--transition-smooth)',
                       fontSize: '13px'
@@ -1629,6 +1669,7 @@ export default function CandidatesTab({
                   </div>
                 );
               })}
+              </div>
             </div>
           </div>
         )
@@ -1646,7 +1687,7 @@ export default function CandidatesTab({
                 <th>RelVol</th>
                 <th>RS Score</th>
                 <th>RS Percentile</th>
-                <th>ATR (20d)</th>
+                <th>ADTR (20d)</th>
                 <th>EPS QoQ Growth</th>
                 <th>Report Qtr</th>
                 {enablePowerPlay && (

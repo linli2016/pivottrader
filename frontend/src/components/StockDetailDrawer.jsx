@@ -52,7 +52,7 @@ export default function StockDetailDrawer({
                 RS Rank: {stockDetail?.rs_rank !== null && stockDetail?.rs_rank !== undefined ? stockDetail.rs_rank : 'N/A'}
               </span>
               <span className="pill pill-warning" style={{ fontSize: '11px', padding: '2px 8px', background: 'rgba(245, 158, 11, 0.2)', color: 'var(--accent-warning)' }}>
-                ATR (20d): {stockDetail?.atr_20d !== null && stockDetail?.atr_20d !== undefined ? `${stockDetail.atr_20d.toFixed(2)}%` : 'N/A'}
+                ADTR (20d): {stockDetail?.atr_20d !== null && stockDetail?.atr_20d !== undefined ? `${stockDetail.atr_20d.toFixed(2)}%` : 'N/A'}
               </span>
             </div>
           </div>
@@ -134,7 +134,7 @@ export default function StockDetailDrawer({
                   </strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '6px' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Daily ATR (20d):</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>Daily ADTR (20d):</span>
                   <strong style={{ color: 'var(--accent-warning)' }}>
                     {stockDetail?.atr_20d !== null && stockDetail?.atr_20d !== undefined ? `${stockDetail.atr_20d.toFixed(2)}%` : 'N/A'}
                   </strong>
