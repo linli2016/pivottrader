@@ -312,3 +312,58 @@ class YFinanceProvider(AbstractDataProvider):
         if all_funds:
             return pd.concat(all_funds, ignore_index=True)
         return pd.DataFrame()
+
+    def fetch_premarket_bars(self, symbols: List[str]) -> pd.DataFrame:
+        """
+        Fetches pre-market real-time quotes for symbols using multi-threaded fast_info lookup.
+        Appends or updates today's date bar with pre-market open/close and volume.
+        """
+        if not symbols:
+            return pd.DataFrame()
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from datetime import datetime
+
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        print(f"Fetching pre-market real-time quotes for {len(symbols)} symbols as of {today_str}...")
+
+        def fetch_single_pm(sym: str):
+            try:
+                t = yf.Ticker(sym)
+                fi = getattr(t, "fast_info", {})
+                pm_price = fi.get("preMarketPrice") or fi.get("lastPrice")
+                prev_close = fi.get("regularMarketPreviousClose") or pm_price
+                pm_volume = fi.get("lastVolume") or 0
+                
+                if pm_price and prev_close:
+                    return {
+                        "symbol": sym,
+                        "date": today_str,
+                        "open": float(pm_price),
+                        "high": float(max(pm_price, prev_close)),
+                        "low": float(min(pm_price, prev_close)),
+                        "close": float(pm_price),
+                        "volume": int(pm_volume),
+                        "vol_50d_ma": 0
+                    }
+            except Exception:
+                pass
+            return None
+
+        records = []
+        with ThreadPoolExecutor(max_workers=25) as executor:
+            futures = {executor.submit(fetch_single_pm, sym): sym for sym in symbols}
+            for i, future in enumerate(as_completed(futures), 1):
+                res = future.result()
+                if res:
+                    records.append(res)
+                if i % 500 == 0 or i == len(symbols):
+                    sys.stdout.write(f"\rPre-Market Fetch Progress: {i}/{len(symbols)} symbols evaluated...")
+                    sys.stdout.flush()
+
+        sys.stdout.write("\n")
+        if records:
+            df = pd.DataFrame(records)
+            print(f"Successfully retrieved {len(df)} pre-market bar records.")
+            return df
+        return pd.DataFrame()

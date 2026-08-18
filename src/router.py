@@ -22,12 +22,17 @@ class SQLQuerySchema(BaseModel):
 class SyncTriggerSchema(BaseModel):
     skip_prices: bool = False
     skip_fundamentals: bool = False
+    include_premarket: bool = False
 
 class WatchlistCreateSchema(BaseModel):
     name: str
 
 class WatchlistItemAddSchema(BaseModel):
     symbol: str
+
+class RulesUpdateSchema(BaseModel):
+    content: str
+
 
 # ----------------- Endpoints -----------------
 
@@ -110,7 +115,8 @@ def trigger_sync_run(background_tasks: BackgroundTasks, payload: SyncTriggerSche
     return sync_service.trigger_sync_run(
         background_tasks,
         skip_prices=payload.skip_prices,
-        skip_fundamentals=payload.skip_fundamentals
+        skip_fundamentals=payload.skip_fundamentals,
+        include_premarket=payload.include_premarket
     )
 
 @router.get("/api/sync/status")
@@ -204,5 +210,29 @@ def remove_watchlist_item(watchlist_id: int, symbol: str):
         return db_service.remove_watchlist_item(watchlist_id, symbol)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- Setups & Rules Playbook Endpoints -----------------
+
+@router.get("/api/setups-and-rules")
+def get_setups_and_rules():
+    """Retrieve markdown content of Setups & Rules playbook."""
+    import os
+    filepath = "setups_and_rules.md"
+    if not os.path.exists(filepath):
+        return {"content": "# Setups & Rules\n\nNo setups or rules file found yet."}
+    with open(filepath, "r", encoding="utf-8") as f:
+        return {"content": f.read()}
+
+@router.post("/api/setups-and-rules")
+def update_setups_and_rules(payload: RulesUpdateSchema):
+    """Update markdown content of Setups & Rules playbook."""
+    filepath = "setups_and_rules.md"
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(payload.content)
+        return {"status": "success", "message": "Setups & Rules saved successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 

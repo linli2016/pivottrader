@@ -360,6 +360,7 @@ export default function CandidatesTab({
               type="button"
               onClick={() => {
                 setEnablePowerPlay(true);
+                setEnforceStage2(false);
                 setEnableQullamaggieBreakout(false);
                 setEnableEpisodicPivot(false);
                 setEnableParabolicShort(false);
@@ -389,6 +390,7 @@ export default function CandidatesTab({
               type="button"
               onClick={() => {
                 setEnableQullamaggieBreakout(true);
+                setEnforceStage2(false);
                 setEnablePowerPlay(false);
                 setEnableEpisodicPivot(false);
                 setEnableParabolicShort(false);
@@ -418,6 +420,7 @@ export default function CandidatesTab({
               type="button"
               onClick={() => {
                 setEnableEpisodicPivot(true);
+                setEnforceStage2(false);
                 setEnablePowerPlay(false);
                 setEnableQullamaggieBreakout(false);
                 setEnableParabolicShort(false);
@@ -447,6 +450,7 @@ export default function CandidatesTab({
               type="button"
               onClick={() => {
                 setEnableParabolicShort(true);
+                setEnforceStage2(false);
                 setEnablePowerPlay(false);
                 setEnableQullamaggieBreakout(false);
                 setEnableEpisodicPivot(false);
@@ -469,6 +473,36 @@ export default function CandidatesTab({
               }}
             >
               📉 Parabolic Short
+            </button>
+
+            {/* VCP Pattern Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setEnableVcpSetup(true);
+                setEnforceStage2(true);
+                setEnablePowerPlay(false);
+                setEnableQullamaggieBreakout(false);
+                setEnableEpisodicPivot(false);
+                setEnableParabolicShort(false);
+                setEnableIpoBase(false);
+                setEnableDarvasBox(false);
+                setEnableNewLeaders(false);
+              }}
+              style={{
+                padding: '5px 12px',
+                fontSize: '12px',
+                fontWeight: '600',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                border: enableVcpSetup ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.12)',
+                background: enableVcpSetup ? 'rgba(16, 185, 129, 0.2)' : 'rgba(15, 23, 42, 0.5)',
+                color: enableVcpSetup ? '#10b981' : 'var(--text-secondary)',
+                boxShadow: enableVcpSetup ? '0 2px 8px rgba(16, 185, 129, 0.25)' : 'none'
+              }}
+            >
+              🌀 VCP Pattern
             </button>
           </div>
 
@@ -535,7 +569,8 @@ export default function CandidatesTab({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <button
                     onClick={() => {
-                      if (enableQullamaggieBreakout) setActiveGuideTab('qullamaggie_breakout');
+                      if (enableVcpSetup) setActiveGuideTab('vcp');
+                      else if (enableQullamaggieBreakout) setActiveGuideTab('qullamaggie_breakout');
                       else if (enableEpisodicPivot) setActiveGuideTab('episodic_pivot');
                       else if (enableParabolicShort) setActiveGuideTab('parabolic_short');
                       else if (enablePowerPlay) setActiveGuideTab('power_play');
@@ -561,7 +596,7 @@ export default function CandidatesTab({
                     📖 Setup Guide & Rules
                   </button>
                   <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.06)', padding: '3px 10px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    {enablePowerPlay ? '🚀 Power Play' : enableQullamaggieBreakout ? '🎯 Breakout' : enableEpisodicPivot ? '⚡ Episodic Pivot (EP)' : enableParabolicShort ? '📉 Parabolic Short' : enforceStage2 ? '📈 Stage 2 Trend Baseline' : '🌐 Baseline'}
+                    {enablePowerPlay ? '🚀 Power Play' : enableQullamaggieBreakout ? '🎯 Breakout' : enableEpisodicPivot ? '⚡ Episodic Pivot (EP)' : enableParabolicShort ? '📉 Parabolic Short' : enableVcpSetup ? '🌀 VCP Pattern' : enforceStage2 ? '📈 Stage 2 Trend Baseline' : '🌐 Baseline'}
                   </span>
                   <span style={{ fontSize: '12px', fontWeight: 600, color: '#38bdf8', background: 'rgba(56, 189, 248, 0.12)', padding: '3px 10px', borderRadius: '12px', border: '1px solid rgba(56, 189, 248, 0.3)', whiteSpace: 'nowrap' }}>
                     Showing {filteredCandidates.length.toLocaleString()} / {candidates.length.toLocaleString()} stocks
@@ -574,7 +609,8 @@ export default function CandidatesTab({
                 {enableQullamaggieBreakout && 'Screening for Kristjan Qullamaggie\'s classic Momentum Breakout—top 1-month & 3-month performance leaders consolidating tightly while surfing the rising 10/20 EMA.'}
                 {enableEpisodicPivot && 'Screening for Kristjan Qullamaggie\'s Episodic Pivots (EP)—game-changing fundamental gap-ups (>=10%) on massive relative volume (>=2.5x) breaking out of long bases.'}
                 {enableParabolicShort && 'Screening for Kristjan Qullamaggie\'s Parabolic Shorts—stocks that surged +40%+ over 3-10 days and extended >=18% above 10 EMA setting up mean-reversion short setups.'}
-                {!enablePowerPlay && !enableQullamaggieBreakout && !enableEpisodicPivot && !enableParabolicShort && (enforceStage2 ? 'Screening for classic Minervini Stage 2 uptrend stocks in confirmed institutional mark-up phases.' : 'Screening all universe stocks meeting basic price and volume baseline criteria.')}
+                {enableVcpSetup && 'Screening for Mark Minervini\'s Volatility Contraction Pattern (VCP)—successive price contractions with tightening depth before explosive breakouts.'}
+                {!enablePowerPlay && !enableQullamaggieBreakout && !enableEpisodicPivot && !enableParabolicShort && !enableVcpSetup && (enforceStage2 ? 'Screening for classic Minervini Stage 2 uptrend stocks in confirmed institutional mark-up phases.' : 'Screening all universe stocks meeting basic price and volume baseline criteria.')}
               </p>
 
               {enablePowerPlay ? (
@@ -607,6 +643,13 @@ export default function CandidatesTab({
                   <li><strong>10 EMA Extension:</strong> Distance to 10 EMA &ge; {minParabolicEmaDistFilter}% {enableParabolicEmaDist ? '(Active)' : '(Disabled)'}</li>
                   <li><strong>Mean-Reversion Short:</strong> Over-extended momentum setup for short entry on LOD/VWAP breakdown.</li>
                   <li><strong>Stage 2 Trend:</strong> {enforceStage2 ? 'Enforced (Close > SMA50 > SMA150 > SMA200)' : 'Optional (Waived)'}</li>
+                </ul>
+              ) : enableVcpSetup ? (
+                <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
+                  <li><strong>Stage 2 Trend Template:</strong> Required (Close &gt; SMA50 &gt; SMA150 &gt; SMA200)</li>
+                  <li><strong>VCP Contraction Pattern:</strong> Successive price contractions (2–4 troughs) with final tight contraction &le;12% depth {enableVcpPattern ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>Min RS Percentile:</strong> RS Rank &ge; {minRsFilter} percentile {enableVcpRsPercentile ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>QoQ EPS Growth:</strong> Quarterly EPS growth &ge; {minEpsGrowthFilter}% {enableVcpEpsGrowth ? '(Active)' : '(Disabled)'}</li>
                 </ul>
               ) : (
                 <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
@@ -1213,6 +1256,110 @@ export default function CandidatesTab({
                         value={minParabolicEmaDistFilter}
                         disabled={!enableParabolicEmaDist}
                         onChange={(e) => setMinParabolicEmaDistFilter(parseFloat(e.target.value) || 0)}
+                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* ========================================== */}
+              {/* 6. VCP Setup Sliders (Visible if selected) */}
+              {/* ========================================== */}
+              {enableVcpSetup && (
+                <>
+                  {/* VCP Contraction Pattern Rule */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableVcpPattern ? 1 : 0.5 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableVcpPattern}
+                        onChange={(e) => setEnableVcpPattern(e.target.checked)}
+                        style={{ accentColor: '#10b981', cursor: 'pointer' }}
+                      />
+                      VCP Contraction Pattern
+                    </label>
+                    <div style={{
+                      padding: '8px 12px',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      color: enableVcpPattern ? '#10b981' : 'var(--text-secondary)',
+                      fontWeight: '600',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      height: '38px',
+                      boxSizing: 'border-box'
+                    }}>
+                      {enableVcpPattern ? '🌀 2-4 Troughs (Final ≤12%)' : '⚪ Pattern Rule Waived'}
+                    </div>
+                  </div>
+
+                  {/* Min RS Percentile */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableVcpRsPercentile ? 1 : 0.5 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableVcpRsPercentile}
+                        onChange={(e) => setEnableVcpRsPercentile(e.target.checked)}
+                        style={{ accentColor: '#10b981', cursor: 'pointer' }}
+                      />
+                      Min RS Percentile ({minRsFilter}):
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="range"
+                        min="50"
+                        max="99"
+                        step="1"
+                        value={minRsFilter}
+                        disabled={!enableVcpRsPercentile}
+                        onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 0)}
+                        style={{ flex: 1, cursor: enableVcpRsPercentile ? 'pointer' : 'not-allowed', accentColor: '#10b981' }}
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        max="99"
+                        value={minRsFilter}
+                        disabled={!enableVcpRsPercentile}
+                        onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 0)}
+                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Min QoQ EPS Growth */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableVcpEpsGrowth ? 1 : 0.5 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableVcpEpsGrowth}
+                        onChange={(e) => setEnableVcpEpsGrowth(e.target.checked)}
+                        style={{ accentColor: '#10b981', cursor: 'pointer' }}
+                      />
+                      Min QoQ EPS Growth ({minEpsGrowthFilter}%):
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="5"
+                        value={minEpsGrowthFilter}
+                        disabled={!enableVcpEpsGrowth}
+                        onChange={(e) => setMinEpsGrowthFilter(parseFloat(e.target.value) || 0)}
+                        style={{ flex: 1, cursor: enableVcpEpsGrowth ? 'pointer' : 'not-allowed', accentColor: '#10b981' }}
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        max="500"
+                        value={minEpsGrowthFilter}
+                        disabled={!enableVcpEpsGrowth}
+                        onChange={(e) => setMinEpsGrowthFilter(parseFloat(e.target.value) || 0)}
                         style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
                       />
                     </div>

@@ -111,6 +111,10 @@ export function filterCandidates(candidates, filters) {
 
     // 4. VCP Setup Overlay
     if (enableVcpSetup) {
+      // Stage 2 Trend Template is required for Minervini VCP Pattern
+      if (!c.close || !c.sma_50 || !c.sma_150 || !c.sma_200) return false;
+      if (!(c.close > c.sma_50 && c.sma_50 > c.sma_150 && c.sma_150 > c.sma_200)) return false;
+
       if (enableVcpEpsGrowth) {
         if (c.eps_qoq_growth !== null && c.eps_qoq_growth !== undefined && c.eps_qoq_growth < minEpsGrowthFilter) return false;
       }

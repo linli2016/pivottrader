@@ -19,6 +19,7 @@ def main():
     parser.add_argument("--force-full", action="store_true", help="Force fetch full 550-day history for all active tickers")
     parser.add_argument("--skip-prices", action="store_true", help="Skip historical daily bars price synchronization")
     parser.add_argument("--skip-fundamentals", action="store_true", help="Skip quarterly fundamental statements synchronization")
+    parser.add_argument("--include-premarket", action="store_true", help="Fetch pre-market quotes for current trading session")
     args = parser.parse_args()
 
     print("=" * 60)
@@ -139,7 +140,15 @@ def main():
         active_symbols = [item["symbol"] for item in universe]
 
         # 5. Incremental Daily Bars Ingestion
-        if args.skip_prices:
+        if args.include_premarket:
+            print("\n[Step 2/5] Syncing pre-market quotes for active universe...")
+            pm_bars = price_provider.fetch_premarket_bars(active_symbols)
+            if not pm_bars.empty:
+                print(f"Upserting {len(pm_bars)} pre-market daily bars into DuckDB...")
+                db.upsert_daily_bars(pm_bars)
+            else:
+                print("No pre-market quotes returned.")
+        elif args.skip_prices:
             print("\n[Step 2/5] Skipping daily bars price synchronization as requested (--skip-prices).")
         else:
             print("\n[Step 2/5] Syncing historical daily bars...")

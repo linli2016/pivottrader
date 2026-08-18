@@ -40,3 +40,10 @@ class AbstractDataProvider(ABC):
         'symbol', 'report_date', 'fiscal_quarter', 'eps_diluted', 'total_revenue'
         """
         pass
+
+    def fetch_premarket_bars(self, symbols: List[str]) -> pd.DataFrame:
+        """
+        Fetch pre-market real-time quotes for current trading session.
+        Returns a DataFrame formatted like fetch_daily_bars for today's date.
+        """
+        return pd.DataFrame()

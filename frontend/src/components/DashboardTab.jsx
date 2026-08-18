@@ -16,6 +16,8 @@ export default function DashboardTab({
   setSyncPrices,
   syncFundamentals,
   setSyncFundamentals,
+  syncPremarket,
+  setSyncPremarket,
   syncStatus,
   handleTriggerSync,
   summary,
@@ -46,6 +48,16 @@ export default function DashboardTab({
               />
               Sync Price Data
             </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', color: '#ec4899' }}>
+              <input
+                type="checkbox"
+                checked={syncPremarket}
+                onChange={(e) => setSyncPremarket(e.target.checked)}
+                disabled={syncStatus.status === 'running'}
+                style={{ cursor: 'pointer', accentColor: '#ec4899' }}
+              />
+              ⚡ Pre-Market Quotes (Today)
+            </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', color: 'var(--text-secondary)' }}>
               <input
                 type="checkbox"
@@ -61,7 +73,7 @@ export default function DashboardTab({
           <button
             className="btn btn-primary"
             onClick={handleTriggerSync}
-            disabled={syncStatus.status === 'running' || (!syncPrices && !syncFundamentals)}
+            disabled={syncStatus.status === 'running' || (!syncPrices && !syncFundamentals && !syncPremarket)}
           >
             {syncStatus.status === 'running' ? 'Running Sync...' : 'Sync Database Tickers'}
           </button>

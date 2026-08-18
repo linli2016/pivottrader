@@ -9,6 +9,8 @@ import MarketMonitorTab from './components/MarketMonitorTab';
 import SectorCompareTab from './components/SectorCompareTab';
 import StockDetailDrawer from './components/StockDetailDrawer';
 import WatchlistsTab from './components/WatchlistsTab';
+import SetupsAndRulesTab from './components/SetupsAndRulesTab';
+
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
@@ -60,6 +62,7 @@ function App() {
   // Database ingestion flags & logs tracking
   const [syncPrices, setSyncPrices] = useState(true);
   const [syncFundamentals, setSyncFundamentals] = useState(false);
+  const [syncPremarket, setSyncPremarket] = useState(false);
   const [syncStatus, setSyncStatus] = useState({
     status: 'idle',
     start_time: null,
@@ -279,8 +282,9 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          skip_prices: !syncPrices,
-          skip_fundamentals: !syncFundamentals
+          skip_prices: !syncPrices && !syncPremarket,
+          skip_fundamentals: !syncFundamentals,
+          include_premarket: syncPremarket
         })
       });
       fetchSyncStatus();
@@ -493,12 +497,8 @@ function App() {
                 </div>
                 <span className="nav-badge emerald">{watchlists.reduce((sum, w) => sum + (w.item_count || 0), 0)}</span>
               </li>
-            </ul>
-          </div>
 
-          <div className="nav-section">
-            <div className="nav-section-title">Tools & Config</div>
-            <ul className="nav-menu">
+              {/* 5. Stock Inspector */}
               <li
                 className={`nav-item ${activeTab === 'inspector' ? 'active' : ''}`}
                 onClick={() => {
@@ -511,7 +511,22 @@ function App() {
               >
                 <div className="nav-item-content">
                   <span>🔍</span>
-                  <span>Stock Inspector</span>
+                  <span>5. Stock Inspector</span>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div className="nav-section">
+            <div className="nav-section-title">Tools & Config</div>
+            <ul className="nav-menu">
+              <li
+                className={`nav-item ${activeTab === 'setups-rules' ? 'active' : ''}`}
+                onClick={() => setActiveTab('setups-rules')}
+              >
+                <div className="nav-item-content">
+                  <span>📖</span>
+                  <span>Setups & Rules</span>
                 </div>
               </li>
               <li
@@ -554,6 +569,8 @@ function App() {
             setSyncPrices={setSyncPrices}
             syncFundamentals={syncFundamentals}
             setSyncFundamentals={setSyncFundamentals}
+            syncPremarket={syncPremarket}
+            setSyncPremarket={setSyncPremarket}
             syncStatus={syncStatus}
             handleTriggerSync={handleTriggerSync}
             summary={summary}
@@ -727,6 +744,10 @@ function App() {
             sqlResult={sqlResult}
             handleRunSQL={handleRunSQL}
           />
+        )}
+
+        {activeTab === 'setups-rules' && (
+          <SetupsAndRulesTab />
         )}
 
         {activeTab === 'settings' && (
