@@ -226,7 +226,7 @@ class MomentumEngine:
         """
         Detects Episodic Pivot (EP) setup on the latest trading day.
         Criteria:
-        1. Gap Up % >= 8.0% (Open vs Previous Close).
+        1. Gap Up % >= 10.0% (Open vs Previous Close).
         2. Relative Volume >= 2.5x 50-day average volume.
         """
         n = len(closes)
@@ -244,7 +244,7 @@ class MomentumEngine:
         gap_pct = ((today_open - prev_close) / prev_close) * 100.0
         rel_vol = today_vol / vol_50d
 
-        if gap_pct >= 8.0 and rel_vol >= 2.5:
+        if gap_pct >= 10.0 and rel_vol >= 2.5:
             return {
                 "ep_is_setup": True,
                 "ep_gap_pct": round(gap_pct, 2),

@@ -17,6 +17,8 @@ function App() {
   const [candidates, setCandidates] = useState([]);
   const [summary, setSummary] = useState(null);
   const [watchlists, setWatchlists] = useState([]);
+  const [tradingDates, setTradingDates] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toLocaleDateString('en-CA'));
 
   const fetchWatchlists = async () => {
     try {
@@ -29,6 +31,19 @@ function App() {
       console.error("Error fetching watchlists:", e);
     }
   };
+
+  const fetchTradingDates = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/trading-dates`);
+      if (res.ok) {
+        const data = await res.json();
+        setTradingDates(data);
+      }
+    } catch (e) {
+      console.error("Error fetching trading dates: ", e);
+    }
+  };
+
 
   useEffect(() => {
     fetchWatchlists();
@@ -69,8 +84,8 @@ function App() {
   const [minPriceFilter, setMinPriceFilter] = useState(5.00);
   const [minVolFilter, setMinVolFilter] = useState(300000);
   const [minAtrFilter, setMinAtrFilter] = useState(0.0);
-  const [enforceStage2, setEnforceStage2] = useState(true);
-  const [enablePowerPlay, setEnablePowerPlay] = useState(false);
+  const [enforceStage2, setEnforceStage2] = useState(false);
+  const [enablePowerPlay, setEnablePowerPlay] = useState(true);
   const [enableIpoBase, setEnableIpoBase] = useState(false);
   const [enableVcpSetup, setEnableVcpSetup] = useState(false);
   const [enableDarvasBox, setEnableDarvasBox] = useState(false);
@@ -85,7 +100,7 @@ function App() {
   const [enable1mRet, setEnable1mRet] = useState(true);
   const [enableEmaSurfing, setEnableEmaSurfing] = useState(true);
 
-  const [minEpGapFilter, setMinEpGapFilter] = useState(8.0);
+  const [minEpGapFilter, setMinEpGapFilter] = useState(10.0);
   const [enableEpGap, setEnableEpGap] = useState(true);
   const [minEpRelVolFilter, setMinEpRelVolFilter] = useState(2.5);
   const [enableEpRelVol, setEnableEpRelVol] = useState(true);
@@ -166,9 +181,12 @@ function App() {
   };
 
   // Fetch candidates
-  const fetchCandidates = async () => {
+  const fetchCandidates = async (targetDt = selectedDate) => {
     try {
-      const res = await fetch(`${API_BASE}/api/candidates`);
+      const url = targetDt && targetDt !== 'latest' 
+        ? `${API_BASE}/api/candidates?date=${encodeURIComponent(targetDt)}` 
+        : `${API_BASE}/api/candidates`;
+      const res = await fetch(url);
       const data = await res.json();
       setCandidates(data);
     } catch (e) {
@@ -204,10 +222,15 @@ function App() {
 
   useEffect(() => {
     fetchSummary();
-    fetchCandidates();
+    fetchTradingDates();
     fetchConfig();
     fetchSyncStatus();
   }, []);
+
+  useEffect(() => {
+    fetchCandidates(selectedDate);
+  }, [selectedDate]);
+
 
   // Monitor sync updates
   useEffect(() => {
@@ -560,7 +583,11 @@ function App() {
             fetchWatchlists={fetchWatchlists}
             candidates={candidates}
             filteredCandidates={filteredCandidates}
+            tradingDates={tradingDates}
+            selectedDate={selectedDate}
+            setSelectedDate={setSelectedDate}
             minPriceFilter={minPriceFilter}
+
             setMinPriceFilter={setMinPriceFilter}
             minVolFilter={minVolFilter}
             setMinVolFilter={setMinVolFilter}

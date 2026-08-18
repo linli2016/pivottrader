@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+import json
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Response
 from pydantic import BaseModel
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from src.services import config_service, db_service, sync_service
 
@@ -38,11 +39,20 @@ def get_summary():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/api/candidates")
-def get_candidates():
-    """Retrieve candidates satisfying active screening criteria."""
+@router.get("/api/trading-dates")
+def get_trading_dates():
+    """Retrieve distinct trading dates available in daily_bars."""
     try:
-        return db_service.get_candidates()
+        return db_service.get_available_trading_dates()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/candidates")
+def get_candidates(date: Optional[str] = None):
+    """Retrieve candidates satisfying active screening criteria for a specific target date."""
+    try:
+        data = db_service.get_candidates(target_date=date)
+        return Response(content=json.dumps(data), media_type="application/json")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

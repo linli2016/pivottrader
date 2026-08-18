@@ -59,15 +59,9 @@ export function filterCandidates(candidates, filters) {
     
     // Trend Template (if enforceStage2 is checked)
     if (enforceStage2) {
-      // Waived for recent IPOs under IPO base if enableIpoAge is checked
-      const isRecentIpo = enableIpoBase && enableIpoAge && c.ipo_days_count !== null && c.ipo_days_count !== undefined && c.ipo_days_count <= maxIpoAgeFilter;
-      if (isRecentIpo) {
-        if (c.sma_50 !== null && c.sma_50 !== undefined && c.close < c.sma_50) return false;
-      } else {
-        if (c.sma_50 === null || c.sma_150 === null || c.sma_200 === null) return false;
-        if (c.sma_50 <= c.sma_150 || c.sma_150 <= c.sma_200) return false;
-        if (c.close < c.sma_50) return false;
-      }
+      if (c.sma_50 === null || c.sma_150 === null || c.sma_200 === null) return false;
+      if (c.sma_50 <= c.sma_150 || c.sma_150 <= c.sma_200) return false;
+      if (c.close < c.sma_50) return false;
     }
 
     // Optional ATR filter
@@ -177,7 +171,6 @@ export function filterCandidates(candidates, filters) {
       if (filters.enableEpRelVol && filters.minEpRelVolFilter !== undefined) {
         if (c.rel_vol_50d === null || c.rel_vol_50d === undefined || c.rel_vol_50d < filters.minEpRelVolFilter) return false;
       }
-      if (filters.enableEpFlag && !c.ep_is_setup) return false;
     }
 
     // 9. Parabolic Extension Overlay (Short & Long)

@@ -6,7 +6,11 @@ export default function CandidatesTab({
   fetchWatchlists,
   candidates,
   filteredCandidates,
+  tradingDates = [],
+  selectedDate = 'latest',
+  setSelectedDate = () => {},
   minPriceFilter,
+
   setMinPriceFilter,
   minVolFilter,
   setMinVolFilter,
@@ -336,225 +340,167 @@ export default function CandidatesTab({
       <div className="glass-card" style={{ marginBottom: '20px', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {/* Top Integrated Header: Strategy Checkboxes + Right Action Controls */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-          {/* Strategy Selector Checkboxes (Left Side) */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, minWidth: '300px' }}>
-            {/* Line 1: Baseline & Standard Setups */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-              {/* Baseline Stage 2 Toggle */}
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                <input
-                  type="checkbox"
-                  checked={enforceStage2}
-                  onChange={(e) => setEnforceStage2(e.target.checked)}
-                  style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: 'var(--accent-color)' }}
-                />
-                📈 Stage 2 Trend
-              </label>
+          {/* Strategy Selector (Left Side: Stage 2 Trend + Mutually Exclusive Setup Buttons) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            {/* Baseline Stage 2 Toggle */}
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+              <input
+                type="checkbox"
+                checked={enforceStage2}
+                onChange={(e) => setEnforceStage2(e.target.checked)}
+                style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: 'var(--accent-color)' }}
+              />
+              📈 Stage 2 Trend
+            </label>
 
-              <span style={{ color: 'rgba(255, 255, 255, 0.15)', fontSize: '14px' }}>|</span>
+            <span style={{ color: 'rgba(255, 255, 255, 0.2)', fontSize: '14px', margin: '0 2px' }}>|</span>
 
-              {/* Standard Setup Overlay Checkboxes */}
-              <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Standard:</span>
+            {/* Power Play Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setEnablePowerPlay(true);
+                setEnableQullamaggieBreakout(false);
+                setEnableEpisodicPivot(false);
+                setEnableParabolicShort(false);
+                setEnableIpoBase(false);
+                setEnableVcpSetup(false);
+                setEnableDarvasBox(false);
+                setEnableNewLeaders(false);
+              }}
+              style={{
+                padding: '5px 12px',
+                fontSize: '12px',
+                fontWeight: '600',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                border: enablePowerPlay ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.12)',
+                background: enablePowerPlay ? 'rgba(56, 189, 248, 0.2)' : 'rgba(15, 23, 42, 0.5)',
+                color: enablePowerPlay ? '#38bdf8' : 'var(--text-secondary)',
+                boxShadow: enablePowerPlay ? '0 2px 8px rgba(56, 189, 248, 0.25)' : 'none'
+              }}
+            >
+              🚀 Power Play
+            </button>
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', fontSize: '12px', fontWeight: '500', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                <input
-                  type="checkbox"
-                  checked={enablePowerPlay}
-                  onChange={(e) => {
-                    const val = e.target.checked;
-                    setEnablePowerPlay(val);
-                    if (val) {
-                      setEnableIpoBase(false);
-                      setEnableVcpSetup(false);
-                      setEnableDarvasBox(false);
-                      setEnableNewLeaders(false);
-                      setEnableQullamaggieBreakout(false);
-                      setEnableEpisodicPivot(false);
-                      setEnableParabolicShort(false);
-                      setEnforceStage2(false);
-                    } else {
-                      setEnforceStage2(true);
-                    }
-                  }}
-                  style={{ cursor: 'pointer', width: '14px', height: '14px', accentColor: 'var(--accent-color)' }}
-                />
-                🚀 Power Play
-              </label>
+            {/* Breakout Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setEnableQullamaggieBreakout(true);
+                setEnablePowerPlay(false);
+                setEnableEpisodicPivot(false);
+                setEnableParabolicShort(false);
+                setEnableIpoBase(false);
+                setEnableVcpSetup(false);
+                setEnableDarvasBox(false);
+                setEnableNewLeaders(false);
+              }}
+              style={{
+                padding: '5px 12px',
+                fontSize: '12px',
+                fontWeight: '600',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                border: enableQullamaggieBreakout ? '1px solid #f59e0b' : '1px solid rgba(255, 255, 255, 0.12)',
+                background: enableQullamaggieBreakout ? 'rgba(245, 158, 11, 0.2)' : 'rgba(15, 23, 42, 0.5)',
+                color: enableQullamaggieBreakout ? '#f59e0b' : 'var(--text-secondary)',
+                boxShadow: enableQullamaggieBreakout ? '0 2px 8px rgba(245, 158, 11, 0.25)' : 'none'
+              }}
+            >
+              🎯 Breakout
+            </button>
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', fontSize: '12px', fontWeight: '500', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                <input
-                  type="checkbox"
-                  checked={enableIpoBase}
-                  onChange={(e) => {
-                    const val = e.target.checked;
-                    setEnableIpoBase(val);
-                    if (val) {
-                      setEnablePowerPlay(false);
-                      setEnableVcpSetup(false);
-                      setEnableDarvasBox(false);
-                      setEnableNewLeaders(false);
-                      setEnableQullamaggieBreakout(false);
-                      setEnableEpisodicPivot(false);
-                      setEnableParabolicShort(false);
-                    }
-                  }}
-                  style={{ cursor: 'pointer', width: '14px', height: '14px', accentColor: 'var(--accent-color)' }}
-                />
-                📅 IPO Base
-              </label>
+            {/* Episodic Pivot Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setEnableEpisodicPivot(true);
+                setEnablePowerPlay(false);
+                setEnableQullamaggieBreakout(false);
+                setEnableParabolicShort(false);
+                setEnableIpoBase(false);
+                setEnableVcpSetup(false);
+                setEnableDarvasBox(false);
+                setEnableNewLeaders(false);
+              }}
+              style={{
+                padding: '5px 12px',
+                fontSize: '12px',
+                fontWeight: '600',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                border: enableEpisodicPivot ? '1px solid #ec4899' : '1px solid rgba(255, 255, 255, 0.12)',
+                background: enableEpisodicPivot ? 'rgba(236, 72, 153, 0.2)' : 'rgba(15, 23, 42, 0.5)',
+                color: enableEpisodicPivot ? '#ec4899' : 'var(--text-secondary)',
+                boxShadow: enableEpisodicPivot ? '0 2px 8px rgba(236, 72, 153, 0.25)' : 'none'
+              }}
+            >
+              ⚡ Episodic Pivot (EP)
+            </button>
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', fontSize: '12px', fontWeight: '500', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                <input
-                  type="checkbox"
-                  checked={enableVcpSetup}
-                  onChange={(e) => {
-                    const val = e.target.checked;
-                    setEnableVcpSetup(val);
-                    if (val) {
-                      setEnablePowerPlay(false);
-                      setEnableIpoBase(false);
-                      setEnableDarvasBox(false);
-                      setEnableNewLeaders(false);
-                      setEnableQullamaggieBreakout(false);
-                      setEnableEpisodicPivot(false);
-                      setEnableParabolicShort(false);
-                    }
-                  }}
-                  style={{ cursor: 'pointer', width: '14px', height: '14px', accentColor: 'var(--accent-color)' }}
-                />
-                ⚡ VCP Setup
-              </label>
-
-              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', fontSize: '12px', fontWeight: '500', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                <input
-                  type="checkbox"
-                  checked={enableDarvasBox}
-                  onChange={(e) => {
-                    const val = e.target.checked;
-                    setEnableDarvasBox(val);
-                    if (val) {
-                      setEnablePowerPlay(false);
-                      setEnableIpoBase(false);
-                      setEnableVcpSetup(false);
-                      setEnableNewLeaders(false);
-                      setEnableQullamaggieBreakout(false);
-                      setEnableEpisodicPivot(false);
-                      setEnableParabolicShort(false);
-                      setEnforceStage2(true);
-                    }
-                  }}
-                  style={{ cursor: 'pointer', width: '14px', height: '14px', accentColor: 'var(--accent-color)' }}
-                />
-                📦 Darvas Box
-              </label>
-
-              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', fontSize: '12px', fontWeight: '500', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                <input
-                  type="checkbox"
-                  checked={enableNewLeaders}
-                  onChange={(e) => {
-                    const val = e.target.checked;
-                    setEnableNewLeaders(val);
-                    if (val) {
-                      setEnablePowerPlay(false);
-                      setEnableIpoBase(false);
-                      setEnableVcpSetup(false);
-                      setEnableDarvasBox(false);
-                      setEnableQullamaggieBreakout(false);
-                      setEnableEpisodicPivot(false);
-                      setEnableParabolicShort(false);
-                      setEnforceStage2(true);
-                    }
-                  }}
-                  style={{ cursor: 'pointer', width: '14px', height: '14px', accentColor: 'var(--accent-color)' }}
-                />
-                🌟 New Leaders
-              </label>
-            </div>
-
-            {/* Line 2: Qullamaggie Setups */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '11px', fontWeight: '700', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>Qullamaggie:</span>
-
-              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', color: '#f59e0b', whiteSpace: 'nowrap' }}>
-                <input
-                  type="checkbox"
-                  checked={enableQullamaggieBreakout}
-                  onChange={(e) => {
-                    const val = e.target.checked;
-                    setEnableQullamaggieBreakout(val);
-                    if (val) {
-                      setEnablePowerPlay(false);
-                      setEnableIpoBase(false);
-                      setEnableVcpSetup(false);
-                      setEnableDarvasBox(false);
-                      setEnableNewLeaders(false);
-                      setEnableEpisodicPivot(false);
-                      setEnableParabolicShort(false);
-                    }
-                  }}
-                  style={{ cursor: 'pointer', width: '14px', height: '14px', accentColor: '#f59e0b' }}
-                />
-                🎯 Breakout
-              </label>
-
-              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', color: '#ec4899', whiteSpace: 'nowrap' }}>
-                <input
-                  type="checkbox"
-                  checked={enableEpisodicPivot}
-                  onChange={(e) => {
-                    const val = e.target.checked;
-                    setEnableEpisodicPivot(val);
-                    if (val) {
-                      setEnablePowerPlay(false);
-                      setEnableIpoBase(false);
-                      setEnableVcpSetup(false);
-                      setEnableDarvasBox(false);
-                      setEnableNewLeaders(false);
-                      setEnableQullamaggieBreakout(false);
-                      setEnableParabolicShort(false);
-                    }
-                  }}
-                  style={{ cursor: 'pointer', width: '14px', height: '14px', accentColor: '#ec4899' }}
-                />
-                ⚡ Episodic Pivot (EP)
-              </label>
-
-              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', color: '#ef4444', whiteSpace: 'nowrap' }}>
-                <input
-                  type="checkbox"
-                  checked={enableParabolicShort}
-                  onChange={(e) => {
-                    const val = e.target.checked;
-                    setEnableParabolicShort(val);
-                    if (val) {
-                      setEnablePowerPlay(false);
-                      setEnableIpoBase(false);
-                      setEnableVcpSetup(false);
-                      setEnableDarvasBox(false);
-                      setEnableNewLeaders(false);
-                      setEnableQullamaggieBreakout(false);
-                      setEnableEpisodicPivot(false);
-                    }
-                  }}
-                  style={{ cursor: 'pointer', width: '14px', height: '14px', accentColor: '#ef4444' }}
-                />
-                📉 Parabolic Short
-              </label>
-            </div>
+            {/* Parabolic Short Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setEnableParabolicShort(true);
+                setEnablePowerPlay(false);
+                setEnableQullamaggieBreakout(false);
+                setEnableEpisodicPivot(false);
+                setEnableIpoBase(false);
+                setEnableVcpSetup(false);
+                setEnableDarvasBox(false);
+                setEnableNewLeaders(false);
+              }}
+              style={{
+                padding: '5px 12px',
+                fontSize: '12px',
+                fontWeight: '600',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                border: enableParabolicShort ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.12)',
+                background: enableParabolicShort ? 'rgba(239, 68, 68, 0.2)' : 'rgba(15, 23, 42, 0.5)',
+                color: enableParabolicShort ? '#ef4444' : 'var(--text-secondary)',
+                boxShadow: enableParabolicShort ? '0 2px 8px rgba(239, 68, 68, 0.25)' : 'none'
+              }}
+            >
+              📉 Parabolic Short
+            </button>
           </div>
 
-          {/* Right Action Bar (Matched Candidates Count & Collapse Toggle Button) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: '#38bdf8', background: 'rgba(56, 189, 248, 0.12)', padding: '4px 10px', borderRadius: '12px', border: '1px solid rgba(56, 189, 248, 0.3)', whiteSpace: 'nowrap' }}>
-              {filteredCandidates.length.toLocaleString()} / {candidates.length.toLocaleString()}
-            </span>
+          {/* Right Action Controls: Standalone Date Picker & Rules/Sliders Toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            {/* HTML5 Graphical Date Picker Input */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <input
+                type="date"
+                value={selectedDate || new Date().toLocaleDateString('en-CA')}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                max={new Date().toLocaleDateString('en-CA')}
+                style={{
+                  background: 'rgba(30, 41, 59, 0.9)',
+                  color: '#f8fafc',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '6px',
+                  padding: '5px 10px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  outline: 'none',
+                  colorScheme: 'dark'
+                }}
+              />
+            </div>
 
             <button
               className="btn btn-secondary btn-sm"
               onClick={() => setShowFiltersSection(!showFiltersSection)}
               style={{
-                padding: '4px 10px',
+                padding: '5px 12px',
                 fontSize: '12px',
                 fontWeight: 600,
                 display: 'flex',
@@ -593,10 +539,6 @@ export default function CandidatesTab({
                       else if (enableEpisodicPivot) setActiveGuideTab('episodic_pivot');
                       else if (enableParabolicShort) setActiveGuideTab('parabolic_short');
                       else if (enablePowerPlay) setActiveGuideTab('power_play');
-                      else if (enableIpoBase) setActiveGuideTab('ipo_base');
-                      else if (enableVcpSetup) setActiveGuideTab('vcp');
-                      else if (enableDarvasBox) setActiveGuideTab('darvas');
-                      else if (enableNewLeaders) setActiveGuideTab('new_leaders');
                       else setActiveGuideTab('stage2');
                       setShowSetupGuideModal(true);
                     }}
@@ -619,7 +561,7 @@ export default function CandidatesTab({
                     📖 Setup Guide & Rules
                   </button>
                   <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.06)', padding: '3px 10px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    {enablePowerPlay ? '🚀 Power Play' : enableIpoBase ? '📅 IPO Base' : enableVcpSetup ? '⚡ VCP Setup' : enableDarvasBox ? '📦 Darvas Box' : enableNewLeaders ? '🌟 New Leaders' : enableQullamaggieBreakout ? '🎯 Qullamaggie Breakout' : enableEpisodicPivot ? '⚡ Episodic Pivot (EP)' : enableParabolicShort ? '📉 Parabolic Short' : '📈 Stage 2 Trend Baseline'}
+                    {enablePowerPlay ? '🚀 Power Play' : enableQullamaggieBreakout ? '🎯 Breakout' : enableEpisodicPivot ? '⚡ Episodic Pivot (EP)' : enableParabolicShort ? '📉 Parabolic Short' : enforceStage2 ? '📈 Stage 2 Trend Baseline' : '🌐 Baseline'}
                   </span>
                   <span style={{ fontSize: '12px', fontWeight: 600, color: '#38bdf8', background: 'rgba(56, 189, 248, 0.12)', padding: '3px 10px', borderRadius: '12px', border: '1px solid rgba(56, 189, 248, 0.3)', whiteSpace: 'nowrap' }}>
                     Showing {filteredCandidates.length.toLocaleString()} / {candidates.length.toLocaleString()} stocks
@@ -629,71 +571,49 @@ export default function CandidatesTab({
 
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.5' }}>
                 {enablePowerPlay && 'Screening for high-velocity momentum stocks undergoing shallow high-level consolidations after a massive price expansion.'}
-                {enableIpoBase && 'Screening for young, recently listed growth stocks constructing their initial primary base after going public.'}
-                {enableVcpSetup && 'Screening for Mark Minervini\'s signature Volatility Contraction Pattern (VCP), where overhead supply dries up through contracting swings.'}
-                {enableDarvasBox && 'Screening for Nicolas Darvas\'s Box strategy, identifying stocks consolidating in tight support/resistance boxes within confirmed Phase 2 uptrends.'}
-                {enableNewLeaders && 'Screening for market correction turn leadership—stocks trading near 52-week highs that corrected the least and surged off market lows with top relative strength.'}
                 {enableQullamaggieBreakout && 'Screening for Kristjan Qullamaggie\'s classic Momentum Breakout—top 1-month & 3-month performance leaders consolidating tightly while surfing the rising 10/20 EMA.'}
-                {enableEpisodicPivot && 'Screening for Kristjan Qullamaggie\'s Episodic Pivots (EP)—game-changing fundamental gap-ups (>=8%) on massive relative volume (>=2.5x) breaking out of long bases.'}
+                {enableEpisodicPivot && 'Screening for Kristjan Qullamaggie\'s Episodic Pivots (EP)—game-changing fundamental gap-ups (>=10%) on massive relative volume (>=2.5x) breaking out of long bases.'}
                 {enableParabolicShort && 'Screening for Kristjan Qullamaggie\'s Parabolic Shorts—stocks that surged +40%+ over 3-10 days and extended >=18% above 10 EMA setting up mean-reversion short setups.'}
-                {!enablePowerPlay && !enableIpoBase && !enableVcpSetup && !enableDarvasBox && !enableNewLeaders && !enableQullamaggieBreakout && !enableEpisodicPivot && !enableParabolicShort && 'Screening for classic Minervini Stage 2 uptrend stocks in confirmed institutional mark-up phases.'}
+                {!enablePowerPlay && !enableQullamaggieBreakout && !enableEpisodicPivot && !enableParabolicShort && (enforceStage2 ? 'Screening for classic Minervini Stage 2 uptrend stocks in confirmed institutional mark-up phases.' : 'Screening all universe stocks meeting basic price and volume baseline criteria.')}
               </p>
 
               {enablePowerPlay ? (
                 <ol style={{ margin: '4px 0 0 0', paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px', color: 'var(--text-primary)', lineHeight: '1.5' }}>
                   <li>
-                    <strong>Explosive Price Move:</strong> An explosive price move commences on huge volume that shoots the stock price up 100 percent or more in less than eight weeks. This generally occurs after a period of relative dormancy. <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>(Active Filter: &ge; {minPpRunupFilter}% run-up{enablePpRunup ? '' : ' - Disabled'})</span>
+                    <strong>Explosive Price Move:</strong> An explosive price move commences on huge volume that shoots the stock price up 100 percent or more in less than eight weeks. <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>(Active Filter: &ge; {minPpRunupFilter}% run-up{enablePpRunup ? '' : ' - Disabled'})</span>
                   </li>
                   <li>
-                    <strong>Tight Consolidation:</strong> The stock price then moves sideways in a relatively tight range, not correcting more than 20 to 25 percentage over a period of three to six weeks (some can emerge after only 12 days). <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>(Active Filter: &le; {maxPpDrawdownFilter}% drawdown, peak &ge; {minPpDaysSincePeakFilter}d prior{enablePpDrawdown && enablePpDaysSincePeak ? '' : ' - Partially Disabled'})</span>
+                    <strong>Tight Consolidation:</strong> The stock price then moves sideways in a relatively tight range (&le;25% depth, &ge;12 days). <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>(Active Filter: &le; {maxPpDrawdownFilter}% drawdown, peak &ge; {minPpDaysSincePeakFilter}d prior{enablePpDrawdown && enablePpDaysSincePeak ? '' : ' - Partially Disabled'})</span>
                   </li>
                   <li>
-                    <strong>Volume Contraction:</strong> With the base (usually just days before a breakout), volume will contract considerably. <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>{enablePpVolRatio ? `(Active Filter: \u2264 ${maxPpVolRatioFilter.toFixed(2)}x 50d Vol MA)` : '(Filter Disabled)'}</span>
+                    <strong>Volume Contraction:</strong> Base volume contracts considerably before breakout. <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>{enablePpVolRatio ? `(Active Filter: \u2264 ${maxPpVolRatioFilter.toFixed(2)}x 50d Vol MA)` : '(Filter Disabled)'}</span>
                   </li>
                 </ol>
+              ) : enableQullamaggieBreakout ? (
+                <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
+                  <li><strong>1-Month Momentum Leader:</strong> 1-month gain &ge; {min1mRetFilter}% {enable1mRet ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>EMA Surfing:</strong> Price holding above/near 10-day & 20-day EMAs {enableEmaSurfing ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>Stage 2 Trend:</strong> {enforceStage2 ? 'Enforced (Close > SMA50 > SMA150 > SMA200)' : 'Optional (Waived)'}</li>
+                </ul>
+              ) : enableEpisodicPivot ? (
+                <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
+                  <li><strong>Fundamental Gap-Up:</strong> Opening gap &ge; {minEpGapFilter}% {enableEpGap ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>Relative Volume:</strong> 50d Relative Volume &ge; {minEpRelVolFilter}x {enableEpRelVol ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>Stage 2 Trend:</strong> {enforceStage2 ? 'Enforced (Close > SMA50 > SMA150 > SMA200)' : 'Optional (Waived)'}</li>
+                </ul>
+              ) : enableParabolicShort ? (
+                <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
+                  <li><strong>Parabolic Expansion:</strong> Rapid run-up &ge; {minParabolicRunupFilter}% over 3-10 days {enableParabolicRunup ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>10 EMA Extension:</strong> Distance to 10 EMA &ge; {minParabolicEmaDistFilter}% {enableParabolicEmaDist ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>Mean-Reversion Short:</strong> Over-extended momentum setup for short entry on LOD/VWAP breakdown.</li>
+                  <li><strong>Stage 2 Trend:</strong> {enforceStage2 ? 'Enforced (Close > SMA50 > SMA150 > SMA200)' : 'Optional (Waived)'}</li>
+                </ul>
               ) : (
                 <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
-                  {enableIpoBase && (
-                    <>
-                      <li><strong>Listing Age:</strong> IPO trading history between 10 and {maxIpoAgeFilter} days {enableIpoAge ? '(Active)' : '(Disabled)'}</li>
-                      <li><strong>Proximity to High:</strong> Distance from all-time IPO high &le; {maxIpoDistFilter}% {enableIpoDist ? '(Active)' : '(Disabled)'}</li>
-                      <li><strong>Base Depth Bounded:</strong> Maximum base depth correction &le; {maxIpoDepthFilter}% {enableIpoDepth ? '(Active)' : '(Disabled)'}</li>
-                      <li><strong>Trend Baseline:</strong> Close &ge; SMA(50) (SMA 150/200 waived due to limited history)</li>
-                    </>
-                  )}
-                  {enableVcpSetup && (
-                    <>
-                      <li><strong>52-Week High Proximity:</strong> Current price is within 15% of the 52-week high (Active)</li>
-                      <li><strong>Contractions from 52w High:</strong> At least 2 contractions ($T_1, T_2$) from 52-week high point to now {enableVcpPattern ? '(Active)' : '(Disabled)'}</li>
-                      <li><strong>Relative Strength:</strong> RS Percentile Rank &ge; {minRsFilter}th percentile {enableVcpRsPercentile ? '(Active)' : '(Disabled)'}</li>
-                      <li><strong>Earnings Growth:</strong> QoQ Diluted EPS Growth &ge; {minEpsGrowthFilter}% {enableVcpEpsGrowth ? '(Active)' : '(Disabled)'}</li>
-                      <li><strong>Trend Baseline:</strong> Enforces Stage 2 Trend Template (Close &gt; SMA 50 &gt; SMA 150 &gt; SMA 200)</li>
-                    </>
-                  )}
-                  {enableDarvasBox && (
-                    <>
-                      <li><strong>Box Formation:</strong> Unbreached 3-day peak (Box Top) and 3-day floor (Box Bottom) {enableDarvasPattern ? '(Active)' : '(Disabled)'}</li>
-                      <li><strong>Max Box Height:</strong> Box width (Top - Bottom) / Top &le; {maxDarvasWidthFilter}% {enableDarvasWidth ? '(Active)' : '(Disabled)'}</li>
-                      <li><strong>Phase 2 Baseline:</strong> Enforces Stage 2 Trend Template (Close &gt; SMA 50 &gt; SMA 150 &gt; SMA 200) by default</li>
-                    </>
-                  )}
-                  {enableNewLeaders && (
-                    <>
-                      <li><strong>52-Week High Proximity:</strong> Trading within &le; {max52wDistFilter}% of 52-week high {enable52wDist ? '(Active)' : '(Disabled)'}</li>
-                      <li><strong>Surge off Lows:</strong> Rebound &ge; {minSurgeOffLowFilter}% off recent 60-day market low {enableSurgeOffLow ? '(Active)' : '(Disabled)'}</li>
-                      <li><strong>Relative Strength:</strong> Leader RS Percentile Rank &ge; {minNewLeadersRsFilter}th percentile {enableNewLeadersRs ? '(Active)' : '(Disabled)'}</li>
-                      <li><strong>52-Week High List:</strong> {enableNewLeaders52wHigh ? 'Must be touching/hitting 52-week high (Active)' : 'Near or touching 52-week high list'}</li>
-                      <li><strong>Uptrend & Base Context:</strong> Consolidating or base-building in Stage 2 uptrend {enableNewLeadersBase ? '(Enforced)' : '(Disabled)'}</li>
-                    </>
-                  )}
-                  {!enablePowerPlay && !enableIpoBase && !enableVcpSetup && !enableDarvasBox && !enableNewLeaders && (
-                    <>
-                      <li><strong>Moving Average Alignment:</strong> Close &gt; SMA(50) &gt; SMA(150) &gt; SMA(200) {enforceStage2 ? '(Enforced)' : '(Disabled)'}</li>
-                      <li><strong>Liquidity Baseline:</strong> Min stock price &ge; ${minPriceFilter.toFixed(2)} and 50d Volume MA &ge; {minVolFilter.toLocaleString()}</li>
-                      <li><strong>Relative Strength:</strong> {enableRsNewHigh ? 'Must be making a 52-week RS Rank High' : 'RS Rank calculated dynamically'}</li>
-                      {enableAtr && <li><strong>Daily ATR:</strong> &ge; {minAtrFilter.toFixed(1)}%</li>}
-                    </>
-                  )}
+                  <li><strong>Moving Average Alignment:</strong> Close &gt; SMA(50) &gt; SMA(150) &gt; SMA(200) {enforceStage2 ? '(Enforced)' : '(Disabled / Optional)'}</li>
+                  <li><strong>Liquidity Baseline:</strong> Min stock price &ge; ${minPriceFilter.toFixed(2)} and 50d Volume MA &ge; {minVolFilter.toLocaleString()}</li>
+                  <li><strong>Relative Strength:</strong> {enableRsNewHigh ? 'Must be making a 52-week RS Rank High' : 'RS Rank calculated dynamically'}</li>
+                  {enableAtr && <li><strong>Daily ATR:</strong> &ge; {minAtrFilter.toFixed(1)}%</li>}
                 </ul>
               )}
             </div>
@@ -723,11 +643,7 @@ export default function CandidatesTab({
                   <span style={{ color: enforceStage2 ? 'var(--accent-success)' : 'var(--text-secondary)' }}>⚡</span>
                   <span style={{ color: 'var(--text-secondary)' }}>Trend Template:</span>
                   <strong style={{ color: enforceStage2 ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
-                    {!enforceStage2
-                      ? 'Disabled (Optional)'
-                      : enableIpoBase && enableIpoAge
-                        ? 'SMA(50) [Waive SMA 150/200 on IPOs]'
-                        : 'SMA(50) > SMA(150) > SMA(200)'}
+                    {enforceStage2 ? 'SMA(50) > SMA(150) > SMA(200)' : 'Optional (Disabled)'}
                   </strong>
                 </div>
                 {enableAtr && (
@@ -747,7 +663,7 @@ export default function CandidatesTab({
                   <>
                     {enablePpRunup && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ color: 'var(--accent-success)' }}>🚀</span>
+                        <span style={{ color: '#38bdf8' }}>🚀</span>
                         <span style={{ color: 'var(--text-secondary)' }}>8w Run-up:</span>
                         <strong style={{ color: 'var(--text-primary)' }}>&ge; {minPpRunupFilter}%</strong>
                       </div>
@@ -759,61 +675,58 @@ export default function CandidatesTab({
                         <strong style={{ color: 'var(--text-primary)' }}>&le; {maxPpDrawdownFilter}%</strong>
                       </div>
                     )}
-                    {enablePpVolRatio && (
+                  </>
+                )}
+                {enableQullamaggieBreakout && (
+                  <>
+                    {enable1mRet && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ color: 'var(--accent-success)' }}>📉</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>Max Base Vol:</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>&le; {maxPpVolRatioFilter.toFixed(2)}x SMA</strong>
+                        <span style={{ color: '#f59e0b' }}>🎯</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>1m Gain:</span>
+                        <strong style={{ color: 'var(--text-primary)' }}>&ge; {min1mRetFilter}%</strong>
+                      </div>
+                    )}
+                    {enableEmaSurfing && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ color: '#f59e0b' }}>🌊</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>EMA Surfing:</span>
+                        <strong style={{ color: 'var(--text-primary)' }}>10/20 EMA</strong>
                       </div>
                     )}
                   </>
                 )}
-                {enableIpoBase && (
+                {enableEpisodicPivot && (
                   <>
-                    {enableIpoAge && (
+                    {enableEpGap && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ color: 'var(--accent-color)' }}>📅</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>Max IPO Age:</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>{maxIpoAgeFilter} days</strong>
+                        <span style={{ color: '#ec4899' }}>⚡</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>EP Gap:</span>
+                        <strong style={{ color: 'var(--text-primary)' }}>&ge; {minEpGapFilter}%</strong>
                       </div>
                     )}
-                    {enableIpoDist && (
+                    {enableEpRelVol && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ color: 'var(--accent-success)' }}>🎯</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>Max Dist from High:</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>{maxIpoDistFilter}%</strong>
-                      </div>
-                    )}
-                    {enableIpoDepth && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ color: 'var(--accent-danger)' }}>📉</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>Max Base Drawdown:</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>&le; {maxIpoDepthFilter}%</strong>
+                        <span style={{ color: '#ec4899' }}>📊</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>Rel Vol:</span>
+                        <strong style={{ color: 'var(--text-primary)' }}>&ge; {minEpRelVolFilter}x</strong>
                       </div>
                     )}
                   </>
                 )}
-                {enableVcpSetup && (
+                {enableParabolicShort && (
                   <>
-                    {enableVcpEpsGrowth && (
+                    {enableParabolicRunup && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ color: 'var(--accent-warning)' }}>💰</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>QoQ EPS Growth:</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>&ge; {minEpsGrowthFilter}%</strong>
+                        <span style={{ color: '#ef4444' }}>📈</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>Run-up:</span>
+                        <strong style={{ color: 'var(--text-primary)' }}>&ge; {minParabolicRunupFilter}%</strong>
                       </div>
                     )}
-                    {enableVcpRsPercentile && (
+                    {enableParabolicEmaDist && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ color: 'var(--accent-success)' }}>⚡</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>RS Percentile:</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>&ge; {minRsFilter}th</strong>
-                      </div>
-                    )}
-                    {enableVcpPattern && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ color: 'var(--accent-success)' }}>🌀</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>Pattern:</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>VCP Contraction</strong>
+                        <span style={{ color: '#ef4444' }}>📉</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>10 EMA Dist:</span>
+                        <strong style={{ color: 'var(--text-primary)' }}>&ge; {minParabolicEmaDistFilter}%</strong>
                       </div>
                     )}
                   </>
@@ -1087,402 +1000,54 @@ export default function CandidatesTab({
               )}
 
               {/* ========================================== */}
-              {/* 3. IPO Base Sliders (Visible if selected) */}
+              {/* 3. Breakout Sliders (Visible if selected)  */}
               {/* ========================================== */}
-              {enableIpoBase && (
+              {enableQullamaggieBreakout && (
                 <>
-                  {/* Max IPO Age */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableIpoAge ? 1 : 0.5 }}>
+                  {/* Min 1-Month Return */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enable1mRet ? 1 : 0.5 }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
                       <input
                         type="checkbox"
-                        checked={enableIpoAge}
-                        onChange={(e) => setEnableIpoAge(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                        checked={enable1mRet}
+                        onChange={(e) => setEnable1mRet(e.target.checked)}
+                        style={{ accentColor: '#f59e0b', cursor: 'pointer' }}
                       />
-                      Max IPO Age ({maxIpoAgeFilter} days):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="30"
-                        max="1000"
-                        step="10"
-                        value={maxIpoAgeFilter}
-                        disabled={!enableIpoAge}
-                        onChange={(e) => setMaxIpoAgeFilter(parseInt(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enableIpoAge ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                      />
-                      <input
-                        type="number"
-                        min="10"
-                        max="1000"
-                        value={maxIpoAgeFilter}
-                        disabled={!enableIpoAge}
-                        onChange={(e) => setMaxIpoAgeFilter(parseInt(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Max Distance from IPO High */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableIpoDist ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableIpoDist}
-                        onChange={(e) => setEnableIpoDist(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                      />
-                      Max Dist from High ({maxIpoDistFilter}%):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="5"
-                        max="40"
-                        step="1"
-                        value={maxIpoDistFilter}
-                        disabled={!enableIpoDist}
-                        onChange={(e) => setMaxIpoDistFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enableIpoDist ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                      />
-                      <input
-                        type="number"
-                        min="1"
-                        max="50"
-                        value={maxIpoDistFilter}
-                        disabled={!enableIpoDist}
-                        onChange={(e) => setMaxIpoDistFilter(parseFloat(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Max IPO Base Drawdown */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableIpoDepth ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableIpoDepth}
-                        onChange={(e) => setEnableIpoDepth(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                      />
-                      Max Base Drawdown ({maxIpoDepthFilter}%):
+                      Min 1-Month Return ({min1mRetFilter}%):
                     </label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <input
                         type="range"
                         min="10"
-                        max="50"
-                        step="1"
-                        value={maxIpoDepthFilter}
-                        disabled={!enableIpoDepth}
-                        onChange={(e) => setMaxIpoDepthFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enableIpoDepth ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                      />
-                      <input
-                        type="number"
-                        min="5"
-                        max="80"
-                        value={maxIpoDepthFilter}
-                        disabled={!enableIpoDepth}
-                        onChange={(e) => setMaxIpoDepthFilter(parseFloat(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* ========================================== */}
-              {/* 4. VCP Setup Sliders (Visible if selected) */}
-              {/* ========================================== */}
-              {enableVcpSetup && (
-                <>
-                  {/* RS Percentile Rank */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableVcpRsPercentile ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableVcpRsPercentile}
-                        onChange={(e) => setEnableVcpRsPercentile(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                      />
-                      Min RS Rank ({minRsFilter}):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={minRsFilter}
-                        disabled={!enableVcpRsPercentile}
-                        onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enableVcpRsPercentile ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                      />
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={minRsFilter}
-                        disabled={!enableVcpRsPercentile}
-                        onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* QoQ EPS Growth */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableVcpEpsGrowth ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableVcpEpsGrowth}
-                        onChange={(e) => setEnableVcpEpsGrowth(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                      />
-                      Min QoQ EPS Growth ({minEpsGrowthFilter}%):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="-50"
-                        max="200"
-                        value={minEpsGrowthFilter}
-                        disabled={!enableVcpEpsGrowth}
-                        onChange={(e) => setMinEpsGrowthFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enableVcpEpsGrowth ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                      />
-                      <input
-                        type="number"
-                        min="-100"
-                        max="1000"
-                        value={minEpsGrowthFilter}
-                        disabled={!enableVcpEpsGrowth}
-                        onChange={(e) => setMinEpsGrowthFilter(parseFloat(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* VCP Contraction Pattern */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableVcpPattern ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableVcpPattern}
-                        onChange={(e) => setEnableVcpPattern(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                      />
-                      VCP Contraction Pattern
-                    </label>
-                    <div style={{
-                      padding: '8px 12px',
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      fontSize: '13px',
-                      color: enableVcpPattern ? 'var(--accent-success)' : 'var(--text-secondary)',
-                      fontWeight: '600',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      height: '100%',
-                      boxSizing: 'border-box'
-                    }}>
-                      {enableVcpPattern ? '🌀 Pattern Recognition Active' : '⚪ Pattern Recognition Waived'}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* ========================================== */}
-              {/* 5. Darvas Box Sliders (Visible if selected) */}
-              {/* ========================================== */}
-              {enableDarvasBox && (
-                <>
-                  {/* Max Darvas Box Width % */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableDarvasWidth ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableDarvasWidth}
-                        onChange={(e) => setEnableDarvasWidth(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                      />
-                      Max Box Width ({maxDarvasWidthFilter}%):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="5"
-                        max="50"
-                        step="1"
-                        value={maxDarvasWidthFilter}
-                        disabled={!enableDarvasWidth}
-                        onChange={(e) => setMaxDarvasWidthFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enableDarvasWidth ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                      />
-                      <input
-                        type="number"
-                        min="5"
-                        max="80"
-                        value={maxDarvasWidthFilter}
-                        disabled={!enableDarvasWidth}
-                        onChange={(e) => setMaxDarvasWidthFilter(parseFloat(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Darvas Pattern Recognition */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableDarvasPattern ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableDarvasPattern}
-                        onChange={(e) => setEnableDarvasPattern(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                      />
-                      Darvas Box Pattern Recognition
-                    </label>
-                    <div style={{
-                      padding: '8px 12px',
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      fontSize: '13px',
-                      color: enableDarvasPattern ? 'var(--accent-success)' : 'var(--text-secondary)',
-                      fontWeight: '600',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      height: '100%',
-                      boxSizing: 'border-box'
-                    }}>
-                      {enableDarvasPattern ? '📦 Pattern Recognition Active' : '⚪ Pattern Recognition Waived'}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* ========================================== */}
-              {/* 6. New Leaders Sliders (Visible if selected) */}
-              {/* ========================================== */}
-              {enableNewLeaders && (
-                <>
-                  {/* Max Distance from 52w High % */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enable52wDist ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enable52wDist}
-                        onChange={(e) => setEnable52wDist(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                      />
-                      Max Dist from 52w High ({max52wDistFilter}%):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="5"
-                        max="40"
-                        step="1"
-                        value={max52wDistFilter}
-                        disabled={!enable52wDist}
-                        onChange={(e) => setMax52wDistFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enable52wDist ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                      />
-                      <input
-                        type="number"
-                        min="1"
-                        max="50"
-                        value={max52wDistFilter}
-                        disabled={!enable52wDist}
-                        onChange={(e) => setMax52wDistFilter(parseFloat(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Min Surge off Market Low % */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableSurgeOffLow ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableSurgeOffLow}
-                        onChange={(e) => setEnableSurgeOffLow(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                      />
-                      Min Surge off Market Low ({minSurgeOffLowFilter}%):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="5"
                         max="100"
                         step="5"
-                        value={minSurgeOffLowFilter}
-                        disabled={!enableSurgeOffLow}
-                        onChange={(e) => setMinSurgeOffLowFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enableSurgeOffLow ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                        value={min1mRetFilter}
+                        disabled={!enable1mRet}
+                        onChange={(e) => setMin1mRetFilter(parseFloat(e.target.value) || 0)}
+                        style={{ flex: 1, cursor: enable1mRet ? 'pointer' : 'not-allowed', accentColor: '#f59e0b' }}
                       />
                       <input
                         type="number"
                         min="0"
-                        max="300"
-                        value={minSurgeOffLowFilter}
-                        disabled={!enableSurgeOffLow}
-                        onChange={(e) => setMinSurgeOffLowFilter(parseFloat(e.target.value) || 0)}
+                        max="500"
+                        value={min1mRetFilter}
+                        disabled={!enable1mRet}
+                        onChange={(e) => setMin1mRetFilter(parseFloat(e.target.value) || 0)}
                         style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
                       />
                     </div>
                   </div>
 
-                  {/* Leader RS Rank */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableNewLeadersRs ? 1 : 0.5 }}>
+                  {/* EMA Surfing Filter */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableEmaSurfing ? 1 : 0.5 }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
                       <input
                         type="checkbox"
-                        checked={enableNewLeadersRs}
-                        onChange={(e) => setEnableNewLeadersRs(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                        checked={enableEmaSurfing}
+                        onChange={(e) => setEnableEmaSurfing(e.target.checked)}
+                        style={{ accentColor: '#f59e0b', cursor: 'pointer' }}
                       />
-                      Min Leader RS Rank ({minNewLeadersRsFilter}):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="50"
-                        max="99"
-                        value={minNewLeadersRsFilter}
-                        disabled={!enableNewLeadersRs}
-                        onChange={(e) => setMinNewLeadersRsFilter(parseInt(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enableNewLeadersRs ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                      />
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={minNewLeadersRsFilter}
-                        disabled={!enableNewLeadersRs}
-                        onChange={(e) => setMinNewLeadersRsFilter(parseInt(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* 52-Week High List Toggle */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableNewLeaders52wHigh ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableNewLeaders52wHigh}
-                        onChange={(e) => setEnableNewLeaders52wHigh(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                      />
-                      52-Week High List Requirement
+                      EMA 10 / 20 Surfing Rule
                     </label>
                     <div style={{
                       padding: '8px 12px',
@@ -1490,15 +1055,166 @@ export default function CandidatesTab({
                       border: '1px solid var(--border-color)',
                       borderRadius: '4px',
                       fontSize: '13px',
-                      color: enableNewLeaders52wHigh ? 'var(--accent-success)' : 'var(--text-secondary)',
+                      color: enableEmaSurfing ? '#f59e0b' : 'var(--text-secondary)',
                       fontWeight: '600',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '8px',
-                      height: '100%',
+                      height: '38px',
                       boxSizing: 'border-box'
                     }}>
-                      {enableNewLeaders52wHigh ? '🔥 Must be hitting 52w High' : '⚪ Near 52w High (Within Dist %)'}
+                      {enableEmaSurfing ? '🌊 Surfing 10/20 EMA Active' : '⚪ EMA Rule Waived'}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* ========================================== */}
+              {/* 4. Episodic Pivot Sliders (Visible if selected) */}
+              {/* ========================================== */}
+              {enableEpisodicPivot && (
+                <>
+                  {/* Min Gap % */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableEpGap ? 1 : 0.5 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableEpGap}
+                        onChange={(e) => setEnableEpGap(e.target.checked)}
+                        style={{ accentColor: '#ec4899', cursor: 'pointer' }}
+                      />
+                      Min Gap Up ({minEpGapFilter}%):
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="range"
+                        min="4"
+                        max="30"
+                        step="1"
+                        value={minEpGapFilter}
+                        disabled={!enableEpGap}
+                        onChange={(e) => setMinEpGapFilter(parseFloat(e.target.value) || 0)}
+                        style={{ flex: 1, cursor: enableEpGap ? 'pointer' : 'not-allowed', accentColor: '#ec4899' }}
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={minEpGapFilter}
+                        disabled={!enableEpGap}
+                        onChange={(e) => setMinEpGapFilter(parseFloat(e.target.value) || 0)}
+                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Min 50d Relative Volume */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableEpRelVol ? 1 : 0.5 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableEpRelVol}
+                        onChange={(e) => setEnableEpRelVol(e.target.checked)}
+                        style={{ accentColor: '#ec4899', cursor: 'pointer' }}
+                      />
+                      Min Relative Volume ({minEpRelVolFilter.toFixed(1)}x):
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="range"
+                        min="1.0"
+                        max="10.0"
+                        step="0.5"
+                        value={minEpRelVolFilter}
+                        disabled={!enableEpRelVol}
+                        onChange={(e) => setMinEpRelVolFilter(parseFloat(e.target.value) || 0)}
+                        style={{ flex: 1, cursor: enableEpRelVol ? 'pointer' : 'not-allowed', accentColor: '#ec4899' }}
+                      />
+                      <input
+                        type="number"
+                        min="0.5"
+                        max="20.0"
+                        step="0.5"
+                        value={minEpRelVolFilter}
+                        disabled={!enableEpRelVol}
+                        onChange={(e) => setMinEpRelVolFilter(parseFloat(e.target.value) || 0)}
+                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* ========================================== */}
+              {/* 5. Parabolic Short Sliders (Visible if selected) */}
+              {/* ========================================== */}
+              {enableParabolicShort && (
+                <>
+                  {/* Min Parabolic Run-up % */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableParabolicRunup ? 1 : 0.5 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableParabolicRunup}
+                        onChange={(e) => setEnableParabolicRunup(e.target.checked)}
+                        style={{ accentColor: '#ef4444', cursor: 'pointer' }}
+                      />
+                      Min Parabolic Runup ({minParabolicRunupFilter}%):
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="range"
+                        min="20"
+                        max="150"
+                        step="5"
+                        value={minParabolicRunupFilter}
+                        disabled={!enableParabolicRunup}
+                        onChange={(e) => setMinParabolicRunupFilter(parseFloat(e.target.value) || 0)}
+                        style={{ flex: 1, cursor: enableParabolicRunup ? 'pointer' : 'not-allowed', accentColor: '#ef4444' }}
+                      />
+                      <input
+                        type="number"
+                        min="10"
+                        max="500"
+                        value={minParabolicRunupFilter}
+                        disabled={!enableParabolicRunup}
+                        onChange={(e) => setMinParabolicRunupFilter(parseFloat(e.target.value) || 0)}
+                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Min 10 EMA Distance % */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableParabolicEmaDist ? 1 : 0.5 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableParabolicEmaDist}
+                        onChange={(e) => setEnableParabolicEmaDist(e.target.checked)}
+                        style={{ accentColor: '#ef4444', cursor: 'pointer' }}
+                      />
+                      Min 10 EMA Dist ({minParabolicEmaDistFilter}%):
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="range"
+                        min="10"
+                        max="50"
+                        step="1"
+                        value={minParabolicEmaDistFilter}
+                        disabled={!enableParabolicEmaDist}
+                        onChange={(e) => setMinParabolicEmaDistFilter(parseFloat(e.target.value) || 0)}
+                        style={{ flex: 1, cursor: enableParabolicEmaDist ? 'pointer' : 'not-allowed', accentColor: '#ef4444' }}
+                      />
+                      <input
+                        type="number"
+                        min="5"
+                        max="100"
+                        value={minParabolicEmaDistFilter}
+                        disabled={!enableParabolicEmaDist}
+                        onChange={(e) => setMinParabolicEmaDistFilter(parseFloat(e.target.value) || 0)}
+                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                      />
                     </div>
                   </div>
                 </>
@@ -1674,7 +1390,42 @@ export default function CandidatesTab({
           </div>
         )
       ) : (
-        /* Candidates Table View (Classic) */
+        <>
+          {/* Candidates Table View (Classic) */}
+          {selectedDate && selectedDate !== 'latest' && (
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.15) 0%, rgba(30, 41, 59, 0.85) 100%)',
+            border: '1px solid rgba(56, 189, 248, 0.4)',
+            borderRadius: '8px',
+            padding: '12px 18px',
+            marginBottom: '14px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '10px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span style={{ fontSize: '20px' }}>🔬</span>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: '700', color: '#38bdf8' }}>
+                  Point-in-Time Backtest Mode: <span style={{ color: '#ffffff', background: 'rgba(56, 189, 248, 0.2)', padding: '2px 8px', borderRadius: '4px' }}>{selectedDate}</span>
+                </div>
+                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                  Screening candidates as of <strong>{selectedDate}</strong>. Entry price is Next Day Open ($T+1$). Post-screening outcomes (+5D and +20D returns & runups) are calculated below.
+                </div>
+              </div>
+            </div>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => setSelectedDate('latest')}
+              style={{ fontSize: '12px', fontWeight: '600', color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.4)', padding: '6px 12px' }}
+            >
+              Reset to Latest Date 🔄
+            </button>
+          </div>
+        )}
+
         <div className="table-container">
           <table className="data-table">
             <thead>
@@ -1712,6 +1463,15 @@ export default function CandidatesTab({
                   </>
                 )}
                 <th>Setups & Patterns</th>
+                {(selectedDate !== 'latest' || filteredCandidates.some(c => c.entry_price !== null && c.entry_price !== undefined)) && (
+                  <>
+                    <th style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', borderBottom: '2px solid #38bdf8' }}>Entry (Open T+1)</th>
+                    <th style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', borderBottom: '2px solid #38bdf8' }}>+5D Return %</th>
+                    <th style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', borderBottom: '2px solid #38bdf8' }}>5D Peak / Drawdown</th>
+                    <th style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', borderBottom: '2px solid #38bdf8' }}>+20D Return %</th>
+                    <th style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', borderBottom: '2px solid #38bdf8' }}>20D Peak / Drawdown</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -1819,11 +1579,67 @@ export default function CandidatesTab({
                       )}
                     </div>
                   </td>
+                  {(selectedDate !== 'latest' || filteredCandidates.some(c => c.entry_price !== null && c.entry_price !== undefined)) && (
+                    <>
+                      <td style={{ background: 'rgba(56, 189, 248, 0.03)' }}>
+                        {c.entry_price !== null && c.entry_price !== undefined ? (
+                          <div>
+                            <span style={{ fontWeight: '700', color: '#e2e8f0' }}>${c.entry_price.toFixed(2)}</span>
+                            <span style={{ fontSize: '10px', display: 'block', color: 'var(--text-secondary)' }}>{c.entry_date}</span>
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>Pending T+1</span>
+                        )}
+                      </td>
+
+                      <td style={{ background: 'rgba(56, 189, 248, 0.03)' }}>
+                        {c.return_5d !== null && c.return_5d !== undefined ? (
+                          <span className={`pill ${c.return_5d >= 0 ? 'pill-success' : 'pill-danger'}`} style={{ fontWeight: 'bold' }}>
+                            {c.return_5d >= 0 ? '+' : ''}{c.return_5d.toFixed(1)}%
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>N/A</span>
+                        )}
+                      </td>
+
+                      <td style={{ background: 'rgba(56, 189, 248, 0.03)' }}>
+                        {c.max_runup_5d !== null && c.max_runup_5d !== undefined ? (
+                          <div style={{ fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                            <span style={{ color: 'var(--accent-success)', fontWeight: '600' }}>▲ +{c.max_runup_5d.toFixed(1)}%</span>
+                            <span style={{ color: 'var(--accent-danger)', fontWeight: '600' }}>▼ {c.max_drawdown_5d.toFixed(1)}%</span>
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>N/A</span>
+                        )}
+                      </td>
+
+                      <td style={{ background: 'rgba(56, 189, 248, 0.03)' }}>
+                        {c.return_20d !== null && c.return_20d !== undefined ? (
+                          <span className={`pill ${c.return_20d >= 0 ? 'pill-success' : 'pill-danger'}`} style={{ fontWeight: 'bold' }}>
+                            {c.return_20d >= 0 ? '+' : ''}{c.return_20d.toFixed(1)}%
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>N/A</span>
+                        )}
+                      </td>
+
+                      <td style={{ background: 'rgba(56, 189, 248, 0.03)' }}>
+                        {c.max_runup_20d !== null && c.max_runup_20d !== undefined ? (
+                          <div style={{ fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                            <span style={{ color: 'var(--accent-success)', fontWeight: '600' }}>▲ +{c.max_runup_20d.toFixed(1)}%</span>
+                            <span style={{ color: 'var(--accent-danger)', fontWeight: '600' }}>▼ {c.max_drawdown_20d.toFixed(1)}%</span>
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>N/A</span>
+                        )}
+                      </td>
+                    </>
+                  )}
                 </tr>
               ))}
               {filteredCandidates.length === 0 && (
                 <tr>
-                  <td colSpan={12 + (enablePowerPlay ? 3 : 0) + (enableIpoBase ? 3 : 0) + (enableNewLeaders ? 3 : 0)} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  <td colSpan={12 + (enablePowerPlay ? 3 : 0) + (enableIpoBase ? 3 : 0) + (enableNewLeaders ? 3 : 0) + ((selectedDate !== 'latest' || filteredCandidates.some(c => c.entry_price !== null && c.entry_price !== undefined)) ? 5 : 0)} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
                     No candidates matching current config rules found in database cache. Run "Sync Database Tickers" to evaluate stocks.
                   </td>
                 </tr>
@@ -1831,6 +1647,7 @@ export default function CandidatesTab({
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {/* Setup Strategy Guide Modal */}
@@ -1932,14 +1749,10 @@ export default function CandidatesTab({
               background: 'rgba(15, 23, 42, 0.8)',
             }}>
               {[
-                { id: 'qullamaggie_breakout', label: '🎯 Qullamaggie Breakout', color: '#f59e0b' },
-                { id: 'episodic_pivot', label: '⚡ Episodic Pivot (EP)', color: '#ec4899' },
-                { id: 'parabolic_short', label: '📉 Parabolic Short & Long', color: '#ef4444' },
                 { id: 'power_play', label: '🚀 Power Play', color: '#38bdf8' },
-                { id: 'vcp', label: '⚡ VCP Setup', color: '#10b981' },
-                { id: 'darvas', label: '📦 Darvas Box', color: '#8b5cf6' },
-                { id: 'new_leaders', label: '🌟 New Leaders', color: '#eab308' },
-                { id: 'ipo_base', label: '📅 IPO Base', color: '#06b6d4' },
+                { id: 'qullamaggie_breakout', label: '🎯 Breakout', color: '#f59e0b' },
+                { id: 'episodic_pivot', label: '⚡ Episodic Pivot (EP)', color: '#ec4899' },
+                { id: 'parabolic_short', label: '📉 Parabolic Short', color: '#ef4444' },
                 { id: 'stage2', label: '📈 Stage 2 Baseline', color: '#94a3b8' },
               ].map(tab => (
                 <button

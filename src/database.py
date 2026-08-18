@@ -9,8 +9,18 @@ class DatabaseManager:
         self.initialize_schema()
 
     def get_connection(self):
-        """Returns a new connection to the DuckDB file."""
-        return duckdb.connect(self.db_path)
+        """Returns a new connection to the DuckDB file, retrying if temporarily locked by read queries."""
+        import time
+        max_retries = 6
+        for attempt in range(max_retries):
+            try:
+                return duckdb.connect(self.db_path)
+            except Exception as e:
+                if "lock" in str(e).lower() and attempt < max_retries - 1:
+                    time.sleep(0.5)
+                else:
+                    raise
+
 
     def initialize_schema(self) -> None:
         """Executes the DDL script to setup schema structures if they do not exist."""

@@ -1,25 +1,51 @@
 import os
 import duckdb
 import pandas as pd
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+from collections import defaultdict
 from .config import config_service
+from src.engine.momentum import MomentumEngine
 
 class DatabaseService:
     def __init__(self, config_service):
         self.config_service = config_service
+
+    def get_available_trading_dates(self) -> List[str]:
+        with self.get_read_only_conn() as conn:
+            tables = conn.execute("SHOW TABLES").fetchall()
+            table_names = [t[0] for t in tables]
+            if "daily_bars" not in table_names:
+                return []
+            rows = conn.execute("""
+                SELECT DISTINCT CAST(date AS VARCHAR) as dt 
+                FROM daily_bars 
+                ORDER BY dt DESC
+            """).fetchall()
+            return [r[0] for r in rows if r[0]]
+
 
     def get_db_path(self) -> str:
         config = self.config_service.load_config_raw()
         return config.get("database", {}).get("db_path", "data.db")
 
     def get_read_only_conn(self):
-        """Establishes a thread-safe read-only connection to DuckDB."""
+        """Establishes a thread-safe read-only connection to DuckDB with retry handling."""
+        import time
         db_path = self.get_db_path()
         if not os.path.exists(db_path):
             # Create it if it doesn't exist, to avoid connection failure
             conn = duckdb.connect(db_path)
             conn.close()
-        return duckdb.connect(db_path, read_only=True)
+        max_retries = 6
+        for attempt in range(max_retries):
+            try:
+                return duckdb.connect(db_path, read_only=True)
+            except Exception as e:
+                if "lock" in str(e).lower() and attempt < max_retries - 1:
+                    time.sleep(0.5)
+                else:
+                    raise
+
 
     def get_summary(self) -> Dict[str, Any]:
         with self.get_read_only_conn() as conn:
@@ -45,100 +71,7 @@ class DatabaseService:
                 
             return summary
 
-    def get_candidates(self) -> List[Dict[str, Any]]:
-        query = """
-            WITH latest_date_const AS (
-                SELECT MAX(date) as val FROM daily_bars
-            ),
-            latest_fundamentals AS (
-                SELECT 
-                    symbol,
-                    report_date,
-                    fiscal_quarter,
-                    eps_diluted,
-                    eps_qoq_growth,
-                    total_revenue,
-                    ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY fiscal_quarter DESC) as rn
-                FROM quarterly_fundamentals
-            ),
-            ranked_bars AS (
-                SELECT 
-                    symbol, close, volume, vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, pp_days_since_peak, sma_50, sma_150, sma_200, vcp_is_setup, vcp_troughs, vcp_depths, ipo_days_count, ipo_all_time_high, ipo_drawdown_from_high, ipo_base_depth, darvas_is_setup, darvas_box_top, darvas_box_bottom, darvas_box_width_pct, ret_1m, ema_10, ema_20, dist_ema10_pct, dist_ema20_pct, gap_pct, rel_vol_50d, ep_is_setup, ep_gap_pct, ep_rel_vol, parabolic_short_is_setup, parabolic_long_is_setup, parabolic_runup_pct,
-                    (rs_rank >= COALESCE(
-                        (
-                            SELECT MAX(d.rs_rank) 
-                            FROM daily_bars d 
-                            WHERE d.symbol = db.symbol 
-                              AND d.date < db.date 
-                              AND d.date >= db.date - INTERVAL 252 DAY
-                        ), 0
-                    )) as rs_rank_is_new_high,
-                    (SELECT MAX(d.high) FROM daily_bars d WHERE d.symbol = db.symbol AND d.date <= db.date AND d.date >= db.date - INTERVAL 252 DAY) as high_52w,
-                    ROUND((( (SELECT MAX(d.high) FROM daily_bars d WHERE d.symbol = db.symbol AND d.date <= db.date AND d.date >= db.date - INTERVAL 252 DAY) - db.close) / NULLIF((SELECT MAX(d.high) FROM daily_bars d WHERE d.symbol = db.symbol AND d.date <= db.date AND d.date >= db.date - INTERVAL 252 DAY), 0)) * 100.0, 2) as dist_from_52w_high,
-                    ROUND(((db.close - (SELECT MIN(d.low) FROM daily_bars d WHERE d.symbol = db.symbol AND d.date <= db.date AND d.date >= db.date - INTERVAL 60 DAY)) / NULLIF((SELECT MIN(d.low) FROM daily_bars d WHERE d.symbol = db.symbol AND d.date <= db.date AND d.date >= db.date - INTERVAL 60 DAY), 0)) * 100.0, 2) as surge_off_low_pct,
-                    (db.high >= COALESCE((SELECT MAX(d.high) FROM daily_bars d WHERE d.symbol = db.symbol AND d.date < db.date AND d.date >= db.date - INTERVAL 252 DAY), 0)) as is_52w_high
-                FROM daily_bars db
-                WHERE date = (SELECT val FROM latest_date_const)
-            )
-            SELECT 
-                r.symbol,
-                r.close,
-                r.vol_50d_ma,
-                r.rs_score,
-                r.rs_rank,
-                f.report_date,
-                f.fiscal_quarter,
-                f.eps_diluted,
-                f.eps_qoq_growth,
-                f.total_revenue,
-                s.exchange,
-                r.atr_20d,
-                r.pp_runup_pct,
-                r.pp_drawdown_pct,
-                r.pp_days_since_peak,
-                r.volume,
-                r.sma_50,
-                r.sma_150,
-                r.sma_200,
-                r.vcp_is_setup,
-                r.vcp_troughs,
-                r.vcp_depths,
-                r.ipo_days_count,
-                r.ipo_all_time_high,
-                r.ipo_drawdown_from_high,
-                r.ipo_base_depth,
-                r.darvas_is_setup,
-                r.darvas_box_top,
-                r.darvas_box_bottom,
-                r.darvas_box_width_pct,
-                r.rs_rank_is_new_high,
-                r.high_52w,
-                r.dist_from_52w_high,
-                r.surge_off_low_pct,
-                r.is_52w_high,
-                r.ret_1m,
-                r.ema_10,
-                r.ema_20,
-                r.dist_ema10_pct,
-                r.dist_ema20_pct,
-                r.gap_pct,
-                r.rel_vol_50d,
-                r.ep_is_setup,
-                r.ep_gap_pct,
-                r.ep_rel_vol,
-                r.parabolic_short_is_setup,
-                r.parabolic_long_is_setup,
-                r.parabolic_runup_pct,
-                s.sector,
-                s.industry,
-                s.name
-            FROM ranked_bars r
-            LEFT JOIN latest_fundamentals f ON r.symbol = f.symbol AND f.rn = 1
-            JOIN symbols s ON r.symbol = s.symbol
-            WHERE r.rs_score IS NOT NULL
-            ORDER BY r.rs_rank DESC;
-        """
-        
+    def get_candidates(self, target_date: Optional[str] = None) -> List[Dict[str, Any]]:
         with self.get_read_only_conn() as conn:
             # Check if tables exist
             tables = conn.execute("SHOW TABLES").fetchall()
@@ -146,7 +79,98 @@ class DatabaseService:
             if "daily_bars" not in table_names:
                 return []
 
-            # Calculate sector ranks from Sector ETFs
+            # 1. Resolve actual target date
+            if target_date and target_date.strip().lower() != "latest":
+                target_dt_input = target_date.strip()
+                row = conn.execute("SELECT MAX(date) FROM daily_bars WHERE date <= CAST(? AS DATE)", [target_dt_input]).fetchone()
+                if row and row[0]:
+                    actual_date = row[0]
+                    actual_date_str = actual_date.strftime("%Y-%m-%d") if hasattr(actual_date, "strftime") else str(actual_date)
+                else:
+                    actual_date_str = target_dt_input
+            else:
+                max_dt = conn.execute("SELECT MAX(date) FROM daily_bars").fetchone()[0]
+                if not max_dt:
+                    return []
+                actual_date_str = max_dt.strftime("%Y-%m-%d") if hasattr(max_dt, "strftime") else str(max_dt)
+
+            query = """
+                WITH target_date_const AS (
+                    SELECT CAST(? AS DATE) as val
+                ),
+                latest_fundamentals AS (
+                    SELECT 
+                        symbol,
+                        report_date,
+                        fiscal_quarter,
+                        eps_diluted,
+                        eps_qoq_growth,
+                        total_revenue,
+                        ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY fiscal_quarter DESC) as rn
+                    FROM quarterly_fundamentals
+                    WHERE report_date <= (SELECT val FROM target_date_const)
+                )
+                SELECT 
+                    db.symbol,
+                    db.close,
+                    db.vol_50d_ma,
+                    db.rs_score,
+                    db.rs_rank,
+                    f.report_date,
+                    f.fiscal_quarter,
+                    f.eps_diluted,
+                    f.eps_qoq_growth,
+                    f.total_revenue,
+                    s.exchange,
+                    db.atr_20d,
+                    db.pp_runup_pct,
+                    db.pp_drawdown_pct,
+                    db.pp_days_since_peak,
+                    db.volume,
+                    db.sma_50,
+                    db.sma_150,
+                    db.sma_200,
+                    db.vcp_is_setup,
+                    db.vcp_troughs,
+                    db.vcp_depths,
+                    db.ipo_days_count,
+                    db.ipo_all_time_high,
+                    db.ipo_drawdown_from_high,
+                    db.ipo_base_depth,
+                    db.darvas_is_setup,
+                    db.darvas_box_top,
+                    db.darvas_box_bottom,
+                    db.darvas_box_width_pct,
+                    COALESCE(db.is_52w_high, false) as rs_rank_is_new_high,
+                    db.high_52w,
+                    db.dist_from_52w_high,
+                    db.surge_off_low_pct,
+                    db.is_52w_high,
+                    db.ret_1m,
+                    db.ema_10,
+                    db.ema_20,
+                    db.dist_ema10_pct,
+                    db.dist_ema20_pct,
+                    db.gap_pct,
+                    db.rel_vol_50d,
+                    db.ep_is_setup,
+                    db.ep_gap_pct,
+                    db.ep_rel_vol,
+                    db.parabolic_short_is_setup,
+                    db.parabolic_long_is_setup,
+                    db.parabolic_runup_pct,
+                    s.sector,
+                    s.industry,
+                    s.name
+                FROM daily_bars db
+                LEFT JOIN latest_fundamentals f ON db.symbol = f.symbol AND f.rn = 1
+                JOIN symbols s ON db.symbol = s.symbol
+                WHERE db.date = (SELECT val FROM target_date_const)
+                  AND db.rs_score IS NOT NULL
+                ORDER BY db.rs_rank DESC;
+            """
+            
+            # Calculate point-in-time sector ranks from Sector ETFs
             sector_etf_map = {
                 'XLK': 'Technology',
                 'XLE': 'Energy',
@@ -169,9 +193,10 @@ class DatabaseService:
                                ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date DESC) as rn
                         FROM daily_bars d
                         WHERE d.symbol IN ('XLK', 'XLF', 'XLV', 'XLY', 'XLP', 'XLE', 'XLI', 'XLB', 'XLU', 'XLRE', 'XLC')
+                          AND d.date <= CAST(? AS DATE)
                     )
                     SELECT symbol, rs_rank FROM etf_bars WHERE rn = 1 ORDER BY rs_rank DESC
-                """).fetchall()
+                """, [actual_date_str]).fetchall()
                 for rank_idx, (etf_sym, etf_rs) in enumerate(etf_rows, 1):
                     sec_name = sector_etf_map.get(etf_sym)
                     if sec_name:
@@ -183,7 +208,7 @@ class DatabaseService:
             except Exception as e:
                 print(f"Error calculating sector ranks: {e}")
 
-            res = conn.execute(query).fetchall()
+            res = conn.execute(query, [actual_date_str]).fetchall()
             
             candidates = []
             for row in res:
@@ -242,9 +267,76 @@ class DatabaseService:
                     "parabolic_runup_pct": row[47],
                     "sector": sec_val,
                     "sector_rank": sec_rank,
-                    "industry": row[49]
+                    "industry": row[49],
+                    "screen_date": actual_date_str
                 })
+
+            if not candidates:
+                return []
+
+            # 4. Forward performance calculation
+            try:
+                cand_symbols = [c["symbol"] for c in candidates]
+                symbols_str = ", ".join(f"'{s}'" for s in cand_symbols)
+                forward_rows = conn.execute(f"""
+                    SELECT symbol, date, open, high, low, close 
+                    FROM daily_bars 
+                    WHERE symbol IN ({symbols_str}) AND date > CAST(? AS DATE)
+                    ORDER BY symbol, date ASC
+                """, [actual_date_str]).fetchall()
+
+                sym_forward = defaultdict(list)
+                for sym, dt, op, h, l, cl in forward_rows:
+                    sym_forward[sym].append((op, h, l, cl, dt))
+
+                for c in candidates:
+                    symbol = c["symbol"]
+                    f_bars = sym_forward.get(symbol, [])
+                    if f_bars:
+                        # Next Day Open is entry price
+                        entry_bar = f_bars[0]
+                        entry_dt = entry_bar[4]
+                        entry_date_str = entry_dt.strftime("%Y-%m-%d") if hasattr(entry_dt, "strftime") else str(entry_dt)
+                        entry_price = round(float(entry_bar[0]), 2)
+
+                        c["entry_date"] = entry_date_str
+                        c["entry_price"] = entry_price
+
+                        # 5-Day Window
+                        b5 = f_bars[:5]
+                        close_5 = b5[-1][3]
+                        c["return_5d"] = round(((close_5 - entry_price) / entry_price) * 100.0, 2)
+                        max_h_5 = max(b[1] for b in b5)
+                        c["max_runup_5d"] = round(((max_h_5 - entry_price) / entry_price) * 100.0, 2)
+                        min_l_5 = min(b[2] for b in b5)
+                        c["max_drawdown_5d"] = round(((min_l_5 - entry_price) / entry_price) * 100.0, 2)
+                        c["forward_bars_count_5d"] = len(b5)
+
+                        # 20-Day Window
+                        b20 = f_bars[:20]
+                        close_20 = b20[-1][3]
+                        c["return_20d"] = round(((close_20 - entry_price) / entry_price) * 100.0, 2)
+                        max_h_20 = max(b[1] for b in b20)
+                        c["max_runup_20d"] = round(((max_h_20 - entry_price) / entry_price) * 100.0, 2)
+                        min_l_20 = min(b[2] for b in b20)
+                        c["max_drawdown_20d"] = round(((min_l_20 - entry_price) / entry_price) * 100.0, 2)
+                        c["forward_bars_count_20d"] = len(b20)
+                    else:
+                        c["entry_date"] = None
+                        c["entry_price"] = None
+                        c["return_5d"] = None
+                        c["max_runup_5d"] = None
+                        c["max_drawdown_5d"] = None
+                        c["forward_bars_count_5d"] = 0
+                        c["return_20d"] = None
+                        c["max_runup_20d"] = None
+                        c["max_drawdown_20d"] = None
+                        c["forward_bars_count_20d"] = 0
+            except Exception as e:
+                print(f"Error calculating forward performance for candidates on {actual_date_str}: {e}")
+
             return candidates
+
 
     def get_stock_detail(self, symbol: str) -> Dict[str, Any]:
         symbol = symbol.upper()
