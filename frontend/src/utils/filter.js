@@ -185,6 +185,9 @@ export function filterCandidates(candidates, filters) {
       if (filters.enableParabolicEmaDist && filters.minParabolicEmaDistFilter !== undefined) {
         if (c.dist_ema10_pct === null || c.dist_ema10_pct === undefined || c.dist_ema10_pct < filters.minParabolicEmaDistFilter) return false;
       }
+      if (filters.enableParabolicUpDays && filters.minParabolicUpDaysFilter !== undefined) {
+        if (c.parabolic_up_days === null || c.parabolic_up_days === undefined || c.parabolic_up_days < filters.minParabolicUpDaysFilter) return false;
+      }
     }
 
     if (filters.enableParabolicLong) {

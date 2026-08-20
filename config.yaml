@@ -35,6 +35,8 @@ qullamaggie_setups:
   min_ep_rel_vol: 2.5
   min_parabolic_runup_pct: 40.0
   min_parabolic_ema_ext_pct: 18.0
+  min_parabolic_up_days: 3
+
 
 # Watchlist Export Options
 export:

@@ -113,6 +113,9 @@ function App() {
   const [enableParabolicRunup, setEnableParabolicRunup] = useState(true);
   const [minParabolicEmaDistFilter, setMinParabolicEmaDistFilter] = useState(18.0);
   const [enableParabolicEmaDist, setEnableParabolicEmaDist] = useState(true);
+  const [minParabolicUpDaysFilter, setMinParabolicUpDaysFilter] = useState(3);
+  const [enableParabolicUpDays, setEnableParabolicUpDays] = useState(true);
+
 
   // Optional filter checkbox states
   const [enablePpRunup, setEnablePpRunup] = useState(true);
@@ -145,7 +148,7 @@ function App() {
   // Power play inputs
   const [minPpRunupFilter, setMinPpRunupFilter] = useState(100.0);
   const [maxPpDrawdownFilter, setMaxPpDrawdownFilter] = useState(25.0);
-  const [minPpDaysSincePeakFilter, setMinPpDaysSincePeakFilter] = useState(12);
+  const [minPpDaysSincePeakFilter, setMinPpDaysSincePeakFilter] = useState(10);
   const [maxPpVolRatioFilter, setMaxPpVolRatioFilter] = useState(0.5);
 
   // IPO base inputs
@@ -400,6 +403,9 @@ function App() {
     enableParabolicRunup,
     minParabolicEmaDistFilter,
     enableParabolicEmaDist,
+    minParabolicUpDaysFilter,
+    enableParabolicUpDays,
+
     // Optional checkbox states
     enablePpRunup,
     enablePpDrawdown,
@@ -658,6 +664,11 @@ function App() {
             setMinParabolicEmaDistFilter={setMinParabolicEmaDistFilter}
             enableParabolicEmaDist={enableParabolicEmaDist}
             setEnableParabolicEmaDist={setEnableParabolicEmaDist}
+            minParabolicUpDaysFilter={minParabolicUpDaysFilter}
+            setMinParabolicUpDaysFilter={setMinParabolicUpDaysFilter}
+            enableParabolicUpDays={enableParabolicUpDays}
+            setEnableParabolicUpDays={setEnableParabolicUpDays}
+
             minPpRunupFilter={minPpRunupFilter}
             setMinPpRunupFilter={setMinPpRunupFilter}
             maxPpDrawdownFilter={maxPpDrawdownFilter}

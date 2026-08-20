@@ -1,5 +1,11 @@
 import duckdb
 from typing import List, Dict, Any
+from src.engine.setups import (
+    detect_vcp,
+    detect_darvas_box,
+    detect_episodic_pivot,
+    detect_parabolic_extension,
+)
 
 class MomentumEngine:
     def __init__(self, db_path: str):
@@ -9,286 +15,17 @@ class MomentumEngine:
         return duckdb.connect(self.db_path)
 
     def detect_vcp(self, highs: List[float], lows: List[float], dates: List[Any], closes: List[float] = None, window: int = 3) -> dict:
-        """
-        Detects Volatility Contraction Pattern (VCP) from 52-week high point to now.
-        Criteria:
-        1. Current price is within 15% range of the 52-week high.
-        2. At least 2 contractions occurred from the 52-week high point to current date.
-        """
-        n = len(highs)
-        if n < window * 2 + 5:
-            return None
-
-        current_close = closes[-1] if closes else highs[-1]
-
-        # 1. 52-Week High Calculation (last 252 trading days)
-        lookback_52w = min(n, 252)
-        sub_highs = highs[-lookback_52w:]
-        high_52w = max(sub_highs)
-        high_52w_idx = n - lookback_52w + sub_highs.index(high_52w)
-
-        # Requirement 1: Current price must be within 15% range of 52-week high
-        dist_from_52w = ((high_52w - current_close) / high_52w) * 100.0
-        if dist_from_52w > 15.0:
-            return None
-
-        # 2. Identify local extrema starting from 52-week high point
-        peaks = [(high_52w_idx, high_52w, dates[high_52w_idx])]
-        troughs = []
-        
-        start_scan = max(high_52w_idx + 1, window)
-        end_scan = n - window
-
-        for i in range(start_scan, end_scan):
-            high_chunk = highs[i - window : min(n, i + window + 1)]
-            low_chunk = lows[i - window : min(n, i + window + 1)]
-            if highs[i] == max(high_chunk) and i > high_52w_idx:
-                peaks.append((i, highs[i], dates[i]))
-            if lows[i] == min(low_chunk) and i > high_52w_idx:
-                troughs.append((i, lows[i], dates[i]))
-                
-        # If no local troughs identified by window, check for minimum low since 52w high
-        if not troughs and n - 1 > high_52w_idx:
-            recent_lows = lows[high_52w_idx + 1:]
-            min_l = min(recent_lows)
-            min_l_idx = high_52w_idx + 1 + recent_lows.index(min_l)
-            troughs.append((min_l_idx, min_l, dates[min_l_idx]))
-
-        if not troughs:
-            return None
-
-        # Sort and construct alternating peaks and troughs
-        all_extrema = sorted(
-            [(idx, p, d, 'peak') for idx, p, d in peaks] + [(idx, t, d, 'trough') for idx, t, d in troughs],
-            key=lambda x: x[0]
-        )
-        
-        alternating = []
-        for item in all_extrema:
-            if not alternating:
-                alternating.append(item)
-                continue
-            last_type = alternating[-1][3]
-            if item[3] != last_type:
-                alternating.append(item)
-            else:
-                if last_type == 'peak' and item[1] > alternating[-1][1]:
-                    alternating[-1] = item
-                elif last_type == 'trough' and item[1] < alternating[-1][1]:
-                    alternating[-1] = item
-
-        # Filter out minor interior bounces
-        min_rebound_ratio = 0.35
-        filtered_extrema = []
-        for item in alternating:
-            if not filtered_extrema:
-                filtered_extrema.append(item)
-                continue
-                
-            last_item = filtered_extrema[-1]
-            if item[3] == 'trough':
-                if last_item[3] == 'trough':
-                    if item[1] < last_item[1]:
-                        filtered_extrema[-1] = item
-                else:
-                    filtered_extrema.append(item)
-            elif item[3] == 'peak':
-                if last_item[3] == 'trough' and len(filtered_extrema) >= 2:
-                    prev_peak = filtered_extrema[-2]
-                    drop = prev_peak[1] - last_item[1]
-                    rally = item[1] - last_item[1]
-                    
-                    if drop > 0 and (rally / drop >= min_rebound_ratio or item[1] >= prev_peak[1] * 0.95):
-                        filtered_extrema.append(item)
-                    else:
-                        pass
-                else:
-                    if last_item[3] == 'peak':
-                        if item[1] > last_item[1]:
-                            filtered_extrema[-1] = item
-                    else:
-                        filtered_extrema.append(item)
-
-        # Calculate maximum contraction depth for each wave from 52w high to now
-        contractions = []
-        peaks_list = [item for item in filtered_extrema if item[3] == 'peak']
-        
-        for k in range(len(peaks_list)):
-            p_idx, p_price, p_date, _ = peaks_list[k]
-            next_p_idx = peaks_list[k+1][0] if k + 1 < len(peaks_list) else n - 1
-            
-            wave_lows = lows[p_idx : next_p_idx + 1]
-            if not wave_lows:
-                continue
-            min_low = min(wave_lows)
-            min_low_idx = p_idx + wave_lows.index(min_low)
-            
-            depth = (p_price - min_low) / p_price * 100.0
-            if depth > 0.5:
-                contractions.append({
-                    "peak_idx": p_idx,
-                    "peak_price": p_price,
-                    "trough_idx": min_low_idx,
-                    "depth": depth
-                })
-                
-        # Requirement 2: Must have at least 2 contractions from the 52-week high point to now
-        if len(contractions) < 2:
-            return None
-            
-        base_contractions = contractions[-4:] if len(contractions) >= 4 else contractions
-        depths = [c["depth"] for c in base_contractions]
-        
-        is_contracting = True
-        for i in range(len(depths) - 1):
-            if depths[i+1] > depths[i] * 1.05:
-                is_contracting = False
-                break
-                
-        is_final_tight = depths[-1] <= 12.0
-        is_not_extended = highs[-1] <= high_52w * 1.05
-        
-        if (is_contracting or is_final_tight) and is_not_extended:
-            return {
-                "vcp_is_setup": True,
-                "vcp_troughs": len(depths),
-                "vcp_depths": ",".join(f"{d:.1f}" for d in depths)
-            }
-            
-        return None
+        return detect_vcp(highs, lows, dates, closes=closes, window=window)
 
     def detect_darvas_box(self, highs: List[float], lows: List[float], closes: List[float], dates: List[Any], window: int = 3, max_lookback_days: int = 120) -> dict:
-        """
-        Detects Darvas Box consolidation / breakout pattern in recent price history.
-        Expects highs, lows, closes, and dates to be in chronological ascending order.
-        Limits detection to the active base window (last 120 trading days).
-        Returns a dict with Darvas Box metrics or None.
-        """
-        n = len(highs)
-        if n < window * 2 + 5:
-            return None
-
-        start_idx = max(0, n - max_lookback_days)
-        
-        # 1. Identify Box Top (Peak high where subsequent 3 days do NOT exceed that high)
-        box_top_idx = None
-        box_top_price = None
-
-        for i in range(n - 1 - window, max(start_idx, window), -1):
-            is_top = True
-            for k in range(1, window + 1):
-                if highs[i + k] >= highs[i]:
-                    is_top = False
-                    break
-            if is_top:
-                box_top_idx = i
-                box_top_price = highs[i]
-                break
-
-        if box_top_idx is None:
-            return None
-
-        # 2. Identify Box Bottom (Lowest low after box top where subsequent 3 days do NOT undercut that low)
-        box_bottom_idx = None
-        box_bottom_price = None
-
-        for j in range(box_top_idx + 1, n - window):
-            is_bottom = True
-            for k in range(1, window + 1):
-                if j + k < n and lows[j + k] <= lows[j]:
-                    is_bottom = False
-                    break
-            if is_bottom:
-                if box_bottom_price is None or lows[j] < box_bottom_price:
-                    box_bottom_idx = j
-                    box_bottom_price = lows[j]
-
-        if box_bottom_price is None or box_bottom_price >= box_top_price:
-            return None
-
-        # 3. Check box validity:
-        current_close = closes[-1]
-        current_low = lows[-1]
-
-        if current_low < box_bottom_price * 0.98 or current_close > box_top_price * 1.08:
-            return None
-
-        width_pct = ((box_top_price - box_bottom_price) / box_top_price) * 100.0
-
-        return {
-            "darvas_is_setup": True,
-            "darvas_box_top": round(box_top_price, 2),
-            "darvas_box_bottom": round(box_bottom_price, 2),
-            "darvas_box_width_pct": round(width_pct, 2)
-        }
+        return detect_darvas_box(highs, lows, closes, dates, window=window, max_lookback_days=max_lookback_days)
 
     def detect_episodic_pivot(self, opens: List[float], highs: List[float], lows: List[float], closes: List[float], volumes: List[float], dates: List[Any]) -> dict:
-        """
-        Detects Episodic Pivot (EP) setup on the latest trading day.
-        Criteria:
-        1. Gap Up % >= 10.0% (Open vs Previous Close).
-        2. Relative Volume >= 2.5x 50-day average volume.
-        """
-        n = len(closes)
-        if n < 51:
-            return None
-
-        prev_close = closes[-2]
-        today_open = opens[-1]
-        today_vol = volumes[-1]
-        vol_50d = sum(volumes[-51:-1]) / 50.0
-
-        if prev_close <= 0 or vol_50d <= 0:
-            return None
-
-        gap_pct = ((today_open - prev_close) / prev_close) * 100.0
-        rel_vol = today_vol / vol_50d
-
-        if gap_pct >= 10.0 and rel_vol >= 2.5:
-            return {
-                "ep_is_setup": True,
-                "ep_gap_pct": round(gap_pct, 2),
-                "ep_rel_vol": round(rel_vol, 2)
-            }
-        return None
+        return detect_episodic_pivot(opens, highs, lows, closes, volumes, dates)
 
     def detect_parabolic_extension(self, highs: List[float], lows: List[float], closes: List[float], dates: List[Any], ema_10_val: float) -> dict:
-        """
-        Detects Parabolic Short / Long setups.
-        Short Criteria:
-        1. Fast 3 to 10 day gain >= +40%.
-        2. Distance above 10-day EMA >= +18%.
-        Long Criteria:
-        1. Fast 3 to 10 day drop <= -30%.
-        2. Distance below 10-day EMA <= -18%.
-        """
-        n = len(closes)
-        if n < 10 or not ema_10_val or ema_10_val <= 0:
-            return None
+        return detect_parabolic_extension(highs, lows, closes, dates, ema_10_val)
 
-        window_highs = highs[-10:]
-        window_lows = lows[-10:]
-        current_close = closes[-1]
-
-        max_h = max(window_highs)
-        min_l = min(window_lows)
-
-        runup_pct = ((max_h - min_l) / min_l) * 100.0 if min_l > 0 else 0.0
-        drop_pct = ((max_h - min_l) / max_h) * 100.0 if max_h > 0 else 0.0
-
-        dist_ema10_pct = ((current_close - ema_10_val) / ema_10_val) * 100.0
-
-        is_short = runup_pct >= 40.0 and dist_ema10_pct >= 18.0
-        is_long = drop_pct >= 30.0 and dist_ema10_pct <= -18.0
-
-        if is_short or is_long:
-            return {
-                "parabolic_short_is_setup": is_short,
-                "parabolic_long_is_setup": is_long,
-                "parabolic_runup_pct": round(runup_pct, 2) if is_short else round(-drop_pct, 2),
-                "dist_ema10_pct": round(dist_ema10_pct, 2)
-            }
-        return None
 
     def calculate_and_store_momentum_metrics(self) -> None:
         """
@@ -417,7 +154,8 @@ class MomentumEngine:
                 SELECT
                     db.*,
                     s.ipo_date,
-                    LAG(db.close, 1) OVER (PARTITION BY db.symbol ORDER BY db.date) as prev_close
+                    LAG(db.close, 1) OVER (PARTITION BY db.symbol ORDER BY db.date) as prev_close,
+                    ROW_NUMBER() OVER (PARTITION BY db.symbol ORDER BY db.date) as row_idx
                 FROM daily_bars db
                 LEFT JOIN symbols s ON db.symbol = s.symbol
             ),
@@ -429,6 +167,7 @@ class MomentumEngine:
                     high,
                     low,
                     volume,
+                    row_idx,
                     vol_50d_ma,
                     sma_50,
                     sma_150,
@@ -439,9 +178,10 @@ class MomentumEngine:
                     ret_1m,
                     gap_pct,
                     rel_vol_50d,
-                    -- Rolling 30-day peak high and its date
+                    -- Rolling 30-day peak high and its date and row index
                     MAX(high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as running_peak_30d,
                     ARG_MAX(date, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as peak_date_30d,
+                    ARG_MAX(row_idx, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as peak_row_idx_30d,
                     -- Daily run-up % from lowest low in prior 40 days
                     (high - MIN(low) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 39 PRECEDING AND CURRENT ROW)) / 
                     NULLIF(MIN(low) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 39 PRECEDING AND CURRENT ROW), 0) * 100 as daily_runup_pct,
@@ -476,8 +216,8 @@ class MomentumEngine:
                     ARG_MAX(daily_runup_pct, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as pp_runup_pct,
                     -- Power play drawdown %: correction from 30-day peak high to lowest low on or after peak date
                     (running_peak_30d - (SELECT MIN(d.low) FROM daily_bars d WHERE d.symbol = price_lags_base.symbol AND d.date >= price_lags_base.peak_date_30d AND d.date <= price_lags_base.date)) / NULLIF(running_peak_30d, 0) * 100 as pp_drawdown_pct,
-                    -- Power play days since 30-day peak high
-                    DATEDIFF('day', peak_date_30d, date) as pp_days_since_peak,
+                    -- Power play trading days since 30-day peak high
+                    (row_idx - peak_row_idx_30d) as pp_days_since_peak,
                     -- IPO base fields
                     ipo_days_count,
                     running_peak_all_time as ipo_all_time_high,
@@ -548,7 +288,7 @@ class MomentumEngine:
                     v_res = {"vcp_is_setup": False, "vcp_troughs": None, "vcp_depths": None}
                     d_res = {"darvas_is_setup": False, "darvas_box_top": None, "darvas_box_bottom": None, "darvas_box_width_pct": None}
                     ep_res = {"ep_is_setup": False, "ep_gap_pct": None, "ep_rel_vol": None}
-                    para_res = {"parabolic_short_is_setup": False, "parabolic_long_is_setup": False, "parabolic_runup_pct": None, "dist_ema10_pct": None}
+                    para_res = {"parabolic_short_is_setup": False, "parabolic_long_is_setup": False, "parabolic_runup_pct": None, "dist_ema10_pct": None, "parabolic_up_days": None}
                     
                     ema_10_val = None
                     ema_20_val = None
@@ -593,7 +333,7 @@ class MomentumEngine:
                         d_res["darvas_is_setup"], d_res["darvas_box_top"], d_res["darvas_box_bottom"], d_res["darvas_box_width_pct"],
                         ema_10_val, ema_20_val, dist_ema10_pct, dist_ema20_pct,
                         ep_res["ep_is_setup"], ep_res["ep_gap_pct"], ep_res["ep_rel_vol"],
-                        para_res["parabolic_short_is_setup"], para_res["parabolic_long_is_setup"], para_res["parabolic_runup_pct"]
+                        para_res["parabolic_short_is_setup"], para_res["parabolic_long_is_setup"], para_res["parabolic_runup_pct"], para_res.get("parabolic_up_days")
                     ])
 
                 # Store in a temporary table to execute bulk update
@@ -605,7 +345,7 @@ class MomentumEngine:
                     "darvas_is_setup", "darvas_box_top", "darvas_box_bottom", "darvas_box_width_pct",
                     "ema_10", "ema_20", "dist_ema10_pct", "dist_ema20_pct",
                     "ep_is_setup", "ep_gap_pct", "ep_rel_vol",
-                    "parabolic_short_is_setup", "parabolic_long_is_setup", "parabolic_runup_pct"
+                    "parabolic_short_is_setup", "parabolic_long_is_setup", "parabolic_runup_pct", "parabolic_up_days"
                 ])
                 conn.execute("CREATE OR REPLACE TEMP TABLE temp_updates AS SELECT * FROM temp_df")
                 
@@ -636,7 +376,8 @@ class MomentumEngine:
                         ep_rel_vol = src.ep_rel_vol,
                         parabolic_short_is_setup = src.parabolic_short_is_setup,
                         parabolic_long_is_setup = src.parabolic_long_is_setup,
-                        parabolic_runup_pct = src.parabolic_runup_pct
+                        parabolic_runup_pct = src.parabolic_runup_pct,
+                        parabolic_up_days = src.parabolic_up_days
                     FROM temp_updates src
                     WHERE daily_bars.symbol = src.symbol AND daily_bars.date = src.date
                 """)

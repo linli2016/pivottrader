@@ -126,6 +126,7 @@ class DatabaseManager:
                     parabolic_long_is_setup BOOLEAN,
                     parabolic_runup_pct DOUBLE,
                     parabolic_drop_pct DOUBLE,
+                    parabolic_up_days INTEGER,
                     PRIMARY KEY (symbol, date)
                 );
             """)
@@ -169,6 +170,7 @@ class DatabaseManager:
                 ("parabolic_long_is_setup", "BOOLEAN"),
                 ("parabolic_runup_pct", "DOUBLE"),
                 ("parabolic_drop_pct", "DOUBLE"),
+                ("parabolic_up_days", "INTEGER"),
             ]
             for col_name, col_type in new_cols:
                 try:

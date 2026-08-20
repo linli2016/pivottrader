@@ -159,6 +159,7 @@ class DatabaseService:
                     db.parabolic_short_is_setup,
                     db.parabolic_long_is_setup,
                     db.parabolic_runup_pct,
+                    db.parabolic_up_days,
                     s.sector,
                     s.industry,
                     s.name
@@ -212,11 +213,11 @@ class DatabaseService:
             
             candidates = []
             for row in res:
-                sec_val = row[48]
+                sec_val = row[49]
                 sec_rank = sector_ranks.get(sec_val) if sec_val else None
                 candidates.append({
                     "symbol": row[0],
-                    "name": row[50],
+                    "name": row[51],
                     "close": row[1],
                     "vol_50d_ma": row[2],
                     "rs_score": row[3],
@@ -265,9 +266,10 @@ class DatabaseService:
                     "parabolic_short_is_setup": bool(row[45]) if row[45] is not None else False,
                     "parabolic_long_is_setup": bool(row[46]) if row[46] is not None else False,
                     "parabolic_runup_pct": row[47],
+                    "parabolic_up_days": row[48],
                     "sector": sec_val,
                     "sector_rank": sec_rank,
-                    "industry": row[49],
+                    "industry": row[50],
                     "screen_date": actual_date_str
                 })
 

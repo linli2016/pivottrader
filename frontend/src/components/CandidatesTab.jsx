@@ -64,6 +64,10 @@ export default function CandidatesTab({
   setMinParabolicEmaDistFilter,
   enableParabolicEmaDist,
   setEnableParabolicEmaDist,
+  minParabolicUpDaysFilter,
+  setMinParabolicUpDaysFilter,
+  enableParabolicUpDays,
+  setEnableParabolicUpDays,
   minPpRunupFilter,
   setMinPpRunupFilter,
   maxPpDrawdownFilter,
@@ -619,7 +623,7 @@ export default function CandidatesTab({
                     <strong>Explosive Price Move:</strong> An explosive price move commences on huge volume that shoots the stock price up 100 percent or more in less than eight weeks. <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>(Active Filter: &ge; {minPpRunupFilter}% run-up{enablePpRunup ? '' : ' - Disabled'})</span>
                   </li>
                   <li>
-                    <strong>Tight Consolidation:</strong> The stock price then moves sideways in a relatively tight range (&le;25% depth, &ge;12 days). <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>(Active Filter: &le; {maxPpDrawdownFilter}% drawdown, peak &ge; {minPpDaysSincePeakFilter}d prior{enablePpDrawdown && enablePpDaysSincePeak ? '' : ' - Partially Disabled'})</span>
+                    <strong>Tight Consolidation:</strong> The stock price then moves sideways in a relatively tight range (&le;25% depth, &ge;10 trading days). <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>(Active Filter: &le; {maxPpDrawdownFilter}% drawdown, peak &ge; {minPpDaysSincePeakFilter} trading days prior{enablePpDrawdown && enablePpDaysSincePeak ? '' : ' - Partially Disabled'})</span>
                   </li>
                   <li>
                     <strong>Volume Contraction:</strong> Base volume contracts considerably before breakout. <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>{enablePpVolRatio ? `(Active Filter: \u2264 ${maxPpVolRatioFilter.toFixed(2)}x 50d Vol MA)` : '(Filter Disabled)'}</span>
@@ -640,6 +644,7 @@ export default function CandidatesTab({
               ) : enableParabolicShort ? (
                 <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
                   <li><strong>Parabolic Expansion:</strong> Rapid run-up &ge; {minParabolicRunupFilter}% over 3-10 days {enableParabolicRunup ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>Consecutive Up Days:</strong> Stock up &ge; {minParabolicUpDaysFilter} days in a row {enableParabolicUpDays ? '(Active)' : '(Disabled)'}</li>
                   <li><strong>10 EMA Extension:</strong> Distance to 10 EMA &ge; {minParabolicEmaDistFilter}% {enableParabolicEmaDist ? '(Active)' : '(Disabled)'}</li>
                   <li><strong>Mean-Reversion Short:</strong> Over-extended momentum setup for short entry on LOD/VWAP breakdown.</li>
                   <li><strong>Stage 2 Trend:</strong> {enforceStage2 ? 'Enforced (Close > SMA50 > SMA150 > SMA200)' : 'Optional (Waived)'}</li>
@@ -770,6 +775,13 @@ export default function CandidatesTab({
                         <span style={{ color: '#ef4444' }}>📉</span>
                         <span style={{ color: 'var(--text-secondary)' }}>10 EMA Dist:</span>
                         <strong style={{ color: 'var(--text-primary)' }}>&ge; {minParabolicEmaDistFilter}%</strong>
+                      </div>
+                    )}
+                    {enableParabolicUpDays && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ color: '#ef4444' }}>🔥</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>Up Days:</span>
+                        <strong style={{ color: 'var(--text-primary)' }}>&ge; {minParabolicUpDaysFilter} consecutive</strong>
                       </div>
                     )}
                   </>
@@ -1260,6 +1272,40 @@ export default function CandidatesTab({
                       />
                     </div>
                   </div>
+
+                  {/* Min Parabolic Up Days */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableParabolicUpDays ? 1 : 0.5 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableParabolicUpDays}
+                        onChange={(e) => setEnableParabolicUpDays(e.target.checked)}
+                        style={{ accentColor: '#ef4444', cursor: 'pointer' }}
+                      />
+                      Min Consecutive Up Days (&ge; {minParabolicUpDaysFilter}d):
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="range"
+                        min="1"
+                        max="10"
+                        step="1"
+                        value={minParabolicUpDaysFilter}
+                        disabled={!enableParabolicUpDays}
+                        onChange={(e) => setMinParabolicUpDaysFilter(parseInt(e.target.value, 10) || 1)}
+                        style={{ flex: 1, cursor: enableParabolicUpDays ? 'pointer' : 'not-allowed', accentColor: '#ef4444' }}
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        max="15"
+                        value={minParabolicUpDaysFilter}
+                        disabled={!enableParabolicUpDays}
+                        onChange={(e) => setMinParabolicUpDaysFilter(parseInt(e.target.value, 10) || 1)}
+                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                      />
+                    </div>
+                  </div>
                 </>
               )}
 
@@ -1708,7 +1754,7 @@ export default function CandidatesTab({
                       )}
                       {c.parabolic_short_is_setup && (
                         <span className="pill" style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.4)', fontWeight: 'bold' }}>
-                          📉 Para Short (+{c.parabolic_runup_pct?.toFixed(0)}%)
+                          📉 Para Short (+{c.parabolic_runup_pct?.toFixed(0)}%{c.parabolic_up_days ? `, ${c.parabolic_up_days}d up` : ''})
                         </span>
                       )}
                       {c.vcp_is_setup && (
@@ -2043,6 +2089,7 @@ export default function CandidatesTab({
                     <h4 style={{ color: '#ef4444', marginTop: 0 }}>Parabolic Short Setup Criteria</h4>
                     <ul style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <li><strong>Vertical Acceleration:</strong> +40% to +100%+ run-up over 3-10 days without consolidation.</li>
+                      <li><strong>Consecutive Up Days:</strong> Stock is up <strong>&ge; 3 to 5+ days in a row</strong> (consecutive higher closes).</li>
                       <li><strong>EMA Extension:</strong> Price extended <strong>&ge; 18% to 25%+</strong> above its rising 10-day EMA.</li>
                       <li><strong>Short Trigger:</strong> Wait for momentum exhaustion—first red day, breaking previous day low, or 5-min VWAP breakdown.</li>
                       <li><strong>Stop & Target:</strong> Stop is strictly set at High of Day (HOD). Cover target is mean-reversion to the 10-day and 20-day EMAs.</li>

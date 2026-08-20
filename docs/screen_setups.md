@@ -137,6 +137,8 @@ Historical market analysis proves that **over 96% of superperformance stocks eme
 - **Rationale**: Extreme vertical advances (+40% to +200%+ in 3 to 10 days) leave stocks severely extended far above short-term moving averages. When momentum exhausts (first red day / breaking previous day low), mean-reversion pullbacks offer high R/R short setups.
 - **Quantitative Criteria**:
   1. **Fast Runup Velocity**: Price gain $\ge +40.0\%$ over 3 to 10 trading days (`parabolic_runup_pct`).
-  2. **EMA Extension**: Distance above 10-day EMA $\ge +18.0\%$ (`dist_ema10_pct`).
-  3. **Parabolic Long (Oversold Bounce)**: Fast drop $\le -30.0\%$ over 3–10 days with distance below 10 EMA $\le -18.0\%$.
+  2. **Consecutive Up Days**: Price has closed higher for $\ge 3$ to $5+$ days in a row (`parabolic_up_days`).
+  3. **EMA Extension**: Distance above 10-day EMA $\ge +18.0\%$ (`dist_ema10_pct`).
+  4. **Parabolic Long (Oversold Bounce)**: Fast drop $\le -30.0\%$ over 3–10 days with distance below 10 EMA $\le -18.0\%$.
+
 
