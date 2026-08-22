@@ -108,8 +108,18 @@ class IBKRProvider(AbstractDataProvider):
             
         all_bars = []
         # Calculate duration based on start_date
-        # E.g., if we want 2 years of daily data
-        duration = "2 Y"
+        try:
+            from datetime import datetime
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            delta_days = (datetime.now() - start_dt).days
+            if delta_days > 365:
+                years = max(1, round(delta_days / 365))
+                duration = f"{years} Y"
+            else:
+                duration = f"{max(5, delta_days)} D"
+        except Exception:
+            duration = "5 Y"
+
         
         total = len(symbols)
         for idx, symbol in enumerate(symbols):

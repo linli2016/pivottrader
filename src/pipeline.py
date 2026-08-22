@@ -16,7 +16,9 @@ def main():
     parser.add_argument("--config", default="config.yaml", help="Path to config.yaml configuration file")
     parser.add_argument("--provider", choices=["YFINANCE", "IBKR"], help="Override data provider specified in config")
     parser.add_argument("--limit-tickers", type=int, help="Limit the universe size for rapid testing/debugging")
-    parser.add_argument("--force-full", action="store_true", help="Force fetch full 550-day history for all active tickers")
+    parser.add_argument("--force-full", action="store_true", help="Force fetch full history for all active tickers")
+    parser.add_argument("--force-backfill", action="store_true", help="Alias for --force-full (backfill multi-year history)")
+    parser.add_argument("--history-years", type=int, help="Number of historical years of daily price bars to fetch (e.g., 2, 5, 10)")
     parser.add_argument("--skip-prices", action="store_true", help="Skip historical daily bars price synchronization")
     parser.add_argument("--skip-fundamentals", action="store_true", help="Skip quarterly fundamental statements synchronization")
     parser.add_argument("--include-premarket", action="store_true", help="Fetch pre-market quotes for current trading session")
@@ -153,26 +155,33 @@ def main():
         else:
             print("\n[Step 2/5] Syncing historical daily bars...")
             last_dates = db.get_last_bar_dates()
+            first_dates = db.get_first_bar_dates()
             
-            # Split tickers into new vs existing to optimize downloads
+            history_years = args.history_years if args.history_years is not None else config.history_lookback_years
+            force_full = args.force_full or args.force_backfill
+            full_lookback_date = (datetime.now() - timedelta(days=365 * history_years)).strftime("%Y-%m-%d")
+            
+            print(f"Target historical lookback window: {history_years} years (since {full_lookback_date})")
+            
+            # Split tickers into new/backfill vs existing to optimize downloads
             new_symbols = []
             existing_symbols = []
             
             for symbol in active_symbols:
-                if symbol not in last_dates or args.force_full:
+                if symbol not in last_dates or force_full:
+                    new_symbols.append(symbol)
+                elif symbol in first_dates and first_dates[symbol] > full_lookback_date:
+                    # Stored history does not extend back to full_lookback_date -> needs backfill
                     new_symbols.append(symbol)
                 else:
                     existing_symbols.append(symbol)
-                    
-            # Base historical lookup threshold (550 days calendar ~= 378 trading days)
-            full_lookback_date = (datetime.now() - timedelta(days=550)).strftime("%Y-%m-%d")
 
-            # Ingest new symbols
+            # Ingest new/backfill symbols
             if new_symbols:
-                print(f"Fetching full lookback ({full_lookback_date}) for {len(new_symbols)} new tickers...")
+                print(f"Fetching full lookback ({full_lookback_date}) for {len(new_symbols)} tickers (new or backfilling)...")
                 new_bars = price_provider.fetch_daily_bars(new_symbols, full_lookback_date)
                 if not new_bars.empty:
-                    print(f"Upserting {len(new_bars)} rows for new tickers...")
+                    print(f"Upserting {len(new_bars)} rows for new/backfilled tickers...")
                     db.upsert_daily_bars(new_bars)
                 else:
                     print("No new price bars fetched.")

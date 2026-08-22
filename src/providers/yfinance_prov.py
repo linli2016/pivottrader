@@ -132,40 +132,52 @@ class YFinanceProvider(AbstractDataProvider):
                 if df.empty:
                     continue
                 
-                if len(batch) == 1:
-                    sym = batch[0]
-                    # Check if 'Close' is in columns or if there are sub-columns
-                    if "Close" in df.columns:
-                        sym_df = df.copy().reset_index()
-                        sym_df["symbol"] = sym
-                        if "Stock Splits" not in sym_df.columns:
-                            sym_df["Stock Splits"] = 0.0
-                        sym_df = sym_df.rename(columns={
-                            "Date": "date", "Open": "open", "High": "high", 
-                            "Low": "low", "Close": "close", "Volume": "volume",
-                            "Stock Splits": "stock_splits"
-                        })
-                        sym_df["date"] = pd.to_datetime(sym_df["date"]).dt.date
-                        # Drop row instances missing closing price
-                        sym_df = sym_df.dropna(subset=["close"])
-                        all_bars.append(sym_df[["symbol", "date", "open", "high", "low", "close", "volume", "stock_splits"]])
-                else:
-                    for sym in batch:
+                # Process batch DataFrame regardless of batch size
+                batch_syms = batch
+                is_multi = hasattr(df.columns, 'levels') and len(df.columns.levels) > 1
+
+                for sym in batch_syms:
+                    if is_multi:
                         if sym not in df.columns.levels[0]:
                             continue
                         sym_df = df[sym].copy().reset_index()
-                        sym_df["symbol"] = sym
-                        if "Stock Splits" not in sym_df.columns:
-                            sym_df["Stock Splits"] = 0.0
-                        sym_df = sym_df.rename(columns={
-                            "Date": "date", "Open": "open", "High": "high", 
-                            "Low": "low", "Close": "close", "Volume": "volume",
-                            "Stock Splits": "stock_splits"
-                        })
-                        sym_df["date"] = pd.to_datetime(sym_df["date"]).dt.date
-                        sym_df = sym_df.dropna(subset=["close"])
-                        if not sym_df.empty:
-                            all_bars.append(sym_df[["symbol", "date", "open", "high", "low", "close", "volume", "stock_splits"]])
+                    else:
+                        if "Close" not in df.columns:
+                            continue
+                        sym_df = df.copy().reset_index()
+
+                    sym_df["symbol"] = sym
+                    if "Stock Splits" not in sym_df.columns:
+                        sym_df["Stock Splits"] = 0.0
+                    sym_df = sym_df.rename(columns={
+                        "Date": "date", "Open": "open", "High": "high", 
+                        "Low": "low", "Close": "close", "Volume": "volume",
+                        "Stock Splits": "stock_splits"
+                    })
+                    sym_df["date"] = pd.to_datetime(sym_df["date"]).dt.date
+                    sym_df = sym_df.dropna(subset=["close"])
+
+                    if not sym_df.empty:
+                        # Apply backward stock split adjustments for split-adjusted price consistency
+                        if "stock_splits" in sym_df.columns:
+                            splits = sym_df[(sym_df["stock_splits"] > 0) & (sym_df["stock_splits"] != 1.0)]
+                            if not splits.empty:
+                                sym_df = sym_df.sort_values("date").reset_index(drop=True)
+                                for _, s_row in splits.iterrows():
+                                    s_ratio = float(s_row["stock_splits"])
+                                    s_date = s_row["date"]
+                                    mask = sym_df["date"] < s_date
+                                    if mask.any():
+                                        sym_df.loc[mask, "open"] = sym_df.loc[mask, "open"] / s_ratio
+                                        sym_df.loc[mask, "high"] = sym_df.loc[mask, "high"] / s_ratio
+                                        sym_df.loc[mask, "low"] = sym_df.loc[mask, "low"] / s_ratio
+                                        sym_df.loc[mask, "close"] = sym_df.loc[mask, "close"] / s_ratio
+                                        sym_df.loc[mask, "volume"] = sym_df.loc[mask, "volume"] * s_ratio
+
+                        all_bars.append(sym_df[["symbol", "date", "open", "high", "low", "close", "volume", "stock_splits"]])
+                    
+                    if not is_multi:
+                        break
                             
                 # Micro sleep cooling to avoid IP ban triggers
                 time.sleep(0.5)

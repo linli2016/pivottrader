@@ -5,6 +5,8 @@ from src.engine.setups import (
     detect_darvas_box,
     detect_episodic_pivot,
     detect_parabolic_extension,
+    detect_power_play,
+    detect_breakout,
 )
 
 class MomentumEngine:
@@ -25,6 +27,12 @@ class MomentumEngine:
 
     def detect_parabolic_extension(self, highs: List[float], lows: List[float], closes: List[float], dates: List[Any], ema_10_val: float) -> dict:
         return detect_parabolic_extension(highs, lows, closes, dates, ema_10_val)
+
+    def detect_power_play(self, highs: List[float], lows: List[float], closes: List[float], dates: List[Any], min_runup_pct: float = 100.0, max_drawdown_pct: float = 25.0) -> dict:
+        return detect_power_play(highs, lows, closes, dates, min_runup_pct=min_runup_pct, max_drawdown_pct=max_drawdown_pct)
+
+    def detect_breakout(self, highs: List[float], lows: List[float], closes: List[float], dates: List[Any], ema_10_val: float = None, ema_20_val: float = None, min_1m_ret: float = 20.0) -> dict:
+        return detect_breakout(highs, lows, closes, dates, ema_10_val=ema_10_val, ema_20_val=ema_20_val, min_1m_ret=min_1m_ret)
 
 
     def calculate_and_store_momentum_metrics(self) -> None:
@@ -327,6 +335,8 @@ class MomentumEngine:
                         para_detected = self.detect_parabolic_extension(highs, lows, closes, dates, ema_10_val)
                         if para_detected:
                             para_res = para_detected
+                        pp_detected = self.detect_power_play(highs, lows, closes, dates)
+                        breakout_detected = self.detect_breakout(highs, lows, closes, dates, ema_10_val=ema_10_val, ema_20_val=ema_20_val)
                             
                     results_with_setups.append(list(row) + [
                         v_res["vcp_is_setup"], v_res["vcp_troughs"], v_res["vcp_depths"],

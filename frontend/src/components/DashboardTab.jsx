@@ -18,6 +18,10 @@ export default function DashboardTab({
   setSyncFundamentals,
   syncPremarket,
   setSyncPremarket,
+  syncHistoryYears = 5,
+  setSyncHistoryYears,
+  syncForceFull = false,
+  setSyncForceFull,
   syncStatus,
   handleTriggerSync,
   summary,
@@ -36,7 +40,7 @@ export default function DashboardTab({
           <p>Guided step-by-step daily process and status of DuckDB datasets & pipelines</p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', color: 'var(--text-secondary)' }}>
               <input
@@ -67,6 +71,42 @@ export default function DashboardTab({
                 style={{ cursor: 'pointer', accentColor: 'var(--accent-color)' }}
               />
               Sync Fundamentals
+            </label>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '1px solid var(--border-color)', paddingLeft: '16px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '500', color: 'var(--text-secondary)' }}>
+              <span>Lookback History:</span>
+              <select
+                value={syncHistoryYears}
+                onChange={(e) => setSyncHistoryYears(parseInt(e.target.value, 10))}
+                disabled={syncStatus.status === 'running'}
+                style={{
+                  background: 'var(--bg-card)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  padding: '3px 8px',
+                  fontSize: '12px',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value={2}>2 Years (~500 Days)</option>
+                <option value={5}>5 Years (~1,250 Days)</option>
+                <option value={10}>10 Years (~2,500 Days)</option>
+                <option value={15}>15 Years (~3,750 Days)</option>
+              </select>
+            </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', color: '#3b82f6' }}>
+              <input
+                type="checkbox"
+                checked={syncForceFull}
+                onChange={(e) => setSyncForceFull(e.target.checked)}
+                disabled={syncStatus.status === 'running'}
+                style={{ cursor: 'pointer', accentColor: '#3b82f6' }}
+              />
+              🔄 Force Full Backfill History
             </label>
           </div>
 

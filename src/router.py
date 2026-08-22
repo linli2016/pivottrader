@@ -23,6 +23,8 @@ class SyncTriggerSchema(BaseModel):
     skip_prices: bool = False
     skip_fundamentals: bool = False
     include_premarket: bool = False
+    history_years: Optional[int] = None
+    force_full: bool = False
 
 class WatchlistCreateSchema(BaseModel):
     name: str
@@ -116,7 +118,9 @@ def trigger_sync_run(background_tasks: BackgroundTasks, payload: SyncTriggerSche
         background_tasks,
         skip_prices=payload.skip_prices,
         skip_fundamentals=payload.skip_fundamentals,
-        include_premarket=payload.include_premarket
+        include_premarket=payload.include_premarket,
+        history_years=payload.history_years,
+        force_full=payload.force_full
     )
 
 @router.get("/api/sync/status")

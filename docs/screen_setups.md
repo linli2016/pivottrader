@@ -18,7 +18,7 @@ PivotTrader supports multiple setup overlays designed to identify superperforman
 | **New Leaders (Market Low Turn)** | Market correction turnover & leadership | 52-week high list / proximity ($\le 25\%$), strong surge off market lows ($\ge 20\%$), least corrected |
 | **Qullamaggie Breakout** | Momentum consolidation surfing 10/20 EMA | Top 1%–2% 1M/3M/6M gainers, +30-100%+ prior leg, tight EMA 10/20 surf, stop LOD $\le 1$ ATR |
 | **Episodic Pivot (EP)** | Fundamental catalyst news gap-up | Gap $\ge +8.0\%$, RelVol $\ge 2.5\text{x}$ 50d volume, prior 60-day base breakout |
-| **Parabolic Short & Long** | Mean-reversion after vertical expansion | +40%+ move in 3–10d, extended $\ge 18\%$ above 10 EMA (or -30% drop below 10 EMA) |
+| **Parabolic Climax (Short & Long)** | Mean-reversion after vertical expansion | +40%+ move in 3–10d, extended $\ge 18\%$ above 10 EMA (or -30% drop below 10 EMA) |
 
 ---
 

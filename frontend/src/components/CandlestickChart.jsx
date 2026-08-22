@@ -145,8 +145,10 @@ export default function CandlestickChart({ data, height = 280 }) {
     }
 
     // Always update height and container width
+    const currentContainerHeight = chartContainerRef.current.clientHeight;
+    const targetHeight = typeof height === 'number' ? height : (currentContainerHeight > 0 ? currentContainerHeight : 280);
     chartRef.current.applyOptions({
-      height: height,
+      height: targetHeight,
       width: chartContainerRef.current.clientWidth || 700,
     });
 
@@ -200,10 +202,12 @@ export default function CandlestickChart({ data, height = 280 }) {
     if (!container) return;
 
     const resizeObserver = new ResizeObserver((entries) => {
-      if (entries.length > 0 && entries[0].contentRect && chartRef.current) {
-        const newWidth = entries[0].contentRect.width;
-        if (newWidth > 0) {
-          chartRef.current.applyOptions({ width: newWidth });
+      if (entries.length > 0 && chartRef.current && container) {
+        const newWidth = entries[0].contentRect?.width || container.clientWidth;
+        const containerH = container.clientHeight || entries[0].contentRect?.height;
+        const newHeight = typeof height === 'number' ? height : (containerH > 0 ? containerH : 280);
+        if (newWidth > 0 && newHeight > 0) {
+          chartRef.current.applyOptions({ width: newWidth, height: newHeight });
         }
       }
     });
@@ -218,7 +222,18 @@ export default function CandlestickChart({ data, height = 280 }) {
         seriesRef.current = null;
       }
     };
-  }, []);
+  }, [height]);
 
-  return <div ref={chartContainerRef} style={{ width: '100%', minHeight: `${height}px`, position: 'relative' }} />;
+  return (
+    <div
+      ref={chartContainerRef}
+      style={{
+        width: '100%',
+        height: typeof height === 'number' ? `${height}px` : (height || '100%'),
+        minHeight: typeof height === 'number' ? `${height}px` : '280px',
+        position: 'relative',
+        flex: 1
+      }}
+    />
+  );
 }

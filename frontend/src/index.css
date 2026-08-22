@@ -542,6 +542,40 @@ body {
   justify-content: flex-end;
 }
 
+/* Full-Page Modal Popup */
+.full-page-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(9, 13, 22, 0.94);
+  backdrop-filter: blur(12px);
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  animation: fadeInModal 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.full-page-modal {
+  width: 100vw;
+  height: 100vh;
+  background-color: var(--bg-primary);
+  padding: 24px 40px 40px 40px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  box-sizing: border-box;
+}
+
+@keyframes fadeInModal {
+  from { opacity: 0; transform: scale(0.99); }
+  to { opacity: 1; transform: scale(1); }
+}
+
 .drawer {
   width: 720px;
   background-color: var(--bg-secondary);

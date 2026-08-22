@@ -36,6 +36,8 @@ export default function CandidatesTab({
   setEnableQullamaggieBreakout,
   enableEpisodicPivot,
   setEnableEpisodicPivot,
+  enableParabolicClimax,
+  setEnableParabolicClimax,
   enableParabolicShort,
   setEnableParabolicShort,
   enableParabolicLong,
@@ -133,6 +135,8 @@ export default function CandidatesTab({
 }) {
   const [showSetupGuideModal, setShowSetupGuideModal] = React.useState(false);
   const [activeGuideTab, setActiveGuideTab] = React.useState('qullamaggie_breakout');
+
+  const isParabolicActive = enableParabolicClimax || enableParabolicShort || enableParabolicLong;
 
   // Stock Browse Mode (Chart Flip) states
   const [viewMode, setViewMode] = React.useState('browse'); // 'browse' or 'table'
@@ -367,7 +371,9 @@ export default function CandidatesTab({
                 setEnforceStage2(false);
                 setEnableQullamaggieBreakout(false);
                 setEnableEpisodicPivot(false);
-                setEnableParabolicShort(false);
+                if (setEnableParabolicClimax) setEnableParabolicClimax(false);
+                if (setEnableParabolicShort) setEnableParabolicShort(false);
+                if (setEnableParabolicLong) setEnableParabolicLong(false);
                 setEnableIpoBase(false);
                 setEnableVcpSetup(false);
                 setEnableDarvasBox(false);
@@ -397,7 +403,9 @@ export default function CandidatesTab({
                 setEnforceStage2(false);
                 setEnablePowerPlay(false);
                 setEnableEpisodicPivot(false);
-                setEnableParabolicShort(false);
+                if (setEnableParabolicClimax) setEnableParabolicClimax(false);
+                if (setEnableParabolicShort) setEnableParabolicShort(false);
+                if (setEnableParabolicLong) setEnableParabolicLong(false);
                 setEnableIpoBase(false);
                 setEnableVcpSetup(false);
                 setEnableDarvasBox(false);
@@ -427,7 +435,9 @@ export default function CandidatesTab({
                 setEnforceStage2(false);
                 setEnablePowerPlay(false);
                 setEnableQullamaggieBreakout(false);
-                setEnableParabolicShort(false);
+                if (setEnableParabolicClimax) setEnableParabolicClimax(false);
+                if (setEnableParabolicShort) setEnableParabolicShort(false);
+                if (setEnableParabolicLong) setEnableParabolicLong(false);
                 setEnableIpoBase(false);
                 setEnableVcpSetup(false);
                 setEnableDarvasBox(false);
@@ -449,11 +459,13 @@ export default function CandidatesTab({
               ⚡ Episodic Pivot (EP)
             </button>
 
-            {/* Parabolic Short Button */}
+            {/* Parabolic Climax Button */}
             <button
               type="button"
               onClick={() => {
-                setEnableParabolicShort(true);
+                if (setEnableParabolicClimax) setEnableParabolicClimax(true);
+                if (setEnableParabolicShort) setEnableParabolicShort(false);
+                if (setEnableParabolicLong) setEnableParabolicLong(false);
                 setEnforceStage2(false);
                 setEnablePowerPlay(false);
                 setEnableQullamaggieBreakout(false);
@@ -470,13 +482,13 @@ export default function CandidatesTab({
                 borderRadius: '6px',
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
-                border: enableParabolicShort ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.12)',
-                background: enableParabolicShort ? 'rgba(239, 68, 68, 0.2)' : 'rgba(15, 23, 42, 0.5)',
-                color: enableParabolicShort ? '#ef4444' : 'var(--text-secondary)',
-                boxShadow: enableParabolicShort ? '0 2px 8px rgba(239, 68, 68, 0.25)' : 'none'
+                border: isParabolicActive ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.12)',
+                background: isParabolicActive ? 'rgba(239, 68, 68, 0.2)' : 'rgba(15, 23, 42, 0.5)',
+                color: isParabolicActive ? '#ef4444' : 'var(--text-secondary)',
+                boxShadow: isParabolicActive ? '0 2px 8px rgba(239, 68, 68, 0.25)' : 'none'
               }}
             >
-              📉 Parabolic Short
+              🌋 Parabolic Climax
             </button>
 
             {/* VCP Pattern Button */}
@@ -576,7 +588,7 @@ export default function CandidatesTab({
                       if (enableVcpSetup) setActiveGuideTab('vcp');
                       else if (enableQullamaggieBreakout) setActiveGuideTab('qullamaggie_breakout');
                       else if (enableEpisodicPivot) setActiveGuideTab('episodic_pivot');
-                      else if (enableParabolicShort) setActiveGuideTab('parabolic_short');
+                      else if (isParabolicActive) setActiveGuideTab('parabolic_climax');
                       else if (enablePowerPlay) setActiveGuideTab('power_play');
                       else setActiveGuideTab('stage2');
                       setShowSetupGuideModal(true);
@@ -600,7 +612,7 @@ export default function CandidatesTab({
                     📖 Setup Guide & Rules
                   </button>
                   <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.06)', padding: '3px 10px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    {enablePowerPlay ? '🚀 Power Play' : enableQullamaggieBreakout ? '🎯 Breakout' : enableEpisodicPivot ? '⚡ Episodic Pivot (EP)' : enableParabolicShort ? '📉 Parabolic Short' : enableVcpSetup ? '🌀 VCP Pattern' : enforceStage2 ? '📈 Stage 2 Trend Baseline' : '🌐 Baseline'}
+                    {enablePowerPlay ? '🚀 Power Play' : enableQullamaggieBreakout ? '🎯 Breakout' : enableEpisodicPivot ? '⚡ Episodic Pivot (EP)' : isParabolicActive ? '🌋 Parabolic Climax' : enableVcpSetup ? '🌀 VCP Pattern' : enforceStage2 ? '📈 Stage 2 Trend Baseline' : '🌐 Baseline'}
                   </span>
                   <span style={{ fontSize: '12px', fontWeight: 600, color: '#38bdf8', background: 'rgba(56, 189, 248, 0.12)', padding: '3px 10px', borderRadius: '12px', border: '1px solid rgba(56, 189, 248, 0.3)', whiteSpace: 'nowrap' }}>
                     Showing {filteredCandidates.length.toLocaleString()} / {candidates.length.toLocaleString()} stocks
@@ -612,9 +624,9 @@ export default function CandidatesTab({
                 {enablePowerPlay && 'Screening for high-velocity momentum stocks undergoing shallow high-level consolidations after a massive price expansion.'}
                 {enableQullamaggieBreakout && 'Screening for Kristjan Qullamaggie\'s classic Momentum Breakout—top 1-month & 3-month performance leaders consolidating tightly while surfing the rising 10/20 EMA.'}
                 {enableEpisodicPivot && 'Screening for Kristjan Qullamaggie\'s Episodic Pivots (EP)—game-changing fundamental gap-ups (>=10%) on massive relative volume (>=2.5x) breaking out of long bases.'}
-                {enableParabolicShort && 'Screening for Kristjan Qullamaggie\'s Parabolic Shorts—stocks that surged +40%+ over 3-10 days and extended >=18% above 10 EMA setting up mean-reversion short setups.'}
+                {isParabolicActive && 'Screening for Kristjan Qullamaggie\'s Parabolic Climax setups—both short-side overextended tops (+40%+ runup, >=18% above 10 EMA) and long-side oversold bottoms (<= -30% drop, <= -18% below 10 EMA) merged together.'}
                 {enableVcpSetup && 'Screening for Mark Minervini\'s Volatility Contraction Pattern (VCP)—successive price contractions with tightening depth before explosive breakouts.'}
-                {!enablePowerPlay && !enableQullamaggieBreakout && !enableEpisodicPivot && !enableParabolicShort && !enableVcpSetup && (enforceStage2 ? 'Screening for classic Minervini Stage 2 uptrend stocks in confirmed institutional mark-up phases.' : 'Screening all universe stocks meeting basic price and volume baseline criteria.')}
+                {!enablePowerPlay && !enableQullamaggieBreakout && !enableEpisodicPivot && !isParabolicActive && !enableVcpSetup && (enforceStage2 ? 'Screening for classic Minervini Stage 2 uptrend stocks in confirmed institutional mark-up phases.' : 'Screening all universe stocks meeting basic price and volume baseline criteria.')}
               </p>
 
               {enablePowerPlay ? (
@@ -641,12 +653,11 @@ export default function CandidatesTab({
                   <li><strong>Relative Volume:</strong> 50d Relative Volume &ge; {minEpRelVolFilter}x {enableEpRelVol ? '(Active)' : '(Disabled)'}</li>
                   <li><strong>Stage 2 Trend:</strong> {enforceStage2 ? 'Enforced (Close > SMA50 > SMA150 > SMA200)' : 'Optional (Waived)'}</li>
                 </ul>
-              ) : enableParabolicShort ? (
+              ) : isParabolicActive ? (
                 <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
-                  <li><strong>Parabolic Expansion:</strong> Rapid run-up &ge; {minParabolicRunupFilter}% over 3-10 days {enableParabolicRunup ? '(Active)' : '(Disabled)'}</li>
-                  <li><strong>Consecutive Up Days:</strong> Stock up &ge; {minParabolicUpDaysFilter} days in a row {enableParabolicUpDays ? '(Active)' : '(Disabled)'}</li>
-                  <li><strong>10 EMA Extension:</strong> Distance to 10 EMA &ge; {minParabolicEmaDistFilter}% {enableParabolicEmaDist ? '(Active)' : '(Disabled)'}</li>
-                  <li><strong>Mean-Reversion Short:</strong> Over-extended momentum setup for short entry on LOD/VWAP breakdown.</li>
+                  <li><strong>Short Climax (Overextended Top):</strong> Rapid run-up &ge; {minParabolicRunupFilter}% over 3-10 days {enableParabolicRunup ? '(Active)' : '(Disabled)'}, &ge;{minParabolicUpDaysFilter} up days {enableParabolicUpDays ? '(Active)' : '(Disabled)'}, 10 EMA dist &ge; {minParabolicEmaDistFilter}% {enableParabolicEmaDist ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>Long Climax (Oversold Bottom):</strong> Rapid drop &le; -30% over 3-10 days, 10 EMA dist &le; -18%</li>
+                  <li><strong>Merged Table:</strong> Result table contains both short-side breakdown candidates & long-side oversold bounce candidates.</li>
                   <li><strong>Stage 2 Trend:</strong> {enforceStage2 ? 'Enforced (Close > SMA50 > SMA150 > SMA200)' : 'Optional (Waived)'}</li>
                 </ul>
               ) : enableVcpSetup ? (
@@ -761,7 +772,7 @@ export default function CandidatesTab({
                     )}
                   </>
                 )}
-                {enableParabolicShort && (
+                {isParabolicActive && (
                   <>
                     {enableParabolicRunup && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1201,9 +1212,9 @@ export default function CandidatesTab({
               )}
 
               {/* ========================================== */}
-              {/* 5. Parabolic Short Sliders (Visible if selected) */}
+              {/* 5. Parabolic Climax Sliders (Visible if selected) */}
               {/* ========================================== */}
-              {enableParabolicShort && (
+              {isParabolicActive && (
                 <>
                   {/* Min Parabolic Run-up % */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableParabolicRunup ? 1 : 0.5 }}>
@@ -1669,7 +1680,7 @@ export default function CandidatesTab({
             </thead>
             <tbody>
               {filteredCandidates.map((c, i) => (
-                <tr key={i} onClick={() => handleSelectStock(c)} style={{ cursor: 'pointer' }}>
+                <tr key={i} onClick={() => handleSelectStock(c, filteredCandidates)} style={{ cursor: 'pointer' }}>
                   <td style={{ fontWeight: 'bold', color: 'var(--accent-color)' }}>{c.symbol}</td>
                   <td>
                     <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
@@ -1754,7 +1765,12 @@ export default function CandidatesTab({
                       )}
                       {c.parabolic_short_is_setup && (
                         <span className="pill" style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.4)', fontWeight: 'bold' }}>
-                          📉 Para Short (+{c.parabolic_runup_pct?.toFixed(0)}%{c.parabolic_up_days ? `, ${c.parabolic_up_days}d up` : ''})
+                          📉 Para Climax (Short +{c.parabolic_runup_pct?.toFixed(0)}%{c.parabolic_up_days ? `, ${c.parabolic_up_days}d up` : ''})
+                        </span>
+                      )}
+                      {c.parabolic_long_is_setup && (
+                        <span className="pill" style={{ background: 'rgba(34, 197, 94, 0.2)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.4)', fontWeight: 'bold' }}>
+                          📈 Para Climax (Long {c.parabolic_runup_pct?.toFixed(0)}%, {c.dist_ema10_pct?.toFixed(0)}% EMA)
                         </span>
                       )}
                       {c.vcp_is_setup && (
@@ -1767,7 +1783,7 @@ export default function CandidatesTab({
                           📦 Box (${c.darvas_box_bottom?.toFixed(2)}-${c.darvas_box_top?.toFixed(2)})
                         </span>
                       )}
-                      {!c.ep_is_setup && !c.parabolic_short_is_setup && !c.vcp_is_setup && !c.darvas_is_setup && (
+                      {!c.ep_is_setup && !c.parabolic_short_is_setup && !c.parabolic_long_is_setup && !c.vcp_is_setup && !c.darvas_is_setup && (
                         <span style={{ color: 'var(--text-secondary)' }}>Stage 2 Base</span>
                       )}
                     </div>
@@ -1945,7 +1961,7 @@ export default function CandidatesTab({
                 { id: 'power_play', label: '🚀 Power Play', color: '#38bdf8' },
                 { id: 'qullamaggie_breakout', label: '🎯 Breakout', color: '#f59e0b' },
                 { id: 'episodic_pivot', label: '⚡ Episodic Pivot (EP)', color: '#ec4899' },
-                { id: 'parabolic_short', label: '📉 Parabolic Short', color: '#ef4444' },
+                { id: 'parabolic_climax', label: '🌋 Parabolic Climax', color: '#ef4444' },
                 { id: 'stage2', label: '📈 Stage 2 Baseline', color: '#94a3b8' },
               ].map(tab => (
                 <button
@@ -1981,7 +1997,7 @@ export default function CandidatesTab({
               lineHeight: '1.6'
             }}>
               {/* General Qullamaggie Risk & Sizing Rules Banner */}
-              {['qullamaggie_breakout', 'episodic_pivot', 'parabolic_short'].includes(activeGuideTab) && (
+              {['qullamaggie_breakout', 'episodic_pivot', 'parabolic_climax', 'parabolic_short'].includes(activeGuideTab) && (
                 <div style={{
                   padding: '14px 18px',
                   background: 'rgba(245, 158, 11, 0.08)',
@@ -2073,33 +2089,33 @@ export default function CandidatesTab({
                 </>
               )}
 
-              {/* Tab 3: Parabolic Short */}
-              {activeGuideTab === 'parabolic_short' && (
+              {/* Tab 3: Parabolic Climax */}
+              {(activeGuideTab === 'parabolic_climax' || activeGuideTab === 'parabolic_short') && (
                 <>
                   <div>
                     <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#ef4444', margin: '0 0 8px 0' }}>
-                      📉 The Parabolic Short (and Long)
+                      🌋 The Parabolic Climax Setup (Short & Long)
                     </h3>
                     <p style={{ color: 'var(--text-secondary)' }}>
-                      <em>"The Parabolic Short is a high-risk, high-reward strategy based on the concept that stocks stretched too far, too fast become like 'stretched rubber bands' that are prone to powerful snapbacks. Moves involve a stock going up 50-100%+ in days/weeks (large cap) or 300-1000%+ (small cap)."</em>
+                      <em>"The Parabolic Climax is a high-risk, high-reward strategy based on the concept that stocks stretched too far, too fast become like 'stretched rubber bands' prone to powerful snapbacks. This setup screens both overextended short setups and oversold long bounce setups."</em>
                     </p>
                   </div>
 
                   <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
-                    <h4 style={{ color: '#ef4444', marginTop: 0 }}>Parabolic Short Setup Criteria</h4>
+                    <h4 style={{ color: '#ef4444', marginTop: 0 }}>1. Parabolic Short (Overextended Top)</h4>
                     <ul style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <li><strong>Vertical Acceleration:</strong> +40% to +100%+ run-up over 3-10 days without consolidation.</li>
+                      <li><strong>Vertical Acceleration:</strong> +40% to +100%+ run-up over 3–10 days without consolidation.</li>
                       <li><strong>Consecutive Up Days:</strong> Stock is up <strong>&ge; 3 to 5+ days in a row</strong> (consecutive higher closes).</li>
                       <li><strong>EMA Extension:</strong> Price extended <strong>&ge; 18% to 25%+</strong> above its rising 10-day EMA.</li>
                       <li><strong>Short Trigger:</strong> Wait for momentum exhaustion—first red day, breaking previous day low, or 5-min VWAP breakdown.</li>
-                      <li><strong>Stop & Target:</strong> Stop is strictly set at High of Day (HOD). Cover target is mean-reversion to the 10-day and 20-day EMAs.</li>
+                      <li><strong>Stop & Target:</strong> Stop is strictly set at High of Day (HOD). Cover target is mean-reversion to 10 EMA & 20 EMA.</li>
                     </ul>
                   </div>
 
-                  <div style={{ background: 'rgba(239, 68, 68, 0.05)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                    <h4 style={{ color: '#ef4444', marginTop: 0 }}>Parabolic Longs (Oversold Bounce)</h4>
+                  <div style={{ background: 'rgba(34, 197, 94, 0.05)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
+                    <h4 style={{ color: '#22c55e', marginTop: 0 }}>2. Parabolic Long (Oversold Bounce)</h4>
                     <p style={{ margin: 0 }}>
-                      After a parabolic short setup crashes a stock down <strong>50% to 60%+ in 3-5 days</strong>, look for an entry on Opening Range Highs (ORH) for a fast 50-100% mean-reversion bounce back to the moving averages.
+                      After a stock collapses <strong>&le; -30% over 3–10 days</strong> and extends <strong>&le; -18% below its 10-day EMA</strong>, look for an entry on Opening Range Highs (ORH) for a fast mean-reversion bounce back to the moving averages.
                     </p>
                   </div>
                 </>

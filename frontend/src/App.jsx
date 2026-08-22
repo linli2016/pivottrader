@@ -63,6 +63,8 @@ function App() {
   const [syncPrices, setSyncPrices] = useState(true);
   const [syncFundamentals, setSyncFundamentals] = useState(false);
   const [syncPremarket, setSyncPremarket] = useState(false);
+  const [syncHistoryYears, setSyncHistoryYears] = useState(5);
+  const [syncForceFull, setSyncForceFull] = useState(false);
   const [syncStatus, setSyncStatus] = useState({
     status: 'idle',
     start_time: null,
@@ -73,6 +75,7 @@ function App() {
 
   // Modal Detail state
   const [selectedStock, setSelectedStock] = useState(null);
+  const [activeStockList, setActiveStockList] = useState([]);
   const [stockDetail, setStockDetail] = useState(null);
   const [stockPrices, setStockPrices] = useState([]);
 
@@ -95,6 +98,7 @@ function App() {
   const [enableNewLeaders, setEnableNewLeaders] = useState(false);
   const [enableQullamaggieBreakout, setEnableQullamaggieBreakout] = useState(false);
   const [enableEpisodicPivot, setEnableEpisodicPivot] = useState(false);
+  const [enableParabolicClimax, setEnableParabolicClimax] = useState(false);
   const [enableParabolicShort, setEnableParabolicShort] = useState(false);
   const [enableParabolicLong, setEnableParabolicLong] = useState(false);
 
@@ -287,7 +291,9 @@ function App() {
         body: JSON.stringify({
           skip_prices: !syncPrices && !syncPremarket,
           skip_fundamentals: !syncFundamentals,
-          include_premarket: syncPremarket
+          include_premarket: syncPremarket,
+          history_years: parseInt(syncHistoryYears, 10),
+          force_full: syncForceFull
         })
       });
       fetchSyncStatus();
@@ -297,17 +303,21 @@ function App() {
   };
 
   // Select stock for drawer detail
-  const handleSelectStock = async (stock) => {
+  const handleSelectStock = async (stock, list = null) => {
     setSelectedStock(stock);
-    setStockDetail(null);
-    setStockPrices([]);
+    if (list && Array.isArray(list) && list.length > 0) {
+      setActiveStockList(list);
+    }
     try {
-      const detailRes = await fetch(`${API_BASE}/api/stocks/${stock.symbol}`);
-      const detailData = await detailRes.json();
+      const [detailRes, prRes] = await Promise.all([
+        fetch(`${API_BASE}/api/stocks/${stock.symbol}`),
+        fetch(`${API_BASE}/api/stocks/${stock.symbol}/prices`)
+      ]);
+      const [detailData, prData] = await Promise.all([
+        detailRes.json(),
+        prRes.json()
+      ]);
       setStockDetail(detailData);
-
-      const prRes = await fetch(`${API_BASE}/api/stocks/${stock.symbol}/prices`);
-      const prData = await prRes.json();
       setStockPrices(prData);
     } catch (e) {
       console.error("Error fetching stock details: ", e);
@@ -378,6 +388,7 @@ function App() {
     enableNewLeaders,
     enableQullamaggieBreakout,
     enableEpisodicPivot,
+    enableParabolicClimax,
     enableParabolicShort,
     enableParabolicLong,
     minPpRunupFilter,
@@ -577,6 +588,10 @@ function App() {
             setSyncFundamentals={setSyncFundamentals}
             syncPremarket={syncPremarket}
             setSyncPremarket={setSyncPremarket}
+            syncHistoryYears={syncHistoryYears}
+            setSyncHistoryYears={setSyncHistoryYears}
+            syncForceFull={syncForceFull}
+            setSyncForceFull={setSyncForceFull}
             syncStatus={syncStatus}
             handleTriggerSync={handleTriggerSync}
             summary={summary}
@@ -636,6 +651,8 @@ function App() {
             setEnableQullamaggieBreakout={setEnableQullamaggieBreakout}
             enableEpisodicPivot={enableEpisodicPivot}
             setEnableEpisodicPivot={setEnableEpisodicPivot}
+            enableParabolicClimax={enableParabolicClimax}
+            setEnableParabolicClimax={setEnableParabolicClimax}
             enableParabolicShort={enableParabolicShort}
             setEnableParabolicShort={setEnableParabolicShort}
             enableParabolicLong={enableParabolicLong}
@@ -774,6 +791,8 @@ function App() {
       <StockDetailDrawer
         selectedStock={selectedStock}
         setSelectedStock={setSelectedStock}
+        activeStockList={activeStockList}
+        handleSelectStock={handleSelectStock}
         stockDetail={stockDetail}
         stockPrices={stockPrices}
         setActiveTab={setActiveTab}

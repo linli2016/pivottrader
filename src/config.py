@@ -62,6 +62,10 @@ class Config:
         return int(self.get("universe_rules.min_volume_sma_50", 300000))
 
     @property
+    def history_lookback_years(self) -> int:
+        return int(self.get("universe_rules.history_lookback_years", 5))
+
+    @property
     def eligible_exchanges(self) -> List[str]:
         return self.get("universe_rules.exchanges", ["NYSE", "NASDAQ"])
 

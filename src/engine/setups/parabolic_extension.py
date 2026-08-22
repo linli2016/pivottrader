@@ -2,12 +2,12 @@ from typing import List, Dict, Any
 
 def detect_parabolic_extension(highs: List[float], lows: List[float], closes: List[float], dates: List[Any], ema_10_val: float) -> dict:
     """
-    Detects Parabolic Short / Long setups.
-    Short Criteria:
+    Detects Parabolic Climax (Short & Long) setups.
+    Short Criteria (Parabolic Climax Top):
     1. Fast 3 to 10 day gain >= +40%.
     2. Distance above 10-day EMA >= +18%.
     3. Stock up >= 3 consecutive days in a row (close > prev_close).
-    Long Criteria:
+    Long Criteria (Parabolic Climax Bottom):
     1. Fast 3 to 10 day drop <= -30%.
     2. Distance below 10-day EMA <= -18%.
     """

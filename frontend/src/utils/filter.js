@@ -177,21 +177,26 @@ export function filterCandidates(candidates, filters) {
       }
     }
 
-    // 9. Parabolic Extension Overlay (Short & Long)
-    if (filters.enableParabolicShort) {
-      if (filters.enableParabolicRunup && filters.minParabolicRunupFilter !== undefined) {
-        if (c.parabolic_runup_pct === null || c.parabolic_runup_pct === undefined || c.parabolic_runup_pct < filters.minParabolicRunupFilter) return false;
-      }
-      if (filters.enableParabolicEmaDist && filters.minParabolicEmaDistFilter !== undefined) {
-        if (c.dist_ema10_pct === null || c.dist_ema10_pct === undefined || c.dist_ema10_pct < filters.minParabolicEmaDistFilter) return false;
-      }
-      if (filters.enableParabolicUpDays && filters.minParabolicUpDaysFilter !== undefined) {
-        if (c.parabolic_up_days === null || c.parabolic_up_days === undefined || c.parabolic_up_days < filters.minParabolicUpDaysFilter) return false;
-      }
-    }
+    // 9. Parabolic Climax Setup Overlay (Short & Long)
+    if (filters.enableParabolicClimax || filters.enableParabolicShort || filters.enableParabolicLong) {
+      // Short-side candidate match (overextended top)
+      const isShortMatch = (
+        c.parabolic_short_is_setup ||
+        (
+          (c.parabolic_runup_pct !== null && c.parabolic_runup_pct > 0) &&
+          (!filters.enableParabolicRunup || filters.minParabolicRunupFilter === undefined || c.parabolic_runup_pct >= filters.minParabolicRunupFilter) &&
+          (!filters.enableParabolicEmaDist || filters.minParabolicEmaDistFilter === undefined || (c.dist_ema10_pct !== null && c.dist_ema10_pct >= filters.minParabolicEmaDistFilter)) &&
+          (!filters.enableParabolicUpDays || filters.minParabolicUpDaysFilter === undefined || (c.parabolic_up_days !== null && c.parabolic_up_days >= filters.minParabolicUpDaysFilter))
+        )
+      );
 
-    if (filters.enableParabolicLong) {
-      if (!c.parabolic_long_is_setup && (c.dist_ema10_pct === null || c.dist_ema10_pct > -18.0)) return false;
+      // Long-side candidate match (oversold bottom)
+      const isLongMatch = (
+        c.parabolic_long_is_setup ||
+        (c.dist_ema10_pct !== null && c.dist_ema10_pct <= -18.0 && c.parabolic_runup_pct !== null && c.parabolic_runup_pct <= -30.0)
+      );
+
+      if (!isShortMatch && !isLongMatch) return false;
     }
 
     return true;

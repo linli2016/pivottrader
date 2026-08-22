@@ -4,6 +4,8 @@ import CandlestickChart from './CandlestickChart';
 export default function StockDetailDrawer({
   selectedStock,
   setSelectedStock,
+  activeStockList = [],
+  handleSelectStock,
   stockDetail,
   stockPrices,
   setActiveTab,
@@ -13,12 +15,30 @@ export default function StockDetailDrawer({
   const [financials, setFinancials] = React.useState(null);
   const [loadingFinancials, setLoadingFinancials] = React.useState(false);
 
+  const currentIndex = React.useMemo(() => {
+    if (!activeStockList || activeStockList.length === 0 || !selectedStock) return -1;
+    return activeStockList.findIndex(
+      s => (s.symbol || s).toUpperCase() === selectedStock.symbol.toUpperCase()
+    );
+  }, [activeStockList, selectedStock]);
+
+  const handlePrevStock = React.useCallback(() => {
+    if (currentIndex <= 0 || !activeStockList.length || !handleSelectStock) return;
+    const prevStock = activeStockList[currentIndex - 1];
+    handleSelectStock(prevStock, activeStockList);
+  }, [currentIndex, activeStockList, handleSelectStock]);
+
+  const handleNextStock = React.useCallback(() => {
+    if (currentIndex < 0 || currentIndex >= activeStockList.length - 1 || !handleSelectStock) return;
+    const nextStock = activeStockList[currentIndex + 1];
+    handleSelectStock(nextStock, activeStockList);
+  }, [currentIndex, activeStockList, handleSelectStock]);
+
   React.useEffect(() => {
-    if (!selectedStock) {
+    if (!selectedStock?.symbol) {
       setFinancials(null);
       return;
     }
-    setFinancials(null);
     setLoadingFinancials(true);
     const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
     fetch(`${API_BASE}/api/stocks/${selectedStock.symbol}/financials`)
@@ -31,45 +51,116 @@ export default function StockDetailDrawer({
         console.error("Error loading financials:", e);
         setLoadingFinancials(false);
       });
-  }, [selectedStock]);
+  }, [selectedStock?.symbol]);
+
+  React.useEffect(() => {
+    if (!selectedStock) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setSelectedStock(null);
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        handlePrevStock();
+      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        handleNextStock();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedStock, setSelectedStock, handlePrevStock, handleNextStock]);
 
   if (!selectedStock) return null;
 
   return (
-    <div className="drawer-backdrop" onClick={() => setSelectedStock(null)}>
-      <div className="drawer" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-header">
-          <div>
-            <h2 style={{ fontSize: '24px', color: 'var(--accent-color)', display: 'inline' }}>{selectedStock.symbol}</h2>
-            <span style={{ marginLeft: '12px', color: 'var(--text-secondary)', fontSize: '15px' }}>
-              {stockDetail?.metadata?.name || 'Loading Ticker Metadata...'}
+    <div className="full-page-modal-backdrop" onClick={() => setSelectedStock(null)}>
+      <div className="full-page-modal" onClick={(e) => e.stopPropagation()}>
+        {/* Full-Page Modal Header */}
+        <div className="drawer-header" style={{ paddingBottom: '16px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+            <h2 style={{ fontSize: '28px', fontWeight: '800', color: 'var(--accent-color)', margin: 0, letterSpacing: '-0.5px' }}>
+              {selectedStock.symbol}
+            </h2>
+            <span style={{ color: '#f8fafc', fontSize: '18px', fontWeight: '600' }}>
+              {stockDetail?.metadata?.name || selectedStock.name || 'Loading Ticker Metadata...'}
             </span>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
-              Exchange: {stockDetail?.metadata?.exchange || 'N/A'} | Asset Type: {stockDetail?.metadata?.asset_type || 'N/A'}
-            </p>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
-              <span className="pill pill-success" style={{ fontSize: '11px', padding: '2px 8px' }}>
-                RS Rank: {stockDetail?.rs_rank !== null && stockDetail?.rs_rank !== undefined ? stockDetail.rs_rank : 'N/A'}
+            <span style={{ color: 'var(--text-secondary)', fontSize: '12px', background: 'rgba(255, 255, 255, 0.06)', padding: '4px 10px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+              Exchange: {stockDetail?.metadata?.exchange || selectedStock.exchange || 'N/A'} | Asset Type: {stockDetail?.metadata?.asset_type || 'Common Stock'}
+            </span>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span className="pill pill-success" style={{ fontSize: '12px', padding: '4px 10px', fontWeight: '700' }}>
+                RS Rank: {stockDetail?.rs_rank !== null && stockDetail?.rs_rank !== undefined ? stockDetail.rs_rank : (selectedStock?.rs_rank ?? 'N/A')}
               </span>
-              <span className="pill pill-warning" style={{ fontSize: '11px', padding: '2px 8px', background: 'rgba(245, 158, 11, 0.2)', color: 'var(--accent-warning)' }}>
-                ADTR (20d): {stockDetail?.atr_20d !== null && stockDetail?.atr_20d !== undefined ? `${stockDetail.atr_20d.toFixed(2)}%` : 'N/A'}
+              <span className="pill pill-warning" style={{ fontSize: '12px', padding: '4px 10px', fontWeight: '700', background: 'rgba(245, 158, 11, 0.2)', color: 'var(--accent-warning)' }}>
+                ADTR (20d): {stockDetail?.atr_20d !== null && stockDetail?.atr_20d !== undefined ? `${stockDetail.atr_20d.toFixed(2)}%` : (selectedStock?.adr_20d ? `${selectedStock.adr_20d.toFixed(2)}%` : 'N/A')}
               </span>
             </div>
           </div>
-          <button className="close-btn" onClick={() => setSelectedStock(null)}>&times;</button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            {activeStockList && activeStockList.length > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255, 255, 255, 0.05)', padding: '3px 8px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={handlePrevStock}
+                  disabled={currentIndex <= 0}
+                  title="Previous Stock (Left / Up Arrow)"
+                  style={{ padding: '3px 10px', fontSize: '12px', height: '28px', opacity: currentIndex <= 0 ? 0.4 : 1, cursor: currentIndex <= 0 ? 'not-allowed' : 'pointer' }}
+                >
+                  ◀ Prev
+                </button>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)', padding: '0 6px', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                  {currentIndex >= 0 ? currentIndex + 1 : 1} / {activeStockList.length}
+                </span>
+                <button
+                  className="btn btn-secondary"
+                  onClick={handleNextStock}
+                  disabled={currentIndex >= activeStockList.length - 1}
+                  title="Next Stock (Right / Down Arrow)"
+                  style={{ padding: '3px 10px', fontSize: '12px', height: '28px', opacity: currentIndex >= activeStockList.length - 1 ? 0.4 : 1, cursor: currentIndex >= activeStockList.length - 1 ? 'not-allowed' : 'pointer' }}
+                >
+                  Next ▶
+                </button>
+              </div>
+            )}
+
+            <button
+              className="close-btn"
+              onClick={() => setSelectedStock(null)}
+              style={{
+                width: '36px',
+                height: '36px',
+                fontSize: '22px',
+                cursor: 'pointer',
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                color: '#fff',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              &times;
+            </button>
+          </div>
         </div>
 
         {/* Candlestick chart rendering */}
-        <div style={{ marginBottom: '20px' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px' }}>Candlestick Price Chart (Daily Bars)</h3>
-          <div className="glass-card" style={{ padding: '16px', height: '312px', overflow: 'hidden' }}>
-            {stockPrices.length > 0 ? (
-              <CandlestickChart data={stockPrices} />
-            ) : (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-secondary)' }}>
-                Loading historical pricing candles...
-              </div>
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              📈 Candlestick Price Chart (Daily Bars)
+            </h3>
+            {selectedStock?.close && (
+              <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+                Latest Price: <strong style={{ color: 'var(--accent-color)', fontSize: '15px' }}>${selectedStock.close.toFixed(2)}</strong>
+              </span>
             )}
+          </div>
+          <div className="glass-card" style={{ padding: '12px 16px', height: '520px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <CandlestickChart data={stockPrices} height={496} />
           </div>
         </div>
 
@@ -80,10 +171,8 @@ export default function StockDetailDrawer({
             <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--accent-color)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               Annual Performance Table
             </h4>
-            {loadingFinancials ? (
-              <div style={{ color: 'var(--text-secondary)', fontSize: '13px', padding: '8px 0' }}>Loading annual financials...</div>
-            ) : financials?.yearly_financials && financials.yearly_financials.length > 0 ? (
-              <div className="table-container" style={{ margin: 0 }}>
+            {financials?.yearly_financials && financials.yearly_financials.length > 0 ? (
+              <div className="table-container" style={{ margin: 0, opacity: loadingFinancials ? 0.6 : 1, transition: 'opacity 0.15s ease' }}>
                 <table className="data-table">
                   <thead>
                     <tr>
@@ -110,7 +199,9 @@ export default function StockDetailDrawer({
                 </table>
               </div>
             ) : (
-              <div style={{ color: 'var(--text-secondary)', fontSize: '13px', padding: '8px 0' }}>No annual statement cached.</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '13px', padding: '8px 0' }}>
+                {loadingFinancials ? 'Loading annual financials...' : 'No annual statement cached.'}
+              </div>
             )}
           </div>
 
@@ -147,7 +238,7 @@ export default function StockDetailDrawer({
                 </div>
               </div>
             </div>
-            
+
             <button
               className="btn btn-secondary"
               onClick={() => {
@@ -169,12 +260,8 @@ export default function StockDetailDrawer({
             Quarterly Performance Matrix (YoY Comparisons)
           </h3>
           <div className="glass-card" style={{ padding: '16px', overflowX: 'auto' }}>
-            {loadingFinancials ? (
-              <div style={{ color: 'var(--text-secondary)', fontSize: '13px', textAlign: 'center', padding: '16px' }}>
-                Loading quarterly statement matrix...
-              </div>
-            ) : financials?.quarterly_financials && financials.quarterly_financials.length > 0 ? (
-              <div className="table-container" style={{ margin: 0, overflow: 'visible' }}>
+            {financials?.quarterly_financials && financials.quarterly_financials.length > 0 ? (
+              <div className="table-container" style={{ margin: 0, overflow: 'visible', opacity: loadingFinancials ? 0.6 : 1, transition: 'opacity 0.15s ease' }}>
                 <table className="data-table" style={{ minWidth: '700px', width: '100%' }}>
                   <thead>
                     <tr>

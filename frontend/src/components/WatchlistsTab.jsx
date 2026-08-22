@@ -269,7 +269,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists, fetchWatc
               </thead>
               <tbody>
                 {items.map((item) => (
-                  <tr key={item.symbol} onClick={() => handleSelectStock(item)}>
+                  <tr key={item.symbol} onClick={() => handleSelectStock(item, items)} style={{ cursor: 'pointer' }}>
                     <td style={{ fontWeight: 700, color: 'var(--accent-color)', fontSize: '15px' }}>{item.symbol}</td>
                     <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{item.name || 'N/A'}</td>
                     <td style={{ color: 'var(--text-secondary)' }}>{item.sector || 'N/A'}</td>

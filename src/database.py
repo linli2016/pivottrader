@@ -327,6 +327,17 @@ class DatabaseManager:
                     result[symbol] = max_date.strftime("%Y-%m-%d")
         return result
 
+    def get_first_bar_dates(self) -> Dict[str, str]:
+        """Returns a dict mapping symbol to their earliest recorded daily bar date."""
+        result = {}
+        with self.get_connection() as conn:
+            res = conn.execute("SELECT symbol, MIN(date) FROM daily_bars GROUP BY symbol").fetchall()
+            for symbol, min_date in res:
+                if min_date:
+                    result[symbol] = min_date.strftime("%Y-%m-%d")
+        return result
+
+
     def get_watchlists(self) -> List[Dict[str, Any]]:
         with self.get_connection() as conn:
             query = """
