@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { createChart, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
+import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers, CrosshairMode } from 'lightweight-charts';
 
 // Helper to calculate Simple Moving Average (SMA)
 function calculateSMA(data, period) {
@@ -43,10 +43,92 @@ function calculateEMA(data, period) {
   return emaData;
 }
 
-export default function CandlestickChart({ data, height = 280 }) {
+// Custom Primitive to draw a vertical dashed line for As-of Date
+class VerticalLinePrimitive {
+  constructor(time, options = {}) {
+    this._time = time;
+    this._options = options;
+    this._chart = null;
+    this._series = null;
+    this._requestUpdate = () => {};
+    this._paneView = {
+      renderer: () => ({
+        draw: (target) => this._draw(target),
+        drawBackground: (target) => this._draw(target),
+      }),
+      zOrder: () => 'top',
+    };
+  }
+
+  attached({ chart, series, requestUpdate }) {
+    this._chart = chart;
+    this._series = series;
+    this._requestUpdate = requestUpdate;
+  }
+
+  detached() {
+    this._chart = null;
+    this._series = null;
+    this._requestUpdate = () => {};
+  }
+
+  updateTime(time) {
+    this._time = time;
+    if (this._requestUpdate) {
+      this._requestUpdate();
+    }
+  }
+
+  paneViews() {
+    return [this._paneView];
+  }
+
+  _draw(target) {
+    if (!this._chart || !this._series || !this._time) return;
+    const timeScale = this._chart.timeScale();
+    const x = timeScale.timeToCoordinate(this._time);
+    if (x === null || x < 0) return;
+
+    target.useBitmapCoordinateSpace(({ context: ctx, horizontalPixelRatio, bitmapSize }) => {
+      const pixelX = Math.round(x * horizontalPixelRatio);
+      if (pixelX < 0 || pixelX > bitmapSize.width) return;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.setLineDash([3 * horizontalPixelRatio, 3 * horizontalPixelRatio]);
+      ctx.strokeStyle = this._options.color || 'rgba(56, 189, 248, 0.45)';
+      ctx.lineWidth = 1 * horizontalPixelRatio;
+      ctx.moveTo(pixelX, 0);
+      ctx.lineTo(pixelX, bitmapSize.height);
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+}
+
+// Helper to resolve the matching time bar in data
+function resolveAsOfTime(data, targetDate) {
+  if (!data || data.length === 0 || !targetDate || targetDate === 'latest') return null;
+  const exact = data.find(d => d.time === targetDate);
+  if (exact) return exact.time;
+
+  let best = null;
+  for (let i = 0; i < data.length; i++) {
+    if (data[i].time <= targetDate) {
+      best = data[i].time;
+    } else {
+      break;
+    }
+  }
+  return best;
+}
+
+export default function CandlestickChart({ data, height = 280, asOfDate = null }) {
   const chartContainerRef = useRef();
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
+  const markersPluginRef = useRef(null);
+  const verticalLineRef = useRef(null);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -61,6 +143,9 @@ export default function CandlestickChart({ data, height = 280 }) {
         grid: {
           vertLines: { color: 'rgba(255, 255, 255, 0.05)' },
           horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
+        },
+        crosshair: {
+          mode: CrosshairMode.Normal,
         },
         width: chartContainerRef.current.clientWidth || 700,
         height: height,
@@ -102,6 +187,7 @@ export default function CandlestickChart({ data, height = 280 }) {
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
       });
 
       const ema20Series = chart.addSeries(LineSeries, {
@@ -109,6 +195,7 @@ export default function CandlestickChart({ data, height = 280 }) {
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
       });
 
       const sma50Series = chart.addSeries(LineSeries, {
@@ -116,6 +203,7 @@ export default function CandlestickChart({ data, height = 280 }) {
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
       });
 
       const sma150Series = chart.addSeries(LineSeries, {
@@ -123,6 +211,7 @@ export default function CandlestickChart({ data, height = 280 }) {
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
       });
 
       const sma220Series = chart.addSeries(LineSeries, {
@@ -130,7 +219,16 @@ export default function CandlestickChart({ data, height = 280 }) {
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
       });
+
+      // Attach Markers Plugin and Vertical Line Primitive
+      const markersPlugin = createSeriesMarkers(candlestickSeries, []);
+      markersPluginRef.current = markersPlugin;
+
+      const vertLinePrimitive = new VerticalLinePrimitive(null, { color: 'rgba(56, 189, 248, 0.45)', lineWidth: 1 });
+      candlestickSeries.attachPrimitive(vertLinePrimitive);
+      verticalLineRef.current = vertLinePrimitive;
 
       chartRef.current = chart;
       seriesRef.current = {
@@ -178,6 +276,17 @@ export default function CandlestickChart({ data, height = 280 }) {
       sma150Series.setData(calculateSMA(data, 150));
       sma220Series.setData(calculateSMA(data, 220));
 
+      // Resolve and apply As-of Date vertical line (without text label)
+      const resolvedTime = resolveAsOfTime(data, asOfDate);
+      if (markersPluginRef.current) {
+        markersPluginRef.current.setMarkers([]);
+      }
+      if (resolvedTime && verticalLineRef.current) {
+        verticalLineRef.current.updateTime(resolvedTime);
+      } else {
+        if (verticalLineRef.current) verticalLineRef.current.updateTime(null);
+      }
+
       chartRef.current.timeScale().fitContent();
       if (data.length > 189) {
         requestAnimationFrame(() => {
@@ -194,7 +303,7 @@ export default function CandlestickChart({ data, height = 280 }) {
         });
       }
     }
-  }, [data, height]);
+  }, [data, height, asOfDate]);
 
   // Clean up chart instance on component unmount & handle container resize
   useEffect(() => {
@@ -220,6 +329,8 @@ export default function CandlestickChart({ data, height = 280 }) {
         chartRef.current.remove();
         chartRef.current = null;
         seriesRef.current = null;
+        markersPluginRef.current = null;
+        verticalLineRef.current = null;
       }
     };
   }, [height]);
@@ -237,3 +348,4 @@ export default function CandlestickChart({ data, height = 280 }) {
     />
   );
 }
+

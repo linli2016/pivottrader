@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { filterCandidates } from './utils/filter';
 import DashboardTab from './components/DashboardTab';
 import CandidatesTab from './components/CandidatesTab';
 import InspectorTab from './components/InspectorTab';
@@ -17,6 +16,7 @@ const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:80
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [candidates, setCandidates] = useState([]);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [summary, setSummary] = useState(null);
   const [watchlists, setWatchlists] = useState([]);
   const [tradingDates, setTradingDates] = useState([]);
@@ -52,7 +52,7 @@ function App() {
   }, []);
   const [config, setConfig] = useState({
     min_price: 5.0,
-    min_volume_sma_50: 300000,
+    min_volume_sma_50: 100000,
     min_rs_percentile: 70,
     min_eps_growth_qoq: 20.0,
     provider_selected: 'YFINANCE',
@@ -88,7 +88,7 @@ function App() {
   const [minRsFilter, setMinRsFilter] = useState(70);
   const [minEpsGrowthFilter, setMinEpsGrowthFilter] = useState(20.0);
   const [minPriceFilter, setMinPriceFilter] = useState(5.00);
-  const [minVolFilter, setMinVolFilter] = useState(300000);
+  const [minVolFilter, setMinVolFilter] = useState(100000);
   const [minAtrFilter, setMinAtrFilter] = useState(0.0);
   const [enforceStage2, setEnforceStage2] = useState(false);
   const [enablePowerPlay, setEnablePowerPlay] = useState(true);
@@ -138,6 +138,8 @@ function App() {
   const [enableDarvasPattern, setEnableDarvasPattern] = useState(true);
   const [enableDarvasWidth, setEnableDarvasWidth] = useState(true);
 
+  const [enableRs, setEnableRs] = useState(false);
+
   const [enableRsNewHigh, setEnableRsNewHigh] = useState(false);
 
   const [enableAtr, setEnableAtr] = useState(false);
@@ -178,6 +180,7 @@ function App() {
   // References
   const inspectorInputRef = useRef(null);
   const syncIntervalRef = useRef(null);
+  const activeFiltersRef = useRef(null);
 
   // Fetch summary counts
   const fetchSummary = async () => {
@@ -190,17 +193,28 @@ function App() {
     }
   };
 
-  // Fetch candidates
-  const fetchCandidates = async (targetDt = selectedDate) => {
+  // Fetch candidates from backend with server-side filtering
+  const fetchCandidates = async (targetDt = selectedDate, currentFilters = null) => {
+    setLoadingCandidates(true);
     try {
-      const url = targetDt && targetDt !== 'latest' 
-        ? `${API_BASE}/api/candidates?date=${encodeURIComponent(targetDt)}` 
-        : `${API_BASE}/api/candidates`;
-      const res = await fetch(url);
-      const data = await res.json();
-      setCandidates(data);
+      const filtersToSend = currentFilters !== null ? currentFilters : activeFiltersRef.current;
+      const payload = {
+        date: targetDt && targetDt !== 'latest' ? targetDt : undefined,
+        ...filtersToSend
+      };
+      const res = await fetch(`${API_BASE}/api/candidates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCandidates(data);
+      }
     } catch (e) {
       console.error("Error fetching candidates: ", e);
+    } finally {
+      setLoadingCandidates(false);
     }
   };
 
@@ -236,10 +250,6 @@ function App() {
     fetchConfig();
     fetchSyncStatus();
   }, []);
-
-  useEffect(() => {
-    fetchCandidates(selectedDate);
-  }, [selectedDate]);
 
 
   // Monitor sync updates
@@ -373,7 +383,7 @@ function App() {
     }
   };
 
-  // Compute filtered candidates list dynamically using filters utility helper
+  // Collect active filters for server-side screening
   const activeFilters = {
     minPriceFilter,
     minVolFilter,
@@ -430,6 +440,7 @@ function App() {
     enableVcpPattern,
     enableDarvasPattern,
     enableDarvasWidth,
+    enableRs,
     enableRsNewHigh,
     enableAtr,
     enable52wDist,
@@ -438,7 +449,19 @@ function App() {
     enableNewLeaders52wHigh,
     enableNewLeadersBase,
   };
-  const filteredCandidates = filterCandidates(candidates, activeFilters);
+
+  activeFiltersRef.current = activeFilters;
+  const activeFiltersKey = JSON.stringify(activeFilters);
+
+  // Debounced server-side candidate fetching when filters or selected date change
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      fetchCandidates(selectedDate, activeFilters);
+    }, 200);
+    return () => clearTimeout(handler);
+  }, [selectedDate, activeFiltersKey]);
+
+  const filteredCandidates = candidates;
 
   return (
     <div className="app-container">
@@ -500,7 +523,10 @@ function App() {
                   <span>🎯</span>
                   <span>3. Stock Screen</span>
                 </div>
-                <span className="nav-badge emerald">{filteredCandidates.length}</span>
+                <span className="nav-badge emerald" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  {loadingCandidates && <span className="spin-icon" style={{ fontSize: '10px' }}>⟳</span>}
+                  {filteredCandidates.length}
+                </span>
               </li>
 
               {/* 4. Watchlists */}
@@ -620,6 +646,8 @@ function App() {
             watchlists={watchlists}
             fetchWatchlists={fetchWatchlists}
             candidates={candidates}
+            loadingCandidates={loadingCandidates}
+            fetchCandidates={fetchCandidates}
             filteredCandidates={filteredCandidates}
             tradingDates={tradingDates}
             selectedDate={selectedDate}
@@ -733,6 +761,8 @@ function App() {
             setEnableDarvasPattern={setEnableDarvasPattern}
             enableDarvasWidth={enableDarvasWidth}
             setEnableDarvasWidth={setEnableDarvasWidth}
+            enableRs={enableRs}
+            setEnableRs={setEnableRs}
             enableRsNewHigh={enableRsNewHigh}
             setEnableRsNewHigh={setEnableRsNewHigh}
             enableAtr={enableAtr}

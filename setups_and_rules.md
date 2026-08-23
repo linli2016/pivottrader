@@ -33,12 +33,18 @@
   - Within the base (usually just days before a breakout), volume will contract considerably.
 
 ### 2. Breakouts
+#### Setup
  - **Leaders:** Scan for the 1 or 2% of stocks that are up the most over these 3 timeframes: 1-month, 3-month, 6-month
   - A big move higher sometime in the past 1-3 months. This move can be anywhere from 30-100%+ and usually lasts a few days to a few weeks.
   - An orderly pullback and consolidation with higher lows and tightening range in the consolidation phase.
-  - A range expansion (breakout) out of that consolidation. The consolidation phase is usually 2 weeks to 2 months. During the consolidation the stock price “surfs” the rising 10- and 20-day. and sometimes toe 50-day moving average..
-  - **Entry:** Opening Range Breakout (ORB) on the 1-min or 5-min chart when price breaks the consolidation line.
-  - **Stop-Loss:** Low of the breakout day or low of the consolidation range.
+  - A range expansion (breakout) out of that consolidation. The consolidation phase is usually 2 weeks to 2 months. During the consolidation the stock price “surfs” the rising 10- and 20-day. and sometimes toe 50-day moving average.
+- It’s pretty much flat channels, symmetrical and descending triangles.
+#### How to trade
+- Identify the setups. You need to have a watchlist ready before the market open. You should also probably have alerts set, and know how many shares you want to buy.
+- Enter on the opening range highs. The opening range highs can be the highs of the first 1-minute candle, the 5-minute candle or the 60-minute candle (on the 60-minute timeframe the first candle is always only 30 minutes, 9.30-10 AM). You can use whatever timeframe or a combination of them. You don’t even have to use any intraday chart, just look at the daily chart and enter when the stock is starting to break out.
+This method can also be traded by anticipating the breakout but I don’t find it as effective and more skill and experience is needed.
+- Stop is always lows of the day and stop should not be wider than the ATR or ADR of the stock, to prevent the risk/reward mechanics getting out of whack. So if the ADR of the stock is 5%, your stop shouldn’t be wider than 5%. If the ATR if 50c, then stop should not be wider than 50c.
+- You should sell 1/3 to 1/2 of the position after 3-5 days, and then move the stop to break even. The rest of the position should be trailed with the 10- or the 20-day moving average. Depends on how fast the stock is. If a beginner stick to the 10-day. You wait for the first CLOSE below the 10- day.
 
 ### 3. Episodic Pivot (EP)
   - **Catalyst:** Blowout earnings report, major guidance raise, FDA approval, or transformative contract.

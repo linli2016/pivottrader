@@ -59,7 +59,7 @@ class Config:
 
     @property
     def min_volume_sma_50(self) -> int:
-        return int(self.get("universe_rules.min_volume_sma_50", 300000))
+        return int(self.get("universe_rules.min_volume_sma_50", 100000))
 
     @property
     def history_lookback_years(self) -> int:

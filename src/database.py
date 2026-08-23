@@ -177,8 +177,10 @@ class DatabaseManager:
                     conn.execute(f"ALTER TABLE daily_bars ADD COLUMN {col_name} {col_type};")
                 except Exception:
                     pass
-            
-            
+
+            # Create index on date for fast date filtering
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_bars_date ON daily_bars(date);")
+
             # 3. Historical Quarterly Fundamentals Table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS quarterly_fundamentals (

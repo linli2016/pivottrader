@@ -4,8 +4,10 @@ import CandlestickChart from './CandlestickChart';
 export default function CandidatesTab({
   watchlists = [],
   fetchWatchlists,
-  candidates,
-  filteredCandidates,
+  candidates = [],
+  loadingCandidates = false,
+  fetchCandidates,
+  filteredCandidates = [],
   tradingDates = [],
   selectedDate = 'latest',
   setSelectedDate = () => {},
@@ -117,6 +119,8 @@ export default function CandidatesTab({
   setEnableDarvasPattern,
   enableDarvasWidth,
   setEnableDarvasWidth,
+  enableRs,
+  setEnableRs,
   enableRsNewHigh,
   setEnableRsNewHigh,
   enableAtr,
@@ -190,7 +194,7 @@ export default function CandidatesTab({
     if (!symbol) return;
     setLoadingBrowsePrices(true);
     try {
-      const res = await fetch(`${API_BASE}/api/stocks/${symbol}/prices?limit=252`);
+      const res = await fetch(`${API_BASE}/api/stocks/${symbol}/prices`);
       if (res.ok) {
         const data = await res.json();
         setBrowsePrices(data);
@@ -348,27 +352,13 @@ export default function CandidatesTab({
       <div className="glass-card" style={{ marginBottom: '20px', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {/* Top Integrated Header: Strategy Checkboxes + Right Action Controls */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-          {/* Strategy Selector (Left Side: Stage 2 Trend + Mutually Exclusive Setup Buttons) */}
+          {/* Strategy Selector (Left Side: Mutually Exclusive Setup Buttons) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            {/* Baseline Stage 2 Toggle */}
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-              <input
-                type="checkbox"
-                checked={enforceStage2}
-                onChange={(e) => setEnforceStage2(e.target.checked)}
-                style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: 'var(--accent-color)' }}
-              />
-              📈 Stage 2 Trend
-            </label>
-
-            <span style={{ color: 'rgba(255, 255, 255, 0.2)', fontSize: '14px', margin: '0 2px' }}>|</span>
-
             {/* Power Play Button */}
             <button
               type="button"
               onClick={() => {
                 setEnablePowerPlay(true);
-                setEnforceStage2(false);
                 setEnableQullamaggieBreakout(false);
                 setEnableEpisodicPivot(false);
                 if (setEnableParabolicClimax) setEnableParabolicClimax(false);
@@ -400,7 +390,6 @@ export default function CandidatesTab({
               type="button"
               onClick={() => {
                 setEnableQullamaggieBreakout(true);
-                setEnforceStage2(false);
                 setEnablePowerPlay(false);
                 setEnableEpisodicPivot(false);
                 if (setEnableParabolicClimax) setEnableParabolicClimax(false);
@@ -432,7 +421,6 @@ export default function CandidatesTab({
               type="button"
               onClick={() => {
                 setEnableEpisodicPivot(true);
-                setEnforceStage2(false);
                 setEnablePowerPlay(false);
                 setEnableQullamaggieBreakout(false);
                 if (setEnableParabolicClimax) setEnableParabolicClimax(false);
@@ -466,7 +454,6 @@ export default function CandidatesTab({
                 if (setEnableParabolicClimax) setEnableParabolicClimax(true);
                 if (setEnableParabolicShort) setEnableParabolicShort(false);
                 if (setEnableParabolicLong) setEnableParabolicLong(false);
-                setEnforceStage2(false);
                 setEnablePowerPlay(false);
                 setEnableQullamaggieBreakout(false);
                 setEnableEpisodicPivot(false);
@@ -548,6 +535,25 @@ export default function CandidatesTab({
 
             <button
               className="btn btn-secondary btn-sm"
+              onClick={() => fetchCandidates && fetchCandidates(selectedDate)}
+              disabled={loadingCandidates}
+              title="Rescan and evaluate stock setups for current date"
+              style={{
+                padding: '5px 12px',
+                fontSize: '12px',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <span className={loadingCandidates ? "spin-icon" : ""}>🔄</span>
+              <span>{loadingCandidates ? "Screening..." : "Rescan"}</span>
+            </button>
+
+            <button
+              className="btn btn-secondary btn-sm"
               onClick={() => setShowFiltersSection(!showFiltersSection)}
               style={{
                 padding: '5px 12px',
@@ -614,8 +620,9 @@ export default function CandidatesTab({
                   <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.06)', padding: '3px 10px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
                     {enablePowerPlay ? '🚀 Power Play' : enableQullamaggieBreakout ? '🎯 Breakout' : enableEpisodicPivot ? '⚡ Episodic Pivot (EP)' : isParabolicActive ? '🌋 Parabolic Climax' : enableVcpSetup ? '🌀 VCP Pattern' : enforceStage2 ? '📈 Stage 2 Trend Baseline' : '🌐 Baseline'}
                   </span>
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#38bdf8', background: 'rgba(56, 189, 248, 0.12)', padding: '3px 10px', borderRadius: '12px', border: '1px solid rgba(56, 189, 248, 0.3)', whiteSpace: 'nowrap' }}>
-                    Showing {filteredCandidates.length.toLocaleString()} / {candidates.length.toLocaleString()} stocks
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#38bdf8', background: 'rgba(56, 189, 248, 0.12)', padding: '3px 10px', borderRadius: '12px', border: '1px solid rgba(56, 189, 248, 0.3)', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    {loadingCandidates && <span className="spin-icon">⟳</span>}
+                    {`Showing ${filteredCandidates.length.toLocaleString()} matching stocks`}
                   </span>
                 </div>
               </div>
@@ -671,7 +678,7 @@ export default function CandidatesTab({
                 <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
                   <li><strong>Moving Average Alignment:</strong> Close &gt; SMA(50) &gt; SMA(150) &gt; SMA(200) {enforceStage2 ? '(Enforced)' : '(Disabled / Optional)'}</li>
                   <li><strong>Liquidity Baseline:</strong> Min stock price &ge; ${minPriceFilter.toFixed(2)} and 50d Volume MA &ge; {minVolFilter.toLocaleString()}</li>
-                  <li><strong>Relative Strength:</strong> {enableRsNewHigh ? 'Must be making a 52-week RS Rank High' : 'RS Rank calculated dynamically'}</li>
+                  <li><strong>Relative Strength:</strong> {enableRs ? `RS Rank ≥ ${minRsFilter}` : enableRsNewHigh ? 'Must be making a 52-week RS Rank High' : 'RS Rank calculated dynamically'}</li>
                   {enableAtr && <li><strong>Daily ATR:</strong> &ge; {minAtrFilter.toFixed(1)}%</li>}
                 </ul>
               )}
@@ -705,6 +712,13 @@ export default function CandidatesTab({
                     {enforceStage2 ? 'SMA(50) > SMA(150) > SMA(200)' : 'Optional (Disabled)'}
                   </strong>
                 </div>
+                {enableRs && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: 'var(--accent-color)' }}>🏆</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>RS Rank:</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>&ge; {minRsFilter}</strong>
+                  </div>
+                )}
                 {enableAtr && (
                   <span className="pill pill-secondary" style={{ fontSize: '12px' }}>
                     <span style={{ color: 'var(--text-secondary)' }}>Daily ADTR:</span>
@@ -857,6 +871,40 @@ export default function CandidatesTab({
                 </div>
               </div>
 
+              {/* Min Relative Strength (RS Rank) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableRs ? 1 : 0.5 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={enableRs}
+                    onChange={(e) => setEnableRs(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  />
+                  🏆 Min RS Rank ({minRsFilter}):
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="range"
+                    min="1"
+                    max="99"
+                    step="1"
+                    value={minRsFilter}
+                    disabled={!enableRs}
+                    onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 0)}
+                    style={{ flex: 1, cursor: enableRs ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    max="99"
+                    value={minRsFilter}
+                    disabled={!enableRs}
+                    onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 0)}
+                    style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                  />
+                </div>
+              </div>
+
               {/* Daily ATR (Optional Global/Stage 2 filter) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableAtr ? 1 : 0.5 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
@@ -918,6 +966,35 @@ export default function CandidatesTab({
                   boxSizing: 'border-box'
                 }}>
                   {enableRsNewHigh ? '📈 RS Rank at 252-day High' : '⚪ New High Waived'}
+                </div>
+              </div>
+
+              {/* Stage 2 Trend Template (Global Filter) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enforceStage2 ? 1 : 0.5 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={enforceStage2}
+                    onChange={(e) => setEnforceStage2(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  />
+                  📈 Stage 2 Trend
+                </label>
+                <div style={{
+                  padding: '8px 12px',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  color: enforceStage2 ? 'var(--accent-success)' : 'var(--text-secondary)',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  height: '38px',
+                  boxSizing: 'border-box'
+                }}>
+                  {enforceStage2 ? '⚡ SMA(50) > SMA(150) > SMA(200)' : '⚪ Stage 2 Trend Waived'}
                 </div>
               </div>
 
@@ -1432,7 +1509,7 @@ export default function CandidatesTab({
       {viewMode === 'browse' ? (
         filteredCandidates.length === 0 ? (
           <div className="glass-card" style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-secondary)', marginTop: '20px' }}>
-            No candidate stocks match your current active filters.
+            {loadingCandidates ? 'Loading candidates...' : 'No candidate stocks match your current active filters.'}
           </div>
         ) : (
           <div style={{ display: 'flex', gap: '24px', marginTop: '20px', alignItems: 'flex-start' }}>
@@ -1471,6 +1548,26 @@ export default function CandidatesTab({
                   {currentCandidate?.atr_20d !== null && currentCandidate?.atr_20d !== undefined && (
                     <span className="pill" style={{ fontSize: '12px', padding: '4px 10px', background: 'rgba(59, 130, 246, 0.18)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 600 }}>
                       ADTR: {currentCandidate.atr_20d.toFixed(2)}% {currentCandidate.close ? `($${(currentCandidate.close * (currentCandidate.atr_20d / 100)).toFixed(2)})` : ''}
+                    </span>
+                  )}
+
+                  {/* As of Date Badge */}
+                  {(currentCandidate?.screen_date || (selectedDate && selectedDate !== 'latest')) && (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '12px',
+                        padding: '4px 10px',
+                        background: 'rgba(56, 189, 248, 0.18)',
+                        color: '#38bdf8',
+                        border: '1px solid rgba(56, 189, 248, 0.35)',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      📅 As of: {currentCandidate?.screen_date || selectedDate}
                     </span>
                   )}
 
@@ -1523,6 +1620,7 @@ export default function CandidatesTab({
               <div className="glass-card" style={{ padding: '20px' }}>
                 <CandlestickChart
                   data={browsePrices}
+                  asOfDate={currentCandidate?.screen_date || (selectedDate !== 'latest' ? selectedDate : null)}
                   height={480}
                 />
               </div>

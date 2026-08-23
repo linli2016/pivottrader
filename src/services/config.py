@@ -21,7 +21,7 @@ class ConfigService:
         config = self.load_config_raw()
         return {
             "min_price": config.get("universe_rules", {}).get("min_price", 5.00),
-            "min_volume_sma_50": config.get("universe_rules", {}).get("min_volume_sma_50", 300000),
+            "min_volume_sma_50": config.get("universe_rules", {}).get("min_volume_sma_50", 100000),
             "min_rs_percentile": config.get("momentum_filters", {}).get("min_rs_percentile", 70),
             "min_eps_growth_qoq": config.get("fundamental_filters", {}).get("min_eps_growth_qoq", 20.0),
             "provider_selected": config.get("provider", {}).get("selected", "YFINANCE"),

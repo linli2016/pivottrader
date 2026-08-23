@@ -1,7 +1,10 @@
 /**
- * Filters the list of candidates based on active screening criteria, overlays, and thresholds.
+ * Candidate filtering utility.
+ * Note: Active production screening and filtering is now executed server-side
+ * with vectorized DuckDB queries in `src/services/database.py` via `POST /api/candidates`.
+ * This client helper is retained for reference and fallback testing.
  * 
- * @param {Array} candidates - The full list of candidate stock metrics.
+ * @param {Array} candidates - The list of candidate stock metrics.
  * @param {Object} filters - An object containing all active filter states.
  * @returns {Array} - The filtered list of candidates.
  */
@@ -38,6 +41,7 @@ export function filterCandidates(candidates, filters) {
     enableVcpPattern,
     enableDarvasPattern,
     enableDarvasWidth,
+    enableRs,
     enableRsNewHigh,
     enableAtr,
     // New Leaders setup states
@@ -62,6 +66,11 @@ export function filterCandidates(candidates, filters) {
       if (c.sma_50 === null || c.sma_150 === null || c.sma_200 === null) return false;
       if (c.sma_50 <= c.sma_150 || c.sma_150 <= c.sma_200) return false;
       if (c.close < c.sma_50) return false;
+    }
+
+    // Optional Relative Strength (RS Rank) filter
+    if (enableRs) {
+      if (c.rs_rank === null || c.rs_rank === undefined || c.rs_rank < minRsFilter) return false;
     }
 
     // Optional ATR filter
@@ -159,6 +168,7 @@ export function filterCandidates(candidates, filters) {
 
     // 7. Qullamaggie Breakout Setup Overlay
     if (filters.enableQullamaggieBreakout) {
+      if (!c.breakout_is_setup) return false;
       if (filters.enable1mRet && filters.min1mRetFilter !== undefined) {
         if (c.ret_1m === null || c.ret_1m === undefined || c.ret_1m < filters.min1mRetFilter) return false;
       }

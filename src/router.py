@@ -35,6 +35,147 @@ class WatchlistItemAddSchema(BaseModel):
 class RulesUpdateSchema(BaseModel):
     content: str
 
+class CandidateFilterSchema(BaseModel):
+    date: Optional[str] = None
+    min_price: Optional[float] = None
+    minPriceFilter: Optional[float] = None
+    min_volume_sma_50: Optional[int] = None
+    minVolFilter: Optional[int] = None
+    min_rs_percentile: Optional[int] = None
+    minRsFilter: Optional[int] = None
+    min_eps_growth_qoq: Optional[float] = None
+    minEpsGrowthFilter: Optional[float] = None
+    min_atr: Optional[float] = None
+    minAtrFilter: Optional[float] = None
+    enforce_stage2: Optional[bool] = None
+    enforceStage2: Optional[bool] = None
+    enable_power_play: Optional[bool] = None
+    enablePowerPlay: Optional[bool] = None
+    enable_ipo_base: Optional[bool] = None
+    enableIpoBase: Optional[bool] = None
+    enable_vcp_setup: Optional[bool] = None
+    enableVcpSetup: Optional[bool] = None
+    enable_darvas_box: Optional[bool] = None
+    enableDarvasBox: Optional[bool] = None
+    enable_new_leaders: Optional[bool] = None
+    enableNewLeaders: Optional[bool] = None
+    enable_qullamaggie_breakout: Optional[bool] = None
+    enableQullamaggieBreakout: Optional[bool] = None
+    enable_episodic_pivot: Optional[bool] = None
+    enableEpisodicPivot: Optional[bool] = None
+    enable_parabolic_climax: Optional[bool] = None
+    enableParabolicClimax: Optional[bool] = None
+    enable_parabolic_short: Optional[bool] = None
+    enableParabolicShort: Optional[bool] = None
+    enable_parabolic_long: Optional[bool] = None
+    enableParabolicLong: Optional[bool] = None
+
+    # Qullamaggie Breakout
+    min_1m_ret: Optional[float] = None
+    min1mRetFilter: Optional[float] = None
+    enable_1m_ret: Optional[bool] = None
+    enable1mRet: Optional[bool] = None
+    enable_ema_surfing: Optional[bool] = None
+    enableEmaSurfing: Optional[bool] = None
+
+    # EP
+    min_ep_gap: Optional[float] = None
+    minEpGapFilter: Optional[float] = None
+    enable_ep_gap: Optional[bool] = None
+    enableEpGap: Optional[bool] = None
+    min_ep_rel_vol: Optional[float] = None
+    minEpRelVolFilter: Optional[float] = None
+    enable_ep_rel_vol: Optional[bool] = None
+    enableEpRelVol: Optional[bool] = None
+
+    # Parabolic
+    min_parabolic_runup: Optional[float] = None
+    minParabolicRunupFilter: Optional[float] = None
+    enable_parabolic_runup: Optional[bool] = None
+    enableParabolicRunup: Optional[bool] = None
+    min_parabolic_ema_dist: Optional[float] = None
+    minParabolicEmaDistFilter: Optional[float] = None
+    enable_parabolic_ema_dist: Optional[bool] = None
+    enableParabolicEmaDist: Optional[bool] = None
+    min_parabolic_up_days: Optional[int] = None
+    minParabolicUpDaysFilter: Optional[int] = None
+    enable_parabolic_up_days: Optional[bool] = None
+    enableParabolicUpDays: Optional[bool] = None
+
+    # Power Play
+    enable_pp_runup: Optional[bool] = None
+    enablePpRunup: Optional[bool] = None
+    enable_pp_drawdown: Optional[bool] = None
+    enablePpDrawdown: Optional[bool] = None
+    enable_pp_days_since_peak: Optional[bool] = None
+    enablePpDaysSincePeak: Optional[bool] = None
+    enable_pp_vol_ratio: Optional[bool] = None
+    enablePpVolRatio: Optional[bool] = None
+    min_pp_runup: Optional[float] = None
+    minPpRunupFilter: Optional[float] = None
+    max_pp_drawdown: Optional[float] = None
+    maxPpDrawdownFilter: Optional[float] = None
+    min_pp_days_since_peak: Optional[int] = None
+    minPpDaysSincePeakFilter: Optional[int] = None
+    max_pp_vol_ratio: Optional[float] = None
+    maxPpVolRatioFilter: Optional[float] = None
+
+    # IPO Base
+    enable_ipo_age: Optional[bool] = None
+    enableIpoAge: Optional[bool] = None
+    enable_ipo_dist: Optional[bool] = None
+    enableIpoDist: Optional[bool] = None
+    enable_ipo_depth: Optional[bool] = None
+    enableIpoDepth: Optional[bool] = None
+    max_ipo_age: Optional[int] = None
+    maxIpoAgeFilter: Optional[int] = None
+    max_ipo_dist: Optional[float] = None
+    maxIpoDistFilter: Optional[float] = None
+    max_ipo_depth: Optional[float] = None
+    maxIpoDepthFilter: Optional[float] = None
+
+    # VCP
+    enable_vcp_eps_growth: Optional[bool] = None
+    enableVcpEpsGrowth: Optional[bool] = None
+    enable_vcp_rs_percentile: Optional[bool] = None
+    enableVcpRsPercentile: Optional[bool] = None
+    enable_vcp_pattern: Optional[bool] = None
+    enableVcpPattern: Optional[bool] = None
+
+    # Darvas Box
+    enable_darvas_pattern: Optional[bool] = None
+    enableDarvasPattern: Optional[bool] = None
+    enable_darvas_width: Optional[bool] = None
+    enableDarvasWidth: Optional[bool] = None
+    max_darvas_width: Optional[float] = None
+    maxDarvasWidthFilter: Optional[float] = None
+
+    # General RS / ATR
+    enable_rs: Optional[bool] = None
+    enableRs: Optional[bool] = None
+    enable_rs_new_high: Optional[bool] = None
+    enableRsNewHigh: Optional[bool] = None
+    enable_atr: Optional[bool] = None
+    enableAtr: Optional[bool] = None
+
+    # New Leaders
+    enable_52w_dist: Optional[bool] = None
+    enable52wDist: Optional[bool] = None
+    enable_surge_off_low: Optional[bool] = None
+    enableSurgeOffLow: Optional[bool] = None
+    enable_new_leaders_rs: Optional[bool] = None
+    enableNewLeadersRs: Optional[bool] = None
+    enable_new_leaders_52w_high: Optional[bool] = None
+    enableNewLeaders52wHigh: Optional[bool] = None
+    enable_new_leaders_base: Optional[bool] = None
+    enableNewLeadersBase: Optional[bool] = None
+    max_52w_dist: Optional[float] = None
+    max52wDistFilter: Optional[float] = None
+    min_surge_off_low: Optional[float] = None
+    minSurgeOffLowFilter: Optional[float] = None
+    min_new_leaders_rs: Optional[int] = None
+    minNewLeadersRsFilter: Optional[int] = None
+
 
 # ----------------- Endpoints -----------------
 
@@ -54,9 +195,20 @@ def get_trading_dates():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/api/candidates")
+def post_candidates(payload: CandidateFilterSchema):
+    """Retrieve candidates satisfying active screening criteria via server-side DuckDB filtering."""
+    try:
+        filters_dict = payload.model_dump(exclude_unset=True)
+        target_date = filters_dict.pop("date", None)
+        data = db_service.get_candidates(target_date=target_date, filters=filters_dict)
+        return Response(content=json.dumps(data), media_type="application/json")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/api/candidates")
 def get_candidates(date: Optional[str] = None):
-    """Retrieve candidates satisfying active screening criteria for a specific target date."""
+    """Retrieve candidates for a specific target date (default/unfiltered or date query)."""
     try:
         data = db_service.get_candidates(target_date=date)
         return Response(content=json.dumps(data), media_type="application/json")
@@ -77,7 +229,7 @@ def get_stock_detail(symbol: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/stocks/{symbol}/prices")
-def get_stock_prices(symbol: str, limit: int = 252):
+def get_stock_prices(symbol: str, limit: Optional[int] = None):
     """Retrieve historical daily price bars for charting."""
     try:
         return db_service.get_stock_prices(symbol, limit)

@@ -4,7 +4,7 @@ import pandas as pd
 from typing import Dict, Any, List, Optional
 from collections import defaultdict
 from .config import config_service
-from src.engine.momentum import MomentumEngine
+
 
 class DatabaseService:
     def __init__(self, config_service):
@@ -71,7 +71,7 @@ class DatabaseService:
                 
             return summary
 
-    def get_candidates(self, target_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_candidates(self, target_date: Optional[str] = None, filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         with self.get_read_only_conn() as conn:
             # Check if tables exist
             tables = conn.execute("SHOW TABLES").fetchall()
@@ -80,8 +80,8 @@ class DatabaseService:
                 return []
 
             # 1. Resolve actual target date
-            if target_date and target_date.strip().lower() != "latest":
-                target_dt_input = target_date.strip()
+            if target_date and str(target_date).strip().lower() != "latest":
+                target_dt_input = str(target_date).strip()
                 row = conn.execute("SELECT MAX(date) FROM daily_bars WHERE date <= CAST(? AS DATE)", [target_dt_input]).fetchone()
                 if row and row[0]:
                     actual_date = row[0]
@@ -94,7 +94,170 @@ class DatabaseService:
                     return []
                 actual_date_str = max_dt.strftime("%Y-%m-%d") if hasattr(max_dt, "strftime") else str(max_dt)
 
-            query = """
+            # Build dynamic WHERE clauses based on filters
+            where_clauses = [
+                "db.date = (SELECT val FROM target_date_const)",
+                "db.rs_score IS NOT NULL"
+            ]
+            params = [actual_date_str]
+
+            f = filters or {}
+            def get_f(snake_key, camel_key=None, default=None):
+                if snake_key in f and f[snake_key] is not None:
+                    return f[snake_key]
+                if camel_key and camel_key in f and f[camel_key] is not None:
+                    return f[camel_key]
+                return default
+
+            # Price & Volume filters
+            min_price = get_f("min_price", "minPriceFilter")
+            if min_price is not None:
+                where_clauses.append("db.close >= ?")
+                params.append(float(min_price))
+
+            min_vol = get_f("min_volume_sma_50", "minVolFilter")
+            if min_vol is not None:
+                where_clauses.append("db.vol_50d_ma >= ?")
+                params.append(float(min_vol))
+
+            # Stage 2 Trend Template
+            if get_f("enforce_stage2", "enforceStage2", False):
+                where_clauses.append(
+                    "db.sma_50 IS NOT NULL AND db.sma_150 IS NOT NULL AND db.sma_200 IS NOT NULL "
+                    "AND db.sma_50 > db.sma_150 AND db.sma_150 > db.sma_200 AND db.close > db.sma_50"
+                )
+
+            # Relative Strength Rank
+            if get_f("enable_rs", "enableRs", False):
+                min_rs = get_f("min_rs_percentile", "minRsFilter", 70)
+                where_clauses.append("db.rs_rank >= ?")
+                params.append(float(min_rs))
+
+            # ATR filter
+            if get_f("enable_atr", "enableAtr", False):
+                min_atr = get_f("min_atr", "minAtrFilter", 0.0)
+                where_clauses.append("db.atr_20d IS NOT NULL AND db.atr_20d >= ?")
+                params.append(float(min_atr))
+
+            # RS Rank New High
+            if get_f("enable_rs_new_high", "enableRsNewHigh", False):
+                where_clauses.append("COALESCE(db.is_52w_high, false) = true")
+
+            # Power Play Overlay
+            if get_f("enable_power_play", "enablePowerPlay", False):
+                if get_f("enable_pp_runup", "enablePpRunup", True):
+                    min_pp_runup = get_f("min_pp_runup", "minPpRunupFilter", 100.0)
+                    where_clauses.append("db.pp_runup_pct IS NOT NULL AND db.pp_runup_pct >= ?")
+                    params.append(float(min_pp_runup))
+                if get_f("enable_pp_drawdown", "enablePpDrawdown", True):
+                    max_pp_drawdown = get_f("max_pp_drawdown", "maxPpDrawdownFilter", 25.0)
+                    where_clauses.append("db.pp_drawdown_pct IS NOT NULL AND db.pp_drawdown_pct <= ?")
+                    params.append(float(max_pp_drawdown))
+                if get_f("enable_pp_days_since_peak", "enablePpDaysSincePeak", True):
+                    min_pp_days = get_f("min_pp_days_since_peak", "minPpDaysSincePeakFilter", 10)
+                    where_clauses.append("db.pp_days_since_peak IS NOT NULL AND db.pp_days_since_peak >= ?")
+                    params.append(int(min_pp_days))
+                if get_f("enable_pp_vol_ratio", "enablePpVolRatio", False):
+                    max_vol_ratio = get_f("max_pp_vol_ratio", "maxPpVolRatioFilter", 0.5)
+                    where_clauses.append("(db.volume / NULLIF(db.vol_50d_ma, 0)) <= ?")
+                    params.append(float(max_vol_ratio))
+
+            # IPO Base Overlay
+            if get_f("enable_ipo_base", "enableIpoBase", False):
+                if get_f("enable_ipo_age", "enableIpoAge", True):
+                    max_ipo_age = get_f("max_ipo_age", "maxIpoAgeFilter", 350)
+                    where_clauses.append("db.ipo_days_count IS NOT NULL AND db.ipo_days_count >= 10 AND db.ipo_days_count <= ?")
+                    params.append(int(max_ipo_age))
+                if get_f("enable_ipo_dist", "enableIpoDist", True):
+                    max_ipo_dist = get_f("max_ipo_dist", "maxIpoDistFilter", 25.0)
+                    where_clauses.append("db.ipo_drawdown_from_high IS NOT NULL AND db.ipo_drawdown_from_high <= ?")
+                    params.append(float(max_ipo_dist))
+                if get_f("enable_ipo_depth", "enableIpoDepth", True):
+                    max_ipo_depth = get_f("max_ipo_depth", "maxIpoDepthFilter", 35.0)
+                    where_clauses.append("db.ipo_base_depth IS NOT NULL AND db.ipo_base_depth <= ?")
+                    params.append(float(max_ipo_depth))
+
+            # Minervini VCP Setup Overlay
+            if get_f("enable_vcp_setup", "enableVcpSetup", False):
+                where_clauses.append("db.close IS NOT NULL AND db.sma_50 IS NOT NULL AND db.sma_150 IS NOT NULL AND db.sma_200 IS NOT NULL")
+                where_clauses.append("db.close > db.sma_50 AND db.sma_50 > db.sma_150 AND db.sma_150 > db.sma_200")
+                where_clauses.append("(db.dist_from_52w_high IS NULL OR db.dist_from_52w_high <= 15.0)")
+                if get_f("enable_vcp_pattern", "enableVcpPattern", True):
+                    where_clauses.append("db.vcp_is_setup = true")
+                if get_f("enable_vcp_eps_growth", "enableVcpEpsGrowth", True):
+                    min_eps_growth = get_f("min_eps_growth_qoq", "minEpsGrowthFilter", 20.0)
+                    where_clauses.append("f.eps_qoq_growth IS NOT NULL AND f.eps_qoq_growth >= ?")
+                    params.append(float(min_eps_growth))
+                if get_f("enable_vcp_rs_percentile", "enableVcpRsPercentile", True):
+                    min_vcp_rs = get_f("min_rs_percentile", "minRsFilter", 70)
+                    where_clauses.append("db.rs_rank >= ?")
+                    params.append(float(min_vcp_rs))
+
+            # Darvas Box Overlay
+            if get_f("enable_darvas_box", "enableDarvasBox", False):
+                if get_f("enable_darvas_pattern", "enableDarvasPattern", True):
+                    where_clauses.append("db.darvas_is_setup = true")
+                if get_f("enable_darvas_width", "enableDarvasWidth", True):
+                    max_darvas_width = get_f("max_darvas_width", "maxDarvasWidthFilter", 25.0)
+                    where_clauses.append("db.darvas_box_width_pct IS NOT NULL AND db.darvas_box_width_pct <= ?")
+                    params.append(float(max_darvas_width))
+
+            # New Leaders Overlay
+            if get_f("enable_new_leaders", "enableNewLeaders", False):
+                if get_f("enable_52w_dist", "enable52wDist", True):
+                    max_52w_dist = get_f("max_52w_dist", "max52wDistFilter", 25.0)
+                    where_clauses.append("db.dist_from_52w_high IS NOT NULL AND db.dist_from_52w_high <= ?")
+                    params.append(float(max_52w_dist))
+                if get_f("enable_surge_off_low", "enableSurgeOffLow", True):
+                    min_surge = get_f("min_surge_off_low", "minSurgeOffLowFilter", 20.0)
+                    where_clauses.append("db.surge_off_low_pct IS NOT NULL AND db.surge_off_low_pct >= ?")
+                    params.append(float(min_surge))
+                if get_f("enable_new_leaders_rs", "enableNewLeadersRs", True):
+                    min_nl_rs = get_f("min_new_leaders_rs", "minNewLeadersRsFilter", 80)
+                    where_clauses.append("db.rs_rank >= ?")
+                    params.append(float(min_nl_rs))
+                if get_f("enable_new_leaders_52w_high", "enableNewLeaders52wHigh", False):
+                    where_clauses.append("(COALESCE(db.is_52w_high, false) = true OR (db.dist_from_52w_high IS NOT NULL AND db.dist_from_52w_high <= 3.0))")
+                if get_f("enable_new_leaders_base", "enableNewLeadersBase", True):
+                    where_clauses.append("(COALESCE(db.vcp_is_setup, false) = true OR COALESCE(db.darvas_is_setup, false) = true OR COALESCE(db.is_52w_high, false) = true)")
+
+            # Qullamaggie Breakout SQL pre-filters
+            enable_breakout = get_f("enable_qullamaggie_breakout", "enableQullamaggieBreakout", False)
+            if enable_breakout:
+                if get_f("enable_1m_ret", "enable1mRet", True):
+                    min_1m_ret = get_f("min_1m_ret", "min1mRetFilter", 20.0)
+                    where_clauses.append("db.ret_1m IS NOT NULL AND db.ret_1m >= ?")
+                    params.append(float(min_1m_ret))
+
+            # Episodic Pivot Overlay
+            if get_f("enable_episodic_pivot", "enableEpisodicPivot", False):
+                if get_f("enable_ep_gap", "enableEpGap", True):
+                    min_ep_gap = get_f("min_ep_gap", "minEpGapFilter", 10.0)
+                    where_clauses.append("db.gap_pct IS NOT NULL AND db.gap_pct >= ?")
+                    params.append(float(min_ep_gap))
+                if get_f("enable_ep_rel_vol", "enableEpRelVol", True):
+                    min_ep_rel_vol = get_f("min_ep_rel_vol", "minEpRelVolFilter", 2.5)
+                    where_clauses.append("db.rel_vol_50d IS NOT NULL AND db.rel_vol_50d >= ?")
+                    params.append(float(min_ep_rel_vol))
+
+            # Parabolic Climax Overlay
+            is_parabolic = (
+                get_f("enable_parabolic_climax", "enableParabolicClimax", False) or
+                get_f("enable_parabolic_short", "enableParabolicShort", False) or
+                get_f("enable_parabolic_long", "enableParabolicLong", False)
+            )
+            if is_parabolic:
+                min_runup = get_f("min_parabolic_runup", "minParabolicRunupFilter", 40.0)
+                min_ema_dist = get_f("min_parabolic_ema_dist", "minParabolicEmaDistFilter", 18.0)
+                min_up_days = get_f("min_parabolic_up_days", "minParabolicUpDaysFilter", 3)
+                
+                short_cond = f"(COALESCE(db.parabolic_short_is_setup, false) = true OR (db.parabolic_runup_pct >= {float(min_runup)} AND db.dist_ema10_pct >= {float(min_ema_dist)} AND db.parabolic_up_days >= {int(min_up_days)}))"
+                long_cond = "(COALESCE(db.parabolic_long_is_setup, false) = true OR (db.dist_ema10_pct <= -18.0 AND db.parabolic_runup_pct <= -30.0))"
+                where_clauses.append(f"({short_cond} OR {long_cond})")
+
+            where_str = "\n                  AND ".join(where_clauses)
+
+            query = f"""
                 WITH target_date_const AS (
                     SELECT CAST(? AS DATE) as val
                 ),
@@ -166,8 +329,7 @@ class DatabaseService:
                 FROM daily_bars db
                 LEFT JOIN latest_fundamentals f ON db.symbol = f.symbol AND f.rn = 1
                 JOIN symbols s ON db.symbol = s.symbol
-                WHERE db.date = (SELECT val FROM target_date_const)
-                  AND db.rs_score IS NOT NULL
+                WHERE {where_str}
                 ORDER BY db.rs_rank DESC;
             """
             
@@ -191,7 +353,7 @@ class DatabaseService:
                 etf_rows = conn.execute("""
                     WITH etf_bars AS (
                         SELECT d.symbol, d.rs_rank,
-                               ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date DESC) as rn
+                                ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date DESC) as rn
                         FROM daily_bars d
                         WHERE d.symbol IN ('XLK', 'XLF', 'XLV', 'XLY', 'XLP', 'XLE', 'XLI', 'XLB', 'XLU', 'XLRE', 'XLC')
                           AND d.date <= CAST(? AS DATE)
@@ -209,7 +371,7 @@ class DatabaseService:
             except Exception as e:
                 print(f"Error calculating sector ranks: {e}")
 
-            res = conn.execute(query, [actual_date_str]).fetchall()
+            res = conn.execute(query, params).fetchall()
             
             candidates = []
             for row in res:
@@ -272,6 +434,73 @@ class DatabaseService:
                     "industry": row[50],
                     "screen_date": actual_date_str
                 })
+
+            if not candidates:
+                return []
+
+            # 3b. Dynamic Breakout setup evaluation in memory
+            try:
+                from src.engine.setups.breakout import detect_breakout
+
+                cand_symbols = [c["symbol"] for c in candidates]
+                symbols_str = ", ".join(f"'{s}'" for s in cand_symbols)
+                history_rows = conn.execute(f"""
+                    SELECT symbol, date, high, low, close 
+                    FROM daily_bars 
+                    WHERE symbol IN ({symbols_str}) AND date <= CAST(? AS DATE)
+                    ORDER BY symbol, date ASC
+                """, [actual_date_str]).fetchall()
+
+                sym_history = defaultdict(list)
+                for sym, dt, h, l, cl in history_rows:
+                    sym_history[sym].append((h, l, cl, dt))
+
+                enable_ema_surfing = get_f("enable_ema_surfing", "enableEmaSurfing", True)
+                min_1m_ret = get_f("min_1m_ret", "min1mRetFilter", 20.0)
+
+                for c in candidates:
+                    symbol = c["symbol"]
+                    bars = sym_history.get(symbol, [])
+                    if len(bars) >= 20:
+                        h_list = [b[0] for b in bars]
+                        l_list = [b[1] for b in bars]
+                        cl_list = [b[2] for b in bars]
+                        dt_list = [b[3] for b in bars]
+                        b_res = detect_breakout(
+                            h_list, l_list, cl_list, dt_list,
+                            ema_10_val=c.get("ema_10"),
+                            ema_20_val=c.get("ema_20"),
+                            min_1m_ret=float(min_1m_ret),
+                            enable_ema_surfing=enable_ema_surfing
+                        )
+                        c["breakout_is_setup"] = b_res.get("breakout_is_setup", False)
+                        c["breakout_runup_pct"] = b_res.get("breakout_runup_pct", 0.0)
+                        c["breakout_consolidation_days"] = b_res.get("breakout_consolidation_days", 0)
+                        c["ema_surfing"] = b_res.get("ema_surfing", False)
+
+                        # If EMAs were not present in daily_bars, populate them from the calculated values
+                        if c.get("ema_10") is None and b_res.get("ema_10") is not None:
+                            c["ema_10"] = b_res["ema_10"]
+                            if c.get("close") and b_res["ema_10"] > 0:
+                                c["dist_ema10_pct"] = round(((c["close"] - b_res["ema_10"]) / b_res["ema_10"]) * 100.0, 2)
+                        if c.get("ema_20") is None and b_res.get("ema_20") is not None:
+                            c["ema_20"] = b_res["ema_20"]
+                            if c.get("close") and b_res["ema_20"] > 0:
+                                c["dist_ema20_pct"] = round(((c["close"] - b_res["ema_20"]) / b_res["ema_20"]) * 100.0, 2)
+                    else:
+                        c["breakout_is_setup"] = False
+                        c["breakout_runup_pct"] = 0.0
+                        c["breakout_consolidation_days"] = 0
+                        c["ema_surfing"] = False
+            except Exception as e:
+                print(f"Error calculating breakout setups for candidates on {actual_date_str}: {e}")
+                for c in candidates:
+                    c.setdefault("breakout_is_setup", False)
+                    c.setdefault("breakout_runup_pct", 0.0)
+                    c.setdefault("breakout_consolidation_days", 0)
+
+            if enable_breakout:
+                candidates = [c for c in candidates if c.get("breakout_is_setup")]
 
             if not candidates:
                 return []
@@ -394,7 +623,7 @@ class DatabaseService:
                 "atr_20d": atr_20d
             }
 
-    def get_stock_prices(self, symbol: str, limit: int = 252) -> List[Dict[str, Any]]:
+    def get_stock_prices(self, symbol: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         symbol = symbol.upper()
         with self.get_read_only_conn() as conn:
             bars = conn.execute("""
@@ -404,8 +633,8 @@ class DatabaseService:
                 ORDER BY date ASC
             """, [symbol]).fetchall()
             
-            # limit output bars
-            if len(bars) > limit:
+            # limit output bars if limit is a positive integer
+            if limit and limit > 0 and len(bars) > limit:
                 bars = bars[-limit:]
                 
             bars_list = []
@@ -628,9 +857,20 @@ class DatabaseService:
             }
 
     def get_market_monitor(self, limit: int = 252) -> Dict[str, Any]:
-        """Calculates Stockbee Market Monitor metrics across the entire market universe."""
-        query = """
-            WITH daily_gains AS (
+        """Calculates Stockbee Market Monitor metrics across recent trading days instead of full table scan."""
+        lookback_needed = (limit if limit and limit > 0 else 252) + 120
+        query = f"""
+            WITH cutoff AS (
+                SELECT MIN(date) as min_date FROM (
+                    SELECT DISTINCT date FROM daily_bars ORDER BY date DESC LIMIT {lookback_needed}
+                )
+            ),
+            filtered_bars AS (
+                SELECT symbol, date, close
+                FROM daily_bars, cutoff
+                WHERE date >= min_date
+            ),
+            daily_gains AS (
                 SELECT 
                     symbol,
                     date,
@@ -638,7 +878,7 @@ class DatabaseService:
                     LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) as prev_close,
                     LAG(close, 20) OVER (PARTITION BY symbol ORDER BY date) as close_20d_ago,
                     LAG(close, 65) OVER (PARTITION BY symbol ORDER BY date) as close_65d_ago
-                FROM daily_bars
+                FROM filtered_bars
             ),
             daily_counts AS (
                 SELECT 

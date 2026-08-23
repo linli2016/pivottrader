@@ -2,6 +2,7 @@ import io
 import time
 import requests
 import sys
+import math
 import pandas as pd
 import yfinance as yf
 from typing import List, Dict, Any
@@ -155,6 +156,9 @@ class YFinanceProvider(AbstractDataProvider):
                         "Stock Splits": "stock_splits"
                     })
                     sym_df["date"] = pd.to_datetime(sym_df["date"]).dt.date
+                    for col in ["open", "high", "low", "close", "volume"]:
+                        if col in sym_df.columns:
+                            sym_df[col] = sym_df[col].astype(float)
                     sym_df = sym_df.dropna(subset=["close"])
 
                     if not sym_df.empty:
@@ -166,13 +170,28 @@ class YFinanceProvider(AbstractDataProvider):
                                 for _, s_row in splits.iterrows():
                                     s_ratio = float(s_row["stock_splits"])
                                     s_date = s_row["date"]
-                                    mask = sym_df["date"] < s_date
-                                    if mask.any():
-                                        sym_df.loc[mask, "open"] = sym_df.loc[mask, "open"] / s_ratio
-                                        sym_df.loc[mask, "high"] = sym_df.loc[mask, "high"] / s_ratio
-                                        sym_df.loc[mask, "low"] = sym_df.loc[mask, "low"] / s_ratio
-                                        sym_df.loc[mask, "close"] = sym_df.loc[mask, "close"] / s_ratio
-                                        sym_df.loc[mask, "volume"] = sym_df.loc[mask, "volume"] * s_ratio
+                                    
+                                    post_split_df = sym_df[sym_df["date"] >= s_date]
+                                    if post_split_df.empty:
+                                        continue
+                                    post_baseline = float(post_split_df.iloc[0]["close"])
+                                    if post_baseline <= 0:
+                                        continue
+                                    threshold = math.sqrt(s_ratio)
+                                    
+                                    pre_mask = sym_df["date"] < s_date
+                                    for idx in sym_df[pre_mask].index:
+                                        p = float(sym_df.loc[idx, "close"])
+                                        if p <= 0:
+                                            continue
+                                        ratio = p / post_baseline
+                                        is_unadjusted = (ratio < threshold) if s_ratio < 1.0 else (ratio >= threshold)
+                                        if is_unadjusted:
+                                            sym_df.loc[idx, "open"] /= s_ratio
+                                            sym_df.loc[idx, "high"] /= s_ratio
+                                            sym_df.loc[idx, "low"] /= s_ratio
+                                            sym_df.loc[idx, "close"] /= s_ratio
+                                            sym_df.loc[idx, "volume"] *= s_ratio
 
                         all_bars.append(sym_df[["symbol", "date", "open", "high", "low", "close", "volume", "stock_splits"]])
                     
