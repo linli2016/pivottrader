@@ -10,7 +10,7 @@ export default function CandidatesTab({
   filteredCandidates = [],
   tradingDates = [],
   selectedDate = 'latest',
-  setSelectedDate = () => {},
+  setSelectedDate = () => { },
   minPriceFilter,
 
   setMinPriceFilter,
@@ -123,6 +123,14 @@ export default function CandidatesTab({
   setEnableRsNewHigh,
   enableAtr,
   setEnableAtr,
+  enablePivotTightness,
+  setEnablePivotTightness,
+  maxPivotSpreadFilter,
+  setMaxPivotSpreadFilter,
+  maxPivotClusteringFilter,
+  setMaxPivotClusteringFilter,
+  maxPivotVolRatioFilter,
+  setMaxPivotVolRatioFilter,
   enable52wDist,
   setEnable52wDist,
   enableSurgeOffLow,
@@ -135,9 +143,6 @@ export default function CandidatesTab({
   setEnableNewLeadersBase,
   handleSelectStock,
 }) {
-  const [showSetupGuideModal, setShowSetupGuideModal] = React.useState(false);
-  const [activeGuideTab, setActiveGuideTab] = React.useState('qullamaggie_breakout');
-
   const isParabolicActive = enableParabolicClimax || enableParabolicShort || enableParabolicLong;
 
   // Stock Browse Mode (Chart Flip) states
@@ -370,6 +375,7 @@ export default function CandidatesTab({
                 if (next) {
                   setEnforceStage2(false);
                   setEnableRs(false);
+                  if (setEnablePivotTightness) setEnablePivotTightness(false);
                 }
               }}
               style={{
@@ -406,6 +412,7 @@ export default function CandidatesTab({
                 if (next) {
                   setEnforceStage2(false);
                   setEnableRs(false);
+                  if (setEnablePivotTightness) setEnablePivotTightness(false);
                 }
               }}
               style={{
@@ -442,6 +449,7 @@ export default function CandidatesTab({
                 if (next) {
                   setEnforceStage2(false);
                   setEnableRs(false);
+                  if (setEnablePivotTightness) setEnablePivotTightness(false);
                 }
               }}
               style={{
@@ -478,6 +486,7 @@ export default function CandidatesTab({
                 if (next) {
                   setEnforceStage2(false);
                   setEnableRs(false);
+                  if (setEnablePivotTightness) setEnablePivotTightness(false);
                 }
               }}
               style={{
@@ -515,6 +524,7 @@ export default function CandidatesTab({
                   setEnforceStage2(true);
                   setEnableRs(true);
                   setMinRsFilter(70);
+                  if (setEnablePivotTightness) setEnablePivotTightness(true);
                 }
               }}
               style={{
@@ -591,7 +601,7 @@ export default function CandidatesTab({
                 whiteSpace: 'nowrap'
               }}
             >
-              ⚙️ {showFiltersSection ? 'Hide Rules ▲' : 'Rules & Sliders ▼'}
+              ⚙️ {showFiltersSection ? 'Hide Filters ▲' : 'Filters ▼'}
             </button>
           </div>
         </div>
@@ -599,116 +609,6 @@ export default function CandidatesTab({
         {/* Collapsible Section for Rules & Sliders */}
         {showFiltersSection && (
           <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '16px', borderTop: '1px solid var(--border-color)', paddingTop: '14px' }}>
-            {/* Currently Selected Setup Criteria Text Section */}
-            <div style={{
-              padding: '16px 20px',
-              background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%)',
-              border: '1px solid rgba(56, 189, 248, 0.25)',
-              borderRadius: '8px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '10px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-                <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#38bdf8', letterSpacing: '0.5px', textTransform: 'uppercase', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  📋 Currently Selected Setup Criteria
-                </h4>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <button
-                    onClick={() => {
-                      if (enableVcpSetup) setActiveGuideTab('vcp');
-                      else if (enableQullamaggieBreakout) setActiveGuideTab('qullamaggie_breakout');
-                      else if (enableEpisodicPivot) setActiveGuideTab('episodic_pivot');
-                      else if (isParabolicActive) setActiveGuideTab('parabolic_climax');
-                      else if (enablePowerPlay) setActiveGuideTab('power_play');
-                      else setActiveGuideTab('stage2');
-                      setShowSetupGuideModal(true);
-                    }}
-                    style={{
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      padding: '4px 12px',
-                      background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(236, 72, 153, 0.2) 100%)',
-                      border: '1px solid rgba(245, 158, 11, 0.5)',
-                      color: '#f59e0b',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      transition: 'all 0.2s ease',
-                      boxShadow: '0 2px 8px rgba(245, 158, 11, 0.2)'
-                    }}
-                  >
-                    📖 Setup Guide & Rules
-                  </button>
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.06)', padding: '3px 10px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    {enablePowerPlay ? '🚀 Power Play' : enableQullamaggieBreakout ? '🎯 Breakout' : enableEpisodicPivot ? '⚡ Episodic Pivot (EP)' : isParabolicActive ? '🌋 Parabolic Climax' : enableVcpSetup ? '🌀 VCP Pattern' : enforceStage2 ? '📈 Stage 2 Trend Baseline' : '🌐 Baseline'}
-                  </span>
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#38bdf8', background: 'rgba(56, 189, 248, 0.12)', padding: '3px 10px', borderRadius: '12px', border: '1px solid rgba(56, 189, 248, 0.3)', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                    {loadingCandidates && <span className="spin-icon">⟳</span>}
-                    {`Showing ${filteredCandidates.length.toLocaleString()} matching stocks`}
-                  </span>
-                </div>
-              </div>
-
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.5' }}>
-                {enablePowerPlay && 'Screening for high-velocity momentum stocks undergoing shallow high-level consolidations after a massive price expansion.'}
-                {enableQullamaggieBreakout && 'Screening for Kristjan Qullamaggie\'s classic Momentum Breakout—top 1-month & 3-month performance leaders consolidating tightly while surfing the rising 10/20 EMA.'}
-                {enableEpisodicPivot && 'Screening for Kristjan Qullamaggie\'s Episodic Pivots (EP)—game-changing fundamental gap-ups (>=10%) on massive relative volume (>=2.5x) breaking out of long bases.'}
-                {isParabolicActive && 'Screening for Kristjan Qullamaggie\'s Parabolic Climax setups—both short-side overextended tops (+40%+ runup, >=18% above 10 EMA) and long-side oversold bottoms (<= -30% drop, <= -18% below 10 EMA) merged together.'}
-                {enableVcpSetup && 'Screening for Mark Minervini\'s Volatility Contraction Pattern (VCP)—successive price contractions with tightening depth before explosive breakouts.'}
-                {!enablePowerPlay && !enableQullamaggieBreakout && !enableEpisodicPivot && !isParabolicActive && !enableVcpSetup && (enforceStage2 ? 'Screening for classic Minervini Stage 2 uptrend stocks in confirmed institutional mark-up phases.' : 'Screening all universe stocks meeting basic price and volume baseline criteria.')}
-              </p>
-
-              {enablePowerPlay ? (
-                <ol style={{ margin: '4px 0 0 0', paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px', color: 'var(--text-primary)', lineHeight: '1.5' }}>
-                  <li>
-                    <strong>Explosive Price Move:</strong> An explosive price move commences on huge volume that shoots the stock price up 100 percent or more in less than eight weeks. <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>(Active Filter: &ge; {minPpRunupFilter}% run-up{enablePpRunup ? '' : ' - Disabled'})</span>
-                  </li>
-                  <li>
-                    <strong>Tight Consolidation:</strong> The stock price then moves sideways in a relatively tight range (&le;25% depth, &ge;10 trading days). <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>(Active Filter: &le; {maxPpDrawdownFilter}% drawdown, peak &ge; {minPpDaysSincePeakFilter} trading days prior{enablePpDrawdown && enablePpDaysSincePeak ? '' : ' - Partially Disabled'})</span>
-                  </li>
-                  <li>
-                    <strong>Volume Contraction:</strong> Base volume contracts considerably before breakout. <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>{enablePpVolRatio ? `(Active Filter: \u2264 ${maxPpVolRatioFilter.toFixed(2)}x 50d Vol MA)` : '(Filter Disabled)'}</span>
-                  </li>
-                </ol>
-              ) : enableQullamaggieBreakout ? (
-                <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
-                  <li><strong>1-Month Momentum Leader:</strong> 1-month gain &ge; {min1mRetFilter}% {enable1mRet ? '(Active)' : '(Disabled)'}</li>
-                  <li><strong>EMA Surfing:</strong> Price holding above/near 10-day & 20-day EMAs {enableEmaSurfing ? '(Active)' : '(Disabled)'}</li>
-                  <li><strong>Stage 2 Trend:</strong> {enforceStage2 ? 'Enforced (Close > 50 > 150 > 200, SMA200 ↗ (1M), 52w Hi ≤25%, Lo ≥30%)' : 'Optional (Waived)'}</li>
-                </ul>
-              ) : enableEpisodicPivot ? (
-                <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
-                  <li><strong>Fundamental Gap-Up:</strong> Opening gap &ge; {minEpGapFilter}% {enableEpGap ? '(Active)' : '(Disabled)'}</li>
-                  <li><strong>Relative Volume:</strong> 50d Relative Volume &ge; {minEpRelVolFilter}x {enableEpRelVol ? '(Active)' : '(Disabled)'}</li>
-                  <li><strong>Stage 2 Trend:</strong> {enforceStage2 ? 'Enforced (Close > 50 > 150 > 200, SMA200 ↗ (1M), 52w Hi ≤25%, Lo ≥30%)' : 'Optional (Waived)'}</li>
-                </ul>
-              ) : isParabolicActive ? (
-                <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
-                  <li><strong>Short Climax (Overextended Top):</strong> Rapid run-up &ge; {minParabolicRunupFilter}% over 3-10 days {enableParabolicRunup ? '(Active)' : '(Disabled)'}, &ge;{minParabolicUpDaysFilter} up days {enableParabolicUpDays ? '(Active)' : '(Disabled)'}, 10 EMA dist &ge; {minParabolicEmaDistFilter}% {enableParabolicEmaDist ? '(Active)' : '(Disabled)'}</li>
-                  <li><strong>Long Climax (Oversold Bottom):</strong> Rapid drop &le; -30% over 3-10 days, 10 EMA dist &le; -18%</li>
-                  <li><strong>Merged Table:</strong> Result table contains both short-side breakdown candidates & long-side oversold bounce candidates.</li>
-                  <li><strong>Stage 2 Trend:</strong> {enforceStage2 ? 'Enforced (Close > 50 > 150 > 200, SMA200 ↗ (1M), 52w Hi ≤25%, Lo ≥30%)' : 'Optional (Waived)'}</li>
-                </ul>
-              ) : enableVcpSetup ? (
-                <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
-                  <li><strong>Stage 2 Trend Template:</strong> Required (Close &gt; 50 &gt; 150 &gt; 200, SMA200 ↗ (1M), 52w Hi &le;25%, Lo &ge;30%)</li>
-                  <li><strong>VCP Contraction Pattern:</strong> Successive price contractions (2–4 troughs) with final tight contraction &le;12% depth {enableVcpPattern ? '(Active)' : '(Disabled)'}</li>
-                  <li><strong>Relative Strength:</strong> {enableRs ? `RS Rank ≥ ${minRsFilter} (Active)` : 'RS Rank Filter (Waived / Inactive)'}</li>
-                  <li><strong>QoQ EPS Growth:</strong> Quarterly EPS growth &ge; {minEpsGrowthFilter}% {enableVcpEpsGrowth ? '(Active)' : '(Disabled)'}</li>
-                </ul>
-              ) : (
-                <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
-                  <li><strong>Stage 2 Trend Template:</strong> Close &gt; SMA(50) &gt; SMA(150) &gt; SMA(200), SMA(200) ↗ (1M lookback), 52w Hi &le;25%, 52w Lo &ge;30% {enforceStage2 ? '(Enforced)' : '(Disabled / Optional)'}</li>
-                  <li><strong>Liquidity Baseline:</strong> Min stock price &ge; ${minPriceFilter.toFixed(2)} and 50d Volume MA &ge; {minVolFilter.toLocaleString()}</li>
-                  <li><strong>Relative Strength:</strong> {enableRs ? `RS Rank ≥ ${minRsFilter}` : enableRsNewHigh ? 'Must be making a 52-week RS Rank High' : 'RS Rank calculated dynamically'}</li>
-                  {enableAtr && <li><strong>Daily ATR:</strong> &ge; {minAtrFilter.toFixed(1)}%</li>}
-                </ul>
-              )}
-            </div>
-
             {/* Dynamic Parameter Sliders / Inputs */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
               {/* ========================================== */}
@@ -890,6 +790,74 @@ export default function CandidatesTab({
                   boxSizing: 'border-box'
                 }}>
                   {enforceStage2 ? '⚡ Close > 50 > 150 > 200 (SMA200 ↗ (1M), 52w Hi ≤25%, Lo ≥30%)' : '⚪ Stage 2 Trend Waived'}
+                </div>
+              </div>
+
+              {/* Pivot Tightness & Volume Dry-Up (VDU) Filter */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enablePivotTightness ? 1 : 0.5 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={enablePivotTightness}
+                    onChange={(e) => setEnablePivotTightness(e.target.checked)}
+                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                  />
+                  🎯 Pivot Tightness (3d):
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {/* Metric 1: Max Price Spread (3d) */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} title="3-Day High-Low price spread / Close price (Price Tightness)">
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '95px' }}>Max Spread:</span>
+                    <input
+                      type="range"
+                      min="1.0"
+                      max="15.0"
+                      step="0.5"
+                      value={maxPivotSpreadFilter}
+                      disabled={!enablePivotTightness}
+                      onChange={(e) => setMaxPivotSpreadFilter(parseFloat(e.target.value) || 0)}
+                      style={{ flex: 1, cursor: enablePivotTightness ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                    />
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', width: '42px', textAlign: 'right' }}>
+                      &le;{maxPivotSpreadFilter.toFixed(1)}%
+                    </span>
+                  </div>
+
+                  {/* Metric 2: Close Clustering (3d) */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} title="3-Day Close Clustering: (Highest Close - Lowest Close) / Close over last 3 days">
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '95px' }}>Close Clust:</span>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="10.0"
+                      step="0.1"
+                      value={maxPivotClusteringFilter}
+                      disabled={!enablePivotTightness}
+                      onChange={(e) => setMaxPivotClusteringFilter(parseFloat(e.target.value) || 0)}
+                      style={{ flex: 1, cursor: enablePivotTightness ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                    />
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', width: '42px', textAlign: 'right' }}>
+                      &le;{maxPivotClusteringFilter.toFixed(1)}%
+                    </span>
+                  </div>
+
+                  {/* Metric 3: Volume Dry-Up (VDU) */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} title="Volume Dry-Up: Day Volume / 50-DMA Volume">
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '95px' }}>Vol Dry-Up:</span>
+                    <input
+                      type="range"
+                      min="0.10"
+                      max="1.50"
+                      step="0.05"
+                      value={maxPivotVolRatioFilter}
+                      disabled={!enablePivotTightness}
+                      onChange={(e) => setMaxPivotVolRatioFilter(parseFloat(e.target.value) || 0)}
+                      style={{ flex: 1, cursor: enablePivotTightness ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                    />
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', width: '42px', textAlign: 'right' }}>
+                      &le;{maxPivotVolRatioFilter.toFixed(2)}x
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -1412,6 +1380,23 @@ export default function CandidatesTab({
                     </span>
                   )}
 
+                  {currentCandidate?.pivot_spread_pct !== null && currentCandidate?.pivot_spread_pct !== undefined && (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '12px',
+                        padding: '4px 10px',
+                        background: 'rgba(16, 185, 129, 0.18)',
+                        color: '#34d399',
+                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                        fontWeight: 600
+                      }}
+                      title="Max Price Spread (3d), Close Clustering (3d), and Volume Dry-Up ratio"
+                    >
+                      🎯 Spread: {currentCandidate.pivot_spread_pct.toFixed(1)}% | Clust: {currentCandidate.pivot_close_clustering_pct !== null && currentCandidate.pivot_close_clustering_pct !== undefined ? `${currentCandidate.pivot_close_clustering_pct.toFixed(1)}%` : 'N/A'} {currentCandidate.volume && currentCandidate.vol_50d_ma ? `| VDU: ${(currentCandidate.volume / currentCandidate.vol_50d_ma).toFixed(2)}x` : ''}
+                    </span>
+                  )}
+
                   {/* As of Date Badge */}
                   {(currentCandidate?.screen_date || (selectedDate && selectedDate !== 'latest')) && (
                     <span
@@ -1512,42 +1497,42 @@ export default function CandidatesTab({
                   minHeight: 0
                 }}
               >
-              {filteredCandidates.map((c, idx) => {
-                const isSelected = idx === browseIndex;
-                const isItemSaved = activeWatchlistSymbols.has(c.symbol.toUpperCase());
-                return (
-                  <div
-                    key={c.symbol}
-                    ref={isSelected ? selectedItemRef : null}
-                    onClick={() => setBrowseIndex(idx)}
-                    style={{
-                      padding: '6px 10px',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      background: isSelected ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.02)',
-                      border: isSelected ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.05)',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      transition: 'var(--transition-smooth)',
-                      fontSize: '13px'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontWeight: 700, color: idx === browseIndex ? '#34d399' : '#ffffff' }}>
-                        {c.symbol}
-                      </span>
-                      {isItemSaved && <span style={{ fontSize: '11px' }} title="Saved in active watchlist">⭐️</span>}
-                      <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                        ${c.close?.toFixed(2)}
+                {filteredCandidates.map((c, idx) => {
+                  const isSelected = idx === browseIndex;
+                  const isItemSaved = activeWatchlistSymbols.has(c.symbol.toUpperCase());
+                  return (
+                    <div
+                      key={c.symbol}
+                      ref={isSelected ? selectedItemRef : null}
+                      onClick={() => setBrowseIndex(idx)}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        background: isSelected ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.02)',
+                        border: isSelected ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.05)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        transition: 'var(--transition-smooth)',
+                        fontSize: '13px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontWeight: 700, color: idx === browseIndex ? '#34d399' : '#ffffff' }}>
+                          {c.symbol}
+                        </span>
+                        {isItemSaved && <span style={{ fontSize: '11px' }} title="Saved in active watchlist">⭐️</span>}
+                        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                          ${c.close?.toFixed(2)}
+                        </span>
+                      </div>
+                      <span className="pill pill-success" style={{ fontSize: '10px', padding: '1px 6px', fontWeight: 600 }}>
+                        RS {c.rs_rank}
                       </span>
                     </div>
-                    <span className="pill pill-success" style={{ fontSize: '10px', padding: '1px 6px', fontWeight: 600 }}>
-                      RS {c.rs_rank}
-                    </span>
-                  </div>
-                );
-              })}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -1556,580 +1541,286 @@ export default function CandidatesTab({
         <>
           {/* Candidates Table View (Classic) */}
           {selectedDate && selectedDate !== 'latest' && (
-          <div style={{
-            background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.15) 0%, rgba(30, 41, 59, 0.85) 100%)',
-            border: '1px solid rgba(56, 189, 248, 0.4)',
-            borderRadius: '8px',
-            padding: '12px 18px',
-            marginBottom: '14px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '10px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={{ fontSize: '20px' }}>🔬</span>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: '700', color: '#38bdf8' }}>
-                  Point-in-Time Backtest Mode: <span style={{ color: '#ffffff', background: 'rgba(56, 189, 248, 0.2)', padding: '2px 8px', borderRadius: '4px' }}>{selectedDate}</span>
-                </div>
-                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
-                  Screening candidates as of <strong>{selectedDate}</strong>. Entry price is Next Day Open ($T+1$). Post-screening outcomes (+5D and +20D returns & runups) are calculated below.
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.15) 0%, rgba(30, 41, 59, 0.85) 100%)',
+              border: '1px solid rgba(56, 189, 248, 0.4)',
+              borderRadius: '8px',
+              padding: '12px 18px',
+              marginBottom: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '10px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '20px' }}>🔬</span>
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: '700', color: '#38bdf8' }}>
+                    Point-in-Time Backtest Mode: <span style={{ color: '#ffffff', background: 'rgba(56, 189, 248, 0.2)', padding: '2px 8px', borderRadius: '4px' }}>{selectedDate}</span>
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                    Screening candidates as of <strong>{selectedDate}</strong>. Entry price is Next Day Open ($T+1$). Post-screening outcomes (+5D and +20D returns & runups) are calculated below.
+                  </div>
                 </div>
               </div>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => setSelectedDate('latest')}
+                style={{ fontSize: '12px', fontWeight: '600', color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.4)', padding: '6px 12px' }}
+              >
+                Reset to Latest Date 🔄
+              </button>
             </div>
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => setSelectedDate('latest')}
-              style={{ fontSize: '12px', fontWeight: '600', color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.4)', padding: '6px 12px' }}
-            >
-              Reset to Latest Date 🔄
-            </button>
-          </div>
-        )}
+          )}
 
-        <div className="table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Ticker</th>
-                <th>Sector / Industry</th>
-                <th>Price</th>
-                <th>1M Ret %</th>
-                <th>Vol 50d MA</th>
-                <th>RelVol</th>
-                <th>RS Score</th>
-                <th>RS Percentile</th>
-                <th>ADTR (20d)</th>
-                <th>EPS QoQ Growth</th>
-                <th>Report Qtr</th>
-                {enablePowerPlay && (
-                  <>
-                    <th>Run Up %</th>
-                    <th>Drawdown %</th>
-                    <th>Vol vs SMA</th>
-                  </>
-                )}
-                {enableIpoBase && (
-                  <>
-                    <th>IPO Age</th>
-                    <th>Dist from High</th>
-                    <th>Base Depth</th>
-                  </>
-                )}
-                {enableNewLeaders && (
-                  <>
-                    <th>52w High Dist</th>
-                    <th>Surge off Low</th>
-                    <th>52w High Status</th>
-                  </>
-                )}
-                <th>Setups & Patterns</th>
-                {(selectedDate !== 'latest' || filteredCandidates.some(c => c.entry_price !== null && c.entry_price !== undefined)) && (
-                  <>
-                    <th style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', borderBottom: '2px solid #38bdf8' }}>Entry (Open T+1)</th>
-                    <th style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', borderBottom: '2px solid #38bdf8' }}>+5D Return %</th>
-                    <th style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', borderBottom: '2px solid #38bdf8' }}>5D Peak / Drawdown</th>
-                    <th style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', borderBottom: '2px solid #38bdf8' }}>+20D Return %</th>
-                    <th style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', borderBottom: '2px solid #38bdf8' }}>20D Peak / Drawdown</th>
-                  </>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredCandidates.map((c, i) => (
-                <tr key={i} onClick={() => handleSelectStock(c, filteredCandidates)} style={{ cursor: 'pointer' }}>
-                  <td style={{ fontWeight: 'bold', color: 'var(--accent-color)' }}>{c.symbol}</td>
-                  <td>
-                    <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                      {c.sector ? `${c.sector}${c.sector_rank ? ` (${c.sector_rank})` : ''}` : 'N/A'}
-                    </span>
-                    <span style={{ fontSize: '11px', display: 'block', color: 'var(--text-secondary)' }}>{c.industry || 'N/A'}</span>
-                  </td>
-                  <td>${c.close.toFixed(2)}</td>
-                  <td style={{ color: c.ret_1m !== null && c.ret_1m !== undefined ? (c.ret_1m >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)') : 'var(--text-secondary)', fontWeight: '600' }}>
-                    {c.ret_1m !== null && c.ret_1m !== undefined ? `${c.ret_1m >= 0 ? '+' : ''}${c.ret_1m.toFixed(1)}%` : 'N/A'}
-                  </td>
-                  <td>{c.vol_50d_ma.toLocaleString()}</td>
-                  <td style={{ color: c.rel_vol_50d >= 2.5 ? 'var(--accent-success)' : 'var(--text-primary)', fontWeight: c.rel_vol_50d >= 2.5 ? 'bold' : 'normal' }}>
-                    {c.rel_vol_50d !== null && c.rel_vol_50d !== undefined ? `${c.rel_vol_50d.toFixed(1)}x` : '1.0x'}
-                  </td>
-                  <td>{c.rs_score ? c.rs_score.toFixed(4) : 'N/A'}</td>
-                  <td>
-                    <span className="pill pill-success">{c.rs_rank}</span>
-                  </td>
-                  <td style={{ fontWeight: '500' }}>
-                    {c.atr_20d !== null && c.atr_20d !== undefined ? `${c.atr_20d.toFixed(2)}%` : 'N/A'}
-                  </td>
-                  <td style={{ color: c.eps_qoq_growth !== null && c.eps_qoq_growth !== undefined ? (c.eps_qoq_growth >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)') : 'var(--text-secondary)' }}>
-                    {c.eps_qoq_growth !== null && c.eps_qoq_growth !== undefined ? `${c.eps_qoq_growth >= 0 ? '+' : ''}${c.eps_qoq_growth.toFixed(1)}%` : 'N/A'}
-                  </td>
-                  <td>
-                    {c.fiscal_quarter ? (
-                      <span className="pill pill-primary">{c.fiscal_quarter}</span>
-                    ) : (
-                      <span style={{ color: 'var(--text-secondary)' }}>N/A</span>
-                    )}
-                  </td>
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  <th>Sector / Industry</th>
+                  <th>Price</th>
+                  <th>1M Ret %</th>
+                  <th>Vol 50d MA</th>
+                  <th>RelVol</th>
+                  <th>RS Score</th>
+                  <th>RS Percentile</th>
+                  <th>ADTR (20d)</th>
+                  <th>EPS QoQ Growth</th>
+                  <th>Report Qtr</th>
                   {enablePowerPlay && (
                     <>
-                      <td style={{ color: 'var(--accent-success)', fontWeight: '600' }}>
-                        +{c.pp_runup_pct !== null && c.pp_runup_pct !== undefined ? c.pp_runup_pct.toFixed(0) : '0'}%
-                      </td>
-                      <td style={{ color: 'var(--accent-danger)', fontWeight: '600' }}>
-                        -{c.pp_drawdown_pct !== null && c.pp_drawdown_pct !== undefined ? c.pp_drawdown_pct.toFixed(1) : '0'}%
-                      </td>
-                      <td style={{ color: c.volume / c.vol_50d_ma < 0.6 ? 'var(--accent-success)' : 'var(--text-secondary)' }}>
-                        {c.volume && c.vol_50d_ma ? `${(c.volume / c.vol_50d_ma).toFixed(2)}x` : 'N/A'}
-                      </td>
+                      <th>Run Up %</th>
+                      <th>Drawdown %</th>
+                      <th>Vol vs SMA</th>
                     </>
                   )}
                   {enableIpoBase && (
                     <>
-                      <td style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
-                        {c.ipo_days_count} days
-                      </td>
-                      <td style={{ color: 'var(--accent-success)', fontWeight: '600' }}>
-                        {c.ipo_drawdown_from_high !== null && c.ipo_drawdown_from_high !== undefined ? `${c.ipo_drawdown_from_high.toFixed(1)}%` : '0%'}
-                      </td>
-                      <td style={{ color: 'var(--accent-danger)', fontWeight: '600' }}>
-                        -{c.ipo_base_depth !== null && c.ipo_base_depth !== undefined ? `${c.ipo_base_depth.toFixed(1)}%` : '0%'}
-                      </td>
+                      <th>IPO Age</th>
+                      <th>Dist from High</th>
+                      <th>Base Depth</th>
                     </>
                   )}
                   {enableNewLeaders && (
                     <>
-                      <td style={{ color: c.dist_from_52w_high !== null && c.dist_from_52w_high <= 15 ? 'var(--accent-success)' : 'var(--text-primary)', fontWeight: '600' }}>
-                        {c.dist_from_52w_high !== null && c.dist_from_52w_high !== undefined ? `${c.dist_from_52w_high.toFixed(1)}%` : '0%'}
-                      </td>
-                      <td style={{ color: 'var(--accent-success)', fontWeight: '600' }}>
-                        +{c.surge_off_low_pct !== null && c.surge_off_low_pct !== undefined ? `${c.surge_off_low_pct.toFixed(1)}%` : '0%'}
-                      </td>
-                      <td>
-                        {c.is_52w_high ? (
-                          <span className="pill pill-success" style={{ fontWeight: 'bold' }}>🔥 52w High</span>
-                        ) : (
-                          <span style={{ color: 'var(--text-secondary)' }}>Near High</span>
-                        )}
-                      </td>
+                      <th>52w High Dist</th>
+                      <th>Surge off Low</th>
+                      <th>52w High Status</th>
                     </>
                   )}
-                  <td>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-                      {c.ep_is_setup && (
-                        <span className="pill" style={{ background: 'rgba(236, 72, 153, 0.2)', color: '#ec4899', border: '1px solid rgba(236, 72, 153, 0.4)', fontWeight: 'bold' }}>
-                          ⚡ EP (+{c.ep_gap_pct?.toFixed(1)}%, {c.ep_rel_vol?.toFixed(1)}x)
-                        </span>
-                      )}
-                      {c.parabolic_short_is_setup && (
-                        <span className="pill" style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.4)', fontWeight: 'bold' }}>
-                          📉 Para Climax (Short +{c.parabolic_runup_pct?.toFixed(0)}%{c.parabolic_up_days ? `, ${c.parabolic_up_days}d up` : ''})
-                        </span>
-                      )}
-                      {c.parabolic_long_is_setup && (
-                        <span className="pill" style={{ background: 'rgba(34, 197, 94, 0.2)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.4)', fontWeight: 'bold' }}>
-                          📈 Para Climax (Long {c.parabolic_runup_pct?.toFixed(0)}%, {c.dist_ema10_pct?.toFixed(0)}% EMA)
-                        </span>
-                      )}
-                      {c.vcp_is_setup && (
-                        <span className="pill pill-success" style={{ fontStyle: 'italic', fontWeight: 'bold' }}>
-                          🌀 VCP {c.vcp_troughs}T ({c.vcp_depths?.replace(/,/g, ' / ') + '%'})
-                        </span>
-                      )}
-                      {c.darvas_is_setup && (
-                        <span className="pill pill-success" style={{ fontStyle: 'italic', fontWeight: 'bold' }}>
-                          📦 Box (${c.darvas_box_bottom?.toFixed(2)}-${c.darvas_box_top?.toFixed(2)})
-                        </span>
-                      )}
-                      {!c.ep_is_setup && !c.parabolic_short_is_setup && !c.parabolic_long_is_setup && !c.vcp_is_setup && !c.darvas_is_setup && (
-                        <span style={{ color: 'var(--text-secondary)' }}>Stage 2 Base</span>
-                      )}
-                    </div>
-                  </td>
+                  {(enablePivotTightness || enableVcpSetup) && (
+                    <>
+                      <th title="3-Day High-Low price spread / Close price (Max Price Spread)">3D Spread %</th>
+                      <th title="3-Day Close Clustering: (Highest Close - Lowest Close) / Close">Close Clust %</th>
+                      <th title="Volume Dry-Up ratio: Day Volume / 50-DMA Volume">VDU Ratio</th>
+                    </>
+                  )}
+                  <th>Setups & Patterns</th>
                   {(selectedDate !== 'latest' || filteredCandidates.some(c => c.entry_price !== null && c.entry_price !== undefined)) && (
                     <>
-                      <td style={{ background: 'rgba(56, 189, 248, 0.03)' }}>
-                        {c.entry_price !== null && c.entry_price !== undefined ? (
-                          <div>
-                            <span style={{ fontWeight: '700', color: '#e2e8f0' }}>${c.entry_price.toFixed(2)}</span>
-                            <span style={{ fontSize: '10px', display: 'block', color: 'var(--text-secondary)' }}>{c.entry_date}</span>
-                          </div>
-                        ) : (
-                          <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>Pending T+1</span>
-                        )}
-                      </td>
-
-                      <td style={{ background: 'rgba(56, 189, 248, 0.03)' }}>
-                        {c.return_5d !== null && c.return_5d !== undefined ? (
-                          <span className={`pill ${c.return_5d >= 0 ? 'pill-success' : 'pill-danger'}`} style={{ fontWeight: 'bold' }}>
-                            {c.return_5d >= 0 ? '+' : ''}{c.return_5d.toFixed(1)}%
-                          </span>
-                        ) : (
-                          <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>N/A</span>
-                        )}
-                      </td>
-
-                      <td style={{ background: 'rgba(56, 189, 248, 0.03)' }}>
-                        {c.max_runup_5d !== null && c.max_runup_5d !== undefined ? (
-                          <div style={{ fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                            <span style={{ color: 'var(--accent-success)', fontWeight: '600' }}>▲ +{c.max_runup_5d.toFixed(1)}%</span>
-                            <span style={{ color: 'var(--accent-danger)', fontWeight: '600' }}>▼ {c.max_drawdown_5d.toFixed(1)}%</span>
-                          </div>
-                        ) : (
-                          <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>N/A</span>
-                        )}
-                      </td>
-
-                      <td style={{ background: 'rgba(56, 189, 248, 0.03)' }}>
-                        {c.return_20d !== null && c.return_20d !== undefined ? (
-                          <span className={`pill ${c.return_20d >= 0 ? 'pill-success' : 'pill-danger'}`} style={{ fontWeight: 'bold' }}>
-                            {c.return_20d >= 0 ? '+' : ''}{c.return_20d.toFixed(1)}%
-                          </span>
-                        ) : (
-                          <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>N/A</span>
-                        )}
-                      </td>
-
-                      <td style={{ background: 'rgba(56, 189, 248, 0.03)' }}>
-                        {c.max_runup_20d !== null && c.max_runup_20d !== undefined ? (
-                          <div style={{ fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                            <span style={{ color: 'var(--accent-success)', fontWeight: '600' }}>▲ +{c.max_runup_20d.toFixed(1)}%</span>
-                            <span style={{ color: 'var(--accent-danger)', fontWeight: '600' }}>▼ {c.max_drawdown_20d.toFixed(1)}%</span>
-                          </div>
-                        ) : (
-                          <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>N/A</span>
-                        )}
-                      </td>
+                      <th style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', borderBottom: '2px solid #38bdf8' }}>Entry (Open T+1)</th>
+                      <th style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', borderBottom: '2px solid #38bdf8' }}>+5D Return %</th>
+                      <th style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', borderBottom: '2px solid #38bdf8' }}>5D Peak / Drawdown</th>
+                      <th style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', borderBottom: '2px solid #38bdf8' }}>+20D Return %</th>
+                      <th style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', borderBottom: '2px solid #38bdf8' }}>20D Peak / Drawdown</th>
                     </>
                   )}
                 </tr>
-              ))}
-              {filteredCandidates.length === 0 && (
-                <tr>
-                  <td colSpan={12 + (enablePowerPlay ? 3 : 0) + (enableIpoBase ? 3 : 0) + (enableNewLeaders ? 3 : 0) + ((selectedDate !== 'latest' || filteredCandidates.some(c => c.entry_price !== null && c.entry_price !== undefined)) ? 5 : 0)} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-                    No candidates matching current config rules found in database cache. Run "Sync Database Tickers" to evaluate stocks.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        </>
-      )}
+              </thead>
+              <tbody>
+                {filteredCandidates.map((c, i) => (
+                  <tr key={i} onClick={() => handleSelectStock(c, filteredCandidates)} style={{ cursor: 'pointer' }}>
+                    <td style={{ fontWeight: 'bold', color: 'var(--accent-color)' }}>{c.symbol}</td>
+                    <td>
+                      <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {c.sector ? `${c.sector}${c.sector_rank ? ` (${c.sector_rank})` : ''}` : 'N/A'}
+                      </span>
+                      <span style={{ fontSize: '11px', display: 'block', color: 'var(--text-secondary)' }}>{c.industry || 'N/A'}</span>
+                    </td>
+                    <td>${c.close.toFixed(2)}</td>
+                    <td style={{ color: c.ret_1m !== null && c.ret_1m !== undefined ? (c.ret_1m >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)') : 'var(--text-secondary)', fontWeight: '600' }}>
+                      {c.ret_1m !== null && c.ret_1m !== undefined ? `${c.ret_1m >= 0 ? '+' : ''}${c.ret_1m.toFixed(1)}%` : 'N/A'}
+                    </td>
+                    <td>{c.vol_50d_ma.toLocaleString()}</td>
+                    <td style={{ color: c.rel_vol_50d >= 2.5 ? 'var(--accent-success)' : 'var(--text-primary)', fontWeight: c.rel_vol_50d >= 2.5 ? 'bold' : 'normal' }}>
+                      {c.rel_vol_50d !== null && c.rel_vol_50d !== undefined ? `${c.rel_vol_50d.toFixed(1)}x` : '1.0x'}
+                    </td>
+                    <td>{c.rs_score ? c.rs_score.toFixed(4) : 'N/A'}</td>
+                    <td>
+                      <span className="pill pill-success">{c.rs_rank}</span>
+                    </td>
+                    <td style={{ fontWeight: '500' }}>
+                      {c.atr_20d !== null && c.atr_20d !== undefined ? `${c.atr_20d.toFixed(2)}%` : 'N/A'}
+                    </td>
+                    <td style={{ color: c.eps_qoq_growth !== null && c.eps_qoq_growth !== undefined ? (c.eps_qoq_growth >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)') : 'var(--text-secondary)' }}>
+                      {c.eps_qoq_growth !== null && c.eps_qoq_growth !== undefined ? `${c.eps_qoq_growth >= 0 ? '+' : ''}${c.eps_qoq_growth.toFixed(1)}%` : 'N/A'}
+                    </td>
+                    <td>
+                      {c.fiscal_quarter ? (
+                        <span className="pill pill-primary">{c.fiscal_quarter}</span>
+                      ) : (
+                        <span style={{ color: 'var(--text-secondary)' }}>N/A</span>
+                      )}
+                    </td>
+                    {enablePowerPlay && (
+                      <>
+                        <td style={{ color: 'var(--accent-success)', fontWeight: '600' }}>
+                          +{c.pp_runup_pct !== null && c.pp_runup_pct !== undefined ? c.pp_runup_pct.toFixed(0) : '0'}%
+                        </td>
+                        <td style={{ color: 'var(--accent-danger)', fontWeight: '600' }}>
+                          -{c.pp_drawdown_pct !== null && c.pp_drawdown_pct !== undefined ? c.pp_drawdown_pct.toFixed(1) : '0'}%
+                        </td>
+                        <td style={{ color: c.volume / c.vol_50d_ma < 0.6 ? 'var(--accent-success)' : 'var(--text-secondary)' }}>
+                          {c.volume && c.vol_50d_ma ? `${(c.volume / c.vol_50d_ma).toFixed(2)}x` : 'N/A'}
+                        </td>
+                      </>
+                    )}
+                    {enableIpoBase && (
+                      <>
+                        <td style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
+                          {c.ipo_days_count} days
+                        </td>
+                        <td style={{ color: 'var(--accent-success)', fontWeight: '600' }}>
+                          {c.ipo_drawdown_from_high !== null && c.ipo_drawdown_from_high !== undefined ? `${c.ipo_drawdown_from_high.toFixed(1)}%` : '0%'}
+                        </td>
+                        <td style={{ color: 'var(--accent-danger)', fontWeight: '600' }}>
+                          -{c.ipo_base_depth !== null && c.ipo_base_depth !== undefined ? `${c.ipo_base_depth.toFixed(1)}%` : '0%'}
+                        </td>
+                      </>
+                    )}
+                    {enableNewLeaders && (
+                      <>
+                        <td style={{ color: c.dist_from_52w_high !== null && c.dist_from_52w_high <= 15 ? 'var(--accent-success)' : 'var(--text-primary)', fontWeight: '600' }}>
+                          {c.dist_from_52w_high !== null && c.dist_from_52w_high !== undefined ? `${c.dist_from_52w_high.toFixed(1)}%` : '0%'}
+                        </td>
+                        <td style={{ color: 'var(--accent-success)', fontWeight: '600' }}>
+                          +{c.surge_off_low_pct !== null && c.surge_off_low_pct !== undefined ? `${c.surge_off_low_pct.toFixed(1)}%` : '0%'}
+                        </td>
+                        <td>
+                          {c.is_52w_high ? (
+                            <span className="pill pill-success" style={{ fontWeight: 'bold' }}>🔥 52w High</span>
+                          ) : (
+                            <span style={{ color: 'var(--text-secondary)' }}>Near High</span>
+                          )}
+                        </td>
+                      </>
+                    )}
+                    {(enablePivotTightness || enableVcpSetup) && (
+                      <>
+                        <td style={{ fontWeight: '600', color: c.pivot_spread_pct !== null && c.pivot_spread_pct <= maxPivotSpreadFilter ? 'var(--accent-success)' : 'var(--text-primary)' }}>
+                          {c.pivot_spread_pct !== null && c.pivot_spread_pct !== undefined ? `${c.pivot_spread_pct.toFixed(1)}%` : 'N/A'}
+                        </td>
+                        <td style={{ fontWeight: '600', color: c.pivot_close_clustering_pct !== null && c.pivot_close_clustering_pct <= maxPivotClusteringFilter ? 'var(--accent-success)' : 'var(--text-primary)' }}>
+                          {c.pivot_close_clustering_pct !== null && c.pivot_close_clustering_pct !== undefined ? `${c.pivot_close_clustering_pct.toFixed(1)}%` : 'N/A'}
+                        </td>
+                        <td style={{ color: (c.volume && c.vol_50d_ma && (c.volume / c.vol_50d_ma) <= maxPivotVolRatioFilter) ? 'var(--accent-success)' : 'var(--text-secondary)' }}>
+                          {c.volume && c.vol_50d_ma ? `${(c.volume / c.vol_50d_ma).toFixed(2)}x` : 'N/A'}
+                        </td>
+                      </>
+                    )}
+                    <td>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        {c.ep_is_setup && (
+                          <span className="pill" style={{ background: 'rgba(236, 72, 153, 0.2)', color: '#ec4899', border: '1px solid rgba(236, 72, 153, 0.4)', fontWeight: 'bold' }}>
+                            ⚡ EP (+{c.ep_gap_pct?.toFixed(1)}%, {c.ep_rel_vol?.toFixed(1)}x)
+                          </span>
+                        )}
+                        {c.parabolic_short_is_setup && (
+                          <span className="pill" style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.4)', fontWeight: 'bold' }}>
+                            📉 Para Climax (Short +{c.parabolic_runup_pct?.toFixed(0)}%{c.parabolic_up_days ? `, ${c.parabolic_up_days}d up` : ''})
+                          </span>
+                        )}
+                        {c.parabolic_long_is_setup && (
+                          <span className="pill" style={{ background: 'rgba(34, 197, 94, 0.2)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.4)', fontWeight: 'bold' }}>
+                            📈 Para Climax (Long {c.parabolic_runup_pct?.toFixed(0)}%, {c.dist_ema10_pct?.toFixed(0)}% EMA)
+                          </span>
+                        )}
+                        {c.vcp_is_setup && (
+                          <span className="pill pill-success" style={{ fontStyle: 'italic', fontWeight: 'bold' }}>
+                            🌀 VCP {c.vcp_troughs}T ({c.vcp_depths?.replace(/,/g, ' / ') + '%'})
+                          </span>
+                        )}
+                        {c.darvas_is_setup && (
+                          <span className="pill pill-success" style={{ fontStyle: 'italic', fontWeight: 'bold' }}>
+                            📦 Box (${c.darvas_box_bottom?.toFixed(2)}-${c.darvas_box_top?.toFixed(2)})
+                          </span>
+                        )}
+                        {!c.ep_is_setup && !c.parabolic_short_is_setup && !c.parabolic_long_is_setup && !c.vcp_is_setup && !c.darvas_is_setup && (
+                          <span style={{ color: 'var(--text-secondary)' }}>Stage 2 Base</span>
+                        )}
+                      </div>
+                    </td>
+                    {(selectedDate !== 'latest' || filteredCandidates.some(c => c.entry_price !== null && c.entry_price !== undefined)) && (
+                      <>
+                        <td style={{ background: 'rgba(56, 189, 248, 0.03)' }}>
+                          {c.entry_price !== null && c.entry_price !== undefined ? (
+                            <div>
+                              <span style={{ fontWeight: '700', color: '#e2e8f0' }}>${c.entry_price.toFixed(2)}</span>
+                              <span style={{ fontSize: '10px', display: 'block', color: 'var(--text-secondary)' }}>{c.entry_date}</span>
+                            </div>
+                          ) : (
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>Pending T+1</span>
+                          )}
+                        </td>
 
-      {/* Setup Strategy Guide Modal */}
-      {showSetupGuideModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.85)',
-          backdropFilter: 'blur(8px)',
-          zIndex: 9999,
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          padding: '20px'
-        }}
-          onClick={() => setShowSetupGuideModal(false)}
-        >
-          <div style={{
-            width: '100%',
-            maxWidth: '920px',
-            maxHeight: '90vh',
-            background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-            border: '1px solid rgba(56, 189, 248, 0.3)',
-            borderRadius: '12px',
-            boxShadow: '0 25px 60px rgba(0, 0, 0, 0.8)',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden'
-          }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div style={{
-              padding: '18px 24px',
-              borderBottom: '1px solid var(--border-color)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              background: 'rgba(30, 41, 59, 0.6)'
-            }}>
-              <div>
-                <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#38bdf8', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  📖 Setup Strategy Guide & Execution Rules
-                </h2>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-                  Comprehensive breakdown of quantitative filters, trading rules, and original strategy rationale.
-                </p>
-              </div>
+                        <td style={{ background: 'rgba(56, 189, 248, 0.03)' }}>
+                          {c.return_5d !== null && c.return_5d !== undefined ? (
+                            <span className={`pill ${c.return_5d >= 0 ? 'pill-success' : 'pill-danger'}`} style={{ fontWeight: 'bold' }}>
+                              {c.return_5d >= 0 ? '+' : ''}{c.return_5d.toFixed(1)}%
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>N/A</span>
+                          )}
+                        </td>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <a
-                  href="https://qullamaggie.com/my-3-timeless-setups-that-have-made-me-tens-of-millions/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    padding: '6px 12px',
-                    background: 'rgba(245, 158, 11, 0.15)',
-                    border: '1px solid rgba(245, 158, 11, 0.4)',
-                    color: '#f59e0b',
-                    borderRadius: '6px',
-                    textDecoration: 'none',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px'
-                  }}
-                >
-                  🌐 Qullamaggie Original Blog Post ↗
-                </a>
+                        <td style={{ background: 'rgba(56, 189, 248, 0.03)' }}>
+                          {c.max_runup_5d !== null && c.max_runup_5d !== undefined ? (
+                            <div style={{ fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                              <span style={{ color: 'var(--accent-success)', fontWeight: '600' }}>▲ +{c.max_runup_5d.toFixed(1)}%</span>
+                              <span style={{ color: 'var(--accent-danger)', fontWeight: '600' }}>▼ {c.max_drawdown_5d.toFixed(1)}%</span>
+                            </div>
+                          ) : (
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>N/A</span>
+                          )}
+                        </td>
 
-                <button
-                  onClick={() => setShowSetupGuideModal(false)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--text-secondary)',
-                    fontSize: '22px',
-                    cursor: 'pointer',
-                    padding: '0 4px',
-                    lineHeight: 1
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
+                        <td style={{ background: 'rgba(56, 189, 248, 0.03)' }}>
+                          {c.return_20d !== null && c.return_20d !== undefined ? (
+                            <span className={`pill ${c.return_20d >= 0 ? 'pill-success' : 'pill-danger'}`} style={{ fontWeight: 'bold' }}>
+                              {c.return_20d >= 0 ? '+' : ''}{c.return_20d.toFixed(1)}%
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>N/A</span>
+                          )}
+                        </td>
 
-            {/* Modal Sub-Header Navigation Tabs */}
-            <div style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '6px',
-              padding: '12px 24px',
-              borderBottom: '1px solid var(--border-color)',
-              background: 'rgba(15, 23, 42, 0.8)',
-            }}>
-              {[
-                { id: 'power_play', label: '🚀 Power Play', color: '#38bdf8' },
-                { id: 'qullamaggie_breakout', label: '🎯 Breakout', color: '#f59e0b' },
-                { id: 'episodic_pivot', label: '⚡ Episodic Pivot (EP)', color: '#ec4899' },
-                { id: 'parabolic_climax', label: '🌋 Parabolic Climax', color: '#ef4444' },
-                { id: 'stage2', label: '📈 Stage 2 Baseline', color: '#94a3b8' },
-              ].map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveGuideTab(tab.id)}
-                  style={{
-                    padding: '6px 12px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    borderRadius: '6px',
-                    whiteSpace: 'nowrap',
-                    cursor: 'pointer',
-                    border: activeGuideTab === tab.id ? `1px solid ${tab.color}` : '1px solid rgba(255,255,255,0.1)',
-                    background: activeGuideTab === tab.id ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.03)',
-                    color: activeGuideTab === tab.id ? tab.color : 'var(--text-secondary)'
-                  }}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Modal Body / Scrollable Content */}
-            <div style={{
-              padding: '24px',
-              flex: 1,
-              overflowY: 'auto',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '20px',
-              color: '#f8fafc',
-              fontSize: '13px',
-              lineHeight: '1.6'
-            }}>
-              {/* General Qullamaggie Risk & Sizing Rules Banner */}
-              {['qullamaggie_breakout', 'episodic_pivot', 'parabolic_climax', 'parabolic_short'].includes(activeGuideTab) && (
-                <div style={{
-                  padding: '14px 18px',
-                  background: 'rgba(245, 158, 11, 0.08)',
-                  border: '1px solid rgba(245, 158, 11, 0.3)',
-                  borderRadius: '8px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '6px'
-                }}>
-                  <h4 style={{ margin: 0, fontSize: '13px', color: '#f59e0b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    💡 Kristjan Qullamaggie's Position Sizing & Risk Rules
-                  </h4>
-                  <blockquote style={{ margin: '4px 0 0 0', paddingLeft: '12px', borderLeft: '3px solid #f59e0b', color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '12px' }}>
-                    "I don't believe you should ever have more than 30% of your account overnight in any stock or ETF. Most of my positions are 10-20% of account size. My risk on most trades is usually 0.25-1%. I rarely risk more than 1% of my account on any trade."
-                  </blockquote>
-                </div>
-              )}
-
-              {/* Tab 1: Qullamaggie Breakout */}
-              {activeGuideTab === 'qullamaggie_breakout' && (
-                <>
-                  <div>
-                    <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#f59e0b', margin: '0 0 8px 0' }}>
-                      🎯 Breakouts (High-Tight Flag / Momentum Consolidation)
-                    </h3>
-                    <p style={{ color: 'var(--text-secondary)' }}>
-                      <em>"If you study thousands of the biggest winning stocks over the past 100 years they tend to move in stair steps. Meaning they will make a 20-50%+ move, pull back and go sideways for a while, then make another move."</em>
-                    </p>
-                  </div>
-
-                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
-                    <h4 style={{ color: '#38bdf8', marginTop: 0 }}>Step 1: Finding Leading Stocks</h4>
-                    <p style={{ margin: 0 }}>
-                      Scan for the top 1% or 2% of stocks that are up the most over 3 timeframes: <strong>1-Month</strong>, <strong>3-Month</strong>, and <strong>6-Month</strong>.
-                    </p>
-                  </div>
-
-                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
-                    <h4 style={{ color: '#38bdf8', marginTop: 0 }}>The 3 Steps to the Setup</h4>
-                    <ol style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <li><strong>Big Expansion Leg:</strong> A massive move higher (+30% to +100%+) within the prior 1-3 months.</li>
-                      <li><strong>Orderly Pullback:</strong> An orderly pullback/consolidation with higher lows and tightening range (2 weeks to 2 months), while "surfing" the rising 10-day and 20-day EMAs.</li>
-                      <li><strong>Range Expansion:</strong> A breakout out of the tight consolidation level.</li>
-                    </ol>
-                  </div>
-
-                  <div style={{ background: 'rgba(245, 158, 11, 0.05)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
-                    <h4 style={{ color: '#f59e0b', marginTop: 0 }}>Trade Execution & Rules</h4>
-                    <ol style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <li><strong>Watchlist & Alerts:</strong> Prepare watchlist before open, calculate exact share count based on risk (0.25-1% of account).</li>
-                      <li><strong>Entry Trigger:</strong> Enter on Opening Range Highs (1-min, 5-min, or 60-min ORH, or daily breakout).</li>
-                      <li><strong>Stop Loss:</strong> Stop is ALWAYS Low of Day (LOD). Stop must NOT be wider than 1 ATR or ADR of the stock.</li>
-                      <li><strong>Profit Taking & Trailing Exit:</strong> Sell 1/3 to 1/2 of position after 3-5 days. Move stop to break-even. Trail the rest with the 10-day EMA (exit on first daily CLOSE below 10 EMA).</li>
-                    </ol>
-                  </div>
-                </>
-              )}
-
-              {/* Tab 2: Episodic Pivot */}
-              {activeGuideTab === 'episodic_pivot' && (
-                <>
-                  <div>
-                    <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#ec4899', margin: '0 0 8px 0' }}>
-                      ⚡ The Episodic Pivot (EP)
-                    </h3>
-                    <p style={{ color: 'var(--text-secondary)' }}>
-                      <em>"The Episodic Pivot is triggered by unexpected positive news that creates a significant shift in market perception. When unexpected good news hits a stock—particularly one that has been previously neglected—it acts as a catalyst for substantial, prolonged price moves that can last for months or even years."</em>
-                    </p>
-                  </div>
-
-                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
-                    <h4 style={{ color: '#ec4899', marginTop: 0 }}>Key Characteristics of an EP</h4>
-                    <ul style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <li><strong>The Fundamental Catalyst:</strong> Blockbuster quarterly earnings/revenue beat, massive guidance raise, FDA drug approval, or major contract win.</li>
-                      <li><strong>Explosive Opening Gap:</strong> Price gaps up <strong>&ge; 8% to 15%+</strong> at market open.</li>
-                      <li><strong>Volume Explosion:</strong> Day-1 volume explodes to <strong>&ge; 2.5x to 5.0x+</strong> the 50-day average volume.</li>
-                      <li><strong>Multi-Month Prior Base:</strong> Emerging out of a sideways, multi-month neglected base pattern.</li>
-                    </ul>
-                  </div>
-
-                  <div style={{ background: 'rgba(236, 72, 153, 0.05)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(236, 72, 153, 0.2)' }}>
-                    <h4 style={{ color: '#ec4899', marginTop: 0 }}>Trade Execution</h4>
-                    <ol style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <li><strong>Entry:</strong> Buy at the open or on Opening Range High (ORH) of the first 1-min / 5-min candle.</li>
-                      <li><strong>Stop Loss:</strong> Set stop at Low of Day (LOD) or VWAP failure.</li>
-                      <li><strong>Exit:</strong> Take partial profits after 3-5 days, trail remaining position with 10-day / 20-day EMA.</li>
-                    </ol>
-                  </div>
-                </>
-              )}
-
-              {/* Tab 3: Parabolic Climax */}
-              {(activeGuideTab === 'parabolic_climax' || activeGuideTab === 'parabolic_short') && (
-                <>
-                  <div>
-                    <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#ef4444', margin: '0 0 8px 0' }}>
-                      🌋 The Parabolic Climax Setup (Short & Long)
-                    </h3>
-                    <p style={{ color: 'var(--text-secondary)' }}>
-                      <em>"The Parabolic Climax is a high-risk, high-reward strategy based on the concept that stocks stretched too far, too fast become like 'stretched rubber bands' prone to powerful snapbacks. This setup screens both overextended short setups and oversold long bounce setups."</em>
-                    </p>
-                  </div>
-
-                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
-                    <h4 style={{ color: '#ef4444', marginTop: 0 }}>1. Parabolic Short (Overextended Top)</h4>
-                    <ul style={{ margin: 0, paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <li><strong>Vertical Acceleration:</strong> +40% to +100%+ run-up over 3–10 days without consolidation.</li>
-                      <li><strong>Consecutive Up Days:</strong> Stock is up <strong>&ge; 3 to 5+ days in a row</strong> (consecutive higher closes).</li>
-                      <li><strong>EMA Extension:</strong> Price extended <strong>&ge; 18% to 25%+</strong> above its rising 10-day EMA.</li>
-                      <li><strong>Short Trigger:</strong> Wait for momentum exhaustion—first red day, breaking previous day low, or 5-min VWAP breakdown.</li>
-                      <li><strong>Stop & Target:</strong> Stop is strictly set at High of Day (HOD). Cover target is mean-reversion to 10 EMA & 20 EMA.</li>
-                    </ul>
-                  </div>
-
-                  <div style={{ background: 'rgba(34, 197, 94, 0.05)', padding: '16px', borderRadius: '8px', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
-                    <h4 style={{ color: '#22c55e', marginTop: 0 }}>2. Parabolic Long (Oversold Bounce)</h4>
-                    <p style={{ margin: 0 }}>
-                      After a stock collapses <strong>&le; -30% over 3–10 days</strong> and extends <strong>&le; -18% below its 10-day EMA</strong>, look for an entry on Opening Range Highs (ORH) for a fast mean-reversion bounce back to the moving averages.
-                    </p>
-                  </div>
-                </>
-              )}
-
-              {/* Tab 4: Power Play */}
-              {activeGuideTab === 'power_play' && (
-                <>
-                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#38bdf8', margin: '0 0 8px 0' }}>🚀 Power Play (High Tight Flag)</h3>
-                  <p>Minervini's most explosive setup: stock shoots up 100%+ in less than 8 weeks, followed by a tight high-level consolidation (&le;25% depth) for at least 12 trading days while volume contracts heavily.</p>
-                </>
-              )}
-
-              {/* Tab 5: VCP Setup */}
-              {activeGuideTab === 'vcp' && (
-                <>
-                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#10b981', margin: '0 0 8px 0' }}>⚡ Volatility Contraction Pattern (VCP)</h3>
-                  <p>Minervini's signature pattern: supply dries up through contracting swings (T1 &gt; T2 &gt; T3) near 52-week highs with final contraction &le; 10-12% and RS Rank &ge; 70.</p>
-                </>
-              )}
-
-              {/* Tab 6: Darvas Box */}
-              {activeGuideTab === 'darvas' && (
-                <>
-                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#8b5cf6', margin: '0 0 8px 0' }}>📦 Nicolas Darvas Box Setup</h3>
-                  <p>Stock consolidates in a well-defined rectangular price box (unbreached 3-day top & bottom, box width &le; 25%) during a confirmed Stage 2 uptrend.</p>
-                </>
-              )}
-
-              {/* Tab 7: New Leaders */}
-              {activeGuideTab === 'new_leaders' && (
-                <>
-                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#eab308', margin: '0 0 8px 0' }}>🌟 New Leaders (Market Low Turn)</h3>
-                  <p>Stocks demonstrating resilience during market corrections: trading near 52-week highs (&le;25%), surging sharply off market lows (&ge;20%), and leading with top RS rank (&ge;80).</p>
-                </>
-              )}
-
-              {/* Tab 8: IPO Base */}
-              {activeGuideTab === 'ipo_base' && (
-                <>
-                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#06b6d4', margin: '0 0 8px 0' }}>📅 IPO Base Setup</h3>
-                  <p>Recently listed companies (10 to 350 trading days age) building their first primary base within 25% of all-time highs.</p>
-                </>
-              )}
-
-              {/* Tab 9: Stage 2 Baseline */}
-              {activeGuideTab === 'stage2' && (
-                <>
-                  <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#94a3b8', margin: '0 0 8px 0' }}>📈 Stage 2 Trend Baseline</h3>
-                  <p>Minervini Trend Template: Stock Price &gt; 50d SMA &gt; 150d SMA &gt; 200d SMA with 200d SMA trending upward for at least 1 month.</p>
-                </>
-              )}
-            </div>
+                        <td style={{ background: 'rgba(56, 189, 248, 0.03)' }}>
+                          {c.max_runup_20d !== null && c.max_runup_20d !== undefined ? (
+                            <div style={{ fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                              <span style={{ color: 'var(--accent-success)', fontWeight: '600' }}>▲ +{c.max_runup_20d.toFixed(1)}%</span>
+                              <span style={{ color: 'var(--accent-danger)', fontWeight: '600' }}>▼ {c.max_drawdown_20d.toFixed(1)}%</span>
+                            </div>
+                          ) : (
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>N/A</span>
+                          )}
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+                {filteredCandidates.length === 0 && (
+                  <tr>
+                    <td colSpan={12 + (enablePowerPlay ? 3 : 0) + (enableIpoBase ? 3 : 0) + (enableNewLeaders ? 3 : 0) + ((enablePivotTightness || enableVcpSetup) ? 3 : 0) + ((selectedDate !== 'latest' || filteredCandidates.some(c => c.entry_price !== null && c.entry_price !== undefined)) ? 5 : 0)} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                      No candidates matching current config rules found in database cache. Run "Sync Database Tickers" to evaluate stocks.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

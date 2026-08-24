@@ -130,6 +130,9 @@ class DatabaseManager:
                     parabolic_runup_pct DOUBLE,
                     parabolic_drop_pct DOUBLE,
                     parabolic_up_days INTEGER,
+                    pivot_spread_pct DOUBLE,
+                    pivot_close_clustering_pct DOUBLE,
+                    pivot_vol_ratio DOUBLE,
                     PRIMARY KEY (symbol, date)
                 );
             """)
@@ -177,6 +180,9 @@ class DatabaseManager:
                 ("parabolic_runup_pct", "DOUBLE"),
                 ("parabolic_drop_pct", "DOUBLE"),
                 ("parabolic_up_days", "INTEGER"),
+                ("pivot_spread_pct", "DOUBLE"),
+                ("pivot_close_clustering_pct", "DOUBLE"),
+                ("pivot_vol_ratio", "DOUBLE"),
             ]
             for col_name, col_type in new_cols:
                 try:

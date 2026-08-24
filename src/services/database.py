@@ -142,6 +142,18 @@ class DatabaseService:
                 where_clauses.append("db.atr_20d IS NOT NULL AND db.atr_20d >= ?")
                 params.append(float(min_atr))
 
+            # Pivot Tightness & Volume Dry-Up (VDU) Filter
+            if get_f("enable_pivot_tightness", "enablePivotTightness", False):
+                max_pivot_spread = get_f("max_pivot_spread", "maxPivotSpreadFilter", 8.0)
+                max_pivot_clustering = get_f("max_pivot_clustering", "maxPivotClusteringFilter", 3.0)
+                max_pivot_vol_ratio = get_f("max_pivot_vol_ratio", "maxPivotVolRatioFilter", 0.8)
+                where_clauses.append("db.pivot_spread_pct IS NOT NULL AND db.pivot_spread_pct <= ?")
+                params.append(float(max_pivot_spread))
+                where_clauses.append("db.pivot_close_clustering_pct IS NOT NULL AND db.pivot_close_clustering_pct <= ?")
+                params.append(float(max_pivot_clustering))
+                where_clauses.append("(db.volume / NULLIF(db.vol_50d_ma, 0)) <= ?")
+                params.append(float(max_pivot_vol_ratio))
+
             # RS Rank New High
             if get_f("enable_rs_new_high", "enableRsNewHigh", False):
                 where_clauses.append("COALESCE(db.is_52w_high, false) = true")
@@ -322,6 +334,9 @@ class DatabaseService:
                     db.parabolic_long_is_setup,
                     db.parabolic_runup_pct,
                     db.parabolic_up_days,
+                    db.pivot_spread_pct,
+                    db.pivot_close_clustering_pct,
+                    db.pivot_vol_ratio,
                     s.sector,
                     s.industry,
                     s.name
@@ -374,11 +389,11 @@ class DatabaseService:
             
             candidates = []
             for row in res:
-                sec_val = row[49]
+                sec_val = row[52]
                 sec_rank = sector_ranks.get(sec_val) if sec_val else None
                 candidates.append({
                     "symbol": row[0],
-                    "name": row[51],
+                    "name": row[54],
                     "close": row[1],
                     "vol_50d_ma": row[2],
                     "rs_score": row[3],
@@ -389,7 +404,6 @@ class DatabaseService:
                     "eps_qoq_growth": row[8],
                     "total_revenue": row[9],
                     "exchange": row[10],
-                    "adr_20d": row[11],
                     "atr_20d": row[11],
                     "pp_runup_pct": row[12],
                     "pp_drawdown_pct": row[13],
@@ -428,9 +442,12 @@ class DatabaseService:
                     "parabolic_long_is_setup": bool(row[46]) if row[46] is not None else False,
                     "parabolic_runup_pct": row[47],
                     "parabolic_up_days": row[48],
+                    "pivot_spread_pct": row[49],
+                    "pivot_close_clustering_pct": row[50],
+                    "pivot_vol_ratio": row[51],
                     "sector": sec_val,
                     "sector_rank": sec_rank,
-                    "industry": row[50],
+                    "industry": row[53],
                     "screen_date": actual_date_str
                 })
 

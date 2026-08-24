@@ -143,6 +143,12 @@ function App() {
 
   const [enableAtr, setEnableAtr] = useState(false);
 
+  // Pivot Tightness (VDU) Filter
+  const [enablePivotTightness, setEnablePivotTightness] = useState(false);
+  const [maxPivotSpreadFilter, setMaxPivotSpreadFilter] = useState(8.0);
+  const [maxPivotClusteringFilter, setMaxPivotClusteringFilter] = useState(3.0);
+  const [maxPivotVolRatioFilter, setMaxPivotVolRatioFilter] = useState(0.8);
+
   // New Leaders optional filter checkboxes
   const [enable52wDist, setEnable52wDist] = useState(true);
   const [enableSurgeOffLow, setEnableSurgeOffLow] = useState(true);
@@ -441,6 +447,10 @@ function App() {
     enableRs,
     enableRsNewHigh,
     enableAtr,
+    enablePivotTightness,
+    maxPivotSpreadFilter,
+    maxPivotClusteringFilter,
+    maxPivotVolRatioFilter,
     enable52wDist,
     enableSurgeOffLow,
     enableNewLeadersRs,
@@ -763,6 +773,14 @@ function App() {
             setEnableRsNewHigh={setEnableRsNewHigh}
             enableAtr={enableAtr}
             setEnableAtr={setEnableAtr}
+            enablePivotTightness={enablePivotTightness}
+            setEnablePivotTightness={setEnablePivotTightness}
+            maxPivotSpreadFilter={maxPivotSpreadFilter}
+            setMaxPivotSpreadFilter={setMaxPivotSpreadFilter}
+            maxPivotClusteringFilter={maxPivotClusteringFilter}
+            setMaxPivotClusteringFilter={setMaxPivotClusteringFilter}
+            maxPivotVolRatioFilter={maxPivotVolRatioFilter}
+            setMaxPivotVolRatioFilter={setMaxPivotVolRatioFilter}
             enable52wDist={enable52wDist}
             setEnable52wDist={setEnable52wDist}
             enableSurgeOffLow={enableSurgeOffLow}

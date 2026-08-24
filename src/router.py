@@ -148,13 +148,21 @@ class CandidateFilterSchema(BaseModel):
     max_darvas_width: Optional[float] = None
     maxDarvasWidthFilter: Optional[float] = None
 
-    # General RS / ATR
+    # General RS / ATR / Pivot Tightness
     enable_rs: Optional[bool] = None
     enableRs: Optional[bool] = None
     enable_rs_new_high: Optional[bool] = None
     enableRsNewHigh: Optional[bool] = None
     enable_atr: Optional[bool] = None
     enableAtr: Optional[bool] = None
+    enable_pivot_tightness: Optional[bool] = None
+    enablePivotTightness: Optional[bool] = None
+    max_pivot_spread: Optional[float] = None
+    maxPivotSpreadFilter: Optional[float] = None
+    max_pivot_clustering: Optional[float] = None
+    maxPivotClusteringFilter: Optional[float] = None
+    max_pivot_vol_ratio: Optional[float] = None
+    maxPivotVolRatioFilter: Optional[float] = None
 
     # New Leaders
     enable_52w_dist: Optional[bool] = None

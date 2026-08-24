@@ -43,6 +43,10 @@ export function filterCandidates(candidates, filters) {
     enableRs,
     enableRsNewHigh,
     enableAtr,
+    enablePivotTightness,
+    maxPivotSpreadFilter,
+    maxPivotClusteringFilter,
+    maxPivotVolRatioFilter,
     // New Leaders setup states
     enableNewLeaders,
     max52wDistFilter,
@@ -78,6 +82,13 @@ export function filterCandidates(candidates, filters) {
     // Optional ATR filter
     if (enableAtr) {
       if (c.atr_20d !== null && c.atr_20d !== undefined && c.atr_20d < minAtrFilter) return false;
+    }
+
+    // Optional Pivot Tightness (VDU) filter
+    if (enablePivotTightness) {
+      if (c.pivot_spread_pct !== null && c.pivot_spread_pct !== undefined && c.pivot_spread_pct > maxPivotSpreadFilter) return false;
+      if (c.pivot_close_clustering_pct !== null && c.pivot_close_clustering_pct !== undefined && c.pivot_close_clustering_pct > maxPivotClusteringFilter) return false;
+      if (c.volume && c.vol_50d_ma && (c.volume / c.vol_50d_ma) > maxPivotVolRatioFilter) return false;
     }
 
     // General RS Rank New High filter
