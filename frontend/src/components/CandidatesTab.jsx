@@ -111,8 +111,6 @@ export default function CandidatesTab({
   setEnableIpoDepth,
   enableVcpEpsGrowth,
   setEnableVcpEpsGrowth,
-  enableVcpRsPercentile,
-  setEnableVcpRsPercentile,
   enableVcpPattern,
   setEnableVcpPattern,
   enableDarvasPattern,
@@ -358,7 +356,8 @@ export default function CandidatesTab({
             <button
               type="button"
               onClick={() => {
-                setEnablePowerPlay(true);
+                const next = !enablePowerPlay;
+                setEnablePowerPlay(next);
                 setEnableQullamaggieBreakout(false);
                 setEnableEpisodicPivot(false);
                 if (setEnableParabolicClimax) setEnableParabolicClimax(false);
@@ -368,6 +367,10 @@ export default function CandidatesTab({
                 setEnableVcpSetup(false);
                 setEnableDarvasBox(false);
                 setEnableNewLeaders(false);
+                if (next) {
+                  setEnforceStage2(false);
+                  setEnableRs(false);
+                }
               }}
               style={{
                 padding: '5px 12px',
@@ -389,7 +392,8 @@ export default function CandidatesTab({
             <button
               type="button"
               onClick={() => {
-                setEnableQullamaggieBreakout(true);
+                const next = !enableQullamaggieBreakout;
+                setEnableQullamaggieBreakout(next);
                 setEnablePowerPlay(false);
                 setEnableEpisodicPivot(false);
                 if (setEnableParabolicClimax) setEnableParabolicClimax(false);
@@ -399,6 +403,10 @@ export default function CandidatesTab({
                 setEnableVcpSetup(false);
                 setEnableDarvasBox(false);
                 setEnableNewLeaders(false);
+                if (next) {
+                  setEnforceStage2(false);
+                  setEnableRs(false);
+                }
               }}
               style={{
                 padding: '5px 12px',
@@ -420,7 +428,8 @@ export default function CandidatesTab({
             <button
               type="button"
               onClick={() => {
-                setEnableEpisodicPivot(true);
+                const next = !enableEpisodicPivot;
+                setEnableEpisodicPivot(next);
                 setEnablePowerPlay(false);
                 setEnableQullamaggieBreakout(false);
                 if (setEnableParabolicClimax) setEnableParabolicClimax(false);
@@ -430,6 +439,10 @@ export default function CandidatesTab({
                 setEnableVcpSetup(false);
                 setEnableDarvasBox(false);
                 setEnableNewLeaders(false);
+                if (next) {
+                  setEnforceStage2(false);
+                  setEnableRs(false);
+                }
               }}
               style={{
                 padding: '5px 12px',
@@ -451,7 +464,8 @@ export default function CandidatesTab({
             <button
               type="button"
               onClick={() => {
-                if (setEnableParabolicClimax) setEnableParabolicClimax(true);
+                const next = !isParabolicActive;
+                if (setEnableParabolicClimax) setEnableParabolicClimax(next);
                 if (setEnableParabolicShort) setEnableParabolicShort(false);
                 if (setEnableParabolicLong) setEnableParabolicLong(false);
                 setEnablePowerPlay(false);
@@ -461,6 +475,10 @@ export default function CandidatesTab({
                 setEnableVcpSetup(false);
                 setEnableDarvasBox(false);
                 setEnableNewLeaders(false);
+                if (next) {
+                  setEnforceStage2(false);
+                  setEnableRs(false);
+                }
               }}
               style={{
                 padding: '5px 12px',
@@ -482,15 +500,22 @@ export default function CandidatesTab({
             <button
               type="button"
               onClick={() => {
-                setEnableVcpSetup(true);
-                setEnforceStage2(true);
+                const next = !enableVcpSetup;
+                setEnableVcpSetup(next);
                 setEnablePowerPlay(false);
                 setEnableQullamaggieBreakout(false);
                 setEnableEpisodicPivot(false);
-                setEnableParabolicShort(false);
+                if (setEnableParabolicClimax) setEnableParabolicClimax(false);
+                if (setEnableParabolicShort) setEnableParabolicShort(false);
+                if (setEnableParabolicLong) setEnableParabolicLong(false);
                 setEnableIpoBase(false);
                 setEnableDarvasBox(false);
                 setEnableNewLeaders(false);
+                if (next) {
+                  setEnforceStage2(true);
+                  setEnableRs(true);
+                  setMinRsFilter(70);
+                }
               }}
               style={{
                 padding: '5px 12px',
@@ -652,166 +677,36 @@ export default function CandidatesTab({
                 <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
                   <li><strong>1-Month Momentum Leader:</strong> 1-month gain &ge; {min1mRetFilter}% {enable1mRet ? '(Active)' : '(Disabled)'}</li>
                   <li><strong>EMA Surfing:</strong> Price holding above/near 10-day & 20-day EMAs {enableEmaSurfing ? '(Active)' : '(Disabled)'}</li>
-                  <li><strong>Stage 2 Trend:</strong> {enforceStage2 ? 'Enforced (Close > SMA50 > SMA150 > SMA200)' : 'Optional (Waived)'}</li>
+                  <li><strong>Stage 2 Trend:</strong> {enforceStage2 ? 'Enforced (Close > 50 > 150 > 200, SMA200 ↗ (1M), 52w Hi ≤25%, Lo ≥30%)' : 'Optional (Waived)'}</li>
                 </ul>
               ) : enableEpisodicPivot ? (
                 <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
                   <li><strong>Fundamental Gap-Up:</strong> Opening gap &ge; {minEpGapFilter}% {enableEpGap ? '(Active)' : '(Disabled)'}</li>
                   <li><strong>Relative Volume:</strong> 50d Relative Volume &ge; {minEpRelVolFilter}x {enableEpRelVol ? '(Active)' : '(Disabled)'}</li>
-                  <li><strong>Stage 2 Trend:</strong> {enforceStage2 ? 'Enforced (Close > SMA50 > SMA150 > SMA200)' : 'Optional (Waived)'}</li>
+                  <li><strong>Stage 2 Trend:</strong> {enforceStage2 ? 'Enforced (Close > 50 > 150 > 200, SMA200 ↗ (1M), 52w Hi ≤25%, Lo ≥30%)' : 'Optional (Waived)'}</li>
                 </ul>
               ) : isParabolicActive ? (
                 <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
                   <li><strong>Short Climax (Overextended Top):</strong> Rapid run-up &ge; {minParabolicRunupFilter}% over 3-10 days {enableParabolicRunup ? '(Active)' : '(Disabled)'}, &ge;{minParabolicUpDaysFilter} up days {enableParabolicUpDays ? '(Active)' : '(Disabled)'}, 10 EMA dist &ge; {minParabolicEmaDistFilter}% {enableParabolicEmaDist ? '(Active)' : '(Disabled)'}</li>
                   <li><strong>Long Climax (Oversold Bottom):</strong> Rapid drop &le; -30% over 3-10 days, 10 EMA dist &le; -18%</li>
                   <li><strong>Merged Table:</strong> Result table contains both short-side breakdown candidates & long-side oversold bounce candidates.</li>
-                  <li><strong>Stage 2 Trend:</strong> {enforceStage2 ? 'Enforced (Close > SMA50 > SMA150 > SMA200)' : 'Optional (Waived)'}</li>
+                  <li><strong>Stage 2 Trend:</strong> {enforceStage2 ? 'Enforced (Close > 50 > 150 > 200, SMA200 ↗ (1M), 52w Hi ≤25%, Lo ≥30%)' : 'Optional (Waived)'}</li>
                 </ul>
               ) : enableVcpSetup ? (
                 <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
-                  <li><strong>Stage 2 Trend Template:</strong> Required (Close &gt; SMA50 &gt; SMA150 &gt; SMA200)</li>
+                  <li><strong>Stage 2 Trend Template:</strong> Required (Close &gt; 50 &gt; 150 &gt; 200, SMA200 ↗ (1M), 52w Hi &le;25%, Lo &ge;30%)</li>
                   <li><strong>VCP Contraction Pattern:</strong> Successive price contractions (2–4 troughs) with final tight contraction &le;12% depth {enableVcpPattern ? '(Active)' : '(Disabled)'}</li>
-                  <li><strong>Min RS Percentile:</strong> RS Rank &ge; {minRsFilter} percentile {enableVcpRsPercentile ? '(Active)' : '(Disabled)'}</li>
+                  <li><strong>Relative Strength:</strong> {enableRs ? `RS Rank ≥ ${minRsFilter} (Active)` : 'RS Rank Filter (Waived / Inactive)'}</li>
                   <li><strong>QoQ EPS Growth:</strong> Quarterly EPS growth &ge; {minEpsGrowthFilter}% {enableVcpEpsGrowth ? '(Active)' : '(Disabled)'}</li>
                 </ul>
               ) : (
                 <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '6px 16px', fontSize: '12px', color: 'var(--text-primary)' }}>
-                  <li><strong>Moving Average Alignment:</strong> Close &gt; SMA(50) &gt; SMA(150) &gt; SMA(200) {enforceStage2 ? '(Enforced)' : '(Disabled / Optional)'}</li>
+                  <li><strong>Stage 2 Trend Template:</strong> Close &gt; SMA(50) &gt; SMA(150) &gt; SMA(200), SMA(200) ↗ (1M lookback), 52w Hi &le;25%, 52w Lo &ge;30% {enforceStage2 ? '(Enforced)' : '(Disabled / Optional)'}</li>
                   <li><strong>Liquidity Baseline:</strong> Min stock price &ge; ${minPriceFilter.toFixed(2)} and 50d Volume MA &ge; {minVolFilter.toLocaleString()}</li>
                   <li><strong>Relative Strength:</strong> {enableRs ? `RS Rank ≥ ${minRsFilter}` : enableRsNewHigh ? 'Must be making a 52-week RS Rank High' : 'RS Rank calculated dynamically'}</li>
                   {enableAtr && <li><strong>Daily ATR:</strong> &ge; {minAtrFilter.toFixed(1)}%</li>}
                 </ul>
               )}
-            </div>
-
-            {/* Active Strategy Rules Description Box */}
-            <div style={{
-              padding: '16px',
-              background: 'rgba(30, 41, 59, 0.4)',
-              border: '1px dashed rgba(148, 163, 184, 0.2)',
-              borderRadius: '8px'
-            }}>
-              <h4 style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-color)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Active Screening Filters
-              </h4>
-              <div style={{ display: 'flex', gap: '12px 24px', flexWrap: 'wrap', fontSize: '13px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ color: 'var(--accent-color)' }}>📈</span>
-                  <span style={{ color: 'var(--text-secondary)' }}>Price:</span>
-                  <strong style={{ color: 'var(--text-primary)' }}>&ge; ${minPriceFilter.toFixed(2)}</strong>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ color: 'var(--accent-color)' }}>📊</span>
-                  <span style={{ color: 'var(--text-secondary)' }}>Vol SMA (50d):</span>
-                  <strong style={{ color: 'var(--text-primary)' }}>&ge; {minVolFilter.toLocaleString()}</strong>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ color: enforceStage2 ? 'var(--accent-success)' : 'var(--text-secondary)' }}>⚡</span>
-                  <span style={{ color: 'var(--text-secondary)' }}>Trend Template:</span>
-                  <strong style={{ color: enforceStage2 ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
-                    {enforceStage2 ? 'SMA(50) > SMA(150) > SMA(200)' : 'Optional (Disabled)'}
-                  </strong>
-                </div>
-                {enableRs && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ color: 'var(--accent-color)' }}>🏆</span>
-                    <span style={{ color: 'var(--text-secondary)' }}>RS Rank:</span>
-                    <strong style={{ color: 'var(--text-primary)' }}>&ge; {minRsFilter}</strong>
-                  </div>
-                )}
-                {enableAtr && (
-                  <span className="pill pill-secondary" style={{ fontSize: '12px' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Daily ADTR:</span>
-                    <strong style={{ color: 'var(--text-primary)' }}>&ge; {minAtrFilter.toFixed(1)}%</strong>
-                  </span>
-                )}
-                {enableRsNewHigh && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ color: 'var(--accent-success)' }}>📈</span>
-                    <span style={{ color: 'var(--text-secondary)' }}>RS Rank:</span>
-                    <strong style={{ color: 'var(--text-primary)' }}>New High</strong>
-                  </div>
-                )}
-                {enablePowerPlay && (
-                  <>
-                    {enablePpRunup && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ color: '#38bdf8' }}>🚀</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>8w Run-up:</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>&ge; {minPpRunupFilter}%</strong>
-                      </div>
-                    )}
-                    {enablePpDrawdown && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ color: 'var(--accent-danger)' }}>📉</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>Max Drawdown:</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>&le; {maxPpDrawdownFilter}%</strong>
-                      </div>
-                    )}
-                  </>
-                )}
-                {enableQullamaggieBreakout && (
-                  <>
-                    {enable1mRet && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ color: '#f59e0b' }}>🎯</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>1m Gain:</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>&ge; {min1mRetFilter}%</strong>
-                      </div>
-                    )}
-                    {enableEmaSurfing && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ color: '#f59e0b' }}>🌊</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>EMA Surfing:</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>10/20 EMA</strong>
-                      </div>
-                    )}
-                  </>
-                )}
-                {enableEpisodicPivot && (
-                  <>
-                    {enableEpGap && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ color: '#ec4899' }}>⚡</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>EP Gap:</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>&ge; {minEpGapFilter}%</strong>
-                      </div>
-                    )}
-                    {enableEpRelVol && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ color: '#ec4899' }}>📊</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>Rel Vol:</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>&ge; {minEpRelVolFilter}x</strong>
-                      </div>
-                    )}
-                  </>
-                )}
-                {isParabolicActive && (
-                  <>
-                    {enableParabolicRunup && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ color: '#ef4444' }}>📈</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>Run-up:</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>&ge; {minParabolicRunupFilter}%</strong>
-                      </div>
-                    )}
-                    {enableParabolicEmaDist && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ color: '#ef4444' }}>📉</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>10 EMA Dist:</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>&ge; {minParabolicEmaDistFilter}%</strong>
-                      </div>
-                    )}
-                    {enableParabolicUpDays && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ color: '#ef4444' }}>🔥</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>Up Days:</span>
-                        <strong style={{ color: 'var(--text-primary)' }}>&ge; {minParabolicUpDaysFilter} consecutive</strong>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
             </div>
 
             {/* Dynamic Parameter Sliders / Inputs */}
@@ -994,7 +889,7 @@ export default function CandidatesTab({
                   height: '38px',
                   boxSizing: 'border-box'
                 }}>
-                  {enforceStage2 ? '⚡ SMA(50) > SMA(150) > SMA(200)' : '⚪ Stage 2 Trend Waived'}
+                  {enforceStage2 ? '⚡ Close > 50 > 150 > 200 (SMA200 ↗ (1M), 52w Hi ≤25%, Lo ≥30%)' : '⚪ Stage 2 Trend Waived'}
                 </div>
               </div>
 
@@ -1428,40 +1323,6 @@ export default function CandidatesTab({
                       boxSizing: 'border-box'
                     }}>
                       {enableVcpPattern ? '🌀 2-4 Troughs (Final ≤12%)' : '⚪ Pattern Rule Waived'}
-                    </div>
-                  </div>
-
-                  {/* Min RS Percentile */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableVcpRsPercentile ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableVcpRsPercentile}
-                        onChange={(e) => setEnableVcpRsPercentile(e.target.checked)}
-                        style={{ accentColor: '#10b981', cursor: 'pointer' }}
-                      />
-                      Min RS Percentile ({minRsFilter}):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="50"
-                        max="99"
-                        step="1"
-                        value={minRsFilter}
-                        disabled={!enableVcpRsPercentile}
-                        onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enableVcpRsPercentile ? 'pointer' : 'not-allowed', accentColor: '#10b981' }}
-                      />
-                      <input
-                        type="number"
-                        min="0"
-                        max="99"
-                        value={minRsFilter}
-                        disabled={!enableVcpRsPercentile}
-                        onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
                     </div>
                   </div>
 

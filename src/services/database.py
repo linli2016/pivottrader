@@ -120,11 +120,14 @@ class DatabaseService:
                 where_clauses.append("db.vol_50d_ma >= ?")
                 params.append(float(min_vol))
 
-            # Stage 2 Trend Template
+            # Stage 2 Trend Template (Combo Criteria)
             if get_f("enforce_stage2", "enforceStage2", False):
                 where_clauses.append(
                     "db.sma_50 IS NOT NULL AND db.sma_150 IS NOT NULL AND db.sma_200 IS NOT NULL "
-                    "AND db.sma_50 > db.sma_150 AND db.sma_150 > db.sma_200 AND db.close > db.sma_50"
+                    "AND db.close > db.sma_50 AND db.sma_50 > db.sma_150 AND db.sma_150 > db.sma_200 "
+                    "AND (db.sma_200_20d_ago IS NULL OR db.sma_200 > db.sma_200_20d_ago) "
+                    "AND (db.dist_from_52w_high IS NULL OR db.dist_from_52w_high <= 25.0) "
+                    "AND (db.surge_off_low_pct IS NULL OR db.surge_off_low_pct >= 30.0)"
                 )
 
             # Relative Strength Rank
@@ -184,14 +187,10 @@ class DatabaseService:
                 where_clauses.append("(db.dist_from_52w_high IS NULL OR db.dist_from_52w_high <= 15.0)")
                 if get_f("enable_vcp_pattern", "enableVcpPattern", True):
                     where_clauses.append("db.vcp_is_setup = true")
-                if get_f("enable_vcp_eps_growth", "enableVcpEpsGrowth", True):
+                if get_f("enable_vcp_eps_growth", "enableVcpEpsGrowth", False):
                     min_eps_growth = get_f("min_eps_growth_qoq", "minEpsGrowthFilter", 20.0)
                     where_clauses.append("f.eps_qoq_growth IS NOT NULL AND f.eps_qoq_growth >= ?")
                     params.append(float(min_eps_growth))
-                if get_f("enable_vcp_rs_percentile", "enableVcpRsPercentile", True):
-                    min_vcp_rs = get_f("min_rs_percentile", "minRsFilter", 70)
-                    where_clauses.append("db.rs_rank >= ?")
-                    params.append(float(min_vcp_rs))
 
             # Darvas Box Overlay
             if get_f("enable_darvas_box", "enableDarvasBox", False):

@@ -137,8 +137,6 @@ class CandidateFilterSchema(BaseModel):
     # VCP
     enable_vcp_eps_growth: Optional[bool] = None
     enableVcpEpsGrowth: Optional[bool] = None
-    enable_vcp_rs_percentile: Optional[bool] = None
-    enableVcpRsPercentile: Optional[bool] = None
     enable_vcp_pattern: Optional[bool] = None
     enableVcpPattern: Optional[bool] = None
 

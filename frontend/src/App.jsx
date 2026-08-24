@@ -131,8 +131,7 @@ function App() {
   const [enableIpoDist, setEnableIpoDist] = useState(true);
   const [enableIpoDepth, setEnableIpoDepth] = useState(true);
 
-  const [enableVcpEpsGrowth, setEnableVcpEpsGrowth] = useState(true);
-  const [enableVcpRsPercentile, setEnableVcpRsPercentile] = useState(true);
+  const [enableVcpEpsGrowth, setEnableVcpEpsGrowth] = useState(false);
   const [enableVcpPattern, setEnableVcpPattern] = useState(true);
 
   const [enableDarvasPattern, setEnableDarvasPattern] = useState(true);
@@ -436,7 +435,6 @@ function App() {
     enableIpoDist,
     enableIpoDepth,
     enableVcpEpsGrowth,
-    enableVcpRsPercentile,
     enableVcpPattern,
     enableDarvasPattern,
     enableDarvasWidth,
@@ -753,8 +751,6 @@ function App() {
             setEnableIpoDepth={setEnableIpoDepth}
             enableVcpEpsGrowth={enableVcpEpsGrowth}
             setEnableVcpEpsGrowth={setEnableVcpEpsGrowth}
-            enableVcpRsPercentile={enableVcpRsPercentile}
-            setEnableVcpRsPercentile={setEnableVcpRsPercentile}
             enableVcpPattern={enableVcpPattern}
             setEnableVcpPattern={setEnableVcpPattern}
             enableDarvasPattern={enableDarvasPattern}

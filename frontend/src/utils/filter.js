@@ -37,7 +37,6 @@ export function filterCandidates(candidates, filters) {
     enableIpoDist,
     enableIpoDepth,
     enableVcpEpsGrowth,
-    enableVcpRsPercentile,
     enableVcpPattern,
     enableDarvasPattern,
     enableDarvasWidth,
@@ -66,6 +65,9 @@ export function filterCandidates(candidates, filters) {
       if (c.sma_50 === null || c.sma_150 === null || c.sma_200 === null) return false;
       if (c.sma_50 <= c.sma_150 || c.sma_150 <= c.sma_200) return false;
       if (c.close < c.sma_50) return false;
+      if (c.sma_200_20d_ago !== null && c.sma_200_20d_ago !== undefined && c.sma_200 <= c.sma_200_20d_ago) return false;
+      if (c.dist_from_52w_high !== null && c.dist_from_52w_high !== undefined && c.dist_from_52w_high > 25.0) return false;
+      if (c.surge_off_low_pct !== null && c.surge_off_low_pct !== undefined && c.surge_off_low_pct < 30.0) return false;
     }
 
     // Optional Relative Strength (RS Rank) filter
@@ -126,9 +128,6 @@ export function filterCandidates(candidates, filters) {
 
       if (enableVcpEpsGrowth) {
         if (c.eps_qoq_growth !== null && c.eps_qoq_growth !== undefined && c.eps_qoq_growth < minEpsGrowthFilter) return false;
-      }
-      if (enableVcpRsPercentile) {
-        if (c.rs_rank !== null && c.rs_rank !== undefined && c.rs_rank < minRsFilter) return false;
       }
       if (enableVcpPattern) {
         if (!c.vcp_is_setup) return false;
