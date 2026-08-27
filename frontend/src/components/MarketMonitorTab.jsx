@@ -37,7 +37,12 @@ export default function MarketMonitorTab() {
 
   // Helper for regime color & verdict guidance
   const getRegimeDetails = (regimeStr) => {
-    if (!regimeStr) return { color: '#94a3b8', light: 'YELLOW', badge: 'NEUTRAL', tag: 'STABLE TAPE', stance: 'GATHERING DATA', exposure: '50% Exposure', guidance: 'Gathering market data...' };
+    const gainers = typeof summary.latest_gainers_4pct === 'number' ? summary.latest_gainers_4pct : 0;
+    const losers = typeof summary.latest_losers_4pct === 'number' ? summary.latest_losers_4pct : 0;
+    const total = gainers + losers;
+    const computedBias = total > 0 ? Math.round((gainers / total) * 100) : 50;
+
+    if (!regimeStr) return { color: '#94a3b8', light: 'YELLOW', badge: 'NEUTRAL', tag: 'STABLE TAPE', stance: 'GATHERING DATA', exposure: '50% Exposure', guidance: 'Gathering market data...', biasPct: 50 };
     if (regimeStr.includes('Bullish')) {
       return {
         color: '#10b981',
@@ -47,7 +52,7 @@ export default function MarketMonitorTab() {
         stance: '🟢 GREEN LIGHT: AGGRESSIVE LONG',
         exposure: '100% Position Sizing (Full Risk)',
         guidance: 'Healthy market environment: long momentum setups working cleanly. Stay long and stay selective with breakouts.',
-        biasPct: Math.min(Math.round(((summary.latest_gainers_4pct || 300) / Math.max((summary.latest_gainers_4pct || 300) + (summary.latest_losers_4pct || 100), 1)) * 100), 98)
+        biasPct: Math.max(50, Math.min(computedBias, 98))
       };
     }
     if (regimeStr.includes('Bearish')) {
@@ -59,7 +64,7 @@ export default function MarketMonitorTab() {
         stance: '🔴 RED LIGHT: DEFENSIVE / CASH',
         exposure: '0–25% Sizing (Protect Capital)',
         guidance: 'Market under pressure / distribution: higher breakdown frequency. Reduce position sizes and protect open gains.',
-        biasPct: Math.max(Math.round(((summary.latest_gainers_4pct || 50) / Math.max((summary.latest_gainers_4pct || 50) + (summary.latest_losers_4pct || 300), 1)) * 100), 12)
+        biasPct: Math.min(50, Math.max(computedBias, 5))
       };
     }
     return {
@@ -70,7 +75,7 @@ export default function MarketMonitorTab() {
       stance: '🟡 YELLOW LIGHT: SELECTIVE TRADING',
       exposure: '50% Reduced Position Sizing',
       guidance: 'Mixed or range-bound market tape: selective breakouts working, but watch for sudden pullbacks.',
-      biasPct: 52
+      biasPct: computedBias
     };
   };
 
@@ -390,38 +395,46 @@ export default function MarketMonitorTab() {
                 {/* Index Benchmark Cards (SPY & QQQ) */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {(() => {
-                    const spyPct = summary?.benchmarks?.SPY?.change_pct ?? 0;
-                    const spyClose = summary?.benchmarks?.SPY?.close;
-                    const spyIsUp = spyPct >= 0;
+                    const spyObj = summary?.benchmarks?.SPY;
+                    const spyPct = spyObj?.change_pct;
+                    const spyClose = spyObj?.close;
+                    const hasPct = typeof spyPct === 'number';
+                    const isUp = hasPct && spyPct > 0;
+                    const isDown = hasPct && spyPct < 0;
+                    const color = isUp ? '#34d399' : (isDown ? '#fb7185' : 'var(--text-secondary)');
                     return (
                       <div style={{ background: 'rgba(0, 0, 0, 0.35)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 14px', minWidth: '135px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                           <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 700 }}>SPY</span>
-                          <span style={{ fontSize: '11.5px', color: spyIsUp ? '#34d399' : '#fb7185', fontWeight: 700 }}>
-                            {spyIsUp ? `+${spyPct.toFixed(2)}%` : `${spyPct.toFixed(2)}%`}
+                          <span style={{ fontSize: '11.5px', color: color, fontWeight: 700 }}>
+                            {hasPct ? (isUp ? `+${spyPct.toFixed(2)}%` : `${spyPct.toFixed(2)}%`) : '-'}
                           </span>
                         </div>
                         <div style={{ fontSize: '14px', fontWeight: 700, color: '#ffffff', marginTop: '2px' }}>
-                          ${spyClose ?? '-'}
+                          {spyClose ? `$${spyClose.toFixed(2)}` : '-'}
                         </div>
                       </div>
                     );
                   })()}
 
                   {(() => {
-                    const qqqPct = summary?.benchmarks?.QQQ?.change_pct ?? 0;
-                    const qqqClose = summary?.benchmarks?.QQQ?.close;
-                    const qqqIsUp = qqqPct >= 0;
+                    const qqqObj = summary?.benchmarks?.QQQ;
+                    const qqqPct = qqqObj?.change_pct;
+                    const qqqClose = qqqObj?.close;
+                    const hasPct = typeof qqqPct === 'number';
+                    const isUp = hasPct && qqqPct > 0;
+                    const isDown = hasPct && qqqPct < 0;
+                    const color = isUp ? '#34d399' : (isDown ? '#fb7185' : 'var(--text-secondary)');
                     return (
                       <div style={{ background: 'rgba(0, 0, 0, 0.35)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 14px', minWidth: '135px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                           <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 700 }}>QQQ</span>
-                          <span style={{ fontSize: '11.5px', color: qqqIsUp ? '#34d399' : '#fb7185', fontWeight: 700 }}>
-                            {qqqIsUp ? `+${qqqPct.toFixed(2)}%` : `${qqqPct.toFixed(2)}%`}
+                          <span style={{ fontSize: '11.5px', color: color, fontWeight: 700 }}>
+                            {hasPct ? (isUp ? `+${qqqPct.toFixed(2)}%` : `${qqqPct.toFixed(2)}%`) : '-'}
                           </span>
                         </div>
                         <div style={{ fontSize: '14px', fontWeight: 700, color: '#ffffff', marginTop: '2px' }}>
-                          ${qqqClose ?? '-'}
+                          {qqqClose ? `$${qqqClose.toFixed(2)}` : '-'}
                         </div>
                       </div>
                     );

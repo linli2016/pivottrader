@@ -36,6 +36,7 @@ class DatabaseManager:
                     ipo_date VARCHAR,
                     sector VARCHAR,
                     industry VARCHAR,
+                    next_earnings_date VARCHAR,
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
@@ -61,7 +62,7 @@ class DatabaseManager:
 
             res = conn.execute("SELECT COUNT(*) FROM watchlists").fetchone()
             if res and res[0] == 0:
-                conn.execute("INSERT INTO watchlists (name) VALUES ('Default Watchlist')")
+                conn.execute("INSERT INTO watchlists (name) VALUES ('Default')")
             
             try:
                 conn.execute("ALTER TABLE symbols ADD COLUMN ipo_date VARCHAR;")
@@ -73,6 +74,10 @@ class DatabaseManager:
                 pass
             try:
                 conn.execute("ALTER TABLE symbols ADD COLUMN industry VARCHAR;")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE symbols ADD COLUMN next_earnings_date VARCHAR;")
             except Exception:
                 pass
             
@@ -116,6 +121,8 @@ class DatabaseManager:
                     sma_200_20d_ago DOUBLE,
                     is_52w_high BOOLEAN,
                     ret_1m DOUBLE,
+                    ret_3m DOUBLE,
+                    ret_6m DOUBLE,
                     ema_10 DOUBLE,
                     ema_20 DOUBLE,
                     dist_ema10_pct DOUBLE,
@@ -133,6 +140,7 @@ class DatabaseManager:
                     pivot_spread_pct DOUBLE,
                     pivot_close_clustering_pct DOUBLE,
                     pivot_vol_ratio DOUBLE,
+                    ti_65 DOUBLE,
                     PRIMARY KEY (symbol, date)
                 );
             """)
@@ -166,6 +174,8 @@ class DatabaseManager:
                 ("sma_200_20d_ago", "DOUBLE"),
                 ("is_52w_high", "BOOLEAN"),
                 ("ret_1m", "DOUBLE"),
+                ("ret_3m", "DOUBLE"),
+                ("ret_6m", "DOUBLE"),
                 ("ema_10", "DOUBLE"),
                 ("ema_20", "DOUBLE"),
                 ("dist_ema10_pct", "DOUBLE"),
@@ -183,6 +193,7 @@ class DatabaseManager:
                 ("pivot_spread_pct", "DOUBLE"),
                 ("pivot_close_clustering_pct", "DOUBLE"),
                 ("pivot_vol_ratio", "DOUBLE"),
+                ("ti_65", "DOUBLE"),
             ]
             for col_name, col_type in new_cols:
                 try:
@@ -214,7 +225,7 @@ class DatabaseManager:
         df = pd.DataFrame(symbols_data)
         
         # Ensure correct column ordering and existence
-        columns = ["symbol", "exchange", "name", "asset_type", "active", "ipo_date", "sector", "industry"]
+        columns = ["symbol", "exchange", "name", "asset_type", "active", "ipo_date", "sector", "industry", "next_earnings_date"]
         for col in columns:
             if col not in df.columns:
                 df[col] = None if col != "active" else True
@@ -225,8 +236,8 @@ class DatabaseManager:
             # Using DuckDB's pandas integration
             conn.execute("CREATE OR REPLACE TEMP TABLE temp_symbols AS SELECT * FROM df")
             conn.execute("""
-                INSERT INTO symbols (symbol, exchange, name, asset_type, active, ipo_date, sector, industry, last_updated)
-                SELECT symbol, exchange, name, asset_type, active, CAST(ipo_date AS VARCHAR), CAST(sector AS VARCHAR), CAST(industry AS VARCHAR), CURRENT_TIMESTAMP as last_updated
+                INSERT INTO symbols (symbol, exchange, name, asset_type, active, ipo_date, sector, industry, next_earnings_date, last_updated)
+                SELECT symbol, exchange, name, asset_type, active, CAST(ipo_date AS VARCHAR), CAST(sector AS VARCHAR), CAST(industry AS VARCHAR), CAST(next_earnings_date AS VARCHAR), CURRENT_TIMESTAMP as last_updated
                 FROM temp_symbols
                 ON CONFLICT (symbol) DO UPDATE SET
                     name = EXCLUDED.name,
@@ -236,6 +247,7 @@ class DatabaseManager:
                     ipo_date = COALESCE(symbols.ipo_date, CAST(EXCLUDED.ipo_date AS VARCHAR)),
                     sector = COALESCE(EXCLUDED.sector, symbols.sector),
                     industry = COALESCE(EXCLUDED.industry, symbols.industry),
+                    next_earnings_date = COALESCE(EXCLUDED.next_earnings_date, symbols.next_earnings_date),
                     last_updated = EXCLUDED.last_updated
             """)
             conn.execute("DROP TABLE temp_symbols")
@@ -257,6 +269,18 @@ class DatabaseManager:
             return
         with self.get_connection() as conn:
             conn.executemany("UPDATE symbols SET ipo_date = ?, last_updated = CURRENT_TIMESTAMP WHERE symbol = ?", ipo_dates)
+
+    def update_symbol_next_earnings_date(self, symbol: str, next_earnings_date: str) -> None:
+        """Updates the next earnings date for a specific symbol."""
+        with self.get_connection() as conn:
+            conn.execute("UPDATE symbols SET next_earnings_date = ?, last_updated = CURRENT_TIMESTAMP WHERE symbol = ?", [next_earnings_date, symbol])
+
+    def update_multiple_symbol_next_earnings_dates(self, earnings_dates: List[Tuple[str, str]]) -> None:
+        """Updates the next earnings dates for multiple symbols in a single transaction."""
+        if not earnings_dates:
+            return
+        with self.get_connection() as conn:
+            conn.executemany("UPDATE symbols SET next_earnings_date = ?, last_updated = CURRENT_TIMESTAMP WHERE symbol = ?", earnings_dates)
 
     def upsert_daily_bars(self, df: pd.DataFrame) -> None:
         """Inserts or updates daily price bars using a pandas DataFrame."""

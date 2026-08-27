@@ -57,6 +57,7 @@ class DatabaseService:
                 "symbols_count": 0,
                 "daily_bars_count": 0,
                 "fundamentals_count": 0,
+                "earliest_price_date": "N/A",
                 "last_price_date": "N/A"
             }
             
@@ -64,8 +65,11 @@ class DatabaseService:
                 summary["symbols_count"] = conn.execute("SELECT count(*) FROM symbols").fetchone()[0]
             if "daily_bars" in table_names:
                 summary["daily_bars_count"] = conn.execute("SELECT count(*) FROM daily_bars").fetchone()[0]
-                latest_date = conn.execute("SELECT max(date) FROM daily_bars").fetchone()[0]
-                summary["last_price_date"] = latest_date.strftime("%Y-%m-%d") if latest_date else "N/A"
+                min_max_dates = conn.execute("SELECT min(date), max(date) FROM daily_bars").fetchone()
+                if min_max_dates:
+                    min_date, latest_date = min_max_dates
+                    summary["earliest_price_date"] = min_date.strftime("%Y-%m-%d") if min_date else "N/A"
+                    summary["last_price_date"] = latest_date.strftime("%Y-%m-%d") if latest_date else "N/A"
             if "quarterly_fundamentals" in table_names:
                 summary["fundamentals_count"] = conn.execute("SELECT count(*) FROM quarterly_fundamentals").fetchone()[0]
                 
@@ -136,11 +140,17 @@ class DatabaseService:
                 where_clauses.append("db.rs_rank >= ?")
                 params.append(float(min_rs))
 
-            # ATR filter
-            if get_f("enable_atr", "enableAtr", False):
-                min_atr = get_f("min_atr", "minAtrFilter", 0.0)
-                where_clauses.append("db.atr_20d IS NOT NULL AND db.atr_20d >= ?")
-                params.append(float(min_atr))
+            # Stockbee Trend Intensity (TI65) Filter
+            if get_f("enable_ti65", "enableTi65", False):
+                min_ti65 = get_f("min_ti65", "minTi65Filter", 1.05)
+                where_clauses.append("db.ti_65 IS NOT NULL AND db.ti_65 >= ?")
+                params.append(float(min_ti65))
+
+            # ADR% (Average Daily Range 20d) filter
+            if get_f("enable_adr", "enableAdr", False):
+                min_adr = get_f("min_adr_20d", "minAdrFilter", 4.0)
+                where_clauses.append("db.adr_20d IS NOT NULL AND db.adr_20d >= ?")
+                params.append(float(min_adr))
 
             # Pivot Tightness & Volume Dry-Up (VDU) Filter
             if get_f("enable_pivot_tightness", "enablePivotTightness", False):
@@ -234,6 +244,7 @@ class DatabaseService:
 
             # Qullamaggie Breakout SQL pre-filters
             enable_breakout = get_f("enable_qullamaggie_breakout", "enableQullamaggieBreakout", False)
+            enable_qm = get_f("enable_qullamaggie_momentum", "enableQullamaggieMomentum", False)
             if enable_breakout:
                 if get_f("enable_1m_ret", "enable1mRet", True):
                     min_1m_ret = get_f("min_1m_ret", "min1mRetFilter", 20.0)
@@ -339,7 +350,12 @@ class DatabaseService:
                     db.pivot_vol_ratio,
                     s.sector,
                     s.industry,
-                    s.name
+                    s.name,
+                    db.ti_65,
+                    db.adr_20d,
+                    db.ret_3m,
+                    db.ret_6m,
+                    s.next_earnings_date
                 FROM daily_bars db
                 LEFT JOIN latest_fundamentals f ON db.symbol = f.symbol AND f.rn = 1
                 JOIN symbols s ON db.symbol = s.symbol
@@ -448,6 +464,11 @@ class DatabaseService:
                     "sector": sec_val,
                     "sector_rank": sec_rank,
                     "industry": row[53],
+                    "ti_65": row[55],
+                    "adr_20d": row[56],
+                    "ret_3m": row[57],
+                    "ret_6m": row[58],
+                    "next_earnings_date": row[59],
                     "screen_date": actual_date_str
                 })
 
@@ -471,7 +492,7 @@ class DatabaseService:
                 for sym, dt, h, l, cl in history_rows:
                     sym_history[sym].append((h, l, cl, dt))
 
-                enable_ema_surfing = get_f("enable_ema_surfing", "enableEmaSurfing", True)
+                enable_ema_surfing = get_f("enable_ema_surfing", "enableEmaSurfing", False)
                 min_1m_ret = get_f("min_1m_ret", "min1mRetFilter", 20.0)
 
                 for c in candidates:
@@ -517,6 +538,91 @@ class DatabaseService:
 
             if enable_breakout:
                 candidates = [c for c in candidates if c.get("breakout_is_setup")]
+
+            # 3c. Qullamaggie Momentum 3-Timeframe Deduplicated Screening
+            if enable_qm:
+                qm_top_n = int(get_f("qm_top_n", "qmTopN", 75))
+                qm_subview = str(get_f("qm_subview", "qmSubview", "all")).lower()
+
+                # Scan 1: 1-Month Gainers
+                c_1m = [c for c in candidates if c.get("ret_1m") is not None and c["ret_1m"] > 0]
+                c_1m.sort(key=lambda x: x["ret_1m"], reverse=True)
+                top_1m = c_1m[:qm_top_n]
+                top_1m_map = {c["symbol"]: (rank, c) for rank, c in enumerate(top_1m, 1)}
+
+                # Scan 2: 3-Month Gainers
+                c_3m = [c for c in candidates if c.get("ret_3m") is not None and c["ret_3m"] > 0]
+                c_3m.sort(key=lambda x: x["ret_3m"], reverse=True)
+                top_3m = c_3m[:qm_top_n]
+                top_3m_map = {c["symbol"]: (rank, c) for rank, c in enumerate(top_3m, 1)}
+
+                # Scan 3: 6-Month Gainers
+                c_6m = [c for c in candidates if c.get("ret_6m") is not None and c["ret_6m"] > 0]
+                c_6m.sort(key=lambda x: x["ret_6m"], reverse=True)
+                top_6m = c_6m[:qm_top_n]
+                top_6m_map = {c["symbol"]: (rank, c) for rank, c in enumerate(top_6m, 1)}
+
+                # Deduplicate and combine into unified focus list
+                merged = {}
+                all_syms = set(top_1m_map.keys()) | set(top_3m_map.keys()) | set(top_6m_map.keys())
+                for sym in all_syms:
+                    c = (top_1m_map.get(sym) or top_3m_map.get(sym) or top_6m_map.get(sym))[1]
+                    timeframes = []
+                    ranks = {}
+                    if sym in top_1m_map:
+                        timeframes.append("1M")
+                        ranks["1m"] = top_1m_map[sym][0]
+                    if sym in top_3m_map:
+                        timeframes.append("3M")
+                        ranks["3m"] = top_3m_map[sym][0]
+                    if sym in top_6m_map:
+                        timeframes.append("6M")
+                        ranks["6m"] = top_6m_map[sym][0]
+
+                    ema_10 = c.get("ema_10")
+                    ema_20 = c.get("ema_20")
+                    sma_50 = c.get("sma_50")
+                    close = c.get("close")
+                    ma_aligned = bool(ema_10 and ema_20 and sma_50 and close and close > ema_10 and ema_10 > ema_20 and ema_20 > sma_50)
+
+                    c["qm_timeframes"] = timeframes
+                    c["qm_ranks"] = ranks
+                    c["ma_aligned"] = ma_aligned
+                    merged[sym] = c
+
+                if qm_subview == '1m':
+                    candidates = [merged[sym] for sym in top_1m_map.keys() if sym in merged]
+                    candidates.sort(key=lambda x: x.get("ret_1m") or 0, reverse=True)
+                elif qm_subview == '3m':
+                    candidates = [merged[sym] for sym in top_3m_map.keys() if sym in merged]
+                    candidates.sort(key=lambda x: x.get("ret_3m") or 0, reverse=True)
+                elif qm_subview == '6m':
+                    candidates = [merged[sym] for sym in top_6m_map.keys() if sym in merged]
+                    candidates.sort(key=lambda x: x.get("ret_6m") or 0, reverse=True)
+                else:
+                    # 'all' Combined deduped: sorted by multi-timeframe overlap count desc, then max gain desc
+                    candidates = list(merged.values())
+                    candidates.sort(
+                        key=lambda x: (
+                            len(x.get("qm_timeframes", [])),
+                            max(x.get("ret_1m") or 0, x.get("ret_3m") or 0, x.get("ret_6m") or 0)
+                        ),
+                        reverse=True
+                    )
+            else:
+                for c in candidates:
+                    ema_10 = c.get("ema_10")
+                    ema_20 = c.get("ema_20")
+                    sma_50 = c.get("sma_50")
+                    close = c.get("close")
+                    c["ma_aligned"] = bool(ema_10 and ema_20 and sma_50 and close and close > ema_10 and ema_10 > ema_20 and ema_20 > sma_50)
+
+            # Optional dynamic sorting
+            sort_by = get_f("sort_by", "sortBy", None)
+            if sort_by:
+                sort_order = str(get_f("sort_order", "sortOrder", "desc")).lower()
+                is_reverse = sort_order != "asc"
+                candidates.sort(key=lambda x: (x.get(sort_by) is not None, x.get(sort_by) or 0), reverse=is_reverse)
 
             if not candidates:
                 return []
@@ -589,7 +695,7 @@ class DatabaseService:
         symbol = symbol.upper()
         with self.get_read_only_conn() as conn:
             # Metadata
-            meta = conn.execute("SELECT * FROM symbols WHERE symbol = ?", [symbol]).fetchone()
+            meta = conn.execute("SELECT symbol, exchange, name, asset_type, active, ipo_date, sector, industry, next_earnings_date FROM symbols WHERE symbol = ?", [symbol]).fetchone()
             if not meta:
                 return {}
                 
@@ -598,7 +704,11 @@ class DatabaseService:
                 "exchange": meta[1],
                 "name": meta[2],
                 "asset_type": meta[3],
-                "active": meta[4]
+                "active": meta[4],
+                "ipo_date": meta[5] if len(meta) > 5 else None,
+                "sector": meta[6] if len(meta) > 6 else None,
+                "industry": meta[7] if len(meta) > 7 else None,
+                "next_earnings_date": meta[8] if len(meta) > 8 else None
             }
             
             # Fundamentals
@@ -619,9 +729,9 @@ class DatabaseService:
                     "total_revenue": row[4]
                 })
                 
-            # Get latest RS and ATR metrics
+            # Get latest RS, ATR, and TI65 metrics
             latest_bar = conn.execute("""
-                SELECT rs_score, rs_rank, atr_20d
+                SELECT rs_score, rs_rank, atr_20d, ti_65
                 FROM daily_bars
                 WHERE symbol = ? AND date = (SELECT MAX(date) FROM daily_bars)
             """, [symbol]).fetchone()
@@ -629,6 +739,24 @@ class DatabaseService:
             rs_score = latest_bar[0] if latest_bar else None
             rs_rank = latest_bar[1] if latest_bar else None
             atr_20d = latest_bar[2] if latest_bar else None
+            ti_65 = latest_bar[3] if latest_bar else None
+
+            # Calculate Minervini VCP Footprint
+            from src.engine.setups.vcp import detect_vcp
+            bars_for_vcp = conn.execute("""
+                SELECT date, high, low, close
+                FROM daily_bars
+                WHERE symbol = ?
+                ORDER BY date ASC
+            """, [symbol]).fetchall()
+
+            vcp_footprint = None
+            if bars_for_vcp and len(bars_for_vcp) >= 15:
+                dates = [b[0] for b in bars_for_vcp]
+                highs = [float(b[1]) for b in bars_for_vcp]
+                lows = [float(b[2]) for b in bars_for_vcp]
+                closes = [float(b[3]) for b in bars_for_vcp]
+                vcp_footprint = detect_vcp(highs, lows, dates, closes=closes, window=3)
                  
             return {
                 "metadata": meta_dict,
@@ -636,14 +764,18 @@ class DatabaseService:
                 "rs_score": rs_score,
                 "rs_rank": rs_rank,
                 "adr_20d": atr_20d,
-                "atr_20d": atr_20d
+                "atr_20d": atr_20d,
+                "ti_65": ti_65,
+                "vcp_footprint": vcp_footprint,
+                "next_earnings_date": meta_dict.get("next_earnings_date")
             }
+
 
     def get_stock_prices(self, symbol: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         symbol = symbol.upper()
         with self.get_read_only_conn() as conn:
             bars = conn.execute("""
-                SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank
+                SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65
                 FROM daily_bars
                 WHERE symbol = ?
                 ORDER BY date ASC
@@ -665,7 +797,8 @@ class DatabaseService:
                     "sma_50": row[6],
                     "sma_150": row[7],
                     "sma_200": row[8],
-                    "rs_rank": row[9]
+                    "rs_rank": row[9],
+                    "ti_65": row[10]
                 })
             return bars_list
 
@@ -824,9 +957,69 @@ class DatabaseService:
         quarterly_data = quarterly_data[:8]
         quarterly_data = list(reversed(quarterly_data))
         
+        # 3. Extract next upcoming earnings date
+        next_earnings_date = None
+        if ticker is not None:
+            try:
+                cal = ticker.calendar
+                if cal is not None:
+                    if isinstance(cal, dict):
+                        ed = cal.get("Earnings Date") or cal.get("Earnings High") or cal.get("Earnings Average")
+                        if ed is not None:
+                            if isinstance(ed, (list, tuple)) and len(ed) > 0:
+                                first_d = ed[0]
+                                if hasattr(first_d, "strftime"):
+                                    next_earnings_date = first_d.strftime("%Y-%m-%d")
+                                elif isinstance(first_d, str):
+                                    next_earnings_date = first_d[:10]
+                            elif hasattr(ed, "strftime"):
+                                next_earnings_date = ed.strftime("%Y-%m-%d")
+                    elif hasattr(cal, "index") and hasattr(cal, "loc"):
+                        if "Earnings Date" in cal.index:
+                            val = cal.loc["Earnings Date"]
+                            if hasattr(val, "iloc") and len(val) > 0:
+                                first_d = val.iloc[0]
+                                if hasattr(first_d, "strftime"):
+                                    next_earnings_date = first_d.strftime("%Y-%m-%d")
+                                elif isinstance(first_d, str):
+                                    next_earnings_date = first_d[:10]
+            except Exception:
+                pass
+
+            if not next_earnings_date:
+                try:
+                    ed_df = ticker.earnings_dates
+                    if ed_df is not None and not ed_df.empty:
+                        now = pd.Timestamp.now(tz=ed_df.index.tz) if ed_df.index.tz is not None else pd.Timestamp.now()
+                        future = ed_df[ed_df.index >= now].sort_index()
+                        if not future.empty:
+                            next_dt = future.index[0]
+                            if hasattr(next_dt, "strftime"):
+                                next_earnings_date = next_dt.strftime("%Y-%m-%d")
+                            else:
+                                next_earnings_date = str(next_dt)[:10]
+                except Exception:
+                    pass
+
+        # If not fetched live or yfinance unavailable, fallback to cached next_earnings_date from symbols table
+        if not next_earnings_date:
+            with self.get_read_only_conn() as conn:
+                cached_res = conn.execute("SELECT next_earnings_date FROM symbols WHERE symbol = ?", [symbol]).fetchone()
+                if cached_res and cached_res[0]:
+                    next_earnings_date = str(cached_res[0])
+        else:
+            # Persist newly retrieved next_earnings_date to DuckDB symbols table
+            try:
+                from src.database import DatabaseManager
+                db_mgr = DatabaseManager(self.get_db_path())
+                db_mgr.update_symbol_next_earnings_date(symbol, next_earnings_date)
+            except Exception:
+                pass
+
         return {
             "symbol": symbol,
             "name": meta[0],
+            "next_earnings_date": next_earnings_date,
             "yearly_financials": sorted(yearly_data, key=lambda x: x["year"]),
             "quarterly_financials": quarterly_data
         }
@@ -975,10 +1168,10 @@ class DatabaseService:
             regime = "Neutral / Transition"
             if latest.get("gainers_4pct", 0) >= 2 * max(latest.get("losers_4pct", 1), 1) and latest.get("gainers_4pct", 0) > 300:
                 regime = "Bullish Thrust / Expansion"
-            elif latest.get("up_25pct_1m", 0) > latest.get("down_25pct_1m", 0) * 1.5:
-                regime = "Bullish Expansion"
             elif latest.get("losers_4pct", 0) >= 2 * max(latest.get("gainers_4pct", 1), 1) and latest.get("losers_4pct", 0) > 300:
                 regime = "Bearish Distribution / Contraction"
+            elif latest.get("up_25pct_1m", 0) > latest.get("down_25pct_1m", 0) * 1.5:
+                regime = "Bullish Expansion"
             elif latest.get("down_25pct_1m", 0) > latest.get("up_25pct_1m", 0) * 1.5:
                 regime = "Bearish Contraction"
 
@@ -1152,7 +1345,7 @@ class DatabaseService:
         with self.get_read_only_conn() as conn:
             tables = [t[0] for t in conn.execute("SHOW TABLES").fetchall()]
             if "watchlists" not in tables:
-                return [{"id": 1, "name": "Default Watchlist", "created_at": None, "item_count": 0}]
+                return [{"id": 1, "name": "Default", "created_at": None, "item_count": 0}]
 
             query = """
                 SELECT w.id, w.name, w.created_at, COUNT(wi.symbol) as item_count

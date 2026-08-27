@@ -73,6 +73,21 @@ This method can also be traded by anticipating the breakout but I don’t find i
   - **Proximity:** Consolidation within $15\%$ of All-Time Highs (ATH).
 
 
+### 7. Kristjan Qullamaggie Momentum Scanners (1M / 3M / 6M)
+* **Objective:** Filter the entire US stock universe down to the top 1% to 2% strongest market leaders setting up for high-probability explosive swings.
+* **Baseline Filters:**
+  - **Price:** $\ge \$2.00$ (eliminates micro-penny stocks).
+  - **Liquidity:** 50-day SMA Volume $\ge 100,000$ shares.
+  - **Volatility (ADR%):** 20-day Average Daily Range (ADR%) $\ge 4.0\%$ (ensures sufficient daily range for swing trading).
+* **Scanning Timeframes:**
+  - **1-Month Gainers (~21 Trading Days):** Identifies sudden velocity runners, fresh themes, and leading movers.
+  - **3-Month Gainers (~63 Trading Days):** Captures quarterly trend continuation and established intermediate leaders.
+  - **6-Month Gainers (~126 Trading Days):** Captures sustained multi-month institutional uptrends.
+* **Combined Focus List Deduplication:**
+  - The top ~75 (50–100) gainers from each of the 3 scans are extracted and deduplicated into a unified watch universe (~100–200 tickers).
+  - Stocks appearing in multiple timeframes (e.g. `[1M, 3M, 6M]`) represent the highest-conviction true market leaders.
+  - Prioritize candidates displaying **Moving Average Alignment** ($10\text{ EMA} > 20\text{ EMA} > 50\text{ SMA}$ and $\text{Price} > 10\text{ EMA}$) and tight base consolidations.
+
 ---
 
 ## 📝 Trader Notes & Review Checklist
@@ -82,3 +97,4 @@ This method can also be traded by anticipating the breakout but I don’t find i
 - [ ] Is there a clear, tight pivot level with drying volume?
 - [ ] Is my risk defined before placing the order?
 - [ ] Did I record the trade entry rationale in my journal?
+

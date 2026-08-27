@@ -1,5 +1,6 @@
 import React from 'react';
 import CandlestickChart from './CandlestickChart';
+import VcpFootprintCard from './VcpFootprintCard';
 
 export default function StockDetailDrawer({
   selectedStock,
@@ -14,6 +15,45 @@ export default function StockDetailDrawer({
 }) {
   const [financials, setFinancials] = React.useState(null);
   const [loadingFinancials, setLoadingFinancials] = React.useState(false);
+
+  const earningsDateStr = financials?.next_earnings_date || stockDetail?.next_earnings_date || stockDetail?.metadata?.next_earnings_date || selectedStock?.next_earnings_date;
+
+  const earningsBadgeInfo = React.useMemo(() => {
+    if (!earningsDateStr) return null;
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const target = new Date(earningsDateStr + 'T00:00:00');
+      const diffTime = target.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      let badgeSub = '';
+      let isUrgent = false;
+      
+      if (diffDays === 0) {
+        badgeSub = 'Today';
+        isUrgent = true;
+      } else if (diffDays === 1) {
+        badgeSub = 'Tomorrow';
+        isUrgent = true;
+      } else if (diffDays > 1) {
+        badgeSub = `in ${diffDays}d`;
+        if (diffDays <= 7) isUrgent = true;
+      } else {
+        badgeSub = `${Math.abs(diffDays)}d ago`;
+      }
+      
+      return {
+        dateStr: earningsDateStr,
+        badgeSub,
+        diffDays,
+        isUrgent,
+        fullDisplay: `${earningsDateStr} (${badgeSub})`
+      };
+    } catch (e) {
+      return { dateStr: earningsDateStr, fullDisplay: earningsDateStr, isUrgent: false };
+    }
+  }, [earningsDateStr]);
 
   const currentIndex = React.useMemo(() => {
     if (!activeStockList || activeStockList.length === 0 || !selectedStock) return -1;
@@ -87,13 +127,49 @@ export default function StockDetailDrawer({
             <span style={{ color: 'var(--text-secondary)', fontSize: '12px', background: 'rgba(255, 255, 255, 0.06)', padding: '4px 10px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
               Exchange: {stockDetail?.metadata?.exchange || selectedStock.exchange || 'N/A'} | Asset Type: {stockDetail?.metadata?.asset_type || 'Common Stock'}
             </span>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
               <span className="pill pill-success" style={{ fontSize: '12px', padding: '4px 10px', fontWeight: '700' }}>
                 RS Rank: {stockDetail?.rs_rank !== null && stockDetail?.rs_rank !== undefined ? stockDetail.rs_rank : (selectedStock?.rs_rank ?? 'N/A')}
               </span>
               <span className="pill pill-warning" style={{ fontSize: '12px', padding: '4px 10px', fontWeight: '700', background: 'rgba(245, 158, 11, 0.2)', color: 'var(--accent-warning)' }}>
-                ADTR (20d): {stockDetail?.atr_20d !== null && stockDetail?.atr_20d !== undefined ? `${stockDetail.atr_20d.toFixed(2)}%` : (selectedStock?.adr_20d ? `${selectedStock.adr_20d.toFixed(2)}%` : 'N/A')}
+                ADR% (20d): {selectedStock?.adr_20d !== null && selectedStock?.adr_20d !== undefined ? `${selectedStock.adr_20d.toFixed(2)}%` : (stockDetail?.atr_20d !== null && stockDetail?.atr_20d !== undefined ? `${stockDetail.atr_20d.toFixed(2)}%` : 'N/A')}
               </span>
+              {stockDetail?.vcp_footprint?.footprint_str && (
+                <span className="pill pill-primary" style={{ fontSize: '12px', padding: '4px 10px', fontWeight: '800', background: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.4)' }}>
+                  🌀 VCP: {stockDetail.vcp_footprint.footprint_str}
+                </span>
+              )}
+              {earningsBadgeInfo ? (
+                <span
+                  className="pill"
+                  style={{
+                    fontSize: '12px',
+                    padding: '4px 10px',
+                    fontWeight: '700',
+                    background: earningsBadgeInfo.isUrgent ? 'rgba(239, 68, 68, 0.2)' : 'rgba(168, 85, 247, 0.2)',
+                    color: earningsBadgeInfo.isUrgent ? '#f87171' : '#c084fc',
+                    border: `1px solid ${earningsBadgeInfo.isUrgent ? 'rgba(239, 68, 68, 0.4)' : 'rgba(168, 85, 247, 0.4)'}`
+                  }}
+                  title={`Next Earnings Date: ${earningsBadgeInfo.dateStr}`}
+                >
+                  📅 E: {earningsBadgeInfo.fullDisplay}
+                </span>
+              ) : (
+                <span
+                  className="pill"
+                  style={{
+                    fontSize: '12px',
+                    padding: '4px 10px',
+                    fontWeight: '500',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    color: 'var(--text-muted)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)'
+                  }}
+                  title="Next Earnings Date: Not Scheduled or Unannounced"
+                >
+                  📅 E: {loadingFinancials ? 'Checking...' : 'Unscheduled'}
+                </span>
+              )}
             </div>
           </div>
 
@@ -148,7 +224,7 @@ export default function StockDetailDrawer({
         </div>
 
         {/* Candlestick chart rendering */}
-        <div>
+        <div style={{ marginBottom: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
             <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
               📈 Candlestick Price Chart (Daily Bars)
@@ -163,6 +239,10 @@ export default function StockDetailDrawer({
             <CandlestickChart data={stockPrices} height={496} />
           </div>
         </div>
+
+        {/* Minervini VCP Footprint Card */}
+        <VcpFootprintCard vcpFootprint={stockDetail?.vcp_footprint} />
+
 
         {/* MarketSurge Style Annual Financials & key stats */}
         <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
@@ -225,9 +305,29 @@ export default function StockDetailDrawer({
                   </strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '6px' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Daily ADTR (20d):</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>Daily ADR% (20d):</span>
                   <strong style={{ color: 'var(--accent-warning)' }}>
-                    {stockDetail?.atr_20d !== null && stockDetail?.atr_20d !== undefined ? `${stockDetail.atr_20d.toFixed(2)}%` : 'N/A'}
+                    {(selectedStock?.adr_20d !== null && selectedStock?.adr_20d !== undefined)
+                      ? `${selectedStock.adr_20d.toFixed(2)}%`
+                      : (stockDetail?.atr_20d !== null && stockDetail?.atr_20d !== undefined ? `${stockDetail.atr_20d.toFixed(2)}%` : 'N/A')}
+                  </strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '6px' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Trend Intensity (TI65):</span>
+                  <strong style={{
+                    color: stockDetail?.ti_65 >= 1.05 ? 'var(--accent-success)' : stockDetail?.ti_65 < 0.95 ? 'var(--accent-danger)' : 'var(--text-primary)'
+                  }}>
+                    {stockDetail?.ti_65 !== null && stockDetail?.ti_65 !== undefined
+                      ? `${stockDetail.ti_65.toFixed(2)}${stockDetail.ti_65 >= 1.05 ? ' (Bullish)' : stockDetail.ti_65 < 0.95 ? ' (Bearish)' : ' (Neutral)'}`
+                      : 'N/A'}
+                  </strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '6px' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Next Earnings Date:</span>
+                  <strong style={{
+                    color: earningsBadgeInfo ? (earningsBadgeInfo.isUrgent ? 'var(--accent-danger)' : '#c084fc') : 'var(--text-primary)'
+                  }}>
+                    {earningsBadgeInfo ? earningsBadgeInfo.fullDisplay : (loadingFinancials ? 'Checking...' : 'N/A')}
                   </strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>

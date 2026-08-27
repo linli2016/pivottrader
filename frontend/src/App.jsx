@@ -89,7 +89,6 @@ function App() {
   const [minEpsGrowthFilter, setMinEpsGrowthFilter] = useState(20.0);
   const [minPriceFilter, setMinPriceFilter] = useState(5.00);
   const [minVolFilter, setMinVolFilter] = useState(100000);
-  const [minAtrFilter, setMinAtrFilter] = useState(0.0);
   const [enforceStage2, setEnforceStage2] = useState(false);
   const [enablePowerPlay, setEnablePowerPlay] = useState(true);
   const [enableIpoBase, setEnableIpoBase] = useState(false);
@@ -97,6 +96,11 @@ function App() {
   const [enableDarvasBox, setEnableDarvasBox] = useState(false);
   const [enableNewLeaders, setEnableNewLeaders] = useState(false);
   const [enableQullamaggieBreakout, setEnableQullamaggieBreakout] = useState(false);
+  const [enableQullamaggieMomentum, setEnableQullamaggieMomentum] = useState(false);
+  const [qmSubview, setQmSubview] = useState('all'); // 'all' | '1m' | '3m' | '6m'
+  const [qmTopN, setQmTopN] = useState(75);
+  const [minAdrFilter, setMinAdrFilter] = useState(4.0);
+  const [enableAdr, setEnableAdr] = useState(false);
   const [enableEpisodicPivot, setEnableEpisodicPivot] = useState(false);
   const [enableParabolicClimax, setEnableParabolicClimax] = useState(false);
   const [enableParabolicShort, setEnableParabolicShort] = useState(false);
@@ -105,7 +109,7 @@ function App() {
   // Qullamaggie setup inputs
   const [min1mRetFilter, setMin1mRetFilter] = useState(20.0);
   const [enable1mRet, setEnable1mRet] = useState(true);
-  const [enableEmaSurfing, setEnableEmaSurfing] = useState(true);
+  const [enableEmaSurfing, setEnableEmaSurfing] = useState(false);
 
   const [minEpGapFilter, setMinEpGapFilter] = useState(10.0);
   const [enableEpGap, setEnableEpGap] = useState(true);
@@ -141,7 +145,8 @@ function App() {
 
   const [enableRsNewHigh, setEnableRsNewHigh] = useState(false);
 
-  const [enableAtr, setEnableAtr] = useState(false);
+  const [enableTi65, setEnableTi65] = useState(false);
+  const [minTi65Filter, setMinTi65Filter] = useState(1.05);
 
   // Pivot Tightness (VDU) Filter
   const [enablePivotTightness, setEnablePivotTightness] = useState(false);
@@ -392,7 +397,6 @@ function App() {
   const activeFilters = {
     minPriceFilter,
     minVolFilter,
-    minAtrFilter,
     minRsFilter,
     minEpsGrowthFilter,
     enforceStage2,
@@ -402,6 +406,11 @@ function App() {
     enableDarvasBox,
     enableNewLeaders,
     enableQullamaggieBreakout,
+    enableQullamaggieMomentum,
+    qmSubview,
+    qmTopN,
+    minAdrFilter,
+    enableAdr,
     enableEpisodicPivot,
     enableParabolicClimax,
     enableParabolicShort,
@@ -446,7 +455,8 @@ function App() {
     enableDarvasWidth,
     enableRs,
     enableRsNewHigh,
-    enableAtr,
+    enableTi65,
+    minTi65Filter,
     enablePivotTightness,
     maxPivotSpreadFilter,
     maxPivotClusteringFilter,
@@ -669,8 +679,6 @@ function App() {
             setMinRsFilter={setMinRsFilter}
             minEpsGrowthFilter={minEpsGrowthFilter}
             setMinEpsGrowthFilter={setMinEpsGrowthFilter}
-            minAtrFilter={minAtrFilter}
-            setMinAtrFilter={setMinAtrFilter}
             enforceStage2={enforceStage2}
             setEnforceStage2={setEnforceStage2}
             enablePowerPlay={enablePowerPlay}
@@ -685,6 +693,16 @@ function App() {
             setEnableNewLeaders={setEnableNewLeaders}
             enableQullamaggieBreakout={enableQullamaggieBreakout}
             setEnableQullamaggieBreakout={setEnableQullamaggieBreakout}
+            enableQullamaggieMomentum={enableQullamaggieMomentum}
+            setEnableQullamaggieMomentum={setEnableQullamaggieMomentum}
+            qmSubview={qmSubview}
+            setQmSubview={setQmSubview}
+            qmTopN={qmTopN}
+            setQmTopN={setQmTopN}
+            minAdrFilter={minAdrFilter}
+            setMinAdrFilter={setMinAdrFilter}
+            enableAdr={enableAdr}
+            setEnableAdr={setEnableAdr}
             enableEpisodicPivot={enableEpisodicPivot}
             setEnableEpisodicPivot={setEnableEpisodicPivot}
             enableParabolicClimax={enableParabolicClimax}
@@ -771,8 +789,10 @@ function App() {
             setEnableRs={setEnableRs}
             enableRsNewHigh={enableRsNewHigh}
             setEnableRsNewHigh={setEnableRsNewHigh}
-            enableAtr={enableAtr}
-            setEnableAtr={setEnableAtr}
+            enableTi65={enableTi65}
+            setEnableTi65={setEnableTi65}
+            minTi65Filter={minTi65Filter}
+            setMinTi65Filter={setMinTi65Filter}
             enablePivotTightness={enablePivotTightness}
             setEnablePivotTightness={setEnablePivotTightness}
             maxPivotSpreadFilter={maxPivotSpreadFilter}

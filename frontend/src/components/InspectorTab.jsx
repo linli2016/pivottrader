@@ -1,5 +1,6 @@
 import React from 'react';
 import CandlestickChart from './CandlestickChart';
+import VcpFootprintCard from './VcpFootprintCard';
 
 export default function InspectorTab({
   inspectorSymbol,
@@ -11,6 +12,44 @@ export default function InspectorTab({
   handleInspectorSearch,
   inspectorInputRef,
 }) {
+  const inspectorEarningsBadge = React.useMemo(() => {
+    const dt = inspectorDetail?.next_earnings_date || inspectorDetail?.metadata?.next_earnings_date;
+    if (!dt) return null;
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const target = new Date(dt + 'T00:00:00');
+      const diffTime = target.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      let badgeSub = '';
+      let isUrgent = false;
+
+      if (diffDays === 0) {
+        badgeSub = 'Today';
+        isUrgent = true;
+      } else if (diffDays === 1) {
+        badgeSub = 'Tomorrow';
+        isUrgent = true;
+      } else if (diffDays > 1) {
+        badgeSub = `in ${diffDays}d`;
+        if (diffDays <= 7) isUrgent = true;
+      } else {
+        badgeSub = `${Math.abs(diffDays)}d ago`;
+      }
+
+      return {
+        dateStr: dt,
+        badgeSub,
+        diffDays,
+        isUrgent,
+        fullDisplay: `${dt} (${badgeSub})`
+      };
+    } catch (e) {
+      return { dateStr: dt, fullDisplay: dt, isUrgent: false };
+    }
+  }, [inspectorDetail?.next_earnings_date, inspectorDetail?.metadata?.next_earnings_date]);
+
   return (
     <div>
       <div className="header-section">
@@ -77,18 +116,76 @@ export default function InspectorTab({
                 RS Percentile: {inspectorDetail.rs_rank !== null ? inspectorDetail.rs_rank : 'N/A'}
               </span>
               <span className="pill pill-warning" style={{ background: 'rgba(245, 158, 11, 0.2)', color: 'var(--accent-warning)' }}>
-                ADTR (20d): {inspectorDetail.atr_20d !== null && inspectorDetail.atr_20d !== undefined ? `${inspectorDetail.atr_20d.toFixed(2)}%` : 'N/A'}
+                ADR% (20d): {inspectorDetail.adr_20d !== null && inspectorDetail.adr_20d !== undefined
+                  ? `${inspectorDetail.adr_20d.toFixed(2)}%`
+                  : (inspectorDetail.atr_20d !== null && inspectorDetail.atr_20d !== undefined ? `${inspectorDetail.atr_20d.toFixed(2)}%` : 'N/A')}
               </span>
+              {inspectorDetail.vcp_footprint?.footprint_str && (
+                <span className="pill pill-primary" style={{ background: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.4)', fontWeight: '800' }}>
+                  🌀 VCP: {inspectorDetail.vcp_footprint.footprint_str}
+                </span>
+              )}
               <span className="pill pill-primary" style={{ background: 'rgba(59, 130, 246, 0.2)', color: 'var(--accent-color)' }}>
                 RS Score: {inspectorDetail.rs_score !== null ? inspectorDetail.rs_score.toFixed(4) : 'N/A'}
               </span>
+
+              {/* Next Earnings Date Badge */}
+              {inspectorEarningsBadge ? (
+                <span
+                  className="pill"
+                  style={{
+                    fontSize: '12px',
+                    padding: '4px 10px',
+                    fontWeight: '700',
+                    background: inspectorEarningsBadge.isUrgent ? 'rgba(239, 68, 68, 0.2)' : 'rgba(168, 85, 247, 0.2)',
+                    color: inspectorEarningsBadge.isUrgent ? '#f87171' : '#c084fc',
+                    border: `1px solid ${inspectorEarningsBadge.isUrgent ? 'rgba(239, 68, 68, 0.4)' : 'rgba(168, 85, 247, 0.4)'}`
+                  }}
+                  title={`Next Earnings Date: ${inspectorEarningsBadge.dateStr}`}
+                >
+                  📅 E: {inspectorEarningsBadge.fullDisplay}
+                </span>
+              ) : (
+                <span
+                  className="pill"
+                  style={{
+                    fontSize: '12px',
+                    padding: '4px 10px',
+                    fontWeight: '500',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    color: 'var(--text-muted)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)'
+                  }}
+                  title="Next Earnings Date: Not Scheduled or Unannounced"
+                >
+                  📅 E: Unscheduled
+                </span>
+              )}
+
               <span className="pill pill-secondary">Exchange: {inspectorDetail.metadata.exchange}</span>
               <span className="pill pill-secondary">Asset: {inspectorDetail.metadata.asset_type}</span>
             </div>
           </div>
 
+          {/* Minervini VCP Footprint Card */}
+          <VcpFootprintCard vcpFootprint={inspectorDetail.vcp_footprint} />
+
           {/* Grid layout for Financials and Chart */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px' }}>
+            {/* Candlestick chart */}
+            <div className="glass-card" style={{ padding: '24px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>Candlestick Price Chart (Daily Bars)</h3>
+              <div style={{ height: '600px', overflow: 'hidden' }}>
+                {inspectorPrices.length > 0 ? (
+                  <CandlestickChart data={inspectorPrices} height={540} />
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-secondary)' }}>
+                    No historical price bars available for charting.
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Financials Table */}
             <div className="glass-card" style={{ padding: '24px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>Quarterly Fundamental Earnings Acceleration (EPS History)</h3>
@@ -126,23 +223,10 @@ export default function InspectorTab({
                 </table>
               </div>
             </div>
-
-            {/* Candlestick chart */}
-            <div className="glass-card" style={{ padding: '24px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>Candlestick Price Chart (Daily Bars)</h3>
-              <div style={{ height: '600px', overflow: 'hidden' }}>
-                {inspectorPrices.length > 0 ? (
-                  <CandlestickChart data={inspectorPrices} height={540} />
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-secondary)' }}>
-                    No historical price bars available for charting.
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }

@@ -156,43 +156,76 @@ class YFinanceProvider(AbstractDataProvider):
                         "Stock Splits": "stock_splits"
                     })
                     sym_df["date"] = pd.to_datetime(sym_df["date"]).dt.date
-                    for col in ["open", "high", "low", "close", "volume"]:
+                    for col in ["open", "high", "low", "close", "volume", "stock_splits"]:
                         if col in sym_df.columns:
                             sym_df[col] = sym_df[col].astype(float)
+                    
+                    # Apply backward stock split adjustments for split-adjusted price consistency
+                    if "stock_splits" in sym_df.columns:
+                        splits = sym_df[(sym_df["stock_splits"] > 0) & (sym_df["stock_splits"] != 1.0)]
+                        if not splits.empty:
+                            sym_df = sym_df.sort_values("date").reset_index(drop=True)
+                            # Process splits in reverse chronological order (newest to oldest)
+                            splits_sorted = splits.sort_values("date", ascending=False)
+                            for _, s_row in splits_sorted.iterrows():
+                                s_ratio = float(s_row["stock_splits"])
+                                s_date = s_row["date"]
+                                if s_ratio <= 0 or s_ratio == 1.0:
+                                    continue
+                                
+                                post_split_df = sym_df[sym_df["date"] >= s_date]
+                                valid_post_close = post_split_df["close"].dropna()
+                                valid_post_open = post_split_df["open"].dropna()
+                                
+                                if not valid_post_close.empty and float(valid_post_close.iloc[0]) > 0:
+                                    post_baseline = float(valid_post_close.head(5).median())
+                                elif not valid_post_open.empty and float(valid_post_open.iloc[0]) > 0:
+                                    post_baseline = float(valid_post_open.head(5).median())
+                                else:
+                                    try:
+                                        t = yf.Ticker(sym)
+                                        fi = getattr(t, "fast_info", {})
+                                        post_baseline = float(fi.get("lastPrice") or fi.get("preMarketPrice") or fi.get("regularMarketPreviousClose") or 0.0)
+                                    except Exception:
+                                        post_baseline = 0.0
+
+                                pre_split_indices = sym_df[sym_df["date"] < s_date].index
+                                if len(pre_split_indices) == 0 or post_baseline <= 0:
+                                    continue
+                                    
+                                ref_price = post_baseline
+                                for idx in reversed(pre_split_indices):
+                                    c_val = sym_df.at[idx, "close"]
+                                    if pd.isna(c_val) or c_val <= 0:
+                                        continue
+                                    if s_ratio < 1.0: # Reverse split
+                                        is_unadj = (c_val < ref_price * math.sqrt(s_ratio) * 1.5)
+                                    else: # Forward split
+                                        is_unadj = (c_val > ref_price * math.sqrt(s_ratio) * 0.7)
+                                    
+                                    if is_unadj:
+                                        sym_df.at[idx, "open"] /= s_ratio
+                                        sym_df.at[idx, "high"] /= s_ratio
+                                        sym_df.at[idx, "low"] /= s_ratio
+                                        sym_df.at[idx, "close"] /= s_ratio
+                                        sym_df.at[idx, "volume"] = max(1.0, sym_df.at[idx, "volume"] * s_ratio)
+                                    
+                                    ref_price = sym_df.at[idx, "close"]
+
+                    # Preserve split information before dropping rows where close is NaN
+                    has_split = False
+                    if "stock_splits" in sym_df.columns:
+                        non_trivial_splits = sym_df[(sym_df["stock_splits"] > 0) & (sym_df["stock_splits"] != 1.0)]
+                        if not non_trivial_splits.empty:
+                            has_split = True
+                            last_split_ratio = float(non_trivial_splits.iloc[-1]["stock_splits"])
+
                     sym_df = sym_df.dropna(subset=["close"])
+                    if not sym_df.empty and has_split:
+                        # Ensure the split indicator is preserved on the last available row
+                        sym_df.loc[sym_df.index[-1], "stock_splits"] = last_split_ratio
 
                     if not sym_df.empty:
-                        # Apply backward stock split adjustments for split-adjusted price consistency
-                        if "stock_splits" in sym_df.columns:
-                            splits = sym_df[(sym_df["stock_splits"] > 0) & (sym_df["stock_splits"] != 1.0)]
-                            if not splits.empty:
-                                sym_df = sym_df.sort_values("date").reset_index(drop=True)
-                                for _, s_row in splits.iterrows():
-                                    s_ratio = float(s_row["stock_splits"])
-                                    s_date = s_row["date"]
-                                    
-                                    post_split_df = sym_df[sym_df["date"] >= s_date]
-                                    if post_split_df.empty:
-                                        continue
-                                    post_baseline = float(post_split_df.iloc[0]["close"])
-                                    if post_baseline <= 0:
-                                        continue
-                                    threshold = math.sqrt(s_ratio)
-                                    
-                                    pre_mask = sym_df["date"] < s_date
-                                    for idx in sym_df[pre_mask].index:
-                                        p = float(sym_df.loc[idx, "close"])
-                                        if p <= 0:
-                                            continue
-                                        ratio = p / post_baseline
-                                        is_unadjusted = (ratio < threshold) if s_ratio < 1.0 else (ratio >= threshold)
-                                        if is_unadjusted:
-                                            sym_df.loc[idx, "open"] /= s_ratio
-                                            sym_df.loc[idx, "high"] /= s_ratio
-                                            sym_df.loc[idx, "low"] /= s_ratio
-                                            sym_df.loc[idx, "close"] /= s_ratio
-                                            sym_df.loc[idx, "volume"] *= s_ratio
-
                         all_bars.append(sym_df[["symbol", "date", "open", "high", "low", "close", "volume", "stock_splits"]])
                     
                     if not is_multi:

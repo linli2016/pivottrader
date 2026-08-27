@@ -211,7 +211,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists, fetchWatc
           ))}
         </div>
 
-        {activeWatchlist && activeWatchlist.name !== 'Default Watchlist' && (
+        {activeWatchlist && activeWatchlist.name !== 'Default' && activeWatchlist.name !== 'Default Watchlist' && (
           <button
             className="btn btn-ghost btn-sm"
             style={{ color: '#fb7185' }}

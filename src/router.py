@@ -1,10 +1,13 @@
 import json
+import logging
+import traceback
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Response
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 
 from src.services import config_service, db_service, sync_service
 
+logger = logging.getLogger("pivottrader.api")
 router = APIRouter()
 
 # ----------------- Models -----------------
@@ -148,11 +151,15 @@ class CandidateFilterSchema(BaseModel):
     max_darvas_width: Optional[float] = None
     maxDarvasWidthFilter: Optional[float] = None
 
-    # General RS / ATR / Pivot Tightness
+    # General RS / ATR / Pivot Tightness / Trend Intensity
     enable_rs: Optional[bool] = None
     enableRs: Optional[bool] = None
     enable_rs_new_high: Optional[bool] = None
     enableRsNewHigh: Optional[bool] = None
+    enable_ti65: Optional[bool] = None
+    enableTi65: Optional[bool] = None
+    min_ti65: Optional[float] = None
+    minTi65Filter: Optional[float] = None
     enable_atr: Optional[bool] = None
     enableAtr: Optional[bool] = None
     enable_pivot_tightness: Optional[bool] = None
@@ -182,6 +189,28 @@ class CandidateFilterSchema(BaseModel):
     min_new_leaders_rs: Optional[int] = None
     minNewLeadersRsFilter: Optional[int] = None
 
+    # Kristjan Qullamaggie Momentum Screener (1M, 3M, 6M Gainers)
+    enable_qullamaggie_momentum: Optional[bool] = None
+    enableQullamaggieMomentum: Optional[bool] = None
+    qm_subview: Optional[str] = None
+    qmSubview: Optional[str] = None
+    qm_top_n: Optional[int] = None
+    qmTopN: Optional[int] = None
+    enable_adr: Optional[bool] = None
+    enableAdr: Optional[bool] = None
+    min_adr_20d: Optional[float] = None
+    minAdrFilter: Optional[float] = None
+    min_1m_gain: Optional[float] = None
+    min1mGainFilter: Optional[float] = None
+    min_3m_gain: Optional[float] = None
+    min3mGainFilter: Optional[float] = None
+    min_6m_gain: Optional[float] = None
+    min6mGainFilter: Optional[float] = None
+    sort_by: Optional[str] = None
+    sortBy: Optional[str] = None
+    sort_order: Optional[str] = None
+    sortOrder: Optional[str] = None
+
 
 # ----------------- Endpoints -----------------
 
@@ -191,6 +220,7 @@ def get_summary():
     try:
         return db_service.get_summary()
     except Exception as e:
+        logger.error(f"Error in get_summary: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/trading-dates")
@@ -199,6 +229,7 @@ def get_trading_dates():
     try:
         return db_service.get_available_trading_dates()
     except Exception as e:
+        logger.error(f"Error in get_trading_dates: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/candidates")
@@ -210,6 +241,7 @@ def post_candidates(payload: CandidateFilterSchema):
         data = db_service.get_candidates(target_date=target_date, filters=filters_dict)
         return Response(content=json.dumps(data), media_type="application/json")
     except Exception as e:
+        logger.error(f"Error in post_candidates: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/candidates")
@@ -219,6 +251,7 @@ def get_candidates(date: Optional[str] = None):
         data = db_service.get_candidates(target_date=date)
         return Response(content=json.dumps(data), media_type="application/json")
     except Exception as e:
+        logger.error(f"Error in get_candidates: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/stocks/{symbol}")
@@ -232,6 +265,7 @@ def get_stock_detail(symbol: str):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error in get_stock_detail({symbol}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/stocks/{symbol}/prices")
@@ -240,6 +274,7 @@ def get_stock_prices(symbol: str, limit: Optional[int] = None):
     try:
         return db_service.get_stock_prices(symbol, limit)
     except Exception as e:
+        logger.error(f"Error in get_stock_prices({symbol}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/stocks/{symbol}/financials")
@@ -250,7 +285,10 @@ def get_stock_financials(symbol: str):
         if not res:
             raise HTTPException(status_code=404, detail="Symbol not found")
         return res
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Error in get_stock_financials({symbol}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/config")
@@ -259,6 +297,7 @@ def get_config():
     try:
         return config_service.get_config()
     except Exception as e:
+        logger.error(f"Error in get_config: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/config")
@@ -267,6 +306,7 @@ def update_config(payload: ConfigUpdateSchema):
     try:
         return config_service.update_config(payload)
     except Exception as e:
+        logger.error(f"Error in update_config: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/sync/run")
@@ -297,6 +337,7 @@ def get_market_monitor(limit: int = 252):
     try:
         return db_service.get_market_monitor(limit=limit)
     except Exception as e:
+        logger.error(f"Error in get_market_monitor: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/sectors/etfs")
@@ -305,6 +346,7 @@ def get_sector_etfs():
     try:
         return db_service.get_sector_etf_performance()
     except Exception as e:
+        logger.error(f"Error in get_sector_etfs: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/sectors/{sector_name}/stocks")
@@ -313,6 +355,7 @@ def get_sector_stocks(sector_name: str):
     try:
         return db_service.get_sector_stocks(sector_name)
     except Exception as e:
+        logger.error(f"Error in get_sector_stocks({sector_name}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 # ----------------- Watchlist Endpoints -----------------
@@ -323,6 +366,7 @@ def get_watchlists():
     try:
         return db_service.get_watchlists()
     except Exception as e:
+        logger.error(f"Error in get_watchlists: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/watchlists")
@@ -331,6 +375,7 @@ def create_watchlist(payload: WatchlistCreateSchema):
     try:
         return db_service.create_watchlist(payload.name)
     except Exception as e:
+        logger.error(f"Error in create_watchlist: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/api/watchlists/{watchlist_id}")
@@ -339,6 +384,7 @@ def delete_watchlist(watchlist_id: int):
     try:
         return db_service.delete_watchlist(watchlist_id)
     except Exception as e:
+        logger.error(f"Error in delete_watchlist({watchlist_id}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/watchlists/{watchlist_id}/items")
@@ -347,6 +393,7 @@ def get_watchlist_items(watchlist_id: int):
     try:
         return db_service.get_watchlist_items(watchlist_id)
     except Exception as e:
+        logger.error(f"Error in get_watchlist_items({watchlist_id}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/watchlists/{watchlist_id}/items")
@@ -355,6 +402,7 @@ def add_watchlist_item(watchlist_id: int, payload: WatchlistItemAddSchema):
     try:
         return db_service.add_watchlist_item(watchlist_id, payload.symbol)
     except Exception as e:
+        logger.error(f"Error in add_watchlist_item: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/api/watchlists/{watchlist_id}/items")
@@ -363,6 +411,7 @@ def clear_watchlist_items(watchlist_id: int):
     try:
         return db_service.clear_watchlist_items(watchlist_id)
     except Exception as e:
+        logger.error(f"Error in clear_watchlist_items({watchlist_id}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/api/watchlists/{watchlist_id}/items/{symbol}")
@@ -371,6 +420,7 @@ def remove_watchlist_item(watchlist_id: int, symbol: str):
     try:
         return db_service.remove_watchlist_item(watchlist_id, symbol)
     except Exception as e:
+        logger.error(f"Error in remove_watchlist_item({symbol}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 # ----------------- Setups & Rules Playbook Endpoints -----------------
@@ -394,6 +444,7 @@ def update_setups_and_rules(payload: RulesUpdateSchema):
             f.write(payload.content)
         return {"status": "success", "message": "Setups & Rules saved successfully."}
     except Exception as e:
+        logger.error(f"Error in update_setups_and_rules: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

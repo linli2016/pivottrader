@@ -15,7 +15,8 @@ def main():
     parser = argparse.ArgumentParser(description="PivotTrader: High-Performance Momentum & Fundamental Screener")
     parser.add_argument("--config", default="config.yaml", help="Path to config.yaml configuration file")
     parser.add_argument("--provider", choices=["YFINANCE", "IBKR"], help="Override data provider specified in config")
-    parser.add_argument("--limit-tickers", type=int, help="Limit the universe size for rapid testing/debugging")
+    parser.add_argument("--symbols", type=str, help="Comma-separated list of specific ticker symbols to sync (e.g. BRCC,AAPL)")
+    parser.add_argument("--fix-splits", action="store_true", help="Automatically detect and resync all tickers with split price anomalies in database")
     parser.add_argument("--force-full", action="store_true", help="Force fetch full history for all active tickers")
     parser.add_argument("--force-backfill", action="store_true", help="Alias for --force-full (backfill multi-year history)")
     parser.add_argument("--history-years", type=int, help="Number of historical years of daily price bars to fetch (e.g., 2, 5, 10)")
@@ -88,8 +89,39 @@ def main():
             
         print(f"Retrieved {len(universe)} symbols from the active universe.")
         
-        # Apply testing limits if specified
-        if args.limit_tickers:
+        # Apply custom symbol selection, split repairs, or testing limits if specified
+        if getattr(args, "symbols", None):
+            custom_syms = set(s.strip().upper() for s in args.symbols.split(",") if s.strip())
+            universe = [u for u in universe if u["symbol"] in custom_syms]
+            if not universe:
+                universe = [{"symbol": s, "exchange": "UNKNOWN", "name": s, "asset_type": "Common Stock", "active": True} for s in custom_syms]
+            print(f"Restricting run to custom symbols: {[u['symbol'] for u in universe]}")
+        elif getattr(args, "fix_splits", False):
+            print("\n[Split Fixer] Scanning database for tickers with historical split jump/drop anomalies...")
+            with db.get_connection() as conn:
+                split_query = """
+                WITH price_changes AS (
+                    SELECT 
+                        symbol,
+                        date,
+                        close,
+                        LAG(close) OVER (PARTITION BY symbol ORDER BY date) as prev_close
+                    FROM daily_bars
+                )
+                SELECT DISTINCT symbol
+                FROM price_changes
+                WHERE prev_close > 0 AND (close / prev_close > 2.5 OR close / prev_close < 0.4);
+                """
+                suspect_symbols = set(r[0] for r in conn.execute(split_query).fetchall())
+            print(f"[Split Fixer] Identified {len(suspect_symbols)} tickers with unadjusted split anomalies.")
+            if suspect_symbols:
+                universe = [u for u in universe if u["symbol"] in suspect_symbols]
+                if not universe:
+                    universe = [{"symbol": s, "exchange": "UNKNOWN", "name": s, "asset_type": "Common Stock", "active": True} for s in suspect_symbols]
+            else:
+                print("No split anomalies found in database. Exiting.")
+                return
+        elif getattr(args, "limit_tickers", None):
             print(f"Applying debug limits: restricting run to first {args.limit_tickers} tickers.")
             universe = universe[:args.limit_tickers]
 
@@ -158,7 +190,7 @@ def main():
             first_dates = db.get_first_bar_dates()
             
             history_years = args.history_years if args.history_years is not None else config.history_lookback_years
-            force_full = args.force_full or args.force_backfill
+            force_full = args.force_full or args.force_backfill or bool(getattr(args, "symbols", None)) or bool(getattr(args, "fix_splits", False))
             full_lookback_date = (datetime.now() - timedelta(days=365 * history_years)).strftime("%Y-%m-%d")
             
             print(f"Target historical lookback window: {history_years} years (since {full_lookback_date})")
@@ -181,6 +213,11 @@ def main():
                 print(f"Fetching full lookback ({full_lookback_date}) for {len(new_symbols)} tickers (new or backfilling)...")
                 new_bars = price_provider.fetch_daily_bars(new_symbols, full_lookback_date)
                 if not new_bars.empty:
+                    # If force_full was used, purge previous daily bars for these tickers first to ensure clean history
+                    if force_full:
+                        with db.get_connection() as conn:
+                            symbols_str = ", ".join(f"'{s}'" for s in new_symbols)
+                            conn.execute(f"DELETE FROM daily_bars WHERE symbol IN ({symbols_str})")
                     print(f"Upserting {len(new_bars)} rows for new/backfilled tickers...")
                     db.upsert_daily_bars(new_bars)
                 else:
@@ -199,7 +236,7 @@ def main():
                     # Detect if any tickers underwent stock splits in the delta window
                     split_symbols = []
                     if "stock_splits" in delta_bars.columns:
-                        split_rows = delta_bars[delta_bars["stock_splits"] > 0]
+                        split_rows = delta_bars[(delta_bars["stock_splits"] > 0) & (delta_bars["stock_splits"] != 1.0)]
                         if not split_rows.empty:
                             split_symbols = split_rows["symbol"].unique().tolist()
                     

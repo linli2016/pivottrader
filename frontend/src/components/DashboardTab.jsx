@@ -304,19 +304,24 @@ export default function DashboardTab({
         </div>
       )}
 
-      {/* Stat summaries */}
-      <div className="card-grid">
-        <div className="glass-card stat-card">
+      {/* Stat summaries (Single Row 4-Column Grid) */}
+      <div className="card-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+        <div className="glass-card stat-card" style={{ padding: '16px 20px' }}>
           <span className="stat-label">Stock Directory Universe</span>
           <span className="stat-value">{summary?.symbols_count || 0}</span>
           <span className="stat-subtext">Active Tickers</span>
         </div>
-        <div className="glass-card stat-card">
+        <div className="glass-card stat-card" style={{ padding: '16px 20px' }}>
           <span className="stat-label">Total Ingested Price Bars</span>
           <span className="stat-value">{(summary?.daily_bars_count || 0).toLocaleString()}</span>
           <span className="stat-subtext">Daily OHLCV Candles</span>
         </div>
-        <div className="glass-card stat-card">
+        <div className="glass-card stat-card" style={{ padding: '16px 20px' }}>
+          <span className="stat-label">Earliest Pricing Date</span>
+          <span className="stat-value" style={{ fontSize: '24px', paddingTop: '4px' }}>{summary?.earliest_price_date || 'N/A'}</span>
+          <span className="stat-subtext">Start of History</span>
+        </div>
+        <div className="glass-card stat-card" style={{ padding: '16px 20px' }}>
           <span className="stat-label">Last Pricing Date</span>
           <span className="stat-value" style={{ fontSize: '24px', paddingTop: '4px' }}>{summary?.last_price_date || 'N/A'}</span>
           <span className="stat-subtext">Latest Market Close</span>

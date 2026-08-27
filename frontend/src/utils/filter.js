@@ -12,7 +12,6 @@ export function filterCandidates(candidates, filters) {
   const {
     minPriceFilter,
     minVolFilter,
-    minAtrFilter,
     minRsFilter,
     minEpsGrowthFilter,
     enforceStage2,
@@ -42,7 +41,8 @@ export function filterCandidates(candidates, filters) {
     enableDarvasWidth,
     enableRs,
     enableRsNewHigh,
-    enableAtr,
+    enableTi65,
+    minTi65Filter,
     enablePivotTightness,
     maxPivotSpreadFilter,
     maxPivotClusteringFilter,
@@ -63,7 +63,7 @@ export function filterCandidates(candidates, filters) {
     // 1. Stage 2 (Mandatory / Base filtering)
     if (c.close < minPriceFilter) return false;
     if (c.vol_50d_ma < minVolFilter) return false;
-    
+
     // Trend Template (if enforceStage2 is checked)
     if (enforceStage2) {
       if (c.sma_50 === null || c.sma_150 === null || c.sma_200 === null) return false;
@@ -79,9 +79,9 @@ export function filterCandidates(candidates, filters) {
       if (c.rs_rank === null || c.rs_rank === undefined || c.rs_rank < minRsFilter) return false;
     }
 
-    // Optional ATR filter
-    if (enableAtr) {
-      if (c.atr_20d !== null && c.atr_20d !== undefined && c.atr_20d < minAtrFilter) return false;
+    // Optional Stockbee Trend Intensity (TI65) filter
+    if (enableTi65) {
+      if (c.ti_65 === null || c.ti_65 === undefined || c.ti_65 < minTi65Filter) return false;
     }
 
     // Optional Pivot Tightness (VDU) filter
@@ -217,6 +217,19 @@ export function filterCandidates(candidates, filters) {
       );
 
       if (!isShortMatch && !isLongMatch) return false;
+    }
+
+    // 10. Optional ADR% filter
+    if (filters.enableAdr) {
+      const minAdr = filters.minAdrFilter !== undefined ? filters.minAdrFilter : 4.0;
+      if (c.adr_20d === null || c.adr_20d === undefined || c.adr_20d < minAdr) return false;
+    }
+
+    // 11. Momentum Subview
+    if (filters.enableQullamaggieMomentum) {
+      if (filters.qmSubview === '1m' && (!c.qm_timeframes || !c.qm_timeframes.includes('1M'))) return false;
+      if (filters.qmSubview === '3m' && (!c.qm_timeframes || !c.qm_timeframes.includes('3M'))) return false;
+      if (filters.qmSubview === '6m' && (!c.qm_timeframes || !c.qm_timeframes.includes('6M'))) return false;
     }
 
     return true;

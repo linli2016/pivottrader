@@ -18,7 +18,7 @@ def detect_breakout(
     ema_20_val: float = None,
     min_1m_ret: float = 20.0,
     min_runup_pct: float = 30.0,
-    enable_ema_surfing: bool = True
+    enable_ema_surfing: bool = False
 ) -> dict:
     """
     Detects Qullamaggie / High Tight Flag Breakout pattern:
