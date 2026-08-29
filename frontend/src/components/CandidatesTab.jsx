@@ -157,10 +157,41 @@ export default function CandidatesTab({
   const [showFiltersSection, setShowFiltersSection] = React.useState(false);
 
   const selectedItemRef = React.useRef(null);
+  const chartComponentRef = React.useRef(null);
 
   const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
   const currentCandidate = filteredCandidates[browseIndex] || null;
+
+  const activeSetupName = React.useMemo(() => {
+    if (enablePowerPlay) return 'Power Play';
+    if (enableQullamaggieBreakout) return 'Breakout';
+    if (enableQullamaggieMomentum) return 'Momentum';
+    if (enableEpisodicPivot) return 'Episodic Pivot';
+    if (isParabolicActive) return 'Parabolic';
+    if (enableIpoBase) return 'IPO Base';
+    if (enableVcpSetup) return 'VCP Pattern';
+    if (enableNewLeaders) return 'New Leaders';
+
+    if (currentCandidate?.pp_is_setup) return 'Power Play';
+    if (currentCandidate?.breakout_is_setup) return 'Breakout';
+    if (currentCandidate?.ep_is_setup) return 'Episodic Pivot';
+    if (currentCandidate?.parabolic_short_is_setup || currentCandidate?.parabolic_long_is_setup) return 'Parabolic';
+    if (currentCandidate?.vcp_is_setup) return 'VCP Pattern';
+    if (currentCandidate?.ipo_days_count !== undefined && currentCandidate?.ipo_days_count <= 350) return 'IPO Base';
+
+    return 'General';
+  }, [
+    enablePowerPlay,
+    enableQullamaggieBreakout,
+    enableQullamaggieMomentum,
+    enableEpisodicPivot,
+    isParabolicActive,
+    enableIpoBase,
+    enableVcpSetup,
+    enableNewLeaders,
+    currentCandidate
+  ]);
 
   const browseEarningsBadge = React.useMemo(() => {
     const dt = currentCandidate?.next_earnings_date || browseDetail?.next_earnings_date || browseDetail?.metadata?.next_earnings_date;
@@ -1782,6 +1813,33 @@ export default function CandidatesTab({
                       </button>
                     );
                   })()}
+
+                  {/* Header Quick Screenshot Action Button */}
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => chartComponentRef.current?.saveScreenshot()}
+                    disabled={!currentCandidate || loadingBrowsePrices || browsePrices.length === 0}
+                    title={`Take chart screenshot and store in ./charts/${activeSetupName}/${currentCandidate?.symbol || 'STOCK'}_${currentCandidate?.screen_date || (selectedDate !== 'latest' ? selectedDate : 'date')}.png`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '28px',
+                      height: '28px',
+                      padding: 0,
+                      borderRadius: '6px',
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                      color: 'var(--text-secondary)',
+                      cursor: (!currentCandidate || browsePrices.length === 0) ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                      <circle cx="12" cy="13" r="4"></circle>
+                    </svg>
+                  </button>
                 </div>
               </div>
 
@@ -1924,10 +1982,14 @@ export default function CandidatesTab({
             {/* Candlestick Chart Container - Fills 100% of remaining vertical height */}
             <div className="glass-card" style={{ padding: '10px 14px', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
               <CandlestickChart
+                ref={chartComponentRef}
                 data={browsePrices}
                 symbol={currentCandidate?.symbol}
+                companyName={currentCandidate?.name}
+                setupName={activeSetupName}
                 asOfDate={currentCandidate?.screen_date || (selectedDate !== 'latest' ? selectedDate : null)}
                 height="100%"
+                showScreenshotButton={false}
               />
             </div>
           </div>
@@ -2000,9 +2062,6 @@ export default function CandidatesTab({
                         {c.symbol}
                       </span>
                       {isItemSaved && <span style={{ fontSize: '11px' }} title="Saved in active watchlist">⭐️</span>}
-                      <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                        ${c.close?.toFixed(2)}
-                      </span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                       {c.ti_65 !== null && c.ti_65 !== undefined && (

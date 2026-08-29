@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
 import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers, CrosshairMode } from 'lightweight-charts';
 
 // Helper to calculate Simple Moving Average (SMA)
@@ -139,7 +139,130 @@ function formatVolume(vol) {
   return num.toLocaleString();
 }
 
-export default function CandlestickChart({ data, height = 280, asOfDate = null, symbol = null }) {
+function drawCanvasRoundRect(ctx, x, y, width, height, radius) {
+  if (typeof ctx.roundRect === 'function') {
+    ctx.beginPath();
+    ctx.roundRect(x, y, width, height, radius);
+    return;
+  }
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+function compositeChartScreenshot(rawChartCanvas, { symbol, setupName, date, bar, prevBar }) {
+  // Target native balanced resolution (~1100px width) for ultra-compact file size (~50-80KB) while preserving sharp detail
+  const maxTargetWidth = 1100;
+  const srcWidth = rawChartCanvas.width || 1100;
+  const srcHeight = rawChartCanvas.height || 600;
+  let outWidth = srcWidth;
+  let outHeight = srcHeight;
+
+  if (srcWidth > maxTargetWidth) {
+    outWidth = maxTargetWidth;
+    outHeight = Math.round(srcHeight * (maxTargetWidth / srcWidth));
+  }
+
+  const exportCanvas = document.createElement('canvas');
+  exportCanvas.width = outWidth;
+  exportCanvas.height = outHeight;
+  const ctx = exportCanvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  // 1. Draw raw lightweight-chart canvas scaled cleanly
+  ctx.drawImage(rawChartCanvas, 0, 0, outWidth, outHeight);
+
+  // Compute scale based on rendered width vs display container width
+  const scale = outWidth / (rawChartCanvas.clientWidth || 700) || 1;
+  const padX = 14 * scale;
+  const padY = 10 * scale;
+
+  // 2. Draw Top-Left OHLC Header Badge
+  const open = Number(bar?.open ?? 0);
+  const high = Number(bar?.high ?? 0);
+  const low = Number(bar?.low ?? 0);
+  const close = Number(bar?.close ?? 0);
+  const volume = bar?.volume ?? bar?.value ?? 0;
+  const prevClose = prevBar ? Number(prevBar.close) : open;
+  const change = close - prevClose;
+  const changePct = prevClose > 0 ? (change / prevClose) * 100 : 0;
+  const isUp = change >= 0;
+  const isCandleGreen = close >= open;
+
+  const ohlcColor = isCandleGreen ? '#34d399' : '#f87171';
+  const changeColor = isUp ? '#34d399' : '#f87171';
+  const changeSign = isUp ? '+' : '';
+  const volFormatted = formatVolume(volume);
+
+  const fontSize = Math.max(11 * scale, 12);
+  ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+
+  const bannerTextParts = [
+    { text: symbol ? `${symbol}` : '', color: '#f8fafc', bold: true },
+    { text: date ? `(${date})` : '', color: '#94a3b8' },
+    { text: '  O', color: '#94a3b8' },
+    { text: open.toFixed(2), color: ohlcColor },
+    { text: 'H', color: '#94a3b8' },
+    { text: high.toFixed(2), color: ohlcColor },
+    { text: 'L', color: '#94a3b8' },
+    { text: low.toFixed(2), color: ohlcColor },
+    { text: 'C', color: '#94a3b8' },
+    { text: close.toFixed(2), color: ohlcColor },
+    { text: `${changeSign}${change.toFixed(2)} (${changeSign}${changePct.toFixed(2)}%)`, color: changeColor, bold: true },
+    { text: 'Vol', color: '#94a3b8' },
+    { text: volFormatted, color: '#38bdf8', bold: true }
+  ].filter(p => p.text);
+
+  let bannerWidth = 16 * scale;
+  for (const part of bannerTextParts) {
+    if (part.bold) ctx.font = `700 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    else ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    bannerWidth += ctx.measureText(part.text + ' ').width;
+  }
+
+  const bannerHeight = 28 * scale;
+  drawCanvasRoundRect(ctx, padX, padY, bannerWidth, bannerHeight, 6 * scale);
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+  ctx.lineWidth = 1 * scale;
+  ctx.stroke();
+
+  let curX = padX + 10 * scale;
+  const textY = padY + (bannerHeight / 2) + (fontSize * 0.35);
+
+  for (const part of bannerTextParts) {
+    if (part.bold) ctx.font = `700 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    else ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    ctx.fillStyle = part.color;
+    ctx.fillText(part.text, curX, textY);
+    curX += ctx.measureText(part.text + ' ').width;
+  }
+
+  return exportCanvas;
+}
+
+
+
+const CandlestickChart = forwardRef(function CandlestickChart({
+  data,
+  height = 280,
+  asOfDate = null,
+  symbol = null,
+  setupName = null,
+  companyName = null,
+  showScreenshotButton = false,
+  onScreenshotSaved = null
+}, ref) {
   const chartContainerRef = useRef();
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
@@ -147,6 +270,12 @@ export default function CandlestickChart({ data, height = 280, asOfDate = null, 
   const verticalLineRef = useRef(null);
   const legendRef = useRef(null);
   const dataLookupRef = useRef({ timeMap: new Map(), data: [], defaultBar: null, defaultPrevBar: null, symbol: null });
+
+  const [savingScreenshot, setSavingScreenshot] = useState(false);
+  const [screenshotSuccess, setScreenshotSuccess] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
+
+  const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
   const renderLegend = (bar, prevBar, symbolStr) => {
     if (!legendRef.current) return;
@@ -177,7 +306,7 @@ export default function CandlestickChart({ data, height = 280, asOfDate = null, 
 
     legendRef.current.innerHTML = `
       <div style="display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.2;">
-        ${symbolStr ? `<span style="font-weight: 700; color: #f8fafc; margin-right: 2px;">${symbolStr} · 1D</span>` : ''}
+        ${symbolStr ? `<span style="font-weight: 700; color: #f8fafc; margin-right: 2px;">${symbolStr}</span>` : ''}
         <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">O</span><span style="color: ${ohlcColor}; font-weight: 600;">${open.toFixed(2)}</span></span>
         <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">H</span><span style="color: ${ohlcColor}; font-weight: 600;">${high.toFixed(2)}</span></span>
         <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">L</span><span style="color: ${ohlcColor}; font-weight: 600;">${low.toFixed(2)}</span></span>
@@ -187,6 +316,87 @@ export default function CandlestickChart({ data, height = 280, asOfDate = null, 
       </div>
     `;
   };
+
+  const handleSaveScreenshot = async (overrideParams = {}) => {
+    if (!chartRef.current || !data || data.length === 0 || savingScreenshot) return;
+
+    setSavingScreenshot(true);
+    setScreenshotSuccess(false);
+
+    try {
+      // 1. Take lightweight-charts screenshot canvas with primitives
+      const rawCanvas = chartRef.current.takeScreenshot(true);
+      if (!rawCanvas) {
+        throw new Error('Could not capture chart canvas');
+      }
+
+      const { defaultBar, defaultPrevBar } = dataLookupRef.current;
+      const targetSymbol = overrideParams.symbol || symbol || 'STOCK';
+      const targetSetup = overrideParams.setupName || setupName || 'General';
+      const targetDate = overrideParams.asOfDate || asOfDate || defaultBar?.time || (data && data.length > 0 ? data[data.length - 1].time : null) || new Date().toISOString().slice(0, 10);
+      const dateStr = typeof targetDate === 'string' ? targetDate : (targetDate?.year ? `${targetDate.year}-${String(targetDate.month).padStart(2, '0')}-${String(targetDate.day).padStart(2, '0')}` : String(targetDate));
+
+      // 2. Composite header and indicator overlay onto export canvas
+      const compositedCanvas = compositeChartScreenshot(rawCanvas, {
+        symbol: targetSymbol,
+        setupName: targetSetup,
+        date: dateStr,
+        bar: defaultBar,
+        prevBar: defaultPrevBar,
+        companyName: companyName
+      });
+
+      const dataUrl = compositedCanvas.toDataURL('image/png');
+
+      // 3. Save to backend ./charts/{setup_name}/{symbol}_{date}.png
+      const res = await fetch(`${API_BASE}/api/charts/screenshot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol: targetSymbol,
+          setup_name: targetSetup,
+          date: dateStr,
+          image_base64: dataUrl,
+        }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Server returned ${res.status}: ${errText}`);
+      }
+
+      const result = await res.json();
+      setScreenshotSuccess(true);
+      setToastMessage(`Saved to ${result.file_path}`);
+
+      if (onScreenshotSaved) {
+        onScreenshotSaved(result);
+      }
+
+      setTimeout(() => {
+        setScreenshotSuccess(false);
+      }, 2500);
+
+      setTimeout(() => {
+        setToastMessage(null);
+      }, 3500);
+
+      return result;
+    } catch (err) {
+      console.error('Error saving chart screenshot:', err);
+      setToastMessage(`Error saving: ${err.message}`);
+      setTimeout(() => {
+        setToastMessage(null);
+      }, 4000);
+    } finally {
+      setSavingScreenshot(false);
+    }
+  };
+
+  useImperativeHandle(ref, () => ({
+    saveScreenshot: handleSaveScreenshot,
+    getChart: () => chartRef.current,
+  }));
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -451,7 +661,7 @@ export default function CandlestickChart({ data, height = 280, asOfDate = null, 
     } else {
       renderLegend(null, null, symbol);
     }
-  }, [data, height, asOfDate, symbol]);
+  }, [data, height, asOfDate, symbol, setupName]);
 
   // Clean up chart instance on component unmount & handle container resize
   useEffect(() => {
@@ -511,9 +721,89 @@ export default function CandlestickChart({ data, height = 280, asOfDate = null, 
           borderRadius: '6px',
           padding: '4px 10px',
           boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
-          maxWidth: 'calc(100% - 24px)',
+          maxWidth: 'calc(100% - 150px)',
         }}
       />
+
+      {/* Top-Right Chart Action Overlay (Screenshot Button) */}
+      {showScreenshotButton && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '8px',
+            right: '12px',
+            zIndex: 10,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => handleSaveScreenshot()}
+            disabled={savingScreenshot || !data || data.length === 0}
+            title={`Take screenshot and store to ./charts/${setupName || 'Setup'}/${symbol || 'SYMBOL'}_${asOfDate || 'date'}.png`}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '28px',
+              height: '28px',
+              padding: 0,
+              background: screenshotSuccess ? 'rgba(16, 185, 129, 0.35)' : 'rgba(15, 23, 42, 0.82)',
+              backdropFilter: 'blur(6px)',
+              WebkitBackdropFilter: 'blur(6px)',
+              border: screenshotSuccess ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.2)',
+              color: screenshotSuccess ? '#34d399' : '#f8fafc',
+              borderRadius: '6px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: (savingScreenshot || !data || data.length === 0) ? 'not-allowed' : 'pointer',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            {savingScreenshot ? (
+              <span className="spin-icon" style={{ fontSize: '12px' }}>🔄</span>
+            ) : screenshotSuccess ? (
+              <span style={{ fontSize: '14px', fontWeight: 700 }}>✓</span>
+            ) : (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                <circle cx="12" cy="13" r="4"></circle>
+              </svg>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Floating Toast Notification Overlay */}
+      {toastMessage && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '16px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 20,
+            background: 'rgba(15, 23, 42, 0.95)',
+            border: '1px solid #10b981',
+            color: '#ffffff',
+            padding: '8px 16px',
+            borderRadius: '8px',
+            fontSize: '12.5px',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5)',
+            pointerEvents: 'none',
+          }}
+        >
+          <span>📸</span>
+          <span>{toastMessage}</span>
+        </div>
+      )}
 
       <div
         ref={chartContainerRef}
@@ -526,5 +816,7 @@ export default function CandlestickChart({ data, height = 280, asOfDate = null, 
       />
     </div>
   );
-}
+});
+
+export default CandlestickChart;
 

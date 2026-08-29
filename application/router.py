@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks, Response
 from pydantic import BaseModel, Field, AliasChoices, ConfigDict
 from typing import Optional
 
-from application.services import config_service, db_service, sync_service
+from application.services import config_service, db_service, sync_service, chart_service
 
 logger = logging.getLogger("pivottrader.api")
 router = APIRouter()
@@ -37,6 +37,12 @@ class WatchlistItemAddSchema(BaseModel):
 
 class RulesUpdateSchema(BaseModel):
     content: str
+
+class ChartScreenshotSchema(BaseModel):
+    symbol: str
+    setup_name: str = "General"
+    date: str = "latest"
+    image_base64: str
 
 class CandidateFilterSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -368,6 +374,23 @@ def update_setups_and_rules(payload: RulesUpdateSchema):
     except Exception as e:
         logger.error(f"Error in update_setups_and_rules: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- Chart Screenshot Endpoints -----------------
+
+@router.post("/api/charts/screenshot")
+def save_chart_screenshot_endpoint(payload: ChartScreenshotSchema):
+    """Save chart screenshot PNG under ./charts/{setup_name}/{symbol}_{date}.png."""
+    try:
+        res = chart_service.save_chart_screenshot(
+            symbol=payload.symbol,
+            setup_name=payload.setup_name,
+            date_str=payload.date,
+            image_base64=payload.image_base64
+        )
+        return res
+    except Exception as e:
+        logger.error(f"Error saving chart screenshot: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to save chart screenshot: {str(e)}")
 
 
 
