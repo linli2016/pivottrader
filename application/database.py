@@ -1,4 +1,3 @@
-import os
 import duckdb
 from typing import List, Dict, Any, Tuple
 import pandas as pd
@@ -109,10 +108,6 @@ class DatabaseManager:
                     ipo_drawdown_from_high DOUBLE,
                     ipo_base_depth DOUBLE,
                     pp_days_since_peak INTEGER,
-                    darvas_is_setup BOOLEAN,
-                    darvas_box_top DOUBLE,
-                    darvas_box_bottom DOUBLE,
-                    darvas_box_width_pct DOUBLE,
                     high_52w DOUBLE,
                     low_52w DOUBLE,
                     dist_from_52w_high DOUBLE,
@@ -141,6 +136,7 @@ class DatabaseManager:
                     pivot_close_clustering_pct DOUBLE,
                     pivot_vol_ratio DOUBLE,
                     ti_65 DOUBLE,
+                    dollar_vol_50d_ma DOUBLE,
                     PRIMARY KEY (symbol, date)
                 );
             """)
@@ -162,10 +158,6 @@ class DatabaseManager:
                 ("ipo_all_time_high", "DOUBLE"),
                 ("ipo_drawdown_from_high", "DOUBLE"),
                 ("ipo_base_depth", "DOUBLE"),
-                ("darvas_is_setup", "BOOLEAN"),
-                ("darvas_box_top", "DOUBLE"),
-                ("darvas_box_bottom", "DOUBLE"),
-                ("darvas_box_width_pct", "DOUBLE"),
                 ("high_52w", "DOUBLE"),
                 ("low_52w", "DOUBLE"),
                 ("dist_from_52w_high", "DOUBLE"),
@@ -194,6 +186,7 @@ class DatabaseManager:
                 ("pivot_close_clustering_pct", "DOUBLE"),
                 ("pivot_vol_ratio", "DOUBLE"),
                 ("ti_65", "DOUBLE"),
+                ("dollar_vol_50d_ma", "DOUBLE"),
             ]
             for col_name, col_type in new_cols:
                 try:
@@ -420,7 +413,8 @@ class DatabaseManager:
                     b.rs_rank,
                     b.vol_50d_ma,
                     b.volume,
-                    wi.added_at
+                    wi.added_at,
+                    COALESCE(b.dollar_vol_50d_ma, b.close * b.vol_50d_ma) as dollar_vol_50d_ma
                 FROM watchlist_items wi
                 JOIN symbols s ON wi.symbol = s.symbol
                 LEFT JOIN (
@@ -446,7 +440,8 @@ class DatabaseManager:
                     "rs_rank": row[5],
                     "vol_50d_ma": row[6],
                     "volume": row[7],
-                    "added_at": str(row[8]) if row[8] else None
+                    "added_at": str(row[8]) if row[8] else None,
+                    "dollar_vol_50d_ma": row[9]
                 }
                 for row in rows
             ]

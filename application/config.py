@@ -62,6 +62,10 @@ class Config:
         return int(self.get("universe_rules.min_volume_sma_50", 100000))
 
     @property
+    def min_dollar_volume_50d(self) -> float:
+        return float(self.get("universe_rules.min_dollar_volume_50d", 5000000.0))
+
+    @property
     def history_lookback_years(self) -> int:
         return int(self.get("universe_rules.history_lookback_years", 5))
 
@@ -76,11 +80,3 @@ class Config:
     @property
     def min_eps_growth_qoq(self) -> float:
         return float(self.get("fundamental_filters.min_eps_growth_qoq", 20.0))
-
-    @property
-    def export_file_name(self) -> str:
-        return self.get("export.file_name", "Minervini_VCP_Candidates.txt")
-
-    @property
-    def export_delimiter(self) -> str:
-        return self.get("export.delimiter", ", ")

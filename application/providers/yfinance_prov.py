@@ -1,12 +1,12 @@
-import io
 import time
+import datetime
 import requests
 import sys
 import math
 import pandas as pd
 import yfinance as yf
 from typing import List, Dict, Any
-from src.providers.base import AbstractDataProvider
+from application.providers.base import AbstractDataProvider
 
 class YFinanceProvider(AbstractDataProvider):
     def connect(self) -> None:
@@ -156,10 +156,7 @@ class YFinanceProvider(AbstractDataProvider):
                         "Stock Splits": "stock_splits"
                     })
                     sym_df["date"] = pd.to_datetime(sym_df["date"]).dt.date
-                    for col in ["open", "high", "low", "close", "volume", "stock_splits"]:
-                        if col in sym_df.columns:
-                            sym_df[col] = sym_df[col].astype(float)
-                    
+
                     # Apply backward stock split adjustments for split-adjusted price consistency
                     if "stock_splits" in sym_df.columns:
                         splits = sym_df[(sym_df["stock_splits"] > 0) & (sym_df["stock_splits"] != 1.0)]

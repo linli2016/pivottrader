@@ -1,100 +1,162 @@
 # Web Application Design Document
-## PivotTrader Dashboard & Portfolio Manager
+## PivotTrader Dashboard & Momentum Screener
 
 ---
 
 ## 1. Executive Summary & Goals
 
-The PivotTrader Web Application will serve as an interactive user interface to view and manage the underlying DuckDB database, configure screening parameters, inspect daily candlestick charts, track quarterly earnings acceleration, and maintain a trading ledger (portfolio logs).
+The PivotTrader Web Application serves as an interactive, real-time command center to explore the underlying DuckDB database, configure screening parameters, inspect daily candlestick charts with technical setup overlays, track quarterly earnings acceleration, monitor market regime breadth, and manage custom watchlists and trading playbooks.
 
 ---
 
 ## 2. System Architecture
 
-To ensure separation of concerns and portability, the application uses a decoupled client-server architecture:
+The application uses a decoupled client-server architecture built for high performance and clean separation of concerns:
 
 ```mermaid
 graph TD
-    UI[Frontend: React + Vite + Vanilla CSS] -->|REST API Requests| API[Backend: FastAPI]
-    API -->|Read-Only Connection| DB[(DuckDB: data.db)]
-    Screen[Pipeline: src.pipeline CLI] -->|Read-Write Connection| DB
+    subgraph Frontend ["Frontend (React 18 + Vite SPA)"]
+        UI_Dash[Dashboard Tab]
+        UI_Cand[Candidates Tab]
+        UI_Insp[Stock Inspector Tab]
+        UI_MM[Market Monitor Tab]
+        UI_Sec[Sector Compare Tab]
+        UI_WL[Watchlists Tab]
+        UI_Rules[Setups & Rules Tab]
+        UI_SQL[SQL Console Tab]
+        UI_Set[Settings Tab]
+        UI_Drawer[Stock Detail Drawer]
+    end
+
+    subgraph Backend ["Backend (FastAPI REST Server)"]
+        Router[API Router]
+        Svc_DB[Database Service]
+        Svc_Cfg[Config Service]
+        Svc_Sync[Sync Service]
+    end
+
+    subgraph Storage ["Storage & Background Orchestrator"]
+        DB[(DuckDB: data.db)]
+        Pipeline[Background Ingestion: application.pipeline]
+        YF[Yahoo Finance / IBKR API]
+        RulesMD[Playbook: setups_and_rules.md]
+        CfgYAML[Config: config.yaml]
+    end
+
+    Frontend -->|REST HTTP / JSON| Router
+    Router --> Svc_DB & Svc_Cfg & Svc_Sync
+    Svc_DB -->|Read-Only Connection| DB
+    Svc_Cfg --> CfgYAML
+    Svc_Sync -->|Background Subprocess| Pipeline
+    Router --> RulesMD
+    Pipeline -->|Read-Write Connection| DB
+    Pipeline --> YF
 ```
 
-### 2.1 DuckDB Concurrency Strategy (Crucial Design Point)
-DuckDB enforces a single-writer, multiple-reader locking mechanism:
-* **The Problem:** If the backend web server opens `data.db` in read-write mode, the background scheduler/script `src/pipeline.py` will fail with a `Database Locked` error.
-* **The Solution:** The FastAPI backend will establish connection objects using the `read_only=True` parameter:
-  ```python
-  import duckdb
-  conn = duckdb.connect("data.db", read_only=True)
-  ```
-  This allows the web API to serve concurrent client requests while the background screening pipeline successfully writes updates.
+### 2.1 DuckDB Concurrency Strategy
+DuckDB enforces a single-writer, multiple-reader locking model:
+* **The Challenge:** If the backend web server holds a read-write lock on `data.db`, the background scheduler or CLI script (`application.pipeline`) will fail with a `Database Locked` error.
+* **The Solution:** 
+  1. The FastAPI web service exclusively instantiates read-only connections (`duckdb.connect(db_path, read_only=True)`), enabling unlimited concurrent HTTP client requests without blocking.
+  2. The background ingestion pipeline opens write connections only during batch updates with built-in exponential backoff retry handling (`DatabaseManager.get_connection()`).
 
 ---
 
 ## 3. Backend API Design (FastAPI)
 
-The backend will expose a clean REST API written in Python using **FastAPI** and **Uvicorn**.
+The backend exposes a comprehensive REST API organized across dedicated service modules.
 
 ### 3.1 REST API Endpoint Definition
 
-| HTTP Method | Route | Description |
-| :--- | :--- | :--- |
-| **`GET`** | `/api/summary` | Retrieve summary counts (symbols, daily bars count, last updated timestamps). |
-| **`GET`** | `/api/candidates` | Retrieve the latest screened stocks passing active RS and EPS criteria. |
-| **`GET`** | `/api/stocks/{symbol}` | Retrieve metadata and quarterly fundamentals for a specific symbol. |
-| **`GET`** | `/api/stocks/{symbol}/prices` | Retrieve historical daily bars (for charting). |
-| **`GET`** | `/api/config` | Retrieve current runtime config criteria. |
-| **`POST`** | `/api/config` | Update parameters inside `config.yaml`. |
-| **`POST`** | `/api/sync/run` | Trigger a new background data fetch and calculation scan. |
-| **`GET`** | `/api/sync/status` | Retrieve background screening run logs and status. |
-| **`POST`** | `/api/sql/query` | Execute raw SQL statements directly on the read-only database. |
+| Category | HTTP Method | Route | Description |
+| :--- | :--- | :--- | :--- |
+| **Screener & Candidates** | `GET` | `/api/summary` | Retrieve metadata counts (symbols count, total daily bars, last updated timestamps). |
+| | `GET` | `/api/trading-dates` | Retrieve distinct historical trading dates available in `daily_bars`. |
+| | `POST` | `/api/candidates` | Server-side filtered candidate scan supporting all setups, sliders, and target dates. |
+| | `GET` | `/api/candidates` | Retrieve candidate stocks for a target date (default/unfiltered scan). |
+| | `GET` | `/api/stocks/{symbol}` | Retrieve metadata, next earnings date, and Minervini VCP footprint analysis. |
+| | `GET` | `/api/stocks/{symbol}/prices` | Retrieve historical daily price bars with moving averages for lightweight-charts. |
+| | `GET` | `/api/stocks/{symbol}/financials` | Retrieve yearly and quarterly EPS / revenue statement history. |
+| **Market Intelligence** | `GET` | `/api/market-monitor` | Retrieve Stockbee Market Monitor breadth metrics and market regime indicators. |
+| | `GET` | `/api/sectors/etfs` | Retrieve Sector ETF performance, RS Rank, and RS Rank Momentum (1W, 1M, 3M). |
+| | `GET` | `/api/sectors/{sector_name}/stocks` | Retrieve active candidate stocks belonging to a specific sector/industry group. |
+| **Watchlist Management** | `GET` | `/api/watchlists` | Retrieve all custom watchlists with item counts. |
+| | `POST` | `/api/watchlists` | Create a new user watchlist. |
+| | `DELETE` | `/api/watchlists/{watchlist_id}` | Delete a watchlist. |
+| | `GET` | `/api/watchlists/{watchlist_id}/items` | Retrieve all stock symbols contained in a specific watchlist. |
+| | `POST` | `/api/watchlists/{watchlist_id}/items` | Add a stock symbol to a watchlist. |
+| | `DELETE` | `/api/watchlists/{watchlist_id}/items` | Clear all stock symbols from a watchlist. |
+| | `DELETE` | `/api/watchlists/{watchlist_id}/items/{symbol}` | Remove a single symbol from a watchlist. |
+| **Playbook & Execution** | `GET` | `/api/setups-and-rules` | Retrieve Markdown content of the Setups & Rules playbook (`setups_and_rules.md`). |
+| | `POST` | `/api/setups-and-rules` | Save updated Markdown content to `setups_and_rules.md`. |
+| **System & Ingestion** | `GET` | `/api/config` | Retrieve active screening criteria and provider settings from `config.yaml`. |
+| | `POST` | `/api/config` | Persist runtime parameter updates to `config.yaml`. |
+| | `POST` | `/api/sync/run` | Trigger asynchronous background screening sync with customizable options. |
+| | `GET` | `/api/sync/status` | Retrieve live terminal output and status of the background sync process. |
+| | `POST` | `/api/sql/query` | Execute read-only SQL queries directly against DuckDB. |
 
 ---
 
 ## 4. Frontend Interface Design
 
-The frontend will be built as a modern Single Page Application (SPA) using **React (Vite)** styled with **Vanilla CSS** following custom design rules:
-* **Typography:** Modern clean fonts (e.g. Google Fonts *Outfit* or *Inter*).
-* **Color Palette:** harmonious dark-mode glassmorphism (slate background `#0B0F19`, translucent cards `#171D2C/90`, neon accents: green `#10B981` for upward momentum, blue `#3B82F6` for operations).
+The frontend is structured as a Single Page Application (SPA) using **React 18** and **Vite**, styled with custom **Glassmorphism CSS** (dark slate theme `#0B0F19`, frosted glass cards `#171D2C/90`, neon accents: green `#10B981`, blue `#3B82F6`, orange `#F59E0B`).
 
-### 4.1 Interface Layout & Views
+### 4.1 Primary Navigation Tabs
 
 ```
-+-------------------------------------------------------------------------+
-|  PivotTrader Dashboard      [Sync Database] [SQL Console] [Settings]   |
-+-------------------------------------------------------------------------+
-|  [Total Stocks]    [Top candidates]    [Last Updated]                   |
-|  4,780             12 Candidates       2026-06-27 21:00                 |
-+-------------------------------------------------------------------------+
-|  Candidates Datatable                                                   |
-|  Ticker  | RS Rank | Price  | Vol 50d MA | EPS QoQ Growth               |
-|  ACA     | 98      | $85.20 | 450,000    | +60.4%                       |
-|  ABX     | 95      | $12.40 | 800,000    | +40.0%                       |
-|  ...     | ...     | ...    | ...        | ...                          |
-+-------------------------------------------------------------------------+
++---------------------------------------------------------------------------------------------------------+
+|  PivotTrader 📈   [Dashboard] [Candidates] [Inspector] [Market Monitor] [Sectors] [Watchlists] [Rules] |
++---------------------------------------------------------------------------------------------------------+
 ```
 
-1. **Dashboard View:** Shows metadata metrics, last update indicators, and direct triggers to run the data collection sequence in the background.
-2. **Candidates Datatable:** A sortable data table showing relative strength values, price points, and QoQ growth acceleration rates with colored status pills.
-3. **Detail Interactive Panel:** Opening a candidate displays:
-   * A financial table showing historical quarterly metrics.
-   * A clean interactive price chart (e.g., using TradingView's lightweight-charts or Recharts).
-4. **SQL Console View:** An interactive interface allowing users to run custom analytics queries directly on the database:
-   * **Input:** Multi-line SQL text area with syntax highlighting options.
-   * **Output:** Dynamic, paginated table representing column headers and cell values returned from the database engine.
-   * **Error Logs:** Clean syntax-error alerts displaying exact execution exceptions from the database.
-   * **Implicit Security Validation:** Because the backend connection object is strictly instantiated with `read_only=True`, destructive queries (such as `DROP TABLE`, `DELETE`, `UPDATE`, or `INSERT`) are natively rejected by the DuckDB engine, preventing schemas and caches from accidental corruption or deletions.
+1. **Dashboard Tab (`DashboardTab.jsx`):**
+   - **System KPIs:** Total symbols indexed, total daily price bars, last updated timestamps, and active provider.
+   - **Sync Control Panel:** Fine-grained synchronization options (Price Data Only, Quarterly Fundamentals, Pre-market Quotes, Historical Lookback Years, Force Full Backfill).
+   - **Live Log Terminal:** Real-time log streamer displaying subprocess output during ingestion runs.
+
+2. **Candidates Tab (`CandidatesTab.jsx`):**
+   - **Strategy Sidebar:** Interactive filters for Stage 2 Baseline, VCP, Power Play, IPO Base, New Leaders, Qullamaggie Breakout, Episodic Pivot, Parabolic Extension, and 1M/3M/6M Gainers.
+   - **Historical Date Picker:** Backtest screening setups on any recorded date in history.
+   - **Candidates Table:** Sortable columns with colored status badges, RS ranks, ADR%, and quick watchlist assignment.
+   - **TradingView Exporter:** One-click copy/download of screened tickers in TradingView format.
+
+3. **Stock Inspector Tab (`InspectorTab.jsx`):**
+   - **Interactive Candlestick Chart:** Lightweight-charts daily candlestick chart with SMA 50 (blue), SMA 150 (orange), SMA 200 (pink), EMA 10/20, and volume bars.
+   - **VCP Footprint Card (`VcpFootprintCard.jsx`):** Visualizes contraction waves ($D_1 > D_2 > D_3$), base depths, and tightness metrics.
+   - **Fundamental Earnings Tracker:** Historical quarterly and annual financial tables (EPS diluted, QoQ growth %, revenue).
+
+4. **Market Monitor Tab (`MarketMonitorTab.jsx`):**
+   - **Stockbee Market Monitor:** Tracks daily market breadth: 4% Gainers/Losers, 25% Monthly/Quarterly Gainers, 50-day / 200-day New Highs/Lows, and Worden T2108 indicators.
+   - **Market Posture Gauge:** Classifies market health into *Bullish (Green Light)*, *Neutral (Yellow Light)*, or *Bearish (Red Light)* to dictate portfolio risk allocation.
+
+5. **Sector Compare Tab (`SectorCompareTab.jsx`):**
+   - **Sector ETF Heatmap:** Multi-timeframe performance matrix (1D, 1W, 1M, 3M, 6M) across major SPDR sector ETFs.
+   - **RS Momentum Tracker:** Visualizes leading vs lagging sector rotation and RS Rank deltas.
+   - **Constituent Drill-Down:** Inspects candidate stocks within any chosen industry or sector group.
+
+6. **Watchlists Tab (`WatchlistsTab.jsx`):**
+   - **Custom List Management:** Create, rename, and delete custom trading watchlists.
+   - **Symbol Management:** Add/remove stock tickers with live price quotes and direct links to Stock Inspector.
+
+7. **Setups & Rules Tab (`SetupsAndRulesTab.jsx`):**
+   - **Interactive Playbook:** In-app dual-pane Markdown editor and previewer for `setups_and_rules.md`.
+   - **Live Rule Editing:** Edit risk management guidelines, setup checklists, and execution rules directly within the UI.
+
+8. **SQL Console Tab (`SqlConsoleTab.jsx`):**
+   - **Query Editor:** Interactive SQL workspace with schema preview, multi-line editor, and query execution against DuckDB.
+   - **Safety Enforcement:** Built-in read-only connection ensures data integrity and prevents destructive SQL operations.
+
+9. **Settings Tab (`SettingsTab.jsx`):**
+   - **Runtime Config:** Customize default screener thresholds, data provider selections, and export options synced with `config.yaml`.
+
+10. **Stock Detail Drawer (`StockDetailDrawer.jsx`):**
+    - **Slide-Out Inspection Modal:** Allows inspecting price charts, technicals, and financials for any stock from any tab without navigating away.
 
 ---
 
 ## 5. Future Trading Record Ledger
 
-To support the future portfolio tracking phase, we will expand the database schema and API.
-
-### 5.1 Trading Database Schema Extensions
-
-We will introduce a new table `trading_records` inside `data.db` to handle transactions:
+To support subsequent portfolio management capabilities, the database schema accommodates transactional tracking:
 
 ```sql
 CREATE TABLE IF NOT EXISTS trading_records (
@@ -107,12 +169,7 @@ CREATE TABLE IF NOT EXISTS trading_records (
     commission DOUBLE DEFAULT 0.0,
     notes VARCHAR
 );
-```
 
-### 5.2 Position Aggregator (SQL View)
-We will define a view to dynamically calculate open positions, average cost, and realized P&L:
-
-```sql
 CREATE OR REPLACE VIEW active_portfolio AS
 WITH trade_sums AS (
     SELECT 
@@ -131,21 +188,3 @@ FROM trade_sums
 WHERE net_shares > 0;
 ```
 
----
-
-## 6. Implementation Roadmap
-
-```mermaid
-gantt
-    title Web App Development Roadmap
-    dateFormat  YYYY-MM-DD
-    section Phase 1: Core API
-    FastAPI Read-only connections      :active, 2026-06-28, 3d
-    FastAPI endpoint coding            :2026-07-01, 3d
-    section Phase 2: Frontend
-    React SPA & Datatables            :2026-07-04, 5d
-    Integrate Lightweight Charts       :2026-07-09, 3d
-    section Phase 3: Trading Ledger
-    Schema extension additions         :2026-07-12, 2d
-    Ledger form and summary API        :2026-07-14, 4d
-```

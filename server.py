@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from src.router import router
+from application.router import router
 
 # Configure logging to output detailed messages and tracebacks to the terminal
 logging.basicConfig(

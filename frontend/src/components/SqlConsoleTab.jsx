@@ -10,7 +10,7 @@ const TABLE_METADATA = [
   {
     name: 'daily_bars',
     category: 'MARKET DATA',
-    description: 'Historical daily price bars, volume, RS scores & ranks, moving averages, and pattern setups (VCP, Darvas, EP, etc.).',
+    description: 'Historical daily price bars, volume, RS scores & ranks, moving averages, and pattern setups (VCP, EP, Power Play, Breakout, etc.).',
     defaultQuery: 'SELECT symbol, date, close, volume, rs_rank FROM daily_bars ORDER BY date DESC LIMIT 10;'
   },
   {

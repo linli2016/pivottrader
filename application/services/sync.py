@@ -23,8 +23,8 @@ class SyncService:
             self.sync_status["log_output"] = ""
             self.sync_status["error_message"] = None
 
-        # Call the python src.pipeline module
-        cmd = [sys.executable, "-m", "src.pipeline"]
+        # Call the python application.pipeline module with unbuffered output
+        cmd = [sys.executable, "-u", "-m", "application.pipeline"]
         if include_premarket:
             cmd.append("--include-premarket")
         elif skip_prices:

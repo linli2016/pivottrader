@@ -53,6 +53,7 @@ function App() {
   const [config, setConfig] = useState({
     min_price: 5.0,
     min_volume_sma_50: 100000,
+    min_dollar_volume_50d: 5000000.0,
     min_rs_percentile: 70,
     min_eps_growth_qoq: 20.0,
     provider_selected: 'YFINANCE',
@@ -89,11 +90,11 @@ function App() {
   const [minEpsGrowthFilter, setMinEpsGrowthFilter] = useState(20.0);
   const [minPriceFilter, setMinPriceFilter] = useState(5.00);
   const [minVolFilter, setMinVolFilter] = useState(100000);
+  const [minDollarVolFilter, setMinDollarVolFilter] = useState(5000000.0);
   const [enforceStage2, setEnforceStage2] = useState(false);
   const [enablePowerPlay, setEnablePowerPlay] = useState(true);
   const [enableIpoBase, setEnableIpoBase] = useState(false);
   const [enableVcpSetup, setEnableVcpSetup] = useState(false);
-  const [enableDarvasBox, setEnableDarvasBox] = useState(false);
   const [enableNewLeaders, setEnableNewLeaders] = useState(false);
   const [enableQullamaggieBreakout, setEnableQullamaggieBreakout] = useState(false);
   const [enableQullamaggieMomentum, setEnableQullamaggieMomentum] = useState(false);
@@ -138,9 +139,6 @@ function App() {
   const [enableVcpEpsGrowth, setEnableVcpEpsGrowth] = useState(false);
   const [enableVcpPattern, setEnableVcpPattern] = useState(true);
 
-  const [enableDarvasPattern, setEnableDarvasPattern] = useState(true);
-  const [enableDarvasWidth, setEnableDarvasWidth] = useState(true);
-
   const [enableRs, setEnableRs] = useState(false);
 
   const [enableRsNewHigh, setEnableRsNewHigh] = useState(false);
@@ -171,9 +169,6 @@ function App() {
   const [maxIpoAgeFilter, setMaxIpoAgeFilter] = useState(350);
   const [maxIpoDistFilter, setMaxIpoDistFilter] = useState(25.0);
   const [maxIpoDepthFilter, setMaxIpoDepthFilter] = useState(35.0);
-
-  // Darvas Box inputs
-  const [maxDarvasWidthFilter, setMaxDarvasWidthFilter] = useState(25.0);
 
   // New Leaders inputs
   const [max52wDistFilter, setMax52wDistFilter] = useState(25.0);
@@ -238,6 +233,9 @@ function App() {
       setMinEpsGrowthFilter(data.min_eps_growth_qoq);
       setMinPriceFilter(data.min_price);
       setMinVolFilter(data.min_volume_sma_50);
+      if (data.min_dollar_volume_50d !== undefined) {
+        setMinDollarVolFilter(data.min_dollar_volume_50d);
+      }
     } catch (e) {
       console.error("Error fetching config: ", e);
     }
@@ -397,13 +395,13 @@ function App() {
   const activeFilters = {
     minPriceFilter,
     minVolFilter,
+    minDollarVolFilter,
     minRsFilter,
     minEpsGrowthFilter,
     enforceStage2,
     enablePowerPlay,
     enableIpoBase,
     enableVcpSetup,
-    enableDarvasBox,
     enableNewLeaders,
     enableQullamaggieBreakout,
     enableQullamaggieMomentum,
@@ -422,7 +420,6 @@ function App() {
     maxIpoAgeFilter,
     maxIpoDistFilter,
     maxIpoDepthFilter,
-    maxDarvasWidthFilter,
     max52wDistFilter,
     minSurgeOffLowFilter,
     minNewLeadersRsFilter,
@@ -451,8 +448,6 @@ function App() {
     enableIpoDepth,
     enableVcpEpsGrowth,
     enableVcpPattern,
-    enableDarvasPattern,
-    enableDarvasWidth,
     enableRs,
     enableRsNewHigh,
     enableTi65,
@@ -671,10 +666,11 @@ function App() {
             selectedDate={selectedDate}
             setSelectedDate={setSelectedDate}
             minPriceFilter={minPriceFilter}
-
             setMinPriceFilter={setMinPriceFilter}
             minVolFilter={minVolFilter}
             setMinVolFilter={setMinVolFilter}
+            minDollarVolFilter={minDollarVolFilter}
+            setMinDollarVolFilter={setMinDollarVolFilter}
             minRsFilter={minRsFilter}
             setMinRsFilter={setMinRsFilter}
             minEpsGrowthFilter={minEpsGrowthFilter}
@@ -687,8 +683,6 @@ function App() {
             setEnableIpoBase={setEnableIpoBase}
             enableVcpSetup={enableVcpSetup}
             setEnableVcpSetup={setEnableVcpSetup}
-            enableDarvasBox={enableDarvasBox}
-            setEnableDarvasBox={setEnableDarvasBox}
             enableNewLeaders={enableNewLeaders}
             setEnableNewLeaders={setEnableNewLeaders}
             enableQullamaggieBreakout={enableQullamaggieBreakout}
@@ -754,8 +748,6 @@ function App() {
             setMaxIpoDistFilter={setMaxIpoDistFilter}
             maxIpoDepthFilter={maxIpoDepthFilter}
             setMaxIpoDepthFilter={setMaxIpoDepthFilter}
-            maxDarvasWidthFilter={maxDarvasWidthFilter}
-            setMaxDarvasWidthFilter={setMaxDarvasWidthFilter}
             max52wDistFilter={max52wDistFilter}
             setMax52wDistFilter={setMax52wDistFilter}
             minSurgeOffLowFilter={minSurgeOffLowFilter}
@@ -781,10 +773,6 @@ function App() {
             setEnableVcpEpsGrowth={setEnableVcpEpsGrowth}
             enableVcpPattern={enableVcpPattern}
             setEnableVcpPattern={setEnableVcpPattern}
-            enableDarvasPattern={enableDarvasPattern}
-            setEnableDarvasPattern={setEnableDarvasPattern}
-            enableDarvasWidth={enableDarvasWidth}
-            setEnableDarvasWidth={setEnableDarvasWidth}
             enableRs={enableRs}
             setEnableRs={setEnableRs}
             enableRsNewHigh={enableRsNewHigh}

@@ -59,6 +59,15 @@ export default function SettingsTab({
             />
           </div>
           <div className="form-group">
+            <label>Minimum 50-day Daily Dollar Volume ($)</label>
+            <input
+              type="number"
+              step="100000"
+              value={config.min_dollar_volume_50d ?? 5000000}
+              onChange={(e) => setConfig({ ...config, min_dollar_volume_50d: parseFloat(e.target.value) })}
+            />
+          </div>
+          <div className="form-group">
             <label>Minervini Min RS Percentile Rank (70 = Top 30%)</label>
             <input
               type="number"

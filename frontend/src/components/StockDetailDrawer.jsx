@@ -301,7 +301,19 @@ export default function StockDetailDrawer({
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '6px' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Average Daily Vol (50d):</span>
                   <strong style={{ color: 'var(--text-primary)' }}>
-                    {selectedStock?.vol_50d_ma ? selectedStock.vol_50d_ma.toLocaleString() : 'N/A'}
+                    {selectedStock?.vol_50d_ma ? selectedStock.vol_50d_ma.toLocaleString() : (stockDetail?.vol_50d_ma ? stockDetail.vol_50d_ma.toLocaleString() : 'N/A')}
+                  </strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '6px' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Avg Daily Dollar Vol (50d):</span>
+                  <strong style={{ color: 'var(--text-primary)' }}>
+                    {selectedStock?.dollar_vol_50d_ma
+                      ? `$${(selectedStock.dollar_vol_50d_ma / 1000000).toFixed(2)}M`
+                      : (stockDetail?.dollar_vol_50d_ma
+                        ? `$${(stockDetail.dollar_vol_50d_ma / 1000000).toFixed(2)}M`
+                        : (selectedStock?.close && selectedStock?.vol_50d_ma
+                          ? `$${((selectedStock.close * selectedStock.vol_50d_ma) / 1000000).toFixed(2)}M`
+                          : 'N/A'))}
                   </strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '6px' }}>

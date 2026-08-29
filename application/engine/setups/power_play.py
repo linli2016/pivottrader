@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Any
 
 def detect_power_play(
     highs: List[float],

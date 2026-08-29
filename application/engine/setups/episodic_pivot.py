@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Any
 
 def detect_episodic_pivot(opens: List[float], highs: List[float], lows: List[float], closes: List[float], volumes: List[float], dates: List[Any]) -> dict:
     """

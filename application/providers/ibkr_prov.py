@@ -4,7 +4,7 @@ import requests
 import time
 import sys
 from typing import List, Dict, Any
-from src.providers.base import AbstractDataProvider
+from application.providers.base import AbstractDataProvider
 
 try:
     from ib_insync import IB, Stock, util

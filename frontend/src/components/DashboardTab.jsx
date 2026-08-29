@@ -242,7 +242,7 @@ export default function DashboardTab({
                 Stock Screen
               </h3>
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
-                Screen setups (VCP, Darvas, EP, Power Play) and flip charts in Browse Mode.
+                Screen setups (VCP, Breakout, EP, Power Play) and flip charts in Browse Mode.
               </p>
             </div>
             <button className="btn btn-secondary btn-sm" style={{ marginTop: '16px', width: '100%', fontSize: '12px', justifyContent: 'center' }}>

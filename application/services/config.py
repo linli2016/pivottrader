@@ -22,6 +22,7 @@ class ConfigService:
         return {
             "min_price": config.get("universe_rules", {}).get("min_price", 5.00),
             "min_volume_sma_50": config.get("universe_rules", {}).get("min_volume_sma_50", 100000),
+            "min_dollar_volume_50d": config.get("universe_rules", {}).get("min_dollar_volume_50d", 5000000.0),
             "min_rs_percentile": config.get("momentum_filters", {}).get("min_rs_percentile", 70),
             "min_eps_growth_qoq": config.get("fundamental_filters", {}).get("min_eps_growth_qoq", 20.0),
             "provider_selected": config.get("provider", {}).get("selected", "YFINANCE"),
@@ -36,6 +37,7 @@ class ConfigService:
             config["universe_rules"] = {}
         config["universe_rules"]["min_price"] = payload.min_price
         config["universe_rules"]["min_volume_sma_50"] = payload.min_volume_sma_50
+        config["universe_rules"]["min_dollar_volume_50d"] = payload.min_dollar_volume_50d
         
         if "momentum_filters" not in config:
             config["momentum_filters"] = {}

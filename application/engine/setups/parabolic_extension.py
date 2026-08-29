@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Any
 
 def detect_parabolic_extension(highs: List[float], lows: List[float], closes: List[float], dates: List[Any], ema_10_val: float) -> dict:
     """

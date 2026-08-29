@@ -19,7 +19,7 @@ It features a decoupled architecture combining a vectorized Python/DuckDB analys
 ## 📂 Repository File Layout
 
 ```
-├── src/                      # Backend Python Core modules
+├── application/              # Backend Python Core modules
 │   ├── engine/
 │   │   └── momentum.py       # Vectorized SQL calculations & VCP detection
 │   ├── config.py             # Global configurations parser
@@ -72,7 +72,7 @@ npm install
 PivotTrader runs off a local DuckDB cache (`data.db`). Before running the server, sync yfinance price histories and quarterly statement details:
 ```bash
 # Run ingestion sync (Step 2 daily bars + Step 4 statements + Step 5 sweeps)
-python3 -m src.pipeline
+python3 -m application.pipeline
 ```
 > [!TIP]
 > On subsequent daily runs, you can skip slow statement fetches by checking the **Sync Price Data** checkbox on the dashboard to trigger rapid price-only ingestion.

@@ -6,7 +6,7 @@ This document details the quantitative rules, market rationale, and technical cr
 
 ## Overview of Screen Setups
 
-PivotTrader supports multiple setup overlays designed to identify superperformance stock patterns derived from legendary market wizard strategies (Mark Minervini, Nicolas Darvas, William O'Neil):
+PivotTrader supports multiple setup overlays designed to identify superperformance stock patterns derived from legendary market wizard strategies (Mark Minervini, William O'Neil, Kristjan Qullamaggie):
 
 | Setup Name | Core Rationale / Focus | Key Technical Criteria |
 | :--- | :--- | :--- |
@@ -14,11 +14,17 @@ PivotTrader supports multiple setup overlays designed to identify superperforman
 | **Volatility Contraction Pattern (VCP)** | Supply drying up via contracting swings | Sequential wave contractions (D₁ > D₂ > D₃), final contraction $\le 10\%$, RS Rank $\ge 70$ |
 | **Power Play (High Tight Flag)** | High-velocity momentum expansion | $\ge 100\%$ run-up within 8 weeks, drawdown $\le 25\%$, consolidation $\ge 12$ days |
 | **IPO Base** | Primary base in young public companies | Listing age 10–350 days, distance from ATH $\le 25\%$, base depth $\le 35\%$ |
-| **Darvas Box** | Box consolidation in confirmed uptrends | 3-day unbreached Box Top & Bottom, Box Width $\le 25\%$ |
 | **New Leaders (Market Low Turn)** | Market correction turnover & leadership | 52-week high list / proximity ($\le 25\%$), strong surge off market lows ($\ge 20\%$), least corrected |
 | **Qullamaggie Breakout** | Momentum consolidation surfing 10/20 EMA | Top 1%–2% 1M/3M/6M gainers, +30-100%+ prior leg, tight EMA 10/20 surf, stop LOD $\le 1$ ATR |
 | **Episodic Pivot (EP)** | Fundamental catalyst news gap-up | Gap $\ge +8.0\%$, RelVol $\ge 2.5\text{x}$ 50d volume, prior 60-day base breakout |
 | **Parabolic Climax (Short & Long)** | Mean-reversion after vertical expansion | +40%+ move in 3–10d, extended $\ge 18\%$ above 10 EMA (or -30% drop below 10 EMA) |
+
+## Global Baseline Universe & Liquidity Filters
+
+All setups and scans in PivotTrader require candidates to meet the global baseline liquidity filters before setup-specific patterns are evaluated:
+1. **Minimum Stock Price**: $\ge \$5.00$ (prevents low-liquidity penny stock manipulation).
+2. **Minimum 50-Day Average Volume**: $\ge 100,000$ shares daily.
+3. **Minimum Daily Dollar Volume (Liquidity)**: $\ge \$5,000,000$ (\$5M) in 50-day average daily dollar volume ($\text{Price} \times \text{Volume}$). This ensures adequate institutional liquidity for sizing in and out of positions without severe execution slippage.
 
 ---
 
@@ -78,21 +84,7 @@ Young companies emerging from their initial public offering (IPO) have no long-t
 
 ---
 
-## 5. Darvas Box Setup
-
-### Rationale
-Formulated by Nicolas Darvas, a Darvas Box identifies stocks consolidating in well-defined rectangular price boxes after a strong advance, setting up a pivot breakout.
-
-### Quantitative Criteria
-1. **Box Top Formation**: A 3-day local high where subsequent 3 days fail to breach that high.
-2. **Box Bottom Formation**: A 3-day local floor following Box Top where subsequent 3 days fail to undercut that low.
-3. **Box Width Constraint**: Box height $\frac{\text{Top} - \text{Bottom}}{\text{Top}} \le 25\%$.
-4. **Price Boundary Integrity**: Current price remains within box boundaries ($[ \text{Bottom} \times 0.98, \text{Top} \times 1.08 ]$).
-5. **Phase 2 Context**: Enforces Stage 2 Trend Template baseline.
-
----
-
-## 6. New Leaders Setup (Market Correction & Turn Leadership)
+## 5. New Leaders Setup (Market Correction & Turn Leadership)
 
 ### Rationale
 Historical market analysis proves that **over 96% of superperformance stocks emerge from bear markets or general market corrections**. During market declines, true leaders demonstrate extreme price resilience by resisting sell-offs, trading near 52-week highs, and surging first off market lows.
@@ -102,7 +94,7 @@ Historical market analysis proves that **over 96% of superperformance stocks eme
 2. **Resilient Correction (Least Corrected)**: Stocks that corrected the least percentage amount during the general market's declining period.
 3. **Powerful Surge off Lows**: Stocks surging sharply in price off recent market lows (largest percentage movers off market trough).
 4. **Base-Building Context**: Stocks base-building and consolidating within the context of a confirmed long-term uptrend (Stage 2 / Trend Template).
-5. **Proliferation of Setups**: Emerging through proper pivot buy points out of bases (VCP, Darvas Box, or High-Tight Flags).
+5. **Proliferation of Setups**: Emerging through proper pivot buy points out of bases (VCP or High-Tight Flags).
 6. **Relative Strength Leadership**: Top RS Percentile Ranks ($\ge 80\text{--}95$) or RS Ranks hitting new 52-week highs relative to the broader market.
 
 ### Quantitative Screener Parameters
@@ -114,9 +106,9 @@ Historical market analysis proves that **over 96% of superperformance stocks eme
 
 ---
 
-## 7. Kristjan Qullamaggie's 3 Timeless Setups
+## 6. Kristjan Qullamaggie's 3 Timeless Setups
 
-### 7.1 Qullamaggie Breakout Setup (Momentum Consolidation & EMA Surfing)
+### 6.1 Qullamaggie Breakout Setup (Momentum Consolidation & EMA Surfing)
 - **Rationale**: Leading stocks move in stair steps (+30% to +100%+ move over 1–3 months, orderly pullback/consolidation surfing the 10/20 EMA, then a range expansion breakout).
 - **Quantitative Criteria**:
   1. **Top Momentum Performance**: Top 1%–2% price performance leaders over 1-month (`ret_1m`), 3-month, and 6-month timeframes.
@@ -125,7 +117,7 @@ Historical market analysis proves that **over 96% of superperformance stocks eme
   4. **Risk Management Rule**: Entry on Opening Range High (ORH), stop at Low of Day (LOD) bounded $\le 1$ ATR/ADR of stock.
   5. **Trailing Exit Rule**: Sell 1/3 to 1/2 after 3–5 days, trail remaining position with a daily close below the 10-day EMA.
 
-### 7.2 Episodic Pivot (EP Setup)
+### 6.2 Episodic Pivot (EP Setup)
 - **Rationale**: Fundamental catalyst (earnings/revenue beat, FDA approval, major contract) triggers a massive re-rating gap up out of a multi-month base on institutional buying.
 - **Quantitative Criteria**:
   1. **Massive Gap Up**: Opening price gap $\ge +8.0\%$ above prior day close (`gap_pct`).
@@ -133,12 +125,33 @@ Historical market analysis proves that **over 96% of superperformance stocks eme
   3. **Base Context**: Consolidating base prior to gap event.
   4. **Fundamental Filter**: QoQ EPS / Revenue growth $\ge 20\%$ or fundamental catalyst tag.
 
-### 7.3 Parabolic Extension Setups (Short & Long)
+### 6.3 Parabolic Extension Setups (Short & Long)
 - **Rationale**: Extreme vertical advances (+40% to +200%+ in 3 to 10 days) leave stocks severely extended far above short-term moving averages. When momentum exhausts (first red day / breaking previous day low), mean-reversion pullbacks offer high R/R short setups.
 - **Quantitative Criteria**:
   1. **Fast Runup Velocity**: Price gain $\ge +40.0\%$ over 3 to 10 trading days (`parabolic_runup_pct`).
   2. **Consecutive Up Days**: Price has closed higher for $\ge 3$ to $5+$ days in a row (`parabolic_up_days`).
   3. **EMA Extension**: Distance above 10-day EMA $\ge +18.0\%$ (`dist_ema10_pct`).
   4. **Parabolic Long (Oversold Bounce)**: Fast drop $\le -30.0\%$ over 3–10 days with distance below 10 EMA $\le -18.0\%$.
+
+---
+
+## 7. Kristjan Qullamaggie Momentum Scanners (1M / 3M / 6M Gainers)
+
+### Rationale
+To systematically identify the true institutional momentum leaders before they form actionable breakout bases, the screener scans the top 1% to 2% strongest stocks across 1-month, 3-month, and 6-month horizons.
+
+### Quantitative Criteria
+1. **Baseline Liquidity & Volatility Filters**:
+   - **Price**: $\ge \$2.00$ (default minimum threshold).
+   - **50-Day SMA Volume**: $\ge 100,000$ shares daily.
+   - **20-Day ADR%**: $\ge 4.0\%$ (Average Daily Range percentage).
+2. **Multi-Timeframe Horizon Rankings**:
+   - **1-Month Gainers (`ret_1m`)**: Top 50–100 performers over ~21 trading days (sudden velocity & news runners).
+   - **3-Month Gainers (`ret_3m`)**: Top 50–100 performers over ~63 trading days (intermediate trend leaders).
+   - **6-Month Gainers (`ret_6m`)**: Top 50–100 performers over ~126 trading days (sustained institutional uptrends).
+3. **Focus Universe Deduplication**:
+   - The top gainers from all three scans are aggregated and deduplicated into a focused watchlist (~100–200 tickers).
+   - Candidates appearing in multiple timeframes simultaneously (e.g. `[1M, 3M, 6M]`) represent highest-conviction market leaders.
+
 
 

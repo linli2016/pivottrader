@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Any
 
 def _calculate_ema(prices: List[float], span: int) -> float:
     if not prices or len(prices) < span:

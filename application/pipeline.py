@@ -2,13 +2,12 @@ import argparse
 import os
 import sys
 from datetime import datetime, timedelta, timezone
-import pandas as pd
 
-from src.config import Config
-from src.database import DatabaseManager
-from src.providers.yfinance_prov import YFinanceProvider
-from src.providers.ibkr_prov import IBKRProvider
-from src.engine.momentum import MomentumEngine
+from application.config import Config
+from application.database import DatabaseManager
+from application.providers.yfinance_prov import YFinanceProvider
+from application.providers.ibkr_prov import IBKRProvider
+from application.engine.momentum import MomentumEngine
 
 
 def main():
@@ -134,7 +133,6 @@ def main():
         if missing_ipo_symbols:
             print(f"\nEvaluating IPO Dates: {len(missing_ipo_symbols)} symbols missing IPO date in database...")
             from concurrent.futures import ThreadPoolExecutor, as_completed
-            import yfinance as yf
             
             def fetch_single_ipo_date(symbol: str):
                 try:
@@ -272,6 +270,7 @@ def main():
         momentum_candidates = mom_engine.get_momentum_candidates(
             min_price=config.min_price,
             min_vol_sma=config.min_volume_sma_50,
+            min_dollar_vol=config.min_dollar_volume_50d,
             min_rank=config.min_rs_percentile
         )
         

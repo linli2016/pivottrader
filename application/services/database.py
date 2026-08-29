@@ -124,6 +124,11 @@ class DatabaseService:
                 where_clauses.append("db.vol_50d_ma >= ?")
                 params.append(float(min_vol))
 
+            min_dollar_vol = get_f("min_dollar_volume_50d", "minDollarVolFilter", default=get_f("min_dollar_vol", "minDollarVol"))
+            if min_dollar_vol is not None:
+                where_clauses.append("COALESCE(db.dollar_vol_50d_ma, db.close * db.vol_50d_ma) >= ?")
+                params.append(float(min_dollar_vol))
+
             # Stage 2 Trend Template (Combo Criteria)
             if get_f("enforce_stage2", "enforceStage2", False):
                 where_clauses.append(
@@ -214,15 +219,6 @@ class DatabaseService:
                     where_clauses.append("f.eps_qoq_growth IS NOT NULL AND f.eps_qoq_growth >= ?")
                     params.append(float(min_eps_growth))
 
-            # Darvas Box Overlay
-            if get_f("enable_darvas_box", "enableDarvasBox", False):
-                if get_f("enable_darvas_pattern", "enableDarvasPattern", True):
-                    where_clauses.append("db.darvas_is_setup = true")
-                if get_f("enable_darvas_width", "enableDarvasWidth", True):
-                    max_darvas_width = get_f("max_darvas_width", "maxDarvasWidthFilter", 25.0)
-                    where_clauses.append("db.darvas_box_width_pct IS NOT NULL AND db.darvas_box_width_pct <= ?")
-                    params.append(float(max_darvas_width))
-
             # New Leaders Overlay
             if get_f("enable_new_leaders", "enableNewLeaders", False):
                 if get_f("enable_52w_dist", "enable52wDist", True):
@@ -240,7 +236,7 @@ class DatabaseService:
                 if get_f("enable_new_leaders_52w_high", "enableNewLeaders52wHigh", False):
                     where_clauses.append("(COALESCE(db.is_52w_high, false) = true OR (db.dist_from_52w_high IS NOT NULL AND db.dist_from_52w_high <= 3.0))")
                 if get_f("enable_new_leaders_base", "enableNewLeadersBase", True):
-                    where_clauses.append("(COALESCE(db.vcp_is_setup, false) = true OR COALESCE(db.darvas_is_setup, false) = true OR COALESCE(db.is_52w_high, false) = true)")
+                    where_clauses.append("(COALESCE(db.vcp_is_setup, false) = true OR COALESCE(db.is_52w_high, false) = true)")
 
             # Qullamaggie Breakout SQL pre-filters
             enable_breakout = get_f("enable_qullamaggie_breakout", "enableQullamaggieBreakout", False)
@@ -299,6 +295,7 @@ class DatabaseService:
                     db.symbol,
                     db.close,
                     db.vol_50d_ma,
+                    COALESCE(db.dollar_vol_50d_ma, db.close * db.vol_50d_ma) as dollar_vol_50d_ma,
                     db.rs_score,
                     db.rs_rank,
                     f.report_date,
@@ -322,10 +319,6 @@ class DatabaseService:
                     db.ipo_all_time_high,
                     db.ipo_drawdown_from_high,
                     db.ipo_base_depth,
-                    db.darvas_is_setup,
-                    db.darvas_box_top,
-                    db.darvas_box_bottom,
-                    db.darvas_box_width_pct,
                     COALESCE(db.is_52w_high, false) as rs_rank_is_new_high,
                     db.high_52w,
                     db.dist_from_52w_high,
@@ -405,70 +398,67 @@ class DatabaseService:
             
             candidates = []
             for row in res:
-                sec_val = row[52]
+                sec_val = row[49]
                 sec_rank = sector_ranks.get(sec_val) if sec_val else None
                 candidates.append({
                     "symbol": row[0],
-                    "name": row[54],
+                    "name": row[51],
                     "close": row[1],
                     "vol_50d_ma": row[2],
-                    "rs_score": row[3],
-                    "rs_rank": row[4],
-                    "report_date": row[5].strftime("%Y-%m-%d") if row[5] else None,
-                    "fiscal_quarter": row[6],
-                    "eps_diluted": row[7],
-                    "eps_qoq_growth": row[8],
-                    "total_revenue": row[9],
-                    "exchange": row[10],
-                    "atr_20d": row[11],
-                    "pp_runup_pct": row[12],
-                    "pp_drawdown_pct": row[13],
-                    "pp_days_since_peak": row[14],
-                    "volume": row[15],
-                    "sma_50": row[16],
-                    "sma_150": row[17],
-                    "sma_200": row[18],
-                    "vcp_is_setup": bool(row[19]) if row[19] is not None else False,
-                    "vcp_troughs": row[20],
-                    "vcp_depths": row[21],
-                    "ipo_days_count": row[22],
-                    "ipo_all_time_high": row[23],
-                    "ipo_drawdown_from_high": row[24],
-                    "ipo_base_depth": row[25],
-                    "darvas_is_setup": bool(row[26]) if row[26] is not None else False,
-                    "darvas_box_top": row[27],
-                    "darvas_box_bottom": row[28],
-                    "darvas_box_width_pct": row[29],
-                    "rs_rank_is_new_high": bool(row[30]) if row[30] is not None else False,
-                    "high_52w": row[31],
-                    "dist_from_52w_high": row[32],
-                    "surge_off_low_pct": row[33],
-                    "is_52w_high": bool(row[34]) if row[34] is not None else False,
-                    "ret_1m": row[35],
-                    "ema_10": row[36],
-                    "ema_20": row[37],
-                    "dist_ema10_pct": row[38],
-                    "dist_ema20_pct": row[39],
-                    "gap_pct": row[40],
-                    "rel_vol_50d": row[41],
-                    "ep_is_setup": bool(row[42]) if row[42] is not None else False,
-                    "ep_gap_pct": row[43],
-                    "ep_rel_vol": row[44],
-                    "parabolic_short_is_setup": bool(row[45]) if row[45] is not None else False,
-                    "parabolic_long_is_setup": bool(row[46]) if row[46] is not None else False,
-                    "parabolic_runup_pct": row[47],
-                    "parabolic_up_days": row[48],
-                    "pivot_spread_pct": row[49],
-                    "pivot_close_clustering_pct": row[50],
-                    "pivot_vol_ratio": row[51],
+                    "dollar_vol_50d_ma": row[3],
+                    "rs_score": row[4],
+                    "rs_rank": row[5],
+                    "report_date": row[6].strftime("%Y-%m-%d") if row[6] else None,
+                    "fiscal_quarter": row[7],
+                    "eps_diluted": row[8],
+                    "eps_qoq_growth": row[9],
+                    "total_revenue": row[10],
+                    "exchange": row[11],
+                    "atr_20d": row[12],
+                    "pp_runup_pct": row[13],
+                    "pp_drawdown_pct": row[14],
+                    "pp_days_since_peak": row[15],
+                    "volume": row[16],
+                    "sma_50": row[17],
+                    "sma_150": row[18],
+                    "sma_200": row[19],
+                    "vcp_is_setup": bool(row[20]) if row[20] is not None else False,
+                    "vcp_troughs": row[21],
+                    "vcp_depths": row[22],
+                    "ipo_days_count": row[23],
+                    "ipo_all_time_high": row[24],
+                    "ipo_drawdown_from_high": row[25],
+                    "ipo_base_depth": row[26],
+                    "rs_rank_is_new_high": bool(row[27]) if row[27] is not None else False,
+                    "high_52w": row[28],
+                    "dist_from_52w_high": row[29],
+                    "surge_off_low_pct": row[30],
+                    "is_52w_high": bool(row[31]) if row[31] is not None else False,
+                    "ret_1m": row[32],
+                    "ema_10": row[33],
+                    "ema_20": row[34],
+                    "dist_ema10_pct": row[35],
+                    "dist_ema20_pct": row[36],
+                    "gap_pct": row[37],
+                    "rel_vol_50d": row[38],
+                    "ep_is_setup": bool(row[39]) if row[39] is not None else False,
+                    "ep_gap_pct": row[40],
+                    "ep_rel_vol": row[41],
+                    "parabolic_short_is_setup": bool(row[42]) if row[42] is not None else False,
+                    "parabolic_long_is_setup": bool(row[43]) if row[43] is not None else False,
+                    "parabolic_runup_pct": row[44],
+                    "parabolic_up_days": row[45],
+                    "pivot_spread_pct": row[46],
+                    "pivot_close_clustering_pct": row[47],
+                    "pivot_vol_ratio": row[48],
                     "sector": sec_val,
                     "sector_rank": sec_rank,
-                    "industry": row[53],
-                    "ti_65": row[55],
-                    "adr_20d": row[56],
-                    "ret_3m": row[57],
-                    "ret_6m": row[58],
-                    "next_earnings_date": row[59],
+                    "industry": row[50],
+                    "ti_65": row[52],
+                    "adr_20d": row[53],
+                    "ret_3m": row[54],
+                    "ret_6m": row[55],
+                    "next_earnings_date": row[56],
                     "screen_date": actual_date_str
                 })
 
@@ -477,7 +467,7 @@ class DatabaseService:
 
             # 3b. Dynamic Breakout setup evaluation in memory
             try:
-                from src.engine.setups.breakout import detect_breakout
+                from application.engine.setups.breakout import detect_breakout
 
                 cand_symbols = [c["symbol"] for c in candidates]
                 symbols_str = ", ".join(f"'{s}'" for s in cand_symbols)
@@ -729,9 +719,9 @@ class DatabaseService:
                     "total_revenue": row[4]
                 })
                 
-            # Get latest RS, ATR, and TI65 metrics
+            # Get latest RS, ATR, TI65, and Volume metrics
             latest_bar = conn.execute("""
-                SELECT rs_score, rs_rank, atr_20d, ti_65
+                SELECT rs_score, rs_rank, atr_20d, ti_65, COALESCE(dollar_vol_50d_ma, close * vol_50d_ma) as dollar_vol_50d_ma, vol_50d_ma
                 FROM daily_bars
                 WHERE symbol = ? AND date = (SELECT MAX(date) FROM daily_bars)
             """, [symbol]).fetchone()
@@ -740,9 +730,11 @@ class DatabaseService:
             rs_rank = latest_bar[1] if latest_bar else None
             atr_20d = latest_bar[2] if latest_bar else None
             ti_65 = latest_bar[3] if latest_bar else None
+            dollar_vol_50d_ma = latest_bar[4] if latest_bar else None
+            vol_50d_ma = latest_bar[5] if latest_bar else None
 
             # Calculate Minervini VCP Footprint
-            from src.engine.setups.vcp import detect_vcp
+            from application.engine.setups.vcp import detect_vcp
             bars_for_vcp = conn.execute("""
                 SELECT date, high, low, close
                 FROM daily_bars
@@ -766,6 +758,8 @@ class DatabaseService:
                 "adr_20d": atr_20d,
                 "atr_20d": atr_20d,
                 "ti_65": ti_65,
+                "dollar_vol_50d_ma": dollar_vol_50d_ma,
+                "vol_50d_ma": vol_50d_ma,
                 "vcp_footprint": vcp_footprint,
                 "next_earnings_date": meta_dict.get("next_earnings_date")
             }
@@ -1010,7 +1004,7 @@ class DatabaseService:
         else:
             # Persist newly retrieved next_earnings_date to DuckDB symbols table
             try:
-                from src.database import DatabaseManager
+                from application.database import DatabaseManager
                 db_mgr = DatabaseManager(self.get_db_path())
                 db_mgr.update_symbol_next_earnings_date(symbol, next_earnings_date)
             except Exception:

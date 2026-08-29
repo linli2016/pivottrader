@@ -12,13 +12,13 @@ export function filterCandidates(candidates, filters) {
   const {
     minPriceFilter,
     minVolFilter,
+    minDollarVolFilter,
     minRsFilter,
     minEpsGrowthFilter,
     enforceStage2,
     enablePowerPlay,
     enableIpoBase,
     enableVcpSetup,
-    enableDarvasBox,
     minPpRunupFilter,
     maxPpDrawdownFilter,
     minPpDaysSincePeakFilter,
@@ -26,7 +26,6 @@ export function filterCandidates(candidates, filters) {
     maxIpoAgeFilter,
     maxIpoDistFilter,
     maxIpoDepthFilter,
-    maxDarvasWidthFilter,
     // Optional checkboxes states
     enablePpRunup,
     enablePpDrawdown,
@@ -37,8 +36,6 @@ export function filterCandidates(candidates, filters) {
     enableIpoDepth,
     enableVcpEpsGrowth,
     enableVcpPattern,
-    enableDarvasPattern,
-    enableDarvasWidth,
     enableRs,
     enableRsNewHigh,
     enableTi65,
@@ -63,6 +60,10 @@ export function filterCandidates(candidates, filters) {
     // 1. Stage 2 (Mandatory / Base filtering)
     if (c.close < minPriceFilter) return false;
     if (c.vol_50d_ma < minVolFilter) return false;
+    if (minDollarVolFilter !== undefined && minDollarVolFilter !== null) {
+      const dollarVol = c.dollar_vol_50d_ma || (c.close * c.vol_50d_ma);
+      if (dollarVol < minDollarVolFilter) return false;
+    }
 
     // Trend Template (if enforceStage2 is checked)
     if (enforceStage2) {
@@ -147,17 +148,7 @@ export function filterCandidates(candidates, filters) {
       if (c.dist_from_52w_high !== null && c.dist_from_52w_high !== undefined && c.dist_from_52w_high > 15.0) return false;
     }
 
-    // 5. Darvas Box Setup Overlay
-    if (enableDarvasBox) {
-      if (enableDarvasPattern) {
-        if (!c.darvas_is_setup) return false;
-      }
-      if (enableDarvasWidth) {
-        if (c.darvas_box_width_pct === null || c.darvas_box_width_pct === undefined || c.darvas_box_width_pct > maxDarvasWidthFilter) return false;
-      }
-    }
-
-    // 6. New Leaders Setup Overlay (Minervini Market Correction Leader Turnover)
+    // 5. New Leaders Setup Overlay (Minervini Market Correction Leader Turnover)
     if (enableNewLeaders) {
       if (enable52wDist) {
         if (c.dist_from_52w_high === null || c.dist_from_52w_high === undefined || c.dist_from_52w_high > max52wDistFilter) return false;
@@ -172,7 +163,7 @@ export function filterCandidates(candidates, filters) {
         if (!c.is_52w_high && (c.dist_from_52w_high === null || c.dist_from_52w_high > 3.0)) return false;
       }
       if (enableNewLeadersBase) {
-        if (!c.vcp_is_setup && !c.darvas_is_setup && !c.rs_rank_is_new_high) return false;
+        if (!c.vcp_is_setup && !c.rs_rank_is_new_high) return false;
       }
     }
 

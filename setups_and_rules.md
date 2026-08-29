@@ -17,7 +17,12 @@
    - **Trailing:** Trail remaining position along the 10 EMA (for fast momentum) or 20 EMA (for core trend).
    - Exit full position if price closes below the 20 EMA on heavy volume.
 
-5. **Market Trend Environment Filter:**
+5. **Global Liquidity & Dollar Volume Filter:**
+   - **Minimum Price:** $\ge \$5.00$
+   - **Minimum 50-day Volume:** $\ge 100,000$ shares/day
+   - **Minimum Daily Dollar Volume:** $\ge \$5,000,000$ (\$5M) in 50-day average daily turnover ($\text{Price} \times \text{Volume}$). Ensures sufficient liquidity for institutional position sizing without severe slippage.
+
+6. **Market Trend Environment Filter:**
    - **Green Light:** Market Monitor 10/20-day SMA ratio positive, S&P 500 above 21 EMA. Full size allowed.
    - **Yellow Light:** Distribution days accumulating, market below 21 EMA. Cut size to 50%.
    - **Red Light:** S&P 500 below 50 SMA and 200 SMA. Cash is king — no new breakout trades.
@@ -31,6 +36,7 @@
   - The rapid price run-up could be induced by a major news development such as an FDA drug approval, litigation resolution, a new product or service announcement or even an earnings report, or on no news at all.
   - The stock price then moves sideways in a relatively tight range, not correcting more than 20 to 25 percent over a period of 3 to 6 weeks (some can emerge after only 12 days).
   - Within the base (usually just days before a breakout), volume will contract considerably.
+- Always let it run and stop you out.
 
 ### 2. Breakouts
 #### Setup
@@ -47,10 +53,17 @@ This method can also be traded by anticipating the breakout but I don’t find i
 - You should sell 1/3 to 1/2 of the position after 3-5 days, and then move the stop to break even. The rest of the position should be trailed with the 10- or the 20-day moving average. Depends on how fast the stock is. If a beginner stick to the 10-day. You wait for the first CLOSE below the 10- day.
 
 ### 3. Episodic Pivot (EP)
-  - **Catalyst:** Blowout earnings report, major guidance raise, FDA approval, or transformative contract.
-  - **Gap Size:** Gap up of $\ge 10\%$ at market open.
-  - **Relative Volume:** Heavy opening volume ($\ge 2.5\times \text{ to } 5\times$ 50-day average volume).
-  - **Action:** Buy near the open or on first 5-minute ORB if price holds above the opening print.
+#### Setup
+ - Gap up 10%+
+ - Big volume. If the volume is not there in premarket, it needs to come in at the open. Many times the best ones have traded their average daily volume in the first 15-30 minutes after the open.
+ - If an earnings or earnings guidance related EP, there has to be big growth numbers, preferably mid/high or even triple digit EPS and revenue growth and a significant beat to analyst expectations. Many times the smaller stocks don’t have analyst coverage, you just have to trust the numbers and volume.
+- It’s best if the stock has not rallied over the past 3-6 months. If the stock has already made a big, multi month move into the gap-up, is it really a surprise to the market? It’s your job to figure it out!
+#### How to trade
+- Identify the setup, this can usually be done in after-hours or pre-market as we are looking for stocks gapping up on news/earnings.
+- Enter opening range highs. ORH can be the highs of the first 1-, 5-, or 60-minute candle. The stop is at the lows of the day.
+- Trail your stop with the 10- or 20-day moving average once they surpass your initial stop.
+#### My notes
+- It has higher success rate if gap up above previous high, or in a good up trend.
 
 ### 4. Parabolic Climax (Short / Long)
   - A stock up 50-100%+ in a few days or weeks (if larger cap) or 300-1000%+ (if smaller cap).

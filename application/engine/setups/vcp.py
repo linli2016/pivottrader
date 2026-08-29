@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Any
 
 def detect_vcp(highs: List[float], lows: List[float], dates: List[Any], closes: List[float] = None, window: int = 3) -> dict:
     """

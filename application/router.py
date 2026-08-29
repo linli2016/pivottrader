@@ -1,11 +1,10 @@
 import json
 import logging
-import traceback
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Response
-from pydantic import BaseModel
-from typing import Dict, Any, List, Optional
+from pydantic import BaseModel, Field, AliasChoices, ConfigDict
+from typing import Optional
 
-from src.services import config_service, db_service, sync_service
+from application.services import config_service, db_service, sync_service
 
 logger = logging.getLogger("pivottrader.api")
 router = APIRouter()
@@ -14,6 +13,7 @@ router = APIRouter()
 class ConfigUpdateSchema(BaseModel):
     min_price: float
     min_volume_sma_50: int
+    min_dollar_volume_50d: float = 5000000.0
     min_rs_percentile: int
     min_eps_growth_qoq: float
     provider_selected: str
@@ -39,177 +39,99 @@ class RulesUpdateSchema(BaseModel):
     content: str
 
 class CandidateFilterSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     date: Optional[str] = None
-    min_price: Optional[float] = None
-    minPriceFilter: Optional[float] = None
-    min_volume_sma_50: Optional[int] = None
-    minVolFilter: Optional[int] = None
-    min_rs_percentile: Optional[int] = None
-    minRsFilter: Optional[int] = None
-    min_eps_growth_qoq: Optional[float] = None
-    minEpsGrowthFilter: Optional[float] = None
-    min_atr: Optional[float] = None
-    minAtrFilter: Optional[float] = None
-    enforce_stage2: Optional[bool] = None
-    enforceStage2: Optional[bool] = None
-    enable_power_play: Optional[bool] = None
-    enablePowerPlay: Optional[bool] = None
-    enable_ipo_base: Optional[bool] = None
-    enableIpoBase: Optional[bool] = None
-    enable_vcp_setup: Optional[bool] = None
-    enableVcpSetup: Optional[bool] = None
-    enable_darvas_box: Optional[bool] = None
-    enableDarvasBox: Optional[bool] = None
-    enable_new_leaders: Optional[bool] = None
-    enableNewLeaders: Optional[bool] = None
-    enable_qullamaggie_breakout: Optional[bool] = None
-    enableQullamaggieBreakout: Optional[bool] = None
-    enable_episodic_pivot: Optional[bool] = None
-    enableEpisodicPivot: Optional[bool] = None
-    enable_parabolic_climax: Optional[bool] = None
-    enableParabolicClimax: Optional[bool] = None
-    enable_parabolic_short: Optional[bool] = None
-    enableParabolicShort: Optional[bool] = None
-    enable_parabolic_long: Optional[bool] = None
-    enableParabolicLong: Optional[bool] = None
+    min_price: Optional[float] = Field(default=None, validation_alias=AliasChoices("min_price", "minPriceFilter"))
+    min_volume_sma_50: Optional[int] = Field(default=None, validation_alias=AliasChoices("min_volume_sma_50", "minVolFilter"))
+    min_dollar_volume_50d: Optional[float] = Field(default=None, validation_alias=AliasChoices("min_dollar_volume_50d", "minDollarVolFilter", "min_dollar_vol"))
+    min_rs_percentile: Optional[int] = Field(default=None, validation_alias=AliasChoices("min_rs_percentile", "minRsFilter"))
+    min_eps_growth_qoq: Optional[float] = Field(default=None, validation_alias=AliasChoices("min_eps_growth_qoq", "minEpsGrowthFilter"))
+    min_atr: Optional[float] = Field(default=None, validation_alias=AliasChoices("min_atr", "minAtrFilter"))
+    enforce_stage2: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enforce_stage2", "enforceStage2"))
+    enable_power_play: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_power_play", "enablePowerPlay"))
+    enable_ipo_base: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_ipo_base", "enableIpoBase"))
+    enable_vcp_setup: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_vcp_setup", "enableVcpSetup"))
+    enable_new_leaders: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_new_leaders", "enableNewLeaders"))
+    enable_qullamaggie_breakout: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_qullamaggie_breakout", "enableQullamaggieBreakout"))
+    enable_episodic_pivot: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_episodic_pivot", "enableEpisodicPivot"))
+    enable_parabolic_climax: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_parabolic_climax", "enableParabolicClimax"))
+    enable_parabolic_short: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_parabolic_short", "enableParabolicShort"))
+    enable_parabolic_long: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_parabolic_long", "enableParabolicLong"))
 
     # Qullamaggie Breakout
-    min_1m_ret: Optional[float] = None
-    min1mRetFilter: Optional[float] = None
-    enable_1m_ret: Optional[bool] = None
-    enable1mRet: Optional[bool] = None
-    enable_ema_surfing: Optional[bool] = None
-    enableEmaSurfing: Optional[bool] = None
+    min_1m_ret: Optional[float] = Field(default=None, validation_alias=AliasChoices("min_1m_ret", "min1mRetFilter"))
+    enable_1m_ret: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_1m_ret", "enable1mRet"))
+    enable_ema_surfing: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_ema_surfing", "enableEmaSurfing"))
 
     # EP
-    min_ep_gap: Optional[float] = None
-    minEpGapFilter: Optional[float] = None
-    enable_ep_gap: Optional[bool] = None
-    enableEpGap: Optional[bool] = None
-    min_ep_rel_vol: Optional[float] = None
-    minEpRelVolFilter: Optional[float] = None
-    enable_ep_rel_vol: Optional[bool] = None
-    enableEpRelVol: Optional[bool] = None
+    min_ep_gap: Optional[float] = Field(default=None, validation_alias=AliasChoices("min_ep_gap", "minEpGapFilter"))
+    enable_ep_gap: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_ep_gap", "enableEpGap"))
+    min_ep_rel_vol: Optional[float] = Field(default=None, validation_alias=AliasChoices("min_ep_rel_vol", "minEpRelVolFilter"))
+    enable_ep_rel_vol: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_ep_rel_vol", "enableEpRelVol"))
 
     # Parabolic
-    min_parabolic_runup: Optional[float] = None
-    minParabolicRunupFilter: Optional[float] = None
-    enable_parabolic_runup: Optional[bool] = None
-    enableParabolicRunup: Optional[bool] = None
-    min_parabolic_ema_dist: Optional[float] = None
-    minParabolicEmaDistFilter: Optional[float] = None
-    enable_parabolic_ema_dist: Optional[bool] = None
-    enableParabolicEmaDist: Optional[bool] = None
-    min_parabolic_up_days: Optional[int] = None
-    minParabolicUpDaysFilter: Optional[int] = None
-    enable_parabolic_up_days: Optional[bool] = None
-    enableParabolicUpDays: Optional[bool] = None
+    min_parabolic_runup: Optional[float] = Field(default=None, validation_alias=AliasChoices("min_parabolic_runup", "minParabolicRunupFilter"))
+    enable_parabolic_runup: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_parabolic_runup", "enableParabolicRunup"))
+    min_parabolic_ema_dist: Optional[float] = Field(default=None, validation_alias=AliasChoices("min_parabolic_ema_dist", "minParabolicEmaDistFilter"))
+    enable_parabolic_ema_dist: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_parabolic_ema_dist", "enableParabolicEmaDist"))
+    min_parabolic_up_days: Optional[int] = Field(default=None, validation_alias=AliasChoices("min_parabolic_up_days", "minParabolicUpDaysFilter"))
+    enable_parabolic_up_days: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_parabolic_up_days", "enableParabolicUpDays"))
 
     # Power Play
-    enable_pp_runup: Optional[bool] = None
-    enablePpRunup: Optional[bool] = None
-    enable_pp_drawdown: Optional[bool] = None
-    enablePpDrawdown: Optional[bool] = None
-    enable_pp_days_since_peak: Optional[bool] = None
-    enablePpDaysSincePeak: Optional[bool] = None
-    enable_pp_vol_ratio: Optional[bool] = None
-    enablePpVolRatio: Optional[bool] = None
-    min_pp_runup: Optional[float] = None
-    minPpRunupFilter: Optional[float] = None
-    max_pp_drawdown: Optional[float] = None
-    maxPpDrawdownFilter: Optional[float] = None
-    min_pp_days_since_peak: Optional[int] = None
-    minPpDaysSincePeakFilter: Optional[int] = None
-    max_pp_vol_ratio: Optional[float] = None
-    maxPpVolRatioFilter: Optional[float] = None
+    enable_pp_runup: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_pp_runup", "enablePpRunup"))
+    enable_pp_drawdown: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_pp_drawdown", "enablePpDrawdown"))
+    enable_pp_days_since_peak: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_pp_days_since_peak", "enablePpDaysSincePeak"))
+    enable_pp_vol_ratio: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_pp_vol_ratio", "enablePpVolRatio"))
+    min_pp_runup: Optional[float] = Field(default=None, validation_alias=AliasChoices("min_pp_runup", "minPpRunupFilter"))
+    max_pp_drawdown: Optional[float] = Field(default=None, validation_alias=AliasChoices("max_pp_drawdown", "maxPpDrawdownFilter"))
+    min_pp_days_since_peak: Optional[int] = Field(default=None, validation_alias=AliasChoices("min_pp_days_since_peak", "minPpDaysSincePeakFilter"))
+    max_pp_vol_ratio: Optional[float] = Field(default=None, validation_alias=AliasChoices("max_pp_vol_ratio", "maxPpVolRatioFilter"))
 
     # IPO Base
-    enable_ipo_age: Optional[bool] = None
-    enableIpoAge: Optional[bool] = None
-    enable_ipo_dist: Optional[bool] = None
-    enableIpoDist: Optional[bool] = None
-    enable_ipo_depth: Optional[bool] = None
-    enableIpoDepth: Optional[bool] = None
-    max_ipo_age: Optional[int] = None
-    maxIpoAgeFilter: Optional[int] = None
-    max_ipo_dist: Optional[float] = None
-    maxIpoDistFilter: Optional[float] = None
-    max_ipo_depth: Optional[float] = None
-    maxIpoDepthFilter: Optional[float] = None
+    enable_ipo_age: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_ipo_age", "enableIpoAge"))
+    enable_ipo_dist: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_ipo_dist", "enableIpoDist"))
+    enable_ipo_depth: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_ipo_depth", "enableIpoDepth"))
+    max_ipo_age: Optional[int] = Field(default=None, validation_alias=AliasChoices("max_ipo_age", "maxIpoAgeFilter"))
+    max_ipo_dist: Optional[float] = Field(default=None, validation_alias=AliasChoices("max_ipo_dist", "maxIpoDistFilter"))
+    max_ipo_depth: Optional[float] = Field(default=None, validation_alias=AliasChoices("max_ipo_depth", "maxIpoDepthFilter"))
 
     # VCP
-    enable_vcp_eps_growth: Optional[bool] = None
-    enableVcpEpsGrowth: Optional[bool] = None
-    enable_vcp_pattern: Optional[bool] = None
-    enableVcpPattern: Optional[bool] = None
-
-    # Darvas Box
-    enable_darvas_pattern: Optional[bool] = None
-    enableDarvasPattern: Optional[bool] = None
-    enable_darvas_width: Optional[bool] = None
-    enableDarvasWidth: Optional[bool] = None
-    max_darvas_width: Optional[float] = None
-    maxDarvasWidthFilter: Optional[float] = None
+    enable_vcp_eps_growth: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_vcp_eps_growth", "enableVcpEpsGrowth"))
+    enable_vcp_pattern: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_vcp_pattern", "enableVcpPattern"))
 
     # General RS / ATR / Pivot Tightness / Trend Intensity
-    enable_rs: Optional[bool] = None
-    enableRs: Optional[bool] = None
-    enable_rs_new_high: Optional[bool] = None
-    enableRsNewHigh: Optional[bool] = None
-    enable_ti65: Optional[bool] = None
-    enableTi65: Optional[bool] = None
-    min_ti65: Optional[float] = None
-    minTi65Filter: Optional[float] = None
-    enable_atr: Optional[bool] = None
-    enableAtr: Optional[bool] = None
-    enable_pivot_tightness: Optional[bool] = None
-    enablePivotTightness: Optional[bool] = None
-    max_pivot_spread: Optional[float] = None
-    maxPivotSpreadFilter: Optional[float] = None
-    max_pivot_clustering: Optional[float] = None
-    maxPivotClusteringFilter: Optional[float] = None
-    max_pivot_vol_ratio: Optional[float] = None
-    maxPivotVolRatioFilter: Optional[float] = None
+    enable_rs: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_rs", "enableRs"))
+    enable_rs_new_high: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_rs_new_high", "enableRsNewHigh"))
+    enable_ti65: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_ti65", "enableTi65"))
+    min_ti65: Optional[float] = Field(default=None, validation_alias=AliasChoices("min_ti65", "minTi65Filter"))
+    enable_atr: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_atr", "enableAtr"))
+    enable_pivot_tightness: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_pivot_tightness", "enablePivotTightness"))
+    max_pivot_spread: Optional[float] = Field(default=None, validation_alias=AliasChoices("max_pivot_spread", "maxPivotSpreadFilter"))
+    max_pivot_clustering: Optional[float] = Field(default=None, validation_alias=AliasChoices("max_pivot_clustering", "maxPivotClusteringFilter"))
+    max_pivot_vol_ratio: Optional[float] = Field(default=None, validation_alias=AliasChoices("max_pivot_vol_ratio", "maxPivotVolRatioFilter"))
 
     # New Leaders
-    enable_52w_dist: Optional[bool] = None
-    enable52wDist: Optional[bool] = None
-    enable_surge_off_low: Optional[bool] = None
-    enableSurgeOffLow: Optional[bool] = None
-    enable_new_leaders_rs: Optional[bool] = None
-    enableNewLeadersRs: Optional[bool] = None
-    enable_new_leaders_52w_high: Optional[bool] = None
-    enableNewLeaders52wHigh: Optional[bool] = None
-    enable_new_leaders_base: Optional[bool] = None
-    enableNewLeadersBase: Optional[bool] = None
-    max_52w_dist: Optional[float] = None
-    max52wDistFilter: Optional[float] = None
-    min_surge_off_low: Optional[float] = None
-    minSurgeOffLowFilter: Optional[float] = None
-    min_new_leaders_rs: Optional[int] = None
-    minNewLeadersRsFilter: Optional[int] = None
+    enable_52w_dist: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_52w_dist", "enable52wDist"))
+    enable_surge_off_low: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_surge_off_low", "enableSurgeOffLow"))
+    enable_new_leaders_rs: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_new_leaders_rs", "enableNewLeadersRs"))
+    enable_new_leaders_52w_high: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_new_leaders_52w_high", "enableNewLeaders52wHigh"))
+    enable_new_leaders_base: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_new_leaders_base", "enableNewLeadersBase"))
+    max_52w_dist: Optional[float] = Field(default=None, validation_alias=AliasChoices("max_52w_dist", "max52wDistFilter"))
+    min_surge_off_low: Optional[float] = Field(default=None, validation_alias=AliasChoices("min_surge_off_low", "minSurgeOffLowFilter"))
+    min_new_leaders_rs: Optional[int] = Field(default=None, validation_alias=AliasChoices("min_new_leaders_rs", "minNewLeadersRsFilter"))
 
     # Kristjan Qullamaggie Momentum Screener (1M, 3M, 6M Gainers)
-    enable_qullamaggie_momentum: Optional[bool] = None
-    enableQullamaggieMomentum: Optional[bool] = None
-    qm_subview: Optional[str] = None
-    qmSubview: Optional[str] = None
-    qm_top_n: Optional[int] = None
-    qmTopN: Optional[int] = None
-    enable_adr: Optional[bool] = None
-    enableAdr: Optional[bool] = None
-    min_adr_20d: Optional[float] = None
-    minAdrFilter: Optional[float] = None
-    min_1m_gain: Optional[float] = None
-    min1mGainFilter: Optional[float] = None
-    min_3m_gain: Optional[float] = None
-    min3mGainFilter: Optional[float] = None
-    min_6m_gain: Optional[float] = None
-    min6mGainFilter: Optional[float] = None
-    sort_by: Optional[str] = None
-    sortBy: Optional[str] = None
-    sort_order: Optional[str] = None
-    sortOrder: Optional[str] = None
+    enable_qullamaggie_momentum: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_qullamaggie_momentum", "enableQullamaggieMomentum"))
+    qm_subview: Optional[str] = Field(default=None, validation_alias=AliasChoices("qm_subview", "qmSubview"))
+    qm_top_n: Optional[int] = Field(default=None, validation_alias=AliasChoices("qm_top_n", "qmTopN"))
+    enable_adr: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_adr", "enableAdr"))
+    min_adr_20d: Optional[float] = Field(default=None, validation_alias=AliasChoices("min_adr_20d", "minAdrFilter"))
+    min_1m_gain: Optional[float] = Field(default=None, validation_alias=AliasChoices("min_1m_gain", "min1mGainFilter"))
+    min_3m_gain: Optional[float] = Field(default=None, validation_alias=AliasChoices("min_3m_gain", "min3mGainFilter"))
+    min_6m_gain: Optional[float] = Field(default=None, validation_alias=AliasChoices("min_6m_gain", "min6mGainFilter"))
+    sort_by: Optional[str] = Field(default=None, validation_alias=AliasChoices("sort_by", "sortBy"))
+    sort_order: Optional[str] = Field(default=None, validation_alias=AliasChoices("sort_order", "sortOrder"))
 
 
 # ----------------- Endpoints -----------------

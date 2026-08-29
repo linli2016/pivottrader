@@ -12,10 +12,11 @@ export default function CandidatesTab({
   selectedDate = 'latest',
   setSelectedDate = () => { },
   minPriceFilter,
-
   setMinPriceFilter,
   minVolFilter,
   setMinVolFilter,
+  minDollarVolFilter = 5000000.0,
+  setMinDollarVolFilter = () => { },
   minRsFilter,
   setMinRsFilter,
   minEpsGrowthFilter,
@@ -28,8 +29,6 @@ export default function CandidatesTab({
   setEnableIpoBase,
   enableVcpSetup,
   setEnableVcpSetup,
-  enableDarvasBox,
-  setEnableDarvasBox,
   enableNewLeaders,
   setEnableNewLeaders,
   enableQullamaggieBreakout,
@@ -94,8 +93,6 @@ export default function CandidatesTab({
   setMaxIpoDistFilter,
   maxIpoDepthFilter,
   setMaxIpoDepthFilter,
-  maxDarvasWidthFilter,
-  setMaxDarvasWidthFilter,
   max52wDistFilter,
   setMax52wDistFilter,
   minSurgeOffLowFilter,
@@ -121,10 +118,6 @@ export default function CandidatesTab({
   setEnableVcpEpsGrowth,
   enableVcpPattern,
   setEnableVcpPattern,
-  enableDarvasPattern,
-  setEnableDarvasPattern,
-  enableDarvasWidth,
-  setEnableDarvasWidth,
   enableRs,
   setEnableRs,
   enableRsNewHigh,
@@ -439,10 +432,9 @@ export default function CandidatesTab({
                 if (setEnableParabolicLong) setEnableParabolicLong(false);
                 setEnableIpoBase(false);
                 setEnableVcpSetup(false);
-                setEnableDarvasBox(false);
                 setEnableNewLeaders(false);
                 if (next) {
-                  setMinPriceFilter(2.00);
+                  setMinPriceFilter(5.00);
                   setMinVolFilter(100000);
                   setMinAdrFilter(4.0);
                   if (setEnableAdr) setEnableAdr(true);
@@ -483,7 +475,6 @@ export default function CandidatesTab({
                 if (setEnableParabolicLong) setEnableParabolicLong(false);
                 setEnableIpoBase(false);
                 setEnableVcpSetup(false);
-                setEnableDarvasBox(false);
                 setEnableNewLeaders(false);
                 if (next) {
                   setMinPriceFilter(5.00);
@@ -527,10 +518,9 @@ export default function CandidatesTab({
                 if (setEnableParabolicLong) setEnableParabolicLong(false);
                 setEnableIpoBase(false);
                 setEnableVcpSetup(false);
-                setEnableDarvasBox(false);
                 setEnableNewLeaders(false);
                 if (next) {
-                  setMinPriceFilter(2.00);
+                  setMinPriceFilter(5.00);
                   setMinVolFilter(100000);
                   setMinAdrFilter(4.0);
                   if (setEnableAdr) setEnableAdr(true);
@@ -571,10 +561,9 @@ export default function CandidatesTab({
                 if (setEnableParabolicLong) setEnableParabolicLong(false);
                 setEnableIpoBase(false);
                 setEnableVcpSetup(false);
-                setEnableDarvasBox(false);
                 setEnableNewLeaders(false);
                 if (next) {
-                  setMinPriceFilter(2.00);
+                  setMinPriceFilter(5.00);
                   setMinVolFilter(100000);
                   setMinAdrFilter(4.0);
                   if (setEnableAdr) setEnableAdr(false);
@@ -615,10 +604,9 @@ export default function CandidatesTab({
                 setEnableEpisodicPivot(false);
                 setEnableIpoBase(false);
                 setEnableVcpSetup(false);
-                setEnableDarvasBox(false);
                 setEnableNewLeaders(false);
                 if (next) {
-                  setMinPriceFilter(2.00);
+                  setMinPriceFilter(5.00);
                   setMinVolFilter(100000);
                   setMinAdrFilter(4.0);
                   if (setEnableAdr) setEnableAdr(false);
@@ -659,7 +647,6 @@ export default function CandidatesTab({
                 if (setEnableParabolicShort) setEnableParabolicShort(false);
                 if (setEnableParabolicLong) setEnableParabolicLong(false);
                 setEnableIpoBase(false);
-                setEnableDarvasBox(false);
                 setEnableNewLeaders(false);
                 if (next) {
                   setMinPriceFilter(5.00);
@@ -880,6 +867,33 @@ export default function CandidatesTab({
                     value={minVolFilter}
                     onChange={(e) => setMinVolFilter(parseInt(e.target.value) || 0)}
                     style={{ width: '70px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                  />
+                </div>
+              </div>
+
+              {/* Min Daily Dollar Volume (50d) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>
+                  💵 Min Daily Dollar Vol (${((minDollarVolFilter || 0) / 1000000).toFixed(1)}M):
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="range"
+                    min="500000"
+                    max="50000000"
+                    step="500000"
+                    value={minDollarVolFilter || 5000000}
+                    onChange={(e) => setMinDollarVolFilter(parseFloat(e.target.value) || 0)}
+                    style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max="1000000000"
+                    step="500000"
+                    value={minDollarVolFilter || 0}
+                    onChange={(e) => setMinDollarVolFilter(parseFloat(e.target.value) || 0)}
+                    style={{ width: '80px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
                   />
                 </div>
               </div>
@@ -1929,6 +1943,7 @@ export default function CandidatesTab({
                     <th>Price</th>
                     <th>1M Ret %</th>
                     <th>Vol 50d MA</th>
+                    <th title="50-day Average Daily Dollar Volume (Price × Volume)">Dollar Vol</th>
                     <th>RelVol</th>
                     <th>RS Score</th>
                     <th>RS Percentile</th>
@@ -2000,6 +2015,11 @@ export default function CandidatesTab({
                         {c.ret_1m !== null && c.ret_1m !== undefined ? `${c.ret_1m >= 0 ? '+' : ''}${c.ret_1m.toFixed(1)}%` : 'N/A'}
                       </td>
                       <td>{c.vol_50d_ma.toLocaleString()}</td>
+                      <td style={{ color: 'var(--text-primary)', fontWeight: '500' }}>
+                        {c.dollar_vol_50d_ma
+                          ? `$${(c.dollar_vol_50d_ma / 1000000).toFixed(1)}M`
+                          : (c.close && c.vol_50d_ma ? `$${((c.close * c.vol_50d_ma) / 1000000).toFixed(1)}M` : 'N/A')}
+                      </td>
                       <td style={{ color: c.rel_vol_50d >= 2.5 ? 'var(--accent-success)' : 'var(--text-primary)', fontWeight: c.rel_vol_50d >= 2.5 ? 'bold' : 'normal' }}>
                         {c.rel_vol_50d !== null && c.rel_vol_50d !== undefined ? `${c.rel_vol_50d.toFixed(1)}x` : '1.0x'}
                       </td>
@@ -2170,12 +2190,7 @@ export default function CandidatesTab({
                               🌀 VCP {c.vcp_troughs}T ({c.vcp_depths?.replace(/,/g, ' / ') + '%'})
                             </span>
                           )}
-                          {c.darvas_is_setup && (
-                            <span className="pill pill-success" style={{ fontStyle: 'italic', fontWeight: 'bold' }}>
-                              📦 Box (${c.darvas_box_bottom?.toFixed(2)}-${c.darvas_box_top?.toFixed(2)})
-                            </span>
-                          )}
-                          {!c.qm_timeframes && !c.ep_is_setup && !c.parabolic_short_is_setup && !c.parabolic_long_is_setup && !c.vcp_is_setup && !c.darvas_is_setup && (
+                          {!c.qm_timeframes && !c.ep_is_setup && !c.parabolic_short_is_setup && !c.parabolic_long_is_setup && !c.vcp_is_setup && (
                             <span style={{ color: 'var(--text-secondary)' }}>Stage 2 Base</span>
                           )}
                         </div>
