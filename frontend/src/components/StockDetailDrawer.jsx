@@ -235,8 +235,8 @@ export default function StockDetailDrawer({
               </span>
             )}
           </div>
-          <div className="glass-card" style={{ padding: '12px 16px', height: '520px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <CandlestickChart data={stockPrices} height={496} />
+          <div className="glass-card" style={{ padding: '12px 16px', minHeight: 'clamp(420px, 52vh, 750px)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <CandlestickChart data={stockPrices} symbol={selectedStock?.symbol} height="100%" />
           </div>
         </div>
 

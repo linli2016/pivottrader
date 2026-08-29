@@ -124,12 +124,69 @@ function resolveAsOfIndex(data, targetDate) {
   return best;
 }
 
-export default function CandlestickChart({ data, height = 280, asOfDate = null }) {
+function formatVolume(vol) {
+  if (vol === null || vol === undefined || isNaN(vol)) return '0';
+  const num = Number(vol);
+  if (num >= 1_000_000_000) {
+    return (num / 1_000_000_000).toFixed(2) + 'B';
+  }
+  if (num >= 1_000_000) {
+    return (num / 1_000_000).toFixed(2) + 'M';
+  }
+  if (num >= 1_000) {
+    return (num / 1_000).toFixed(1) + 'K';
+  }
+  return num.toLocaleString();
+}
+
+export default function CandlestickChart({ data, height = 280, asOfDate = null, symbol = null }) {
   const chartContainerRef = useRef();
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
   const markersPluginRef = useRef(null);
   const verticalLineRef = useRef(null);
+  const legendRef = useRef(null);
+  const dataLookupRef = useRef({ timeMap: new Map(), data: [], defaultBar: null, defaultPrevBar: null, symbol: null });
+
+  const renderLegend = (bar, prevBar, symbolStr) => {
+    if (!legendRef.current) return;
+    if (!bar) {
+      legendRef.current.innerHTML = '';
+      legendRef.current.style.display = 'none';
+      return;
+    }
+
+    legendRef.current.style.display = 'block';
+
+    const open = Number(bar.open ?? 0);
+    const high = Number(bar.high ?? 0);
+    const low = Number(bar.low ?? 0);
+    const close = Number(bar.close ?? 0);
+    const volume = bar.volume ?? bar.value ?? 0;
+
+    const prevClose = prevBar ? Number(prevBar.close) : open;
+    const change = close - prevClose;
+    const changePct = prevClose > 0 ? (change / prevClose) * 100 : 0;
+    const isUp = change >= 0;
+    const isCandleGreen = close >= open;
+
+    const ohlcColor = isCandleGreen ? '#34d399' : '#f87171';
+    const changeColor = isUp ? '#34d399' : '#f87171';
+    const changeSign = isUp ? '+' : '';
+    const volFormatted = formatVolume(volume);
+
+    legendRef.current.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.2;">
+        ${symbolStr ? `<span style="font-weight: 700; color: #f8fafc; margin-right: 2px;">${symbolStr} · 1D</span>` : ''}
+        <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">O</span><span style="color: ${ohlcColor}; font-weight: 600;">${open.toFixed(2)}</span></span>
+        <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">H</span><span style="color: ${ohlcColor}; font-weight: 600;">${high.toFixed(2)}</span></span>
+        <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">L</span><span style="color: ${ohlcColor}; font-weight: 600;">${low.toFixed(2)}</span></span>
+        <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">C</span><span style="color: ${ohlcColor}; font-weight: 600;">${close.toFixed(2)}</span></span>
+        <span style="color: ${changeColor}; font-weight: 700;">${changeSign}${change.toFixed(2)} (${changeSign}${changePct.toFixed(2)}%)</span>
+        <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">Vol</span><span style="color: #38bdf8; font-weight: 600;">${volFormatted}</span></span>
+      </div>
+    `;
+  };
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -256,14 +313,49 @@ export default function CandlestickChart({ data, height = 280, asOfDate = null }
         sma150Series,
         sma220Series,
       };
+
+      // Subscribe to Crosshair Movement for Interactive OHLC + Volume Legend
+      chart.subscribeCrosshairMove((param) => {
+        const { timeMap, data: currentData, defaultBar, defaultPrevBar, symbol: curSymbol } = dataLookupRef.current;
+        if (!param || !param.time || !param.seriesData || !seriesRef.current?.candlestickSeries) {
+          renderLegend(defaultBar, defaultPrevBar, curSymbol);
+          return;
+        }
+
+        const candle = param.seriesData.get(seriesRef.current.candlestickSeries);
+        if (!candle || candle.close === undefined) {
+          renderLegend(defaultBar, defaultPrevBar, curSymbol);
+          return;
+        }
+
+        const tKey = typeof param.time === 'string' ? param.time : (param.time?.year ? `${param.time.year}-${String(param.time.month).padStart(2, '0')}-${String(param.time.day).padStart(2, '0')}` : String(param.time));
+        const idx = timeMap.get(tKey);
+        const prevBar = idx !== undefined && idx > 0 ? currentData[idx - 1] : null;
+        const volData = seriesRef.current.volumeSeries ? param.seriesData.get(seriesRef.current.volumeSeries) : null;
+        const volume = volData?.value ?? (idx !== undefined ? currentData[idx]?.volume : 0);
+
+        const bar = {
+          time: param.time,
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+          volume: volume,
+        };
+
+        renderLegend(bar, prevBar, curSymbol);
+      });
     }
 
     // Always update height and container width
+    const currentContainerWidth = chartContainerRef.current.clientWidth;
     const currentContainerHeight = chartContainerRef.current.clientHeight;
     const targetHeight = typeof height === 'number' ? height : (currentContainerHeight > 0 ? currentContainerHeight : 280);
+    const targetWidth = currentContainerWidth > 0 ? currentContainerWidth : 700;
+
     chartRef.current.applyOptions({
       height: targetHeight,
-      width: chartContainerRef.current.clientWidth || 700,
+      width: targetWidth,
     });
 
     // Populate or update series data whenever data prop is available
@@ -306,6 +398,28 @@ export default function CandlestickChart({ data, height = 280, asOfDate = null }
         if (verticalLineRef.current) verticalLineRef.current.updateTime(null);
       }
 
+      // Prepare data lookup for fast crosshair legend updates
+      const timeMap = new Map();
+      data.forEach((d, i) => {
+        const tKey = typeof d.time === 'string' ? d.time : (d.time?.year ? `${d.time.year}-${String(d.time.month).padStart(2, '0')}-${String(d.time.day).padStart(2, '0')}` : String(d.time));
+        timeMap.set(tKey, i);
+      });
+
+      const defaultIdx = (asOfIdx !== -1) ? asOfIdx : (data.length - 1);
+      const defaultBar = defaultIdx >= 0 ? data[defaultIdx] : null;
+      const defaultPrevBar = defaultIdx > 0 ? data[defaultIdx - 1] : null;
+
+      dataLookupRef.current = {
+        timeMap,
+        data: data,
+        defaultBar,
+        defaultPrevBar,
+        symbol,
+      };
+
+      // Render default (latest or as-of date) bar stats in legend
+      renderLegend(defaultBar, defaultPrevBar, symbol);
+
       const RIGHT_MARGIN_BARS = 3;
       const POST_AS_OF_BARS = 40; // Position the As-of Date bar with ~40 bars on its right to the border
 
@@ -319,7 +433,6 @@ export default function CandlestickChart({ data, height = 280, asOfDate = null }
             let toIndex = data.length - 1 + RIGHT_MARGIN_BARS;
             if (asOfIdx !== -1) {
               const targetTo = asOfIdx + POST_AS_OF_BARS;
-              // If as-of date + 40 bars is before the end of data + margin, anchor the view around the as-of date
               if (targetTo < toIndex) {
                 toIndex = targetTo;
               }
@@ -335,8 +448,10 @@ export default function CandlestickChart({ data, height = 280, asOfDate = null }
           }
         }
       });
+    } else {
+      renderLegend(null, null, symbol);
     }
-  }, [data, height, asOfDate]);
+  }, [data, height, asOfDate, symbol]);
 
   // Clean up chart instance on component unmount & handle container resize
   useEffect(() => {
@@ -345,8 +460,8 @@ export default function CandlestickChart({ data, height = 280, asOfDate = null }
 
     const resizeObserver = new ResizeObserver((entries) => {
       if (entries.length > 0 && chartRef.current && container) {
-        const newWidth = entries[0].contentRect?.width || container.clientWidth;
-        const containerH = container.clientHeight || entries[0].contentRect?.height;
+        const newWidth = Math.floor(entries[0].contentRect?.width || container.clientWidth);
+        const containerH = Math.floor(container.clientHeight || entries[0].contentRect?.height);
         const newHeight = typeof height === 'number' ? height : (containerH > 0 ? containerH : 280);
         if (newWidth > 0 && newHeight > 0) {
           chartRef.current.applyOptions({ width: newWidth, height: newHeight });
@@ -370,15 +485,46 @@ export default function CandlestickChart({ data, height = 280, asOfDate = null }
 
   return (
     <div
-      ref={chartContainerRef}
       style={{
+        position: 'relative',
         width: '100%',
         height: typeof height === 'number' ? `${height}px` : (height || '100%'),
-        minHeight: typeof height === 'number' ? `${height}px` : '280px',
-        position: 'relative',
-        flex: 1
+        minHeight: typeof height === 'number' ? `${height}px` : '240px',
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
       }}
-    />
+    >
+      {/* TradingView-style OHLC + Daily Changes + Volume Legend Overlay */}
+      <div
+        ref={legendRef}
+        style={{
+          position: 'absolute',
+          top: '8px',
+          left: '12px',
+          zIndex: 5,
+          pointerEvents: 'none',
+          background: 'rgba(15, 23, 42, 0.78)',
+          backdropFilter: 'blur(6px)',
+          WebkitBackdropFilter: 'blur(6px)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: '6px',
+          padding: '4px 10px',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
+          maxWidth: 'calc(100% - 24px)',
+        }}
+      />
+
+      <div
+        ref={chartContainerRef}
+        style={{
+          width: '100%',
+          height: '100%',
+          flex: 1,
+          position: 'relative',
+        }}
+      />
+    </div>
   );
 }
 

@@ -173,13 +173,13 @@ export default function InspectorTab({
           {/* Grid layout for Financials and Chart */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px' }}>
             {/* Candlestick chart */}
-            <div className="glass-card" style={{ padding: '24px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>Candlestick Price Chart (Daily Bars)</h3>
-              <div style={{ height: '600px', overflow: 'hidden' }}>
+            <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', minHeight: 'clamp(480px, 60vh, 850px)' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '14px' }}>Candlestick Price Chart (Daily Bars)</h3>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                 {inspectorPrices.length > 0 ? (
-                  <CandlestickChart data={inspectorPrices} height={540} />
+                  <CandlestickChart data={inspectorPrices} symbol={inspectorSymbol} height="100%" />
                 ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-secondary)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, minHeight: '300px', color: 'var(--text-secondary)' }}>
                     No historical price bars available for charting.
                   </div>
                 )}

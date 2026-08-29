@@ -474,17 +474,63 @@ function App() {
     return () => clearTimeout(handler);
   }, [selectedDate, activeFiltersKey]);
 
+  // Sidebar collapse state with localStorage persistence
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('pt_sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('pt_sidebar_collapsed', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  // Keyboard shortcut Ctrl/Cmd + B to toggle sidebar
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'b' || e.key === 'B')) {
+        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+        e.preventDefault();
+        toggleSidebar();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
+
   const filteredCandidates = candidates;
 
   return (
     <div className="app-container">
       {/* Sidebar Navigation */}
-      <div className="sidebar-nav">
+      <div className={`sidebar-nav ${isSidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-top">
-          <div className="brand">
-            <div className="brand-icon">⚡</div>
-            <span className="brand-name">PivotTrader</span>
-            <span className="brand-badge">PRO</span>
+          <div className="brand-wrapper">
+            <div className="brand" onClick={() => setActiveTab('dashboard')} title="PivotTrader">
+              <div className="brand-icon">⚡</div>
+              {!isSidebarCollapsed && (
+                <>
+                  <span className="brand-name">PivotTrader</span>
+                  <span className="brand-badge">PRO</span>
+                </>
+              )}
+            </div>
+            <button
+              className="sidebar-toggle-btn"
+              onClick={toggleSidebar}
+              title={isSidebarCollapsed ? 'Expand sidebar (Ctrl/Cmd + B)' : 'Collapse sidebar'}
+              aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {isSidebarCollapsed ? '▶' : '◀'}
+            </button>
           </div>
 
           <div className="nav-section">
@@ -493,10 +539,11 @@ function App() {
               <li
                 className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
                 onClick={() => setActiveTab('dashboard')}
+                title="Dashboard & Daily Routine"
               >
                 <div className="nav-item-content">
-                  <span>📊</span>
-                  <span>Dashboard</span>
+                  <span className="nav-icon">📊</span>
+                  <span className="nav-label">Dashboard</span>
                 </div>
               </li>
             </ul>
@@ -509,10 +556,11 @@ function App() {
               <li
                 className={`nav-item ${activeTab === 'market-monitor' ? 'active' : ''}`}
                 onClick={() => setActiveTab('market-monitor')}
+                title="1. Market Monitor (Market Breadth & Regime)"
               >
                 <div className="nav-item-content">
-                  <span>📈</span>
-                  <span>1. Market Monitor</span>
+                  <span className="nav-icon">📈</span>
+                  <span className="nav-label">1. Market Monitor</span>
                 </div>
               </li>
 
@@ -520,10 +568,11 @@ function App() {
               <li
                 className={`nav-item ${activeTab === 'sector-compare' ? 'active' : ''}`}
                 onClick={() => setActiveTab('sector-compare')}
+                title="2. Sector Compare (RS Rotation)"
               >
                 <div className="nav-item-content">
-                  <span>🌐</span>
-                  <span>2. Sector Compare</span>
+                  <span className="nav-icon">🌐</span>
+                  <span className="nav-label">2. Sector Compare</span>
                 </div>
               </li>
 
@@ -531,10 +580,11 @@ function App() {
               <li
                 className={`nav-item ${activeTab === 'candidates' ? 'active' : ''}`}
                 onClick={() => setActiveTab('candidates')}
+                title="3. Stock Screen & Setup Scanner"
               >
                 <div className="nav-item-content">
-                  <span>🎯</span>
-                  <span>3. Stock Screen</span>
+                  <span className="nav-icon">🎯</span>
+                  <span className="nav-label">3. Stock Screen</span>
                 </div>
                 <span className="nav-badge emerald" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                   {loadingCandidates && <span className="spin-icon" style={{ fontSize: '10px' }}>⟳</span>}
@@ -546,10 +596,11 @@ function App() {
               <li
                 className={`nav-item ${activeTab === 'watchlists' ? 'active' : ''}`}
                 onClick={() => setActiveTab('watchlists')}
+                title="4. My Watchlists"
               >
                 <div className="nav-item-content">
-                  <span>⭐️</span>
-                  <span>4. My Watchlists</span>
+                  <span className="nav-icon">⭐️</span>
+                  <span className="nav-label">4. My Watchlists</span>
                 </div>
                 <span className="nav-badge emerald">{watchlists.reduce((sum, w) => sum + (w.item_count || 0), 0)}</span>
               </li>
@@ -564,10 +615,11 @@ function App() {
                     handleInspectorSearch(selectedStock.symbol);
                   }
                 }}
+                title="5. Stock Inspector"
               >
                 <div className="nav-item-content">
-                  <span>🔍</span>
-                  <span>5. Stock Inspector</span>
+                  <span className="nav-icon">🔍</span>
+                  <span className="nav-label">5. Stock Inspector</span>
                 </div>
               </li>
             </ul>
@@ -579,28 +631,31 @@ function App() {
               <li
                 className={`nav-item ${activeTab === 'setups-rules' ? 'active' : ''}`}
                 onClick={() => setActiveTab('setups-rules')}
+                title="Setups & Rules Playbook"
               >
                 <div className="nav-item-content">
-                  <span>📖</span>
-                  <span>Setups & Rules</span>
+                  <span className="nav-icon">📖</span>
+                  <span className="nav-label">Setups & Rules</span>
                 </div>
               </li>
               <li
                 className={`nav-item ${activeTab === 'sql' ? 'active' : ''}`}
                 onClick={() => setActiveTab('sql')}
+                title="SQL Query Console"
               >
                 <div className="nav-item-content">
-                  <span>💻</span>
-                  <span>SQL Console</span>
+                  <span className="nav-icon">💻</span>
+                  <span className="nav-label">SQL Console</span>
                 </div>
               </li>
               <li
                 className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
                 onClick={() => setActiveTab('settings')}
+                title="System Configurations"
               >
                 <div className="nav-item-content">
-                  <span>⚙️</span>
-                  <span>Configurations</span>
+                  <span className="nav-icon">⚙️</span>
+                  <span className="nav-label">Configurations</span>
                 </div>
               </li>
             </ul>
@@ -608,7 +663,7 @@ function App() {
         </div>
 
         {/* User Profile Footer */}
-        <div className="user-profile">
+        <div className="user-profile" title="Edge Trader (Live Account)">
           <div className="user-avatar">PT</div>
           <div className="user-info">
             <span className="user-name">Edge Trader</span>

@@ -157,8 +157,6 @@ export default function CandidatesTab({
   const [showFiltersSection, setShowFiltersSection] = React.useState(false);
 
   const selectedItemRef = React.useRef(null);
-  const leftColRef = React.useRef(null);
-  const [leftColHeight, setLeftColHeight] = React.useState(null);
 
   const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
@@ -202,21 +200,6 @@ export default function CandidatesTab({
       return { dateStr: dt, badgeSub: dt, displayText: `Earning ${dt}`, fullDisplay: dt, isUrgent: false };
     }
   }, [currentCandidate?.next_earnings_date, browseDetail?.next_earnings_date, browseDetail?.metadata?.next_earnings_date]);
-
-  // Dynamically measure and match left column height
-  React.useLayoutEffect(() => {
-    if (leftColRef.current) {
-      const updateHeight = () => {
-        if (leftColRef.current) {
-          setLeftColHeight(leftColRef.current.offsetHeight);
-        }
-      };
-      updateHeight();
-      const observer = new ResizeObserver(updateHeight);
-      observer.observe(leftColRef.current);
-      return () => observer.disconnect();
-    }
-  }, [currentCandidate?.symbol]);
 
   // Auto-scroll selected candidate stock into view in the Filtered Candidates list
   React.useEffect(() => {
@@ -371,11 +354,11 @@ export default function CandidatesTab({
   };
 
   return (
-    <div>
+    <div className="stock-screen-container">
       {/* Interactive Strategy & Filter controls */}
-      <div className="glass-card" style={{ marginBottom: '20px', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div className="glass-card" style={{ marginBottom: '10px', padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
         {/* Top Integrated Header: Strategy Checkboxes + Right Action Controls */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           {/* Strategy Selector (Left Side: Mutually Exclusive Setup Buttons) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             {/* Momentum Button */}
@@ -1567,22 +1550,22 @@ export default function CandidatesTab({
           {loadingCandidates ? 'Loading candidates...' : 'No candidate stocks match your current active filters.'}
         </div>
       ) : (
-        <div style={{ display: 'flex', gap: '24px', marginTop: '20px', alignItems: 'flex-start' }}>
+        <div className="browse-split-container">
           {/* Main Browse Column (Left) */}
-          <div ref={leftColRef} style={{ flex: '1 1 700px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div className="browse-main-col">
             {/* Header Bar for Selected Stock */}
-            <div className="glass-card" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div className="glass-card" style={{ padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
               {/* Top Row: Symbol + Company Name (Left) & Watchlist Quick Action (Right) */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <h2 style={{ fontSize: '26px', fontWeight: 800, color: '#34d399', letterSpacing: '-0.5px', margin: 0, lineHeight: 1.1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#34d399', letterSpacing: '-0.5px', margin: 0, lineHeight: 1.1 }}>
                     {currentCandidate?.symbol}
                   </h2>
                   <div>
-                    <div style={{ fontSize: '15px', fontWeight: 700, color: '#ffffff', lineHeight: 1.2 }}>
+                    <div style={{ fontSize: '14px', fontWeight: 700, color: '#ffffff', lineHeight: 1.2 }}>
                       {currentCandidate?.name || currentCandidate?.symbol || ''}
                     </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '3px' }}>
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
                       {currentCandidate?.exchange || ''} • {currentCandidate?.sector || 'Sector'} ({currentCandidate?.industry || 'Industry'})
                     </div>
                   </div>
@@ -1598,8 +1581,8 @@ export default function CandidatesTab({
                       color: 'var(--text-primary)',
                       border: '1px solid var(--border-color)',
                       borderRadius: 'var(--border-radius-md)',
-                      padding: '6px 10px',
-                      fontSize: '12px',
+                      padding: '5px 8px',
+                      fontSize: '11.5px',
                       cursor: 'pointer'
                     }}
                   >
@@ -1621,8 +1604,8 @@ export default function CandidatesTab({
                           display: 'inline-flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          width: '30px',
-                          height: '30px',
+                          width: '28px',
+                          height: '28px',
                           padding: 0,
                           borderRadius: '6px',
                           transition: 'all 0.2s ease',
@@ -1633,11 +1616,11 @@ export default function CandidatesTab({
                         }}
                       >
                         {isCurrentSaved ? (
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="#34d399" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="#34d399" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                           </svg>
                         ) : (
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                             <line x1="12" y1="5" x2="12" y2="19"></line>
                             <line x1="5" y1="12" x2="19" y2="12"></line>
                           </svg>
@@ -1649,19 +1632,19 @@ export default function CandidatesTab({
               </div>
 
               {/* Bottom Row: Badges Group (Left) & Stock Position Count (Right) */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                 {/* Left: Badges Group */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                  <span className="pill pill-success" style={{ fontSize: '12px', padding: '4px 10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span className="pill pill-success" style={{ fontSize: '11px', padding: '3px 8px' }}>
                     RS: {currentCandidate?.rs_rank ?? 'N/A'}
                   </span>
 
                   {currentCandidate?.adr_20d !== null && currentCandidate?.adr_20d !== undefined ? (
-                    <span className="pill" style={{ fontSize: '12px', padding: '4px 10px', background: currentCandidate.adr_20d >= 5.0 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(59, 130, 246, 0.18)', color: currentCandidate.adr_20d >= 5.0 ? '#f59e0b' : '#60a5fa', border: currentCandidate.adr_20d >= 5.0 ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 700 }}>
+                    <span className="pill" style={{ fontSize: '11px', padding: '3px 8px', background: currentCandidate.adr_20d >= 5.0 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(59, 130, 246, 0.18)', color: currentCandidate.adr_20d >= 5.0 ? '#f59e0b' : '#60a5fa', border: currentCandidate.adr_20d >= 5.0 ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 700 }}>
                       ADR%: {currentCandidate.adr_20d.toFixed(2)}%
                     </span>
                   ) : currentCandidate?.atr_20d !== null && currentCandidate?.atr_20d !== undefined ? (
-                    <span className="pill" style={{ fontSize: '12px', padding: '4px 10px', background: 'rgba(59, 130, 246, 0.18)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 600 }}>
+                    <span className="pill" style={{ fontSize: '11px', padding: '3px 8px', background: 'rgba(59, 130, 246, 0.18)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 600 }}>
                       ADTR: {currentCandidate.atr_20d.toFixed(2)}%
                     </span>
                   ) : null}
@@ -1670,8 +1653,8 @@ export default function CandidatesTab({
                     <span
                       className="pill"
                       style={{
-                        fontSize: '12px',
-                        padding: '4px 10px',
+                        fontSize: '11px',
+                        padding: '3px 8px',
                         background: currentCandidate.ti_65 >= 1.05 ? 'rgba(16, 185, 129, 0.18)' : currentCandidate.ti_65 < 0.95 ? 'rgba(239, 68, 68, 0.18)' : 'rgba(255, 255, 255, 0.08)',
                         color: currentCandidate.ti_65 >= 1.05 ? '#34d399' : currentCandidate.ti_65 < 0.95 ? '#f87171' : 'var(--text-secondary)',
                         border: currentCandidate.ti_65 >= 1.05 ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(255, 255, 255, 0.1)',
@@ -1688,8 +1671,8 @@ export default function CandidatesTab({
                     <span
                       className="pill"
                       style={{
-                        fontSize: '12px',
-                        padding: '4px 10px',
+                        fontSize: '11px',
+                        padding: '3px 8px',
                         fontWeight: '700',
                         background: browseEarningsBadge.isUrgent ? 'rgba(239, 68, 68, 0.2)' : 'rgba(168, 85, 247, 0.2)',
                         color: browseEarningsBadge.isUrgent ? '#f87171' : '#c084fc',
@@ -1703,8 +1686,8 @@ export default function CandidatesTab({
                     <span
                       className="pill"
                       style={{
-                        fontSize: '12px',
-                        padding: '4px 10px',
+                        fontSize: '11px',
+                        padding: '3px 8px',
                         fontWeight: '500',
                         background: 'rgba(255, 255, 255, 0.05)',
                         color: 'var(--text-muted)',
@@ -1721,8 +1704,8 @@ export default function CandidatesTab({
                     <span
                       className="pill pill-primary"
                       style={{
-                        fontSize: '12px',
-                        padding: '4px 10px',
+                        fontSize: '11px',
+                        padding: '3px 8px',
                         background: 'rgba(56, 189, 248, 0.18)',
                         color: '#38bdf8',
                         border: '1px solid rgba(56, 189, 248, 0.35)',
@@ -1739,8 +1722,8 @@ export default function CandidatesTab({
                     <span
                       className="pill pill-primary"
                       style={{
-                        fontSize: '12px',
-                        padding: '4px 10px',
+                        fontSize: '11px',
+                        padding: '3px 8px',
                         background: 'rgba(56, 189, 248, 0.18)',
                         color: '#38bdf8',
                         border: '1px solid rgba(56, 189, 248, 0.35)',
@@ -1757,34 +1740,25 @@ export default function CandidatesTab({
                 </div>
 
                 {/* Stock Position Count on Far Bottom Right */}
-                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap', marginLeft: 'auto' }}>
+                <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap', marginLeft: 'auto' }}>
                   Stock {browseIndex + 1} of {filteredCandidates.length}
                 </span>
               </div>
             </div>
 
-            {/* Candlestick Chart Container */}
-            <div className="glass-card" style={{ padding: '20px' }}>
+            {/* Candlestick Chart Container - Fills 100% of remaining vertical height */}
+            <div className="glass-card" style={{ padding: '10px 14px', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
               <CandlestickChart
                 data={browsePrices}
+                symbol={currentCandidate?.symbol}
                 asOfDate={currentCandidate?.screen_date || (selectedDate !== 'latest' ? selectedDate : null)}
-                height={540}
+                height="100%"
               />
             </div>
           </div>
 
           {/* Candidate List Ribbon (Right Column) */}
-          <div
-            className="glass-card"
-            style={{
-              flex: '0 0 280px',
-              display: 'flex',
-              flexDirection: 'column',
-              padding: '16px',
-              height: leftColHeight ? `${leftColHeight}px` : '650px',
-              boxSizing: 'border-box'
-            }}
-          >
+          <div className="glass-card browse-side-col">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexShrink: 0 }}>
               <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent-color)', textTransform: 'uppercase', margin: 0 }}>
                 Filtered Candidates ({filteredCandidates.length})
@@ -1820,8 +1794,9 @@ export default function CandidatesTab({
                 overflowY: 'auto',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '8px',
-                minHeight: 0
+                gap: '6px',
+                minHeight: 0,
+                paddingRight: '2px'
               }}
             >
               {filteredCandidates.map((c, idx) => {
@@ -1833,7 +1808,7 @@ export default function CandidatesTab({
                     ref={isSelected ? selectedItemRef : null}
                     onClick={() => setBrowseIndex(idx)}
                     style={{
-                      padding: '6px 10px',
+                      padding: '7px 10px',
                       borderRadius: '6px',
                       cursor: 'pointer',
                       background: isSelected ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.02)',
