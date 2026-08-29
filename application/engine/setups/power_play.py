@@ -38,14 +38,14 @@ def detect_power_play(
     else:
         runup_pct = ((peak_high - low_before_peak) / low_before_peak) * 100.0
 
-    # 3. Drawdown from peak high to lowest low on or after peak date
-    lows_since_peak = lows[peak_idx:]
-    min_low_after_peak = min(lows_since_peak) if lows_since_peak else peak_high
+    # 3. Drawdown from peak high to lowest close on or after peak date
+    closes_since_peak = closes[peak_idx:]
+    min_close_after_peak = min(closes_since_peak) if closes_since_peak else peak_high
     
     if peak_high <= 0:
         drawdown_pct = 0.0
     else:
-        drawdown_pct = ((peak_high - min_low_after_peak) / peak_high) * 100.0
+        drawdown_pct = ((peak_high - min_close_after_peak) / peak_high) * 100.0
 
     # Check Power Play setup criteria
     is_setup = (

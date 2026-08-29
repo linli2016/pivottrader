@@ -129,7 +129,7 @@ export default function StockDetailDrawer({
             </span>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
               <span className="pill pill-success" style={{ fontSize: '12px', padding: '4px 10px', fontWeight: '700' }}>
-                RS Rank: {stockDetail?.rs_rank !== null && stockDetail?.rs_rank !== undefined ? stockDetail.rs_rank : (selectedStock?.rs_rank ?? 'N/A')}
+                RS: {stockDetail?.rs_rank !== null && stockDetail?.rs_rank !== undefined ? stockDetail.rs_rank : (selectedStock?.rs_rank ?? 'N/A')}
               </span>
               <span className="pill pill-warning" style={{ fontSize: '12px', padding: '4px 10px', fontWeight: '700', background: 'rgba(245, 158, 11, 0.2)', color: 'var(--accent-warning)' }}>
                 ADR% (20d): {selectedStock?.adr_20d !== null && selectedStock?.adr_20d !== undefined ? `${selectedStock.adr_20d.toFixed(2)}%` : (stockDetail?.atr_20d !== null && stockDetail?.atr_20d !== undefined ? `${stockDetail.atr_20d.toFixed(2)}%` : 'N/A')}

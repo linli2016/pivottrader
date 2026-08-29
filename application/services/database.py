@@ -113,6 +113,18 @@ class DatabaseService:
                     return f[camel_key]
                 return default
 
+            # Check if this target date has pre-computed setup metrics in daily_bars
+            has_precomputed_setups = False
+            try:
+                check_row = conn.execute(
+                    "SELECT 1 FROM daily_bars WHERE date = CAST(? AS DATE) AND pp_runup_pct IS NOT NULL LIMIT 1",
+                    [actual_date_str]
+                ).fetchone()
+                if check_row:
+                    has_precomputed_setups = True
+            except Exception:
+                has_precomputed_setups = False
+
             # Price & Volume filters
             min_price = get_f("min_price", "minPriceFilter")
             if min_price is not None:
@@ -174,23 +186,33 @@ class DatabaseService:
                 where_clauses.append("COALESCE(db.is_52w_high, false) = true")
 
             # Power Play Overlay
-            if get_f("enable_power_play", "enablePowerPlay", False):
-                if get_f("enable_pp_runup", "enablePpRunup", True):
-                    min_pp_runup = get_f("min_pp_runup", "minPpRunupFilter", 100.0)
-                    where_clauses.append("db.pp_runup_pct IS NOT NULL AND db.pp_runup_pct >= ?")
-                    params.append(float(min_pp_runup))
-                if get_f("enable_pp_drawdown", "enablePpDrawdown", True):
-                    max_pp_drawdown = get_f("max_pp_drawdown", "maxPpDrawdownFilter", 25.0)
-                    where_clauses.append("db.pp_drawdown_pct IS NOT NULL AND db.pp_drawdown_pct <= ?")
-                    params.append(float(max_pp_drawdown))
-                if get_f("enable_pp_days_since_peak", "enablePpDaysSincePeak", True):
-                    min_pp_days = get_f("min_pp_days_since_peak", "minPpDaysSincePeakFilter", 10)
-                    where_clauses.append("db.pp_days_since_peak IS NOT NULL AND db.pp_days_since_peak >= ?")
-                    params.append(int(min_pp_days))
-                if get_f("enable_pp_vol_ratio", "enablePpVolRatio", False):
-                    max_vol_ratio = get_f("max_pp_vol_ratio", "maxPpVolRatioFilter", 0.5)
-                    where_clauses.append("(db.volume / NULLIF(db.vol_50d_ma, 0)) <= ?")
-                    params.append(float(max_vol_ratio))
+            enable_power_play = get_f("enable_power_play", "enablePowerPlay", False)
+            if enable_power_play:
+                enable_pp_runup = get_f("enable_pp_runup", "enablePpRunup", True)
+                min_pp_runup = float(get_f("min_pp_runup", "minPpRunupFilter", 100.0))
+                enable_pp_drawdown = get_f("enable_pp_drawdown", "enablePpDrawdown", True)
+                max_pp_drawdown = float(get_f("max_pp_drawdown", "maxPpDrawdownFilter", 25.0))
+                enable_pp_days = get_f("enable_pp_days_since_peak", "enablePpDaysSincePeak", True)
+                min_pp_days = int(get_f("min_pp_days_since_peak", "minPpDaysSincePeakFilter", 10))
+                enable_pp_vol = get_f("enable_pp_vol_ratio", "enablePpVolRatio", False)
+                max_pp_vol = float(get_f("max_pp_vol_ratio", "maxPpVolRatioFilter", 0.5))
+
+                if has_precomputed_setups:
+                    if enable_pp_runup:
+                        where_clauses.append("db.pp_runup_pct IS NOT NULL AND db.pp_runup_pct >= ?")
+                        params.append(min_pp_runup)
+                    if enable_pp_drawdown:
+                        where_clauses.append("db.pp_drawdown_pct IS NOT NULL AND db.pp_drawdown_pct <= ?")
+                        params.append(max_pp_drawdown)
+                    if enable_pp_days:
+                        where_clauses.append("db.pp_days_since_peak IS NOT NULL AND db.pp_days_since_peak >= ?")
+                        params.append(min_pp_days)
+                    if enable_pp_vol:
+                        where_clauses.append("(db.volume / NULLIF(db.vol_50d_ma, 0)) <= ?")
+                        params.append(max_pp_vol)
+                else:
+                    # On historical dates without pre-calculated pp columns, pre-filter by return/momentum in SQL
+                    where_clauses.append("(COALESCE(db.ret_1m, 0) >= 15.0 OR COALESCE(db.ret_3m, 0) >= 30.0 OR COALESCE(db.surge_off_low_pct, 0) >= 40.0)")
 
             # IPO Base Overlay
             if get_f("enable_ipo_base", "enableIpoBase", False):
@@ -212,8 +234,8 @@ class DatabaseService:
                 where_clauses.append("db.close IS NOT NULL AND db.sma_50 IS NOT NULL AND db.sma_150 IS NOT NULL AND db.sma_200 IS NOT NULL")
                 where_clauses.append("db.close > db.sma_50 AND db.sma_50 > db.sma_150 AND db.sma_150 > db.sma_200")
                 where_clauses.append("(db.dist_from_52w_high IS NULL OR db.dist_from_52w_high <= 15.0)")
-                if get_f("enable_vcp_pattern", "enableVcpPattern", True):
-                    where_clauses.append("db.vcp_is_setup = true")
+                if has_precomputed_setups and get_f("enable_vcp_pattern", "enableVcpPattern", True):
+                    where_clauses.append("COALESCE(db.vcp_is_setup, false) = true")
                 if get_f("enable_vcp_eps_growth", "enableVcpEpsGrowth", False):
                     min_eps_growth = get_f("min_eps_growth_qoq", "minEpsGrowthFilter", 20.0)
                     where_clauses.append("f.eps_qoq_growth IS NOT NULL AND f.eps_qoq_growth >= ?")
@@ -235,8 +257,6 @@ class DatabaseService:
                     params.append(float(min_nl_rs))
                 if get_f("enable_new_leaders_52w_high", "enableNewLeaders52wHigh", False):
                     where_clauses.append("(COALESCE(db.is_52w_high, false) = true OR (db.dist_from_52w_high IS NOT NULL AND db.dist_from_52w_high <= 3.0))")
-                if get_f("enable_new_leaders_base", "enableNewLeadersBase", True):
-                    where_clauses.append("(COALESCE(db.vcp_is_setup, false) = true OR COALESCE(db.is_52w_high, false) = true)")
 
             # Qullamaggie Breakout SQL pre-filters
             enable_breakout = get_f("enable_qullamaggie_breakout", "enableQullamaggieBreakout", False)
@@ -249,6 +269,8 @@ class DatabaseService:
 
             # Episodic Pivot Overlay
             if get_f("enable_episodic_pivot", "enableEpisodicPivot", False):
+                if has_precomputed_setups and get_f("enable_ep_flag", "enableEpFlag", False):
+                    where_clauses.append("COALESCE(db.ep_is_setup, false) = true")
                 if get_f("enable_ep_gap", "enableEpGap", True):
                     min_ep_gap = get_f("min_ep_gap", "minEpGapFilter", 10.0)
                     where_clauses.append("db.gap_pct IS NOT NULL AND db.gap_pct >= ?")
@@ -265,13 +287,46 @@ class DatabaseService:
                 get_f("enable_parabolic_long", "enableParabolicLong", False)
             )
             if is_parabolic:
-                min_runup = get_f("min_parabolic_runup", "minParabolicRunupFilter", 40.0)
-                min_ema_dist = get_f("min_parabolic_ema_dist", "minParabolicEmaDistFilter", 18.0)
-                min_up_days = get_f("min_parabolic_up_days", "minParabolicUpDaysFilter", 3)
-                
-                short_cond = f"(COALESCE(db.parabolic_short_is_setup, false) = true OR (db.parabolic_runup_pct >= {float(min_runup)} AND db.dist_ema10_pct >= {float(min_ema_dist)} AND db.parabolic_up_days >= {int(min_up_days)}))"
-                long_cond = "(COALESCE(db.parabolic_long_is_setup, false) = true OR (db.dist_ema10_pct <= -18.0 AND db.parabolic_runup_pct <= -30.0))"
-                where_clauses.append(f"({short_cond} OR {long_cond})")
+                enable_short = get_f("enable_parabolic_short", "enableParabolicShort", True)
+                enable_long = get_f("enable_parabolic_long", "enableParabolicLong", True)
+                if not get_f("enable_parabolic_short", "enableParabolicShort") and not get_f("enable_parabolic_long", "enableParabolicLong"):
+                    enable_short = True
+                    enable_long = True
+
+                min_runup = float(get_f("min_parabolic_runup", "minParabolicRunupFilter", 40.0))
+                min_ema_dist = float(get_f("min_parabolic_ema_dist", "minParabolicEmaDistFilter", 18.0))
+                min_up_days = int(get_f("min_parabolic_up_days", "minParabolicUpDaysFilter", 3))
+
+                if has_precomputed_setups:
+                    short_parts = []
+                    long_parts = []
+
+                    if enable_short:
+                        short_parts.append("""(
+                            COALESCE(db.parabolic_short_is_setup, false) = true OR (
+                                db.parabolic_runup_pct IS NOT NULL AND db.parabolic_runup_pct >= ? AND
+                                db.dist_ema10_pct IS NOT NULL AND db.dist_ema10_pct >= ? AND
+                                db.parabolic_up_days IS NOT NULL AND db.parabolic_up_days >= ?
+                            )
+                        )""")
+                        params.extend([min_runup, min_ema_dist, min_up_days])
+
+                    if enable_long:
+                        long_parts.append("""(
+                            COALESCE(db.parabolic_long_is_setup, false) = true OR (
+                                db.dist_ema10_pct IS NOT NULL AND db.dist_ema10_pct <= -18.0 AND
+                                db.parabolic_runup_pct IS NOT NULL AND db.parabolic_runup_pct <= -30.0
+                            )
+                        )""")
+
+                    para_conditions = []
+                    if short_parts:
+                        para_conditions.extend(short_parts)
+                    if long_parts:
+                        para_conditions.extend(long_parts)
+
+                    if para_conditions:
+                        where_clauses.append(f"({' OR '.join(para_conditions)})")
 
             where_str = "\n                  AND ".join(where_clauses)
 
@@ -465,67 +520,200 @@ class DatabaseService:
             if not candidates:
                 return []
 
-            # 3b. Dynamic Breakout setup evaluation in memory
-            try:
-                from application.engine.setups.breakout import detect_breakout
+            # 3b. Dynamic setup evaluation in memory (Conditional)
+            # Evaluate dynamic patterns if:
+            # 1. Breakout setup is enabled (always needs dynamic evaluation), OR
+            # 2. Pre-computed setups do NOT exist on this date (historical date) and an overlay is active, OR
+            # 3. Candidates list is small (<= 200) and an overlay is active.
+            needs_dynamic_history = bool(
+                enable_breakout or (
+                    not has_precomputed_setups and (
+                        enable_power_play or is_parabolic or
+                        get_f("enable_vcp_setup", "enableVcpSetup", False) or
+                        get_f("enable_episodic_pivot", "enableEpisodicPivot", False)
+                    )
+                ) or (
+                    candidates and len(candidates) <= 200 and (
+                        enable_power_play or is_parabolic or
+                        get_f("enable_vcp_setup", "enableVcpSetup", False) or
+                        get_f("enable_episodic_pivot", "enableEpisodicPivot", False)
+                    )
+                )
+            )
 
-                cand_symbols = [c["symbol"] for c in candidates]
-                symbols_str = ", ".join(f"'{s}'" for s in cand_symbols)
-                history_rows = conn.execute(f"""
-                    SELECT symbol, date, high, low, close 
-                    FROM daily_bars 
-                    WHERE symbol IN ({symbols_str}) AND date <= CAST(? AS DATE)
-                    ORDER BY symbol, date ASC
-                """, [actual_date_str]).fetchall()
+            if needs_dynamic_history and candidates:
+                try:
+                    from application.engine.setups.power_play import detect_power_play
+                    from application.engine.setups.breakout import detect_breakout
+                    from application.engine.setups.vcp import detect_vcp
+                    from application.engine.setups.parabolic_extension import detect_parabolic_extension
+                    from application.engine.setups.episodic_pivot import detect_episodic_pivot
 
-                sym_history = defaultdict(list)
-                for sym, dt, h, l, cl in history_rows:
-                    sym_history[sym].append((h, l, cl, dt))
-
-                enable_ema_surfing = get_f("enable_ema_surfing", "enableEmaSurfing", False)
-                min_1m_ret = get_f("min_1m_ret", "min1mRetFilter", 20.0)
-
-                for c in candidates:
-                    symbol = c["symbol"]
-                    bars = sym_history.get(symbol, [])
-                    if len(bars) >= 20:
-                        h_list = [b[0] for b in bars]
-                        l_list = [b[1] for b in bars]
-                        cl_list = [b[2] for b in bars]
-                        dt_list = [b[3] for b in bars]
-                        b_res = detect_breakout(
-                            h_list, l_list, cl_list, dt_list,
-                            ema_10_val=c.get("ema_10"),
-                            ema_20_val=c.get("ema_20"),
-                            min_1m_ret=float(min_1m_ret),
-                            enable_ema_surfing=enable_ema_surfing
+                    cand_symbols = [c["symbol"] for c in candidates]
+                    symbols_str = ", ".join(f"'{s}'" for s in cand_symbols)
+                    history_rows = conn.execute(f"""
+                        SELECT symbol, date, open, high, low, close, volume 
+                        FROM (
+                            SELECT symbol, date, open, high, low, close, volume,
+                                   ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
+                            FROM daily_bars 
+                            WHERE symbol IN ({symbols_str}) AND date <= CAST(? AS DATE)
                         )
-                        c["breakout_is_setup"] = b_res.get("breakout_is_setup", False)
-                        c["breakout_runup_pct"] = b_res.get("breakout_runup_pct", 0.0)
-                        c["breakout_consolidation_days"] = b_res.get("breakout_consolidation_days", 0)
-                        c["ema_surfing"] = b_res.get("ema_surfing", False)
+                        WHERE rn <= 80
+                        ORDER BY symbol, date ASC
+                    """, [actual_date_str]).fetchall()
 
-                        # If EMAs were not present in daily_bars, populate them from the calculated values
-                        if c.get("ema_10") is None and b_res.get("ema_10") is not None:
-                            c["ema_10"] = b_res["ema_10"]
-                            if c.get("close") and b_res["ema_10"] > 0:
-                                c["dist_ema10_pct"] = round(((c["close"] - b_res["ema_10"]) / b_res["ema_10"]) * 100.0, 2)
-                        if c.get("ema_20") is None and b_res.get("ema_20") is not None:
-                            c["ema_20"] = b_res["ema_20"]
-                            if c.get("close") and b_res["ema_20"] > 0:
-                                c["dist_ema20_pct"] = round(((c["close"] - b_res["ema_20"]) / b_res["ema_20"]) * 100.0, 2)
-                    else:
-                        c["breakout_is_setup"] = False
-                        c["breakout_runup_pct"] = 0.0
-                        c["breakout_consolidation_days"] = 0
-                        c["ema_surfing"] = False
-            except Exception as e:
-                print(f"Error calculating breakout setups for candidates on {actual_date_str}: {e}")
-                for c in candidates:
-                    c.setdefault("breakout_is_setup", False)
-                    c.setdefault("breakout_runup_pct", 0.0)
-                    c.setdefault("breakout_consolidation_days", 0)
+                    sym_history = defaultdict(list)
+                    for sym, dt, op, h, l, cl, vol in history_rows:
+                        sym_history[sym].append((op, h, l, cl, vol, dt))
 
+                    enable_ema_surfing = get_f("enable_ema_surfing", "enableEmaSurfing", False)
+                    min_1m_ret = get_f("min_1m_ret", "min1mRetFilter", 20.0)
+
+                    for c in candidates:
+                        symbol = c["symbol"]
+                        bars = sym_history.get(symbol, [])
+                        if len(bars) >= 20:
+                            op_list = [b[0] for b in bars]
+                            h_list = [b[1] for b in bars]
+                            l_list = [b[2] for b in bars]
+                            cl_list = [b[3] for b in bars]
+                            vol_list = [b[4] for b in bars]
+                            dt_list = [b[5] for b in bars]
+
+                            # Calculate EMA 10 & EMA 20 dynamically if not present
+                            if c.get("ema_10") is None or c.get("ema_20") is None:
+                                def _calc_ema(prices, span):
+                                    if len(prices) < span: return None
+                                    k = 2.0 / (span + 1.0)
+                                    val = prices[0]
+                                    for p in prices[1:]:
+                                        val = p * k + val * (1.0 - k)
+                                    return round(val, 2)
+
+                                ema_10_val = _calc_ema(cl_list, 10)
+                                ema_20_val = _calc_ema(cl_list, 20)
+
+                                if ema_10_val and ema_10_val > 0:
+                                    c["ema_10"] = ema_10_val
+                                    if c.get("close"):
+                                        c["dist_ema10_pct"] = round(((c["close"] - ema_10_val) / ema_10_val) * 100.0, 2)
+                                if ema_20_val and ema_20_val > 0:
+                                    c["ema_20"] = ema_20_val
+                                    if c.get("close"):
+                                        c["dist_ema20_pct"] = round(((c["close"] - ema_20_val) / ema_20_val) * 100.0, 2)
+
+                            # Breakout Evaluation
+                            if enable_breakout:
+                                b_res = detect_breakout(
+                                    h_list, l_list, cl_list, dt_list,
+                                    ema_10_val=c.get("ema_10"),
+                                    ema_20_val=c.get("ema_20"),
+                                    min_1m_ret=float(min_1m_ret),
+                                    enable_ema_surfing=enable_ema_surfing
+                                )
+                                c["breakout_is_setup"] = b_res.get("breakout_is_setup", False)
+                                c["breakout_runup_pct"] = b_res.get("breakout_runup_pct", 0.0)
+                                c["breakout_consolidation_days"] = b_res.get("breakout_consolidation_days", 0)
+                                c["ema_surfing"] = b_res.get("ema_surfing", False)
+
+                            # Power Play Evaluation
+                            if enable_power_play:
+                                pp_res = detect_power_play(h_list, l_list, cl_list, dt_list)
+                                c["pp_is_setup"] = pp_res.get("pp_is_setup", False)
+                                c["pp_runup_pct"] = pp_res.get("pp_runup_pct", c.get("pp_runup_pct", 0.0))
+                                c["pp_drawdown_pct"] = pp_res.get("pp_drawdown_pct", c.get("pp_drawdown_pct", 0.0))
+                                c["pp_days_since_peak"] = pp_res.get("pp_days_since_peak", c.get("pp_days_since_peak", 0))
+
+                            # VCP Evaluation
+                            if get_f("enable_vcp_setup", "enableVcpSetup", False):
+                                v_res = detect_vcp(h_list, l_list, dt_list, closes=cl_list, window=3)
+                                if v_res:
+                                    c["vcp_is_setup"] = v_res.get("vcp_is_setup", True)
+                                    c["vcp_troughs"] = v_res.get("vcp_troughs")
+                                    c["vcp_depths"] = v_res.get("vcp_depths")
+
+                            # Parabolic Climax Evaluation
+                            if is_parabolic:
+                                para_res = detect_parabolic_extension(h_list, l_list, cl_list, dt_list, c.get("ema_10"))
+                                if para_res:
+                                    c["parabolic_short_is_setup"] = para_res.get("parabolic_short_is_setup", False)
+                                    c["parabolic_long_is_setup"] = para_res.get("parabolic_long_is_setup", False)
+                                    c["parabolic_runup_pct"] = para_res.get("parabolic_runup_pct")
+                                    c["parabolic_up_days"] = para_res.get("parabolic_up_days")
+
+                            # Episodic Pivot Evaluation
+                            if get_f("enable_episodic_pivot", "enableEpisodicPivot", False):
+                                ep_res = detect_episodic_pivot(op_list, h_list, l_list, cl_list, vol_list, dt_list)
+                                if ep_res:
+                                    c["ep_is_setup"] = ep_res.get("ep_is_setup", True)
+                                    c["ep_gap_pct"] = ep_res.get("ep_gap_pct")
+                                    c["ep_rel_vol"] = ep_res.get("ep_rel_vol")
+                except Exception as e:
+                    print(f"Error calculating dynamic setups for candidates on {actual_date_str}: {e}")
+
+            # Ensure default boolean and metrics for all candidates
+            for c in candidates:
+                c.setdefault("pp_is_setup", bool((c.get("pp_runup_pct") or 0) >= 100.0 and (c.get("pp_drawdown_pct") or 100) <= 25.0 and (c.get("pp_days_since_peak") or 0) >= 10))
+                c.setdefault("pp_runup_pct", 0.0)
+                c.setdefault("pp_drawdown_pct", 0.0)
+                c.setdefault("pp_days_since_peak", 0)
+                c.setdefault("breakout_is_setup", False)
+                c.setdefault("breakout_runup_pct", 0.0)
+                c.setdefault("breakout_consolidation_days", 0)
+                c.setdefault("ema_surfing", False)
+                c.setdefault("vcp_is_setup", False)
+                c.setdefault("parabolic_short_is_setup", False)
+                c.setdefault("parabolic_long_is_setup", False)
+                c.setdefault("ep_is_setup", False)
+
+            # If not precomputed on this date, apply in-memory setup filtering based on dynamically calculated values
+            if not has_precomputed_setups:
+                if enable_power_play:
+                    enable_pp_runup = get_f("enable_pp_runup", "enablePpRunup", True)
+                    min_pp_runup = float(get_f("min_pp_runup", "minPpRunupFilter", 100.0))
+                    enable_pp_drawdown = get_f("enable_pp_drawdown", "enablePpDrawdown", True)
+                    max_pp_drawdown = float(get_f("max_pp_drawdown", "maxPpDrawdownFilter", 25.0))
+                    enable_pp_days = get_f("enable_pp_days_since_peak", "enablePpDaysSincePeak", True)
+                    min_pp_days = int(get_f("min_pp_days_since_peak", "minPpDaysSincePeakFilter", 10))
+                    enable_pp_vol = get_f("enable_pp_vol_ratio", "enablePpVolRatio", False)
+                    max_pp_vol = float(get_f("max_pp_vol_ratio", "maxPpVolRatioFilter", 0.5))
+
+                    candidates = [
+                        c for c in candidates
+                        if (not enable_pp_runup or (c.get("pp_runup_pct") is not None and c["pp_runup_pct"] >= min_pp_runup))
+                        and (not enable_pp_drawdown or (c.get("pp_drawdown_pct") is not None and c["pp_drawdown_pct"] <= max_pp_drawdown))
+                        and (not enable_pp_days or (c.get("pp_days_since_peak") is not None and c["pp_days_since_peak"] >= min_pp_days))
+                        and (not enable_pp_vol or not c.get("volume") or not c.get("vol_50d_ma") or ((c["volume"] / c["vol_50d_ma"]) <= max_pp_vol))
+                    ]
+
+                if get_f("enable_vcp_setup", "enableVcpSetup", False) and get_f("enable_vcp_pattern", "enableVcpPattern", True):
+                    candidates = [c for c in candidates if c.get("vcp_is_setup")]
+
+                if is_parabolic:
+                    min_runup = float(get_f("min_parabolic_runup", "minParabolicRunupFilter", 40.0))
+                    min_ema_dist = float(get_f("min_parabolic_ema_dist", "minParabolicEmaDistFilter", 18.0))
+                    min_up_days = int(get_f("min_parabolic_up_days", "minParabolicUpDaysFilter", 3))
+                    enable_short = get_f("enable_parabolic_short", "enableParabolicShort", True)
+                    enable_long = get_f("enable_parabolic_long", "enableParabolicLong", True)
+                    if not get_f("enable_parabolic_short", "enableParabolicShort") and not get_f("enable_parabolic_long", "enableParabolicLong"):
+                        enable_short = True
+                        enable_long = True
+
+                    candidates = [
+                        c for c in candidates
+                        if (enable_short and (c.get("parabolic_short_is_setup") or (
+                            c.get("parabolic_runup_pct") is not None and c["parabolic_runup_pct"] >= min_runup and
+                            c.get("dist_ema10_pct") is not None and c["dist_ema10_pct"] >= min_ema_dist and
+                            c.get("parabolic_up_days") is not None and c["parabolic_up_days"] >= min_up_days
+                        )))
+                        or (enable_long and (c.get("parabolic_long_is_setup") or (
+                            c.get("dist_ema10_pct") is not None and c["dist_ema10_pct"] <= -18.0 and
+                            c.get("parabolic_runup_pct") is not None and c["parabolic_runup_pct"] <= -30.0
+                        )))
+                    ]
+
+            # Filter candidates by breakout if enabled
             if enable_breakout:
                 candidates = [c for c in candidates if c.get("breakout_is_setup")]
 

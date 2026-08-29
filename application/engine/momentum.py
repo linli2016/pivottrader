@@ -285,8 +285,8 @@ class MomentumEngine:
                     running_peak_30d,
                     -- Power play run up %: the runup on the peak high day of the last 30 days
                     ARG_MAX(daily_runup_pct, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as pp_runup_pct,
-                    -- Power play drawdown %: correction from 30-day peak high to lowest low on or after peak date
-                    (running_peak_30d - (SELECT MIN(d.low) FROM daily_bars d WHERE d.symbol = price_lags_base.symbol AND d.date >= price_lags_base.peak_date_30d AND d.date <= price_lags_base.date)) / NULLIF(running_peak_30d, 0) * 100 as pp_drawdown_pct,
+                    -- Power play drawdown %: correction from 30-day peak high to lowest close on or after peak date
+                    (running_peak_30d - (SELECT MIN(d.close) FROM daily_bars d WHERE d.symbol = price_lags_base.symbol AND d.date >= price_lags_base.peak_date_30d AND d.date <= price_lags_base.date)) / NULLIF(running_peak_30d, 0) * 100 as pp_drawdown_pct,
                     -- Power play trading days since 30-day peak high
                     (row_idx - peak_row_idx_30d) as pp_days_since_peak,
                     -- IPO base fields

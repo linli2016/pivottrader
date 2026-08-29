@@ -2,14 +2,15 @@ import React, { useEffect, useRef } from 'react';
 import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers, CrosshairMode } from 'lightweight-charts';
 
 // Helper to calculate Simple Moving Average (SMA)
-function calculateSMA(data, period) {
+function calculateSMA(data, period, key = 'close') {
   if (!data || data.length < period) return [];
   const smaData = [];
   let sum = 0;
   for (let i = 0; i < data.length; i++) {
-    sum += data[i].close;
+    const val = Number(data[i][key]) || 0;
+    sum += val;
     if (i >= period) {
-      sum -= data[i - period].close;
+      sum -= Number(data[i - period][key]) || 0;
     }
     if (i >= period - 1) {
       smaData.push({
@@ -106,16 +107,16 @@ class VerticalLinePrimitive {
   }
 }
 
-// Helper to resolve the matching time bar in data
-function resolveAsOfTime(data, targetDate) {
-  if (!data || data.length === 0 || !targetDate || targetDate === 'latest') return null;
-  const exact = data.find(d => d.time === targetDate);
-  if (exact) return exact.time;
+// Helper to resolve the matching time bar index in data
+function resolveAsOfIndex(data, targetDate) {
+  if (!data || data.length === 0 || !targetDate || targetDate === 'latest') return -1;
+  const exact = data.findIndex(d => d.time === targetDate);
+  if (exact !== -1) return exact;
 
-  let best = null;
+  let best = -1;
   for (let i = 0; i < data.length; i++) {
     if (data[i].time <= targetDate) {
-      best = data[i].time;
+      best = i;
     } else {
       break;
     }
@@ -147,6 +148,10 @@ export default function CandlestickChart({ data, height = 280, asOfDate = null }
         crosshair: {
           mode: CrosshairMode.Normal,
         },
+        timeScale: {
+          rightOffset: 3,
+          fixRightEdge: false,
+        },
         width: chartContainerRef.current.clientWidth || 700,
         height: height,
       });
@@ -164,6 +169,16 @@ export default function CandlestickChart({ data, height = 280, asOfDate = null }
       const volumeSeries = chart.addSeries(HistogramSeries, {
         priceFormat: { type: 'volume' },
         priceScaleId: 'volume',
+      });
+
+      const volumeMa50Series = chart.addSeries(LineSeries, {
+        color: 'rgba(255, 255, 0, 0.5)',
+        lineWidth: 1,
+        priceFormat: { type: 'volume' },
+        priceScaleId: 'volume',
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
       });
 
       chart.priceScale('volume').applyOptions({
@@ -234,6 +249,7 @@ export default function CandlestickChart({ data, height = 280, asOfDate = null }
       seriesRef.current = {
         candlestickSeries,
         volumeSeries,
+        volumeMa50Series,
         ema10Series,
         ema20Series,
         sma50Series,
@@ -255,6 +271,7 @@ export default function CandlestickChart({ data, height = 280, asOfDate = null }
       const {
         candlestickSeries,
         volumeSeries,
+        volumeMa50Series,
         ema10Series,
         ema20Series,
         sma50Series,
@@ -269,6 +286,7 @@ export default function CandlestickChart({ data, height = 280, asOfDate = null }
       }));
 
       volumeSeries.setData(volumeData);
+      volumeMa50Series.setData(calculateSMA(data, 50, 'volume'));
       candlestickSeries.setData(data);
       ema10Series.setData(calculateEMA(data, 10));
       ema20Series.setData(calculateEMA(data, 20));
@@ -276,8 +294,9 @@ export default function CandlestickChart({ data, height = 280, asOfDate = null }
       sma150Series.setData(calculateSMA(data, 150));
       sma220Series.setData(calculateSMA(data, 220));
 
-      // Resolve and apply As-of Date vertical line (without text label)
-      const resolvedTime = resolveAsOfTime(data, asOfDate);
+      // Resolve and apply As-of Date vertical line
+      const asOfIdx = resolveAsOfIndex(data, asOfDate);
+      const resolvedTime = asOfIdx !== -1 ? data[asOfIdx].time : null;
       if (markersPluginRef.current) {
         markersPluginRef.current.setMarkers([]);
       }
@@ -287,21 +306,35 @@ export default function CandlestickChart({ data, height = 280, asOfDate = null }
         if (verticalLineRef.current) verticalLineRef.current.updateTime(null);
       }
 
-      chartRef.current.timeScale().fitContent();
-      if (data.length > 189) {
-        requestAnimationFrame(() => {
-          if (chartRef.current && data && data.length > 189) {
-            try {
-              chartRef.current.timeScale().setVisibleLogicalRange({
-                from: data.length - 189,
-                to: data.length - 1,
-              });
-            } catch (err) {
-              console.warn('Error setting 9-month logical range:', err);
+      const RIGHT_MARGIN_BARS = 3;
+      const POST_AS_OF_BARS = 40; // Position the As-of Date bar with ~40 bars on its right to the border
+
+      chartRef.current.timeScale().applyOptions({
+        rightOffset: RIGHT_MARGIN_BARS,
+      });
+
+      requestAnimationFrame(() => {
+        if (chartRef.current && data && data.length > 0) {
+          try {
+            let toIndex = data.length - 1 + RIGHT_MARGIN_BARS;
+            if (asOfIdx !== -1) {
+              const targetTo = asOfIdx + POST_AS_OF_BARS;
+              // If as-of date + 40 bars is before the end of data + margin, anchor the view around the as-of date
+              if (targetTo < toIndex) {
+                toIndex = targetTo;
+              }
             }
+
+            const fromIndex = Math.max(0, toIndex - 189);
+            chartRef.current.timeScale().setVisibleLogicalRange({
+              from: fromIndex,
+              to: toIndex,
+            });
+          } catch (err) {
+            console.warn('Error setting visible logical range with as-of date:', err);
           }
-        });
-      }
+        }
+      });
     }
   }, [data, height, asOfDate]);
 
