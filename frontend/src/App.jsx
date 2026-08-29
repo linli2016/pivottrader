@@ -53,7 +53,7 @@ function App() {
   const [config, setConfig] = useState({
     min_price: 5.0,
     min_volume_sma_50: 100000,
-    min_dollar_volume_50d: 5000000.0,
+    min_dollar_volume_50d: 10000000.0,
     min_rs_percentile: 70,
     min_eps_growth_qoq: 20.0,
     provider_selected: 'YFINANCE',
@@ -90,7 +90,7 @@ function App() {
   const [minEpsGrowthFilter, setMinEpsGrowthFilter] = useState(20.0);
   const [minPriceFilter, setMinPriceFilter] = useState(5.00);
   const [minVolFilter, setMinVolFilter] = useState(100000);
-  const [minDollarVolFilter, setMinDollarVolFilter] = useState(5000000.0);
+  const [minDollarVolFilter, setMinDollarVolFilter] = useState(10000000.0);
   const [enforceStage2, setEnforceStage2] = useState(false);
   const [enablePowerPlay, setEnablePowerPlay] = useState(true);
   const [enableIpoBase, setEnableIpoBase] = useState(false);

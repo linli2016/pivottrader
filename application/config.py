@@ -63,7 +63,7 @@ class Config:
 
     @property
     def min_dollar_volume_50d(self) -> float:
-        return float(self.get("universe_rules.min_dollar_volume_50d", 5000000.0))
+        return float(self.get("universe_rules.min_dollar_volume_50d", 10000000.0))
 
     @property
     def history_lookback_years(self) -> int:

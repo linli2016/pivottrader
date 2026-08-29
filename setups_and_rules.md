@@ -20,7 +20,7 @@
 5. **Global Liquidity & Dollar Volume Filter:**
    - **Minimum Price:** $\ge \$5.00$
    - **Minimum 50-day Volume:** $\ge 100,000$ shares/day
-   - **Minimum Daily Dollar Volume:** $\ge \$5,000,000$ (\$5M) in 50-day average daily turnover ($\text{Price} \times \text{Volume}$). Ensures sufficient liquidity for institutional position sizing without severe slippage.
+   - **Minimum Daily Dollar Volume:** $\ge \$10,000,000$ (\$10M) in 50-day average daily turnover ($\text{Price} \times \text{Volume}$). Ensures sufficient liquidity for institutional position sizing without severe slippage.
 
 6. **Market Trend Environment Filter:**
    - **Green Light:** Market Monitor 10/20-day SMA ratio positive, S&P 500 above 21 EMA. Full size allowed.
@@ -65,7 +65,7 @@ This method can also be traded by anticipating the breakout but I don’t find i
 #### My notes
 - It has higher success rate if gap up above previous high, or in a good up trend.
 
-### 4. Parabolic Climax (Short / Long)
+### 4. Parabolic (Short / Long)
   - A stock up 50-100%+ in a few days or weeks (if larger cap) or 300-1000%+ (if smaller cap).
   - The stock should be up 3-5+ days in a row. Many times you have examples where a stock trends higher for weeks or months and then starts speeding up, some just explode from nowhere.
   - **Reversal Trigger:** First high-volume red day or breakdown below previous day's low.

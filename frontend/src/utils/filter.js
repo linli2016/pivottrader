@@ -85,8 +85,8 @@ export function filterCandidates(candidates, filters) {
       if (c.ti_65 === null || c.ti_65 === undefined || c.ti_65 < minTi65Filter) return false;
     }
 
-    // Optional Pivot Tightness (VDU) filter
-    if (enablePivotTightness) {
+    // Optional Pivot Tightness (VDU) filter (applies to Momentum and VCP setups only)
+    if (enablePivotTightness && (enableQullamaggieMomentum || enableVcpSetup)) {
       if (c.pivot_spread_pct !== null && c.pivot_spread_pct !== undefined && c.pivot_spread_pct > maxPivotSpreadFilter) return false;
       if (c.pivot_close_clustering_pct !== null && c.pivot_close_clustering_pct !== undefined && c.pivot_close_clustering_pct > maxPivotClusteringFilter) return false;
       if (c.volume && c.vol_50d_ma && (c.volume / c.vol_50d_ma) > maxPivotVolRatioFilter) return false;

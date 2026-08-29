@@ -475,7 +475,7 @@ provider:
 universe_rules:
   min_price: 5.00
   min_volume_sma_50: 100000
-  min_dollar_volume_50d: 5000000.0
+  min_dollar_volume_50d: 10000000.0
   history_lookback_years: 5
   exchanges:
     - "NYSE"

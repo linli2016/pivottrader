@@ -63,7 +63,7 @@ export default function SettingsTab({
             <input
               type="number"
               step="100000"
-              value={config.min_dollar_volume_50d ?? 5000000}
+              value={config.min_dollar_volume_50d ?? 10000000}
               onChange={(e) => setConfig({ ...config, min_dollar_volume_50d: parseFloat(e.target.value) })}
             />
           </div>

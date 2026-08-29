@@ -15,7 +15,7 @@ export default function CandidatesTab({
   setMinPriceFilter,
   minVolFilter,
   setMinVolFilter,
-  minDollarVolFilter = 5000000.0,
+  minDollarVolFilter = 10000000.0,
   setMinDollarVolFilter = () => { },
   minRsFilter,
   setMinRsFilter,
@@ -361,50 +361,7 @@ export default function CandidatesTab({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           {/* Strategy Selector (Left Side: Mutually Exclusive Setup Buttons) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            {/* Momentum Button */}
-            <button
-              type="button"
-              onClick={() => {
-                const next = !enableQullamaggieMomentum;
-                setEnableQullamaggieMomentum(next);
-                setEnablePowerPlay(false);
-                setEnableQullamaggieBreakout(false);
-                setEnableEpisodicPivot(false);
-                if (setEnableParabolicClimax) setEnableParabolicClimax(false);
-                if (setEnableParabolicShort) setEnableParabolicShort(false);
-                if (setEnableParabolicLong) setEnableParabolicLong(false);
-                setEnableIpoBase(false);
-                setEnableVcpSetup(false);
-                setEnableNewLeaders(false);
-                if (next) {
-                  setMinPriceFilter(5.00);
-                  setMinVolFilter(100000);
-                  setMinAdrFilter(4.0);
-                  if (setEnableAdr) setEnableAdr(true);
-                  setEnforceStage2(false);
-                  setEnableRs(false);
-                  if (setEnablePivotTightness) setEnablePivotTightness(false);
-                } else {
-                  if (setEnableAdr) setEnableAdr(false);
-                }
-              }}
-              style={{
-                padding: '5px 12px',
-                fontSize: '12px',
-                fontWeight: '600',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                border: enableQullamaggieMomentum ? '1px solid #a855f7' : '1px solid rgba(255, 255, 255, 0.12)',
-                background: enableQullamaggieMomentum ? 'rgba(168, 85, 247, 0.2)' : 'rgba(15, 23, 42, 0.5)',
-                color: enableQullamaggieMomentum ? '#c084fc' : 'var(--text-secondary)',
-                boxShadow: enableQullamaggieMomentum ? '0 2px 8px rgba(168, 85, 247, 0.25)' : 'none'
-              }}
-            >
-              ⚡ Momentum
-            </button>
-
-            {/* Power Play Button */}
+            {/* 1. Power Play Button */}
             <button
               type="button"
               onClick={() => {
@@ -447,7 +404,7 @@ export default function CandidatesTab({
               🚀 Power Play
             </button>
 
-            {/* Breakout Button */}
+            {/* 2. Breakout Button */}
             <button
               type="button"
               onClick={() => {
@@ -490,7 +447,50 @@ export default function CandidatesTab({
               🎯 Breakout
             </button>
 
-            {/* Episodic Pivot Button */}
+            {/* 3. Momentum Button */}
+            <button
+              type="button"
+              onClick={() => {
+                const next = !enableQullamaggieMomentum;
+                setEnableQullamaggieMomentum(next);
+                setEnablePowerPlay(false);
+                setEnableQullamaggieBreakout(false);
+                setEnableEpisodicPivot(false);
+                if (setEnableParabolicClimax) setEnableParabolicClimax(false);
+                if (setEnableParabolicShort) setEnableParabolicShort(false);
+                if (setEnableParabolicLong) setEnableParabolicLong(false);
+                setEnableIpoBase(false);
+                setEnableVcpSetup(false);
+                setEnableNewLeaders(false);
+                if (next) {
+                  setMinPriceFilter(5.00);
+                  setMinVolFilter(100000);
+                  setMinAdrFilter(4.0);
+                  if (setEnableAdr) setEnableAdr(true);
+                  setEnforceStage2(false);
+                  setEnableRs(false);
+                  if (setEnablePivotTightness) setEnablePivotTightness(false);
+                } else {
+                  if (setEnableAdr) setEnableAdr(false);
+                }
+              }}
+              style={{
+                padding: '5px 12px',
+                fontSize: '12px',
+                fontWeight: '600',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                border: enableQullamaggieMomentum ? '1px solid #a855f7' : '1px solid rgba(255, 255, 255, 0.12)',
+                background: enableQullamaggieMomentum ? 'rgba(168, 85, 247, 0.2)' : 'rgba(15, 23, 42, 0.5)',
+                color: enableQullamaggieMomentum ? '#c084fc' : 'var(--text-secondary)',
+                boxShadow: enableQullamaggieMomentum ? '0 2px 8px rgba(168, 85, 247, 0.25)' : 'none'
+              }}
+            >
+              ⚡ Momentum
+            </button>
+
+            {/* 4. Episodic Pivot Button */}
             <button
               type="button"
               onClick={() => {
@@ -533,7 +533,7 @@ export default function CandidatesTab({
               ⚡ Episodic Pivot
             </button>
 
-            {/* Parabolic Climax Button */}
+            {/* 5. Parabolic Button */}
             <button
               type="button"
               onClick={() => {
@@ -573,10 +573,53 @@ export default function CandidatesTab({
                 boxShadow: isParabolicActive ? '0 2px 8px rgba(239, 68, 68, 0.25)' : 'none'
               }}
             >
-              🌋 Parabolic Climax
+              🌋 Parabolic
             </button>
 
-            {/* VCP Pattern Button */}
+            {/* 6. IPO Base Button */}
+            <button
+              type="button"
+              onClick={() => {
+                const next = !enableIpoBase;
+                setEnableIpoBase(next);
+                if (setEnableQullamaggieMomentum) setEnableQullamaggieMomentum(false);
+                setEnablePowerPlay(false);
+                setEnableQullamaggieBreakout(false);
+                setEnableEpisodicPivot(false);
+                if (setEnableParabolicClimax) setEnableParabolicClimax(false);
+                if (setEnableParabolicShort) setEnableParabolicShort(false);
+                if (setEnableParabolicLong) setEnableParabolicLong(false);
+                setEnableVcpSetup(false);
+                setEnableNewLeaders(false);
+                if (next) {
+                  setMinPriceFilter(5.00);
+                  setMinVolFilter(100000);
+                  setMinAdrFilter(4.0);
+                  if (setEnableAdr) setEnableAdr(false);
+                  setEnforceStage2(false);
+                  setEnableRs(false);
+                  if (setEnablePivotTightness) setEnablePivotTightness(false);
+                } else {
+                  if (setEnableAdr) setEnableAdr(false);
+                }
+              }}
+              style={{
+                padding: '5px 12px',
+                fontSize: '12px',
+                fontWeight: '600',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                border: enableIpoBase ? '1px solid #06b6d4' : '1px solid rgba(255, 255, 255, 0.12)',
+                background: enableIpoBase ? 'rgba(6, 182, 212, 0.2)' : 'rgba(15, 23, 42, 0.5)',
+                color: enableIpoBase ? '#06b6d4' : 'var(--text-secondary)',
+                boxShadow: enableIpoBase ? '0 2px 8px rgba(6, 182, 212, 0.25)' : 'none'
+              }}
+            >
+              🌱 IPO Base
+            </button>
+
+            {/* 7. VCP Pattern Button */}
             <button
               type="button"
               onClick={() => {
@@ -825,7 +868,7 @@ export default function CandidatesTab({
                     min="500000"
                     max="50000000"
                     step="500000"
-                    value={minDollarVolFilter || 5000000}
+                    value={minDollarVolFilter || 10000000}
                     onChange={(e) => setMinDollarVolFilter(parseFloat(e.target.value) || 0)}
                     style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
                   />
@@ -1003,73 +1046,75 @@ export default function CandidatesTab({
                 </div>
               </div>
 
-              {/* Pivot Tightness & Volume Dry-Up (VDU) Filter */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enablePivotTightness ? 1 : 0.5 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={enablePivotTightness}
-                    onChange={(e) => setEnablePivotTightness(e.target.checked)}
-                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                  />
-                  🎯 Pivot Tightness (3d):
-                </label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {/* Metric 1: Max Price Spread (3d) */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} title="3-Day High-Low price spread / Close price (Price Tightness)">
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '95px' }}>Max Spread:</span>
+              {/* Pivot Tightness & Volume Dry-Up (VDU) Filter (Momentum & VCP only) */}
+              {(enableQullamaggieMomentum || enableVcpSetup) && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enablePivotTightness ? 1 : 0.5 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
                     <input
-                      type="range"
-                      min="1.0"
-                      max="15.0"
-                      step="0.5"
-                      value={maxPivotSpreadFilter}
-                      disabled={!enablePivotTightness}
-                      onChange={(e) => setMaxPivotSpreadFilter(parseFloat(e.target.value) || 0)}
-                      style={{ flex: 1, cursor: enablePivotTightness ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                      type="checkbox"
+                      checked={enablePivotTightness}
+                      onChange={(e) => setEnablePivotTightness(e.target.checked)}
+                      style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
                     />
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', width: '42px', textAlign: 'right' }}>
-                      &le;{maxPivotSpreadFilter.toFixed(1)}%
-                    </span>
-                  </div>
+                    🎯 Pivot Tightness (3d):
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {/* Metric 1: Max Price Spread (3d) */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} title="3-Day High-Low price spread / Close price (Price Tightness)">
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '95px' }}>Max Spread:</span>
+                      <input
+                        type="range"
+                        min="1.0"
+                        max="15.0"
+                        step="0.5"
+                        value={maxPivotSpreadFilter}
+                        disabled={!enablePivotTightness}
+                        onChange={(e) => setMaxPivotSpreadFilter(parseFloat(e.target.value) || 0)}
+                        style={{ flex: 1, cursor: enablePivotTightness ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                      />
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', width: '42px', textAlign: 'right' }}>
+                        &le;{maxPivotSpreadFilter.toFixed(1)}%
+                      </span>
+                    </div>
 
-                  {/* Metric 2: Close Clustering (3d) */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} title="3-Day Close Clustering: (Highest Close - Lowest Close) / Close over last 3 days">
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '95px' }}>Close Clust:</span>
-                    <input
-                      type="range"
-                      min="0.5"
-                      max="10.0"
-                      step="0.1"
-                      value={maxPivotClusteringFilter}
-                      disabled={!enablePivotTightness}
-                      onChange={(e) => setMaxPivotClusteringFilter(parseFloat(e.target.value) || 0)}
-                      style={{ flex: 1, cursor: enablePivotTightness ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                    />
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', width: '42px', textAlign: 'right' }}>
-                      &le;{maxPivotClusteringFilter.toFixed(1)}%
-                    </span>
-                  </div>
+                    {/* Metric 2: Close Clustering (3d) */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} title="3-Day Close Clustering: (Highest Close - Lowest Close) / Close over last 3 days">
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '95px' }}>Close Clust:</span>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="10.0"
+                        step="0.1"
+                        value={maxPivotClusteringFilter}
+                        disabled={!enablePivotTightness}
+                        onChange={(e) => setMaxPivotClusteringFilter(parseFloat(e.target.value) || 0)}
+                        style={{ flex: 1, cursor: enablePivotTightness ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                      />
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', width: '42px', textAlign: 'right' }}>
+                        &le;{maxPivotClusteringFilter.toFixed(1)}%
+                      </span>
+                    </div>
 
-                  {/* Metric 3: Volume Dry-Up (VDU) */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} title="Volume Dry-Up: Day Volume / 50-DMA Volume">
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '95px' }}>Vol Dry-Up:</span>
-                    <input
-                      type="range"
-                      min="0.10"
-                      max="1.50"
-                      step="0.05"
-                      value={maxPivotVolRatioFilter}
-                      disabled={!enablePivotTightness}
-                      onChange={(e) => setMaxPivotVolRatioFilter(parseFloat(e.target.value) || 0)}
-                      style={{ flex: 1, cursor: enablePivotTightness ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                    />
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', width: '42px', textAlign: 'right' }}>
-                      &le;{maxPivotVolRatioFilter.toFixed(2)}x
-                    </span>
+                    {/* Metric 3: Volume Dry-Up (VDU) */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} title="Volume Dry-Up: Day Volume / 50-DMA Volume">
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '95px' }}>Vol Dry-Up:</span>
+                      <input
+                        type="range"
+                        min="0.10"
+                        max="1.50"
+                        step="0.05"
+                        value={maxPivotVolRatioFilter}
+                        disabled={!enablePivotTightness}
+                        onChange={(e) => setMaxPivotVolRatioFilter(parseFloat(e.target.value) || 0)}
+                        style={{ flex: 1, cursor: enablePivotTightness ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                      />
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', width: '42px', textAlign: 'right' }}>
+                        &le;{maxPivotVolRatioFilter.toFixed(2)}x
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* ========================================== */}
               {/* 2. Power Play Sliders (Visible if selected) */}
@@ -1362,7 +1407,7 @@ export default function CandidatesTab({
               )}
 
               {/* ========================================== */}
-              {/* 5. Parabolic Climax Sliders (Visible if selected) */}
+              {/* 5. Parabolic Sliders (Visible if selected) */}
               {/* ========================================== */}
               {isParabolicActive && (
                 <>
@@ -1471,7 +1516,116 @@ export default function CandidatesTab({
               )}
 
               {/* ========================================== */}
-              {/* 6. VCP Setup Sliders (Visible if selected) */}
+              {/* 6. IPO Base Sliders (Visible if selected)  */}
+              {/* ========================================== */}
+              {enableIpoBase && (
+                <>
+                  {/* Max IPO Age */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableIpoAge ? 1 : 0.5 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableIpoAge}
+                        onChange={(e) => setEnableIpoAge(e.target.checked)}
+                        style={{ accentColor: '#06b6d4', cursor: 'pointer' }}
+                      />
+                      Max IPO Age ({maxIpoAgeFilter}d):
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="range"
+                        min="20"
+                        max="500"
+                        step="10"
+                        value={maxIpoAgeFilter}
+                        disabled={!enableIpoAge}
+                        onChange={(e) => setMaxIpoAgeFilter(parseInt(e.target.value, 10) || 0)}
+                        style={{ flex: 1, cursor: enableIpoAge ? 'pointer' : 'not-allowed', accentColor: '#06b6d4' }}
+                      />
+                      <input
+                        type="number"
+                        min="10"
+                        max="1000"
+                        value={maxIpoAgeFilter}
+                        disabled={!enableIpoAge}
+                        onChange={(e) => setMaxIpoAgeFilter(parseInt(e.target.value, 10) || 0)}
+                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Max Distance from ATH */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableIpoDist ? 1 : 0.5 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableIpoDist}
+                        onChange={(e) => setEnableIpoDist(e.target.checked)}
+                        style={{ accentColor: '#06b6d4', cursor: 'pointer' }}
+                      />
+                      Max Dist from ATH ({maxIpoDistFilter}%):
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="range"
+                        min="5"
+                        max="50"
+                        step="1"
+                        value={maxIpoDistFilter}
+                        disabled={!enableIpoDist}
+                        onChange={(e) => setMaxIpoDistFilter(parseFloat(e.target.value) || 0)}
+                        style={{ flex: 1, cursor: enableIpoDist ? 'pointer' : 'not-allowed', accentColor: '#06b6d4' }}
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={maxIpoDistFilter}
+                        disabled={!enableIpoDist}
+                        onChange={(e) => setMaxIpoDistFilter(parseFloat(e.target.value) || 0)}
+                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Max Base Depth */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableIpoDepth ? 1 : 0.5 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableIpoDepth}
+                        onChange={(e) => setEnableIpoDepth(e.target.checked)}
+                        style={{ accentColor: '#06b6d4', cursor: 'pointer' }}
+                      />
+                      Max Base Depth ({maxIpoDepthFilter}%):
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="range"
+                        min="5"
+                        max="60"
+                        step="1"
+                        value={maxIpoDepthFilter}
+                        disabled={!enableIpoDepth}
+                        onChange={(e) => setMaxIpoDepthFilter(parseFloat(e.target.value) || 0)}
+                        style={{ flex: 1, cursor: enableIpoDepth ? 'pointer' : 'not-allowed', accentColor: '#06b6d4' }}
+                      />
+                      <input
+                        type="number"
+                        min="5"
+                        max="100"
+                        value={maxIpoDepthFilter}
+                        disabled={!enableIpoDepth}
+                        onChange={(e) => setMaxIpoDepthFilter(parseFloat(e.target.value) || 0)}
+                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* ========================================== */}
+              {/* 7. VCP Setup Sliders (Visible if selected) */}
               {/* ========================================== */}
               {enableVcpSetup && (
                 <>
@@ -1737,6 +1891,27 @@ export default function CandidatesTab({
                       🌀 {currentCandidate.vcp_depths.split(',').map(d => Math.round(parseFloat(d))).join('/')} {currentCandidate.vcp_troughs}T
                     </span>
                   ) : null}
+
+                  {/* IPO Base Badge */}
+                  {currentCandidate?.ipo_days_count !== null && currentCandidate?.ipo_days_count !== undefined && currentCandidate?.ipo_days_count <= 350 && (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        background: 'rgba(6, 182, 212, 0.18)',
+                        color: '#06b6d4',
+                        border: '1px solid rgba(6, 182, 212, 0.35)',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                      title={`IPO Base: ${currentCandidate.ipo_days_count} trading days since IPO${currentCandidate.ipo_base_depth !== null && currentCandidate.ipo_base_depth !== undefined ? ` • Base Depth: ${Math.round(currentCandidate.ipo_base_depth)}%` : ''}`}
+                    >
+                      🌱 IPO {currentCandidate.ipo_days_count}d{currentCandidate.ipo_base_depth !== null && currentCandidate.ipo_base_depth !== undefined ? ` (${Math.round(currentCandidate.ipo_base_depth)}%)` : ''}
+                    </span>
+                  )}
                 </div>
 
                 {/* Stock Position Count on Far Bottom Right */}

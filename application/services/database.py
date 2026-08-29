@@ -169,8 +169,10 @@ class DatabaseService:
                 where_clauses.append("db.adr_20d IS NOT NULL AND db.adr_20d >= ?")
                 params.append(float(min_adr))
 
-            # Pivot Tightness & Volume Dry-Up (VDU) Filter
-            if get_f("enable_pivot_tightness", "enablePivotTightness", False):
+            # Pivot Tightness & Volume Dry-Up (VDU) Filter (Momentum & VCP only)
+            enable_qm = get_f("enable_qullamaggie_momentum", "enableQullamaggieMomentum", False)
+            enable_vcp = get_f("enable_vcp_setup", "enableVcpSetup", False)
+            if get_f("enable_pivot_tightness", "enablePivotTightness", False) and (enable_qm or enable_vcp):
                 max_pivot_spread = get_f("max_pivot_spread", "maxPivotSpreadFilter", 8.0)
                 max_pivot_clustering = get_f("max_pivot_clustering", "maxPivotClusteringFilter", 3.0)
                 max_pivot_vol_ratio = get_f("max_pivot_vol_ratio", "maxPivotVolRatioFilter", 0.8)

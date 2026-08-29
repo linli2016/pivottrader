@@ -450,7 +450,7 @@ class MomentumEngine:
                 """)
                 conn.execute("DROP TABLE temp_updates")
 
-    def get_momentum_candidates(self, min_price: float = 5.00, min_vol_sma: int = 100000, min_dollar_vol: float = 5000000.0, min_rank: int = 70) -> List[Dict[str, Any]]:
+    def get_momentum_candidates(self, min_price: float = 5.00, min_vol_sma: int = 100000, min_dollar_vol: float = 10000000.0, min_rank: int = 70) -> List[Dict[str, Any]]:
         """
         Retrieves candidates passing price, volume, dollar volume, and momentum rank thresholds from daily_bars
         for the latest date in the database.

@@ -13,7 +13,7 @@ router = APIRouter()
 class ConfigUpdateSchema(BaseModel):
     min_price: float
     min_volume_sma_50: int
-    min_dollar_volume_50d: float = 5000000.0
+    min_dollar_volume_50d: float = 10000000.0
     min_rs_percentile: int
     min_eps_growth_qoq: float
     provider_selected: str

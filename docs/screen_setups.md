@@ -17,14 +17,14 @@ PivotTrader supports multiple setup overlays designed to identify superperforman
 | **New Leaders (Market Low Turn)** | Market correction turnover & leadership | 52-week high list / proximity ($\le 25\%$), strong surge off market lows ($\ge 20\%$), least corrected |
 | **Qullamaggie Breakout** | Momentum consolidation surfing 10/20 EMA | Top 1%–2% 1M/3M/6M gainers, +30-100%+ prior leg, tight EMA 10/20 surf, stop LOD $\le 1$ ATR |
 | **Episodic Pivot (EP)** | Fundamental catalyst news gap-up | Gap $\ge +8.0\%$, RelVol $\ge 2.5\text{x}$ 50d volume, prior 60-day base breakout |
-| **Parabolic Climax (Short & Long)** | Mean-reversion after vertical expansion | +40%+ move in 3–10d, extended $\ge 18\%$ above 10 EMA (or -30% drop below 10 EMA) |
+| **Parabolic (Short & Long)** | Mean-reversion after vertical expansion | +40%+ move in 3–10d, extended $\ge 18\%$ above 10 EMA (or -30% drop below 10 EMA) |
 
 ## Global Baseline Universe & Liquidity Filters
 
 All setups and scans in PivotTrader require candidates to meet the global baseline liquidity filters before setup-specific patterns are evaluated:
 1. **Minimum Stock Price**: $\ge \$5.00$ (prevents low-liquidity penny stock manipulation).
 2. **Minimum 50-Day Average Volume**: $\ge 100,000$ shares daily.
-3. **Minimum Daily Dollar Volume (Liquidity)**: $\ge \$5,000,000$ (\$5M) in 50-day average daily dollar volume ($\text{Price} \times \text{Volume}$). This ensures adequate institutional liquidity for sizing in and out of positions without severe execution slippage.
+3. **Minimum Daily Dollar Volume (Liquidity)**: $\ge \$10,000,000$ (\$10M) in 50-day average daily dollar volume ($\text{Price} \times \text{Volume}$). This ensures adequate institutional liquidity for sizing in and out of positions without severe execution slippage.
 
 ---
 
