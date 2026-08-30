@@ -51,12 +51,26 @@ export default function CandidatesTab({
   setEnableParabolicShort,
   enableParabolicLong,
   setEnableParabolicLong,
-  min1mRetFilter,
-  setMin1mRetFilter,
-  enable1mRet,
-  setEnable1mRet,
-  enableEmaSurfing,
-  setEnableEmaSurfing,
+  minBreakoutRunupFilter = 30.0,
+  setMinBreakoutRunupFilter = () => { },
+  enableBreakoutRunup = true,
+  setEnableBreakoutRunup = () => { },
+  minBreakoutDaysFilter = 8,
+  setMinBreakoutDaysFilter = () => { },
+  maxBreakoutDaysFilter = 45,
+  setMaxBreakoutDaysFilter = () => { },
+  enableBreakoutDays = true,
+  setEnableBreakoutDays = () => { },
+  maxBreakoutPivotDistFilter = 5.0,
+  setMaxBreakoutPivotDistFilter = () => { },
+  enableBreakoutPivotDist = true,
+  setEnableBreakoutPivotDist = () => { },
+  min1mRetFilter = 20.0,
+  setMin1mRetFilter = () => { },
+  enable1mRet = true,
+  setEnable1mRet = () => { },
+  enableEmaSurfing = false,
+  setEnableEmaSurfing = () => { },
   minEpGapFilter,
   setMinEpGapFilter,
   enableEpGap,
@@ -165,19 +179,19 @@ export default function CandidatesTab({
 
   const activeSetupName = React.useMemo(() => {
     if (enablePowerPlay) return 'Power Play';
-    if (enableQullamaggieBreakout) return 'Breakout';
+    if (enableQullamaggieBreakout) return 'QM Breakout';
     if (enableQullamaggieMomentum) return 'Momentum';
     if (enableEpisodicPivot) return 'Episodic Pivot';
     if (isParabolicActive) return 'Parabolic';
     if (enableIpoBase) return 'IPO Base';
-    if (enableVcpSetup) return 'VCP Pattern';
+    if (enableVcpSetup) return 'VCP';
     if (enableNewLeaders) return 'New Leaders';
 
     if (currentCandidate?.pp_is_setup) return 'Power Play';
-    if (currentCandidate?.breakout_is_setup) return 'Breakout';
+    if (currentCandidate?.breakout_is_setup) return 'QM Breakout';
     if (currentCandidate?.ep_is_setup) return 'Episodic Pivot';
     if (currentCandidate?.parabolic_short_is_setup || currentCandidate?.parabolic_long_is_setup) return 'Parabolic';
-    if (currentCandidate?.vcp_is_setup) return 'VCP Pattern';
+    if (currentCandidate?.vcp_is_setup) return 'VCP';
     if (currentCandidate?.ipo_days_count !== undefined && currentCandidate?.ipo_days_count <= 350) return 'IPO Base';
 
     return 'General';
@@ -457,9 +471,10 @@ export default function CandidatesTab({
                   if (setEnableAdr) setEnableAdr(true);
                   setEnforceStage2(false);
                   setEnableRs(false);
-                  if (setEnablePivotTightness) setEnablePivotTightness(false);
+                  if (setEnablePivotTightness) setEnablePivotTightness(true);
                 } else {
                   if (setEnableAdr) setEnableAdr(false);
+                  if (setEnablePivotTightness) setEnablePivotTightness(false);
                 }
               }}
               style={{
@@ -475,7 +490,7 @@ export default function CandidatesTab({
                 boxShadow: enableQullamaggieBreakout ? '0 2px 8px rgba(245, 158, 11, 0.25)' : 'none'
               }}
             >
-              🎯 Breakout
+              🎯 QM Breakout
             </button>
 
             {/* 3. Momentum Button */}
@@ -691,7 +706,7 @@ export default function CandidatesTab({
                 boxShadow: enableVcpSetup ? '0 2px 8px rgba(16, 185, 129, 0.25)' : 'none'
               }}
             >
-              🌀 VCP Pattern
+              🌀 VCP
             </button>
           </div>
 
@@ -950,135 +965,140 @@ export default function CandidatesTab({
                 </div>
               </div>
 
-              {/* Min Relative Strength (RS Rank) */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableRs ? 1 : 0.5 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={enableRs}
-                    onChange={(e) => setEnableRs(e.target.checked)}
-                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                  />
-                  🏆 Min RS Rank ({minRsFilter}):
-                </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="range"
-                    min="1"
-                    max="99"
-                    step="1"
-                    value={minRsFilter}
-                    disabled={!enableRs}
-                    onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 70)}
-                    style={{ flex: 1, cursor: enableRs ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                  />
-                  <input
-                    type="number"
-                    min="1"
-                    max="99"
-                    value={minRsFilter}
-                    disabled={!enableRs}
-                    onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 70)}
-                    style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                  />
-                </div>
-              </div>
+              {/* Global Trend & Strength Filters (Hidden for Power Play & Breakout Setups) */}
+              {!enablePowerPlay && !enableQullamaggieBreakout && (
+                <>
+                  {/* Min Relative Strength (RS Rank) */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableRs ? 1 : 0.5 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableRs}
+                        onChange={(e) => setEnableRs(e.target.checked)}
+                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                      />
+                      🏆 Min RS Rank ({minRsFilter}):
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="range"
+                        min="1"
+                        max="99"
+                        step="1"
+                        value={minRsFilter}
+                        disabled={!enableRs}
+                        onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 70)}
+                        style={{ flex: 1, cursor: enableRs ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        max="99"
+                        value={minRsFilter}
+                        disabled={!enableRs}
+                        onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 70)}
+                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                      />
+                    </div>
+                  </div>
 
-              {/* Stockbee Trend Intensity (TI65) Filter */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableTi65 ? 1 : 0.5 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={enableTi65}
-                    onChange={(e) => setEnableTi65(e.target.checked)}
-                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                  />
-                  ⚡ Trend Intensity TI65 ({minTi65Filter ? minTi65Filter.toFixed(2) : '1.05'}):
-                </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="range"
-                    min="0.80"
-                    max="1.50"
-                    step="0.01"
-                    value={minTi65Filter}
-                    disabled={!enableTi65}
-                    onChange={(e) => setMinTi65Filter(parseFloat(e.target.value) || 1.05)}
-                    style={{ flex: 1, cursor: enableTi65 ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                  />
-                  <input
-                    type="number"
-                    min="0.50"
-                    max="2.00"
-                    step="0.01"
-                    value={minTi65Filter}
-                    disabled={!enableTi65}
-                    onChange={(e) => setMinTi65Filter(parseFloat(e.target.value) || 1.05)}
-                    style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                  />
-                </div>
-              </div>
+                  {/* Stockbee Trend Intensity (TI65) Filter */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableTi65 ? 1 : 0.5 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableTi65}
+                        onChange={(e) => setEnableTi65(e.target.checked)}
+                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                      />
+                      ⚡ Trend Intensity TI65 ({minTi65Filter ? minTi65Filter.toFixed(2) : '1.05'}):
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="range"
+                        min="0.80"
+                        max="1.50"
+                        step="0.01"
+                        value={minTi65Filter}
+                        disabled={!enableTi65}
+                        onChange={(e) => setMinTi65Filter(parseFloat(e.target.value) || 1.05)}
+                        style={{ flex: 1, cursor: enableTi65 ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
+                      />
+                      <input
+                        type="number"
+                        min="0.50"
+                        max="2.00"
+                        step="0.01"
+                        value={minTi65Filter}
+                        disabled={!enableTi65}
+                        onChange={(e) => setMinTi65Filter(parseFloat(e.target.value) || 1.05)}
+                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
+                      />
+                    </div>
+                  </div>
 
-              {/* RS Ranking at New High (Global Filter) */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableRsNewHigh ? 1 : 0.5 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={enableRsNewHigh}
-                    onChange={(e) => setEnableRsNewHigh(e.target.checked)}
-                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                  />
-                  RS Ranking at New High
-                </label>
-                <div style={{
-                  padding: '8px 12px',
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  fontSize: '13px',
-                  color: enableRsNewHigh ? 'var(--accent-success)' : 'var(--text-secondary)',
-                  fontWeight: '600',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  height: '38px',
-                  boxSizing: 'border-box'
-                }}>
-                  {enableRsNewHigh ? '📈 RS Rank at 252-day High' : '⚪ New High Waived'}
-                </div>
-              </div>
+                  {/* RS Ranking at New High (Global Filter) */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableRsNewHigh ? 1 : 0.5 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableRsNewHigh}
+                        onChange={(e) => setEnableRsNewHigh(e.target.checked)}
+                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                      />
+                      RS Ranking at New High
+                    </label>
+                    <div style={{
+                      padding: '8px 12px',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      color: enableRsNewHigh ? 'var(--accent-success)' : 'var(--text-secondary)',
+                      fontWeight: '600',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      height: '38px',
+                      boxSizing: 'border-box'
+                    }}>
+                      {enableRsNewHigh ? '📈 RS Rank at 252-day High' : '⚪ New High Waived'}
+                    </div>
+                  </div>
 
-              {/* Stage 2 Trend Template (Global Filter) */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enforceStage2 ? 1 : 0.5 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={enforceStage2}
-                    onChange={(e) => setEnforceStage2(e.target.checked)}
-                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                  />
-                  📈 Stage 2 Trend
-                </label>
-                <div style={{
-                  padding: '8px 12px',
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  fontSize: '13px',
-                  color: enforceStage2 ? 'var(--accent-success)' : 'var(--text-secondary)',
-                  fontWeight: '600',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  height: '38px',
-                  boxSizing: 'border-box'
-                }}>
-                  {enforceStage2 ? '⚡ Close > 50 > 150 > 200 (SMA200 ↗ (1M), 52w Hi ≤25%, Lo ≥30%)' : '⚪ Stage 2 Trend Waived'}
-                </div>
-              </div>
+                  {/* Stage 2 Trend Template (Global Filter) */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enforceStage2 ? 1 : 0.5 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enforceStage2}
+                        onChange={(e) => setEnforceStage2(e.target.checked)}
+                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
+                      />
+                      📈 Stage 2 Trend
+                    </label>
+                    <div style={{
+                      padding: '8px 12px',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      color: enforceStage2 ? 'var(--accent-success)' : 'var(--text-secondary)',
+                      fontWeight: '600',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      height: '38px',
+                      boxSizing: 'border-box'
+                    }}>
+                      {enforceStage2 ? '⚡ Close > 50 > 150 > 200 (SMA200 ↗ (1M), 52w Hi ≤25%, Lo ≥30%)' : '⚪ Stage 2 Trend Waived'}
+                    </div>
+                  </div>
+                </>
+              )}
 
-              {/* Pivot Tightness & Volume Dry-Up (VDU) Filter (Momentum & VCP only) */}
-              {(enableQullamaggieMomentum || enableVcpSetup) && (
+              {/* Pivot Tightness & Volume Dry-Up (VDU) Filter (QM Breakout, Momentum & VCP) */}
+              {(enableQullamaggieBreakout || enableQullamaggieMomentum || enableVcpSetup) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enablePivotTightness ? 1 : 0.5 }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
                     <input
@@ -1296,42 +1316,91 @@ export default function CandidatesTab({
               {/* ========================================== */}
               {enableQullamaggieBreakout && (
                 <>
-                  {/* Min 1-Month Return */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enable1mRet ? 1 : 0.5 }}>
+                  {/* 1. Min Prior Run-up */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableBreakoutRunup ? 1 : 0.5 }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
                       <input
                         type="checkbox"
-                        checked={enable1mRet}
-                        onChange={(e) => setEnable1mRet(e.target.checked)}
+                        checked={enableBreakoutRunup}
+                        onChange={(e) => setEnableBreakoutRunup(e.target.checked)}
                         style={{ accentColor: '#f59e0b', cursor: 'pointer' }}
                       />
-                      Min 1-Month Return ({min1mRetFilter}%):
+                      Min Run-up ({minBreakoutRunupFilter}%):
                     </label>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <input
                         type="range"
                         min="10"
-                        max="100"
+                        max="150"
                         step="5"
-                        value={min1mRetFilter}
-                        disabled={!enable1mRet}
-                        onChange={(e) => setMin1mRetFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enable1mRet ? 'pointer' : 'not-allowed', accentColor: '#f59e0b' }}
+                        value={minBreakoutRunupFilter}
+                        disabled={!enableBreakoutRunup}
+                        onChange={(e) => setMinBreakoutRunupFilter(parseFloat(e.target.value) || 0)}
+                        style={{ flex: 1, cursor: enableBreakoutRunup ? 'pointer' : 'not-allowed', accentColor: '#f59e0b' }}
                       />
                       <input
                         type="number"
                         min="0"
                         max="500"
-                        value={min1mRetFilter}
-                        disabled={!enable1mRet}
-                        onChange={(e) => setMin1mRetFilter(parseFloat(e.target.value) || 0)}
+                        value={minBreakoutRunupFilter}
+                        disabled={!enableBreakoutRunup}
+                        onChange={(e) => setMinBreakoutRunupFilter(parseFloat(e.target.value) || 0)}
                         style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
                       />
                     </div>
                   </div>
 
-                  {/* EMA Surfing Filter */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableEmaSurfing ? 1 : 0.5 }}>
+                  {/* 2. Consolidation Window (Min & Max Days Since Peak) */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableBreakoutDays ? 1 : 0.5 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={enableBreakoutDays}
+                        onChange={(e) => setEnableBreakoutDays(e.target.checked)}
+                        style={{ accentColor: '#f59e0b', cursor: 'pointer' }}
+                      />
+                      Consolidation Days ({minBreakoutDaysFilter}d - {maxBreakoutDaysFilter}d):
+                    </label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {/* Min Days */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} title="Minimum trading days since peak high">
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '65px' }}>Min Days:</span>
+                        <input
+                          type="range"
+                          min="1"
+                          max="40"
+                          step="1"
+                          value={minBreakoutDaysFilter}
+                          disabled={!enableBreakoutDays}
+                          onChange={(e) => setMinBreakoutDaysFilter(parseInt(e.target.value) || 0)}
+                          style={{ flex: 1, cursor: enableBreakoutDays ? 'pointer' : 'not-allowed', accentColor: '#f59e0b' }}
+                        />
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', width: '38px', textAlign: 'right' }}>
+                          {minBreakoutDaysFilter}d
+                        </span>
+                      </div>
+                      {/* Max Days */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} title="Maximum trading days in consolidation">
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '65px' }}>Max Days:</span>
+                        <input
+                          type="range"
+                          min="10"
+                          max="90"
+                          step="1"
+                          value={maxBreakoutDaysFilter}
+                          disabled={!enableBreakoutDays}
+                          onChange={(e) => setMaxBreakoutDaysFilter(parseInt(e.target.value) || 0)}
+                          style={{ flex: 1, cursor: enableBreakoutDays ? 'pointer' : 'not-allowed', accentColor: '#f59e0b' }}
+                        />
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', width: '38px', textAlign: 'right' }}>
+                          {maxBreakoutDaysFilter}d
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. EMA Surfing Filter */}
+                  <div>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
                       <input
                         type="checkbox"
@@ -1341,22 +1410,6 @@ export default function CandidatesTab({
                       />
                       EMA 10 / 20 Surfing Rule
                     </label>
-                    <div style={{
-                      padding: '8px 12px',
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      fontSize: '13px',
-                      color: enableEmaSurfing ? '#f59e0b' : 'var(--text-secondary)',
-                      fontWeight: '600',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      height: '38px',
-                      boxSizing: 'border-box'
-                    }}>
-                      {enableEmaSurfing ? '🌊 Surfing 10/20 EMA Active' : '⚪ EMA Rule Waived'}
-                    </div>
                   </div>
                 </>
               )}

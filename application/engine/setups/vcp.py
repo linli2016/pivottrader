@@ -20,11 +20,7 @@ def detect_vcp(highs: List[float], lows: List[float], dates: List[Any], closes: 
     sub_highs = highs[-lookback_52w:]
     high_52w = max(sub_highs)
     high_52w_idx = n - lookback_52w + sub_highs.index(high_52w)
-
-    # Requirement 1: Current price must be within 20% range of 52-week high
     dist_from_52w = ((high_52w - current_close) / high_52w) * 100.0
-    if dist_from_52w > 20.0:
-        return None
 
     # 2. Identify local extrema starting from the recent base lookback (up to 150 bars / 30 weeks)
     lookback_base = min(n, 150)
@@ -152,6 +148,21 @@ def detect_vcp(highs: List[float], lows: List[float], dates: List[Any], closes: 
                 "depth": depth
             })
 
+    if not contractions and peaks_list:
+        p_idx, p_price, p_date, _ = base_peak
+        wave_lows = lows[p_idx:]
+        if wave_lows:
+            min_low = min(wave_lows)
+            min_low_idx = p_idx + wave_lows.index(min_low)
+            depth = (p_price - min_low) / p_price * 100.0
+            if depth > 0.5:
+                contractions.append({
+                    "peak_idx": p_idx,
+                    "peak_price": p_price,
+                    "trough_idx": min_low_idx,
+                    "depth": depth
+                })
+
     if not contractions:
         return None
 
@@ -170,7 +181,7 @@ def detect_vcp(highs: List[float], lows: List[float], dates: List[Any], closes: 
     is_final_tight = depths[-1] <= 12.0
     is_tight = depths[-1] <= 10.0
     is_not_extended = highs[-1] <= base_peak[1] * 1.05
-    is_valid_setup = len(contractions) >= 2 and (is_contracting or is_final_tight) and is_not_extended
+    is_valid_setup = len(contractions) >= 2 and (is_contracting or is_final_tight) and is_not_extended and (dist_from_52w <= 20.0)
 
     base_bars = max(1, n - 1 - base_start_idx)
     base_weeks = max(1, round(base_bars / 5))

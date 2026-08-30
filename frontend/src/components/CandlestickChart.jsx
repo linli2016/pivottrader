@@ -44,6 +44,16 @@ function calculateEMA(data, period) {
   return emaData;
 }
 
+// Calculate responsive visible bars based on container width
+// 1 trading month ~ 21 trading days (bars).
+// For laptop screens (~700-900px): ~147 bars (7 months).
+// For larger monitors (>1200px): scales smoothly up to ~252 bars (>9-12 months).
+function getResponsiveVisibleBars(containerWidth) {
+  const w = containerWidth || (typeof window !== 'undefined' ? window.innerWidth : 800);
+  const bars = Math.round(w / 5.4);
+  return Math.max(147, Math.min(252, bars));
+}
+
 // Custom Primitive to draw a vertical dashed line for As-of Date
 class VerticalLinePrimitive {
   constructor(time, options = {}) {
@@ -648,7 +658,9 @@ const CandlestickChart = forwardRef(function CandlestickChart({
               }
             }
 
-            const fromIndex = Math.max(0, toIndex - 189);
+            const currentWidth = chartContainerRef.current?.clientWidth || targetWidth;
+            const visibleBars = getResponsiveVisibleBars(currentWidth);
+            const fromIndex = Math.max(0, toIndex - visibleBars);
             chartRef.current.timeScale().setVisibleLogicalRange({
               from: fromIndex,
               to: toIndex,
@@ -675,6 +687,14 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         const newHeight = typeof height === 'number' ? height : (containerH > 0 ? containerH : 280);
         if (newWidth > 0 && newHeight > 0) {
           chartRef.current.applyOptions({ width: newWidth, height: newHeight });
+          const currentRange = chartRef.current.timeScale().getVisibleLogicalRange();
+          if (currentRange && dataLookupRef.current?.data?.length > 0) {
+            const visibleBars = getResponsiveVisibleBars(newWidth);
+            chartRef.current.timeScale().setVisibleLogicalRange({
+              from: Math.max(0, currentRange.to - visibleBars),
+              to: currentRange.to,
+            });
+          }
         }
       }
     });

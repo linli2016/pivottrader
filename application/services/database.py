@@ -141,8 +141,12 @@ class DatabaseService:
                 where_clauses.append("COALESCE(db.dollar_vol_50d_ma, db.close * db.vol_50d_ma) >= ?")
                 params.append(float(min_dollar_vol))
 
-            # Stage 2 Trend Template (Combo Criteria)
-            if get_f("enforce_stage2", "enforceStage2", False):
+            enable_power_play = get_f("enable_power_play", "enablePowerPlay", False)
+            enable_breakout = get_f("enable_qullamaggie_breakout", "enableQullamaggieBreakout", False)
+            bypass_trend_filters = enable_power_play or enable_breakout
+
+            # Stage 2 Trend Template (Combo Criteria) - Bypassed for Power Play & Breakout
+            if not bypass_trend_filters and get_f("enforce_stage2", "enforceStage2", False):
                 where_clauses.append(
                     "db.sma_50 IS NOT NULL AND db.sma_150 IS NOT NULL AND db.sma_200 IS NOT NULL "
                     "AND db.close > db.sma_50 AND db.sma_50 > db.sma_150 AND db.sma_150 > db.sma_200 "
@@ -151,14 +155,14 @@ class DatabaseService:
                     "AND (db.surge_off_low_pct IS NULL OR db.surge_off_low_pct >= 30.0)"
                 )
 
-            # Relative Strength Rank
-            if get_f("enable_rs", "enableRs", False):
+            # Relative Strength Rank - Bypassed for Power Play & Breakout
+            if not bypass_trend_filters and get_f("enable_rs", "enableRs", False):
                 min_rs = get_f("min_rs_percentile", "minRsFilter", 70)
                 where_clauses.append("db.rs_rank >= ?")
                 params.append(float(min_rs))
 
-            # Stockbee Trend Intensity (TI65) Filter
-            if get_f("enable_ti65", "enableTi65", False):
+            # Stockbee Trend Intensity (TI65) Filter - Bypassed for Power Play & Breakout
+            if not bypass_trend_filters and get_f("enable_ti65", "enableTi65", False):
                 min_ti65 = get_f("min_ti65", "minTi65Filter", 1.05)
                 where_clauses.append("db.ti_65 IS NOT NULL AND db.ti_65 >= ?")
                 params.append(float(min_ti65))
@@ -169,10 +173,10 @@ class DatabaseService:
                 where_clauses.append("db.adr_20d IS NOT NULL AND db.adr_20d >= ?")
                 params.append(float(min_adr))
 
-            # Pivot Tightness & Volume Dry-Up (VDU) Filter (Momentum & VCP only)
+            # Pivot Tightness & Volume Dry-Up (VDU) Filter (Breakout, Momentum & VCP)
             enable_qm = get_f("enable_qullamaggie_momentum", "enableQullamaggieMomentum", False)
             enable_vcp = get_f("enable_vcp_setup", "enableVcpSetup", False)
-            if get_f("enable_pivot_tightness", "enablePivotTightness", False) and (enable_qm or enable_vcp):
+            if get_f("enable_pivot_tightness", "enablePivotTightness", False) and (enable_breakout or enable_qm or enable_vcp):
                 max_pivot_spread = get_f("max_pivot_spread", "maxPivotSpreadFilter", 8.0)
                 max_pivot_clustering = get_f("max_pivot_clustering", "maxPivotClusteringFilter", 3.0)
                 max_pivot_vol_ratio = get_f("max_pivot_vol_ratio", "maxPivotVolRatioFilter", 0.8)
@@ -183,12 +187,11 @@ class DatabaseService:
                 where_clauses.append("(db.volume / NULLIF(db.vol_50d_ma, 0)) <= ?")
                 params.append(float(max_pivot_vol_ratio))
 
-            # RS Rank New High
-            if get_f("enable_rs_new_high", "enableRsNewHigh", False):
+            # RS Rank New High - Bypassed for Power Play & Breakout
+            if not bypass_trend_filters and get_f("enable_rs_new_high", "enableRsNewHigh", False):
                 where_clauses.append("COALESCE(db.is_52w_high, false) = true")
 
             # Power Play Overlay
-            enable_power_play = get_f("enable_power_play", "enablePowerPlay", False)
             if enable_power_play:
                 enable_pp_runup = get_f("enable_pp_runup", "enablePpRunup", True)
                 min_pp_runup = float(get_f("min_pp_runup", "minPpRunupFilter", 100.0))
@@ -263,11 +266,6 @@ class DatabaseService:
             # Qullamaggie Breakout SQL pre-filters
             enable_breakout = get_f("enable_qullamaggie_breakout", "enableQullamaggieBreakout", False)
             enable_qm = get_f("enable_qullamaggie_momentum", "enableQullamaggieMomentum", False)
-            if enable_breakout:
-                if get_f("enable_1m_ret", "enable1mRet", True):
-                    min_1m_ret = get_f("min_1m_ret", "min1mRetFilter", 20.0)
-                    where_clauses.append("db.ret_1m IS NOT NULL AND db.ret_1m >= ?")
-                    params.append(float(min_1m_ret))
 
             # Episodic Pivot Overlay
             if get_f("enable_episodic_pivot", "enableEpisodicPivot", False):
@@ -569,8 +567,13 @@ class DatabaseService:
                     for sym, dt, op, h, l, cl, vol in history_rows:
                         sym_history[sym].append((op, h, l, cl, vol, dt))
 
+                    # Breakout filter parameters
+                    enable_breakout_runup = get_f("enable_breakout_runup", "enableBreakoutRunup", default=get_f("enable_1m_ret", "enable1mRet", True))
+                    min_breakout_runup = float(get_f("min_breakout_runup", "minBreakoutRunupFilter", default=get_f("min_1m_ret", "min1mRetFilter", 30.0)))
+                    enable_breakout_days = get_f("enable_breakout_days", "enableBreakoutDays", True)
+                    min_breakout_days = int(get_f("min_breakout_days", "minBreakoutDaysFilter", 8))
+                    max_breakout_days = int(get_f("max_breakout_days", "maxBreakoutDaysFilter", 45))
                     enable_ema_surfing = get_f("enable_ema_surfing", "enableEmaSurfing", False)
-                    min_1m_ret = get_f("min_1m_ret", "min1mRetFilter", 20.0)
 
                     for c in candidates:
                         symbol = c["symbol"]
@@ -611,12 +614,17 @@ class DatabaseService:
                                     h_list, l_list, cl_list, dt_list,
                                     ema_10_val=c.get("ema_10"),
                                     ema_20_val=c.get("ema_20"),
-                                    min_1m_ret=float(min_1m_ret),
+                                    enable_runup=enable_breakout_runup,
+                                    min_runup_pct=min_breakout_runup,
+                                    enable_days=enable_breakout_days,
+                                    min_consolidation_days=min_breakout_days,
+                                    max_consolidation_days=max_breakout_days,
                                     enable_ema_surfing=enable_ema_surfing
                                 )
                                 c["breakout_is_setup"] = b_res.get("breakout_is_setup", False)
                                 c["breakout_runup_pct"] = b_res.get("breakout_runup_pct", 0.0)
                                 c["breakout_consolidation_days"] = b_res.get("breakout_consolidation_days", 0)
+                                c["breakout_peak_high"] = b_res.get("breakout_peak_high", 0.0)
                                 c["ema_surfing"] = b_res.get("ema_surfing", False)
 
                             # Power Play Evaluation
@@ -627,13 +635,12 @@ class DatabaseService:
                                 c["pp_drawdown_pct"] = pp_res.get("pp_drawdown_pct", c.get("pp_drawdown_pct", 0.0))
                                 c["pp_days_since_peak"] = pp_res.get("pp_days_since_peak", c.get("pp_days_since_peak", 0))
 
-                            # VCP Evaluation
-                            if get_f("enable_vcp_setup", "enableVcpSetup", False):
-                                v_res = detect_vcp(h_list, l_list, dt_list, closes=cl_list, window=3)
-                                if v_res:
-                                    c["vcp_is_setup"] = v_res.get("vcp_is_setup", True)
-                                    c["vcp_troughs"] = v_res.get("vcp_troughs")
-                                    c["vcp_depths"] = v_res.get("vcp_depths")
+                            # VCP Contraction Fingerprint Evaluation
+                            v_res = detect_vcp(h_list, l_list, dt_list, closes=cl_list, window=3)
+                            if v_res:
+                                c["vcp_is_setup"] = v_res.get("vcp_is_setup", False)
+                                c["vcp_troughs"] = v_res.get("vcp_troughs")
+                                c["vcp_depths"] = v_res.get("vcp_depths")
 
                             # Parabolic Climax Evaluation
                             if is_parabolic:
@@ -663,6 +670,8 @@ class DatabaseService:
                 c.setdefault("breakout_is_setup", False)
                 c.setdefault("breakout_runup_pct", 0.0)
                 c.setdefault("breakout_consolidation_days", 0)
+                c.setdefault("breakout_pivot_dist_pct", 0.0)
+                c.setdefault("breakout_peak_high", 0.0)
                 c.setdefault("ema_surfing", False)
                 c.setdefault("vcp_is_setup", False)
                 c.setdefault("parabolic_short_is_setup", False)

@@ -85,8 +85,8 @@ export function filterCandidates(candidates, filters) {
       if (c.ti_65 === null || c.ti_65 === undefined || c.ti_65 < minTi65Filter) return false;
     }
 
-    // Optional Pivot Tightness (VDU) filter (applies to Momentum and VCP setups only)
-    if (enablePivotTightness && (enableQullamaggieMomentum || enableVcpSetup)) {
+    // Optional Pivot Tightness (VDU) filter (applies to QM Breakout, Momentum and VCP setups)
+    if (enablePivotTightness && (enableQullamaggieBreakout || enableQullamaggieMomentum || enableVcpSetup)) {
       if (c.pivot_spread_pct !== null && c.pivot_spread_pct !== undefined && c.pivot_spread_pct > maxPivotSpreadFilter) return false;
       if (c.pivot_close_clustering_pct !== null && c.pivot_close_clustering_pct !== undefined && c.pivot_close_clustering_pct > maxPivotClusteringFilter) return false;
       if (c.volume && c.vol_50d_ma && (c.volume / c.vol_50d_ma) > maxPivotVolRatioFilter) return false;
@@ -169,12 +169,23 @@ export function filterCandidates(candidates, filters) {
 
     // 7. Qullamaggie Breakout Setup Overlay
     if (filters.enableQullamaggieBreakout) {
-      if (!c.breakout_is_setup) return false;
-      if (filters.enable1mRet && filters.min1mRetFilter !== undefined) {
-        if (c.ret_1m === null || c.ret_1m === undefined || c.ret_1m < filters.min1mRetFilter) return false;
+      if (!c.breakout_is_setup && c.breakout_is_setup !== undefined) return false;
+      const enableRunup = filters.enableBreakoutRunup ?? filters.enable1mRet ?? true;
+      const minRunup = filters.minBreakoutRunupFilter ?? filters.min1mRetFilter;
+      if (enableRunup && minRunup !== undefined) {
+        const stockRunup = c.breakout_runup_pct ?? c.ret_1m;
+        if (stockRunup === null || stockRunup === undefined || stockRunup < minRunup) return false;
+      }
+      if (filters.enableBreakoutDays) {
+        const days = c.breakout_consolidation_days;
+        if (days !== null && days !== undefined) {
+          if (filters.minBreakoutDaysFilter !== undefined && days < filters.minBreakoutDaysFilter) return false;
+          if (filters.maxBreakoutDaysFilter !== undefined && days > filters.maxBreakoutDaysFilter) return false;
+        }
       }
       if (filters.enableEmaSurfing) {
-        if (c.ema_10 && c.close < c.ema_10 * 0.97 && c.ema_20 && c.close < c.ema_20 * 0.97) return false;
+        if (c.ema_surfing === false) return false;
+        if (c.ema_10 && c.close < c.ema_10 * 0.96 && c.ema_20 && c.close < c.ema_20 * 0.96) return false;
       }
     }
 

@@ -66,8 +66,15 @@ class CandidateFilterSchema(BaseModel):
     enable_parabolic_long: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_parabolic_long", "enableParabolicLong"))
 
     # Qullamaggie Breakout
-    min_1m_ret: Optional[float] = Field(default=None, validation_alias=AliasChoices("min_1m_ret", "min1mRetFilter"))
-    enable_1m_ret: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_1m_ret", "enable1mRet"))
+    min_1m_ret: Optional[float] = Field(default=None, validation_alias=AliasChoices("min_1m_ret", "min1mRetFilter", "min_breakout_runup", "minBreakoutRunupFilter"))
+    enable_1m_ret: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_1m_ret", "enable1mRet", "enable_breakout_runup", "enableBreakoutRunup"))
+    enable_breakout_runup: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_breakout_runup", "enableBreakoutRunup", "enable_1m_ret", "enable1mRet"))
+    min_breakout_runup: Optional[float] = Field(default=None, validation_alias=AliasChoices("min_breakout_runup", "minBreakoutRunupFilter", "min_1m_ret", "min1mRetFilter"))
+    enable_breakout_days: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_breakout_days", "enableBreakoutDays"))
+    min_breakout_days: Optional[int] = Field(default=None, validation_alias=AliasChoices("min_breakout_days", "minBreakoutDaysFilter"))
+    max_breakout_days: Optional[int] = Field(default=None, validation_alias=AliasChoices("max_breakout_days", "maxBreakoutDaysFilter"))
+    enable_breakout_pivot_dist: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_breakout_pivot_dist", "enableBreakoutPivotDist"))
+    max_breakout_pivot_dist: Optional[float] = Field(default=None, validation_alias=AliasChoices("max_breakout_pivot_dist", "maxBreakoutPivotDistFilter"))
     enable_ema_surfing: Optional[bool] = Field(default=None, validation_alias=AliasChoices("enable_ema_surfing", "enableEmaSurfing"))
 
     # EP

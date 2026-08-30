@@ -16,15 +16,18 @@ def detect_breakout(
     dates: List[Any],
     ema_10_val: float = None,
     ema_20_val: float = None,
-    min_1m_ret: float = 20.0,
+    enable_runup: bool = True,
     min_runup_pct: float = 30.0,
+    enable_days: bool = True,
+    min_consolidation_days: int = 8,
+    max_consolidation_days: int = 45,
     enable_ema_surfing: bool = False
 ) -> dict:
     """
     Detects Qullamaggie / High Tight Flag Breakout pattern:
-    1. Big move higher in the past 1-3 months (30%-100%+ move from swing low to peak high).
-    2. Orderly consolidation phase (2 weeks to 2 months: 10 to 44 trading days) with price surfing 10 EMA / 20 EMA.
-    3. Price within 5% of recent consolidation peak, setting up or executing a breakout.
+    1. Big move higher in the past 1-3 months (customizable run-up, default >= 30%).
+    2. Orderly consolidation phase (customizable window, default 8 to 45 trading days).
+    3. Optional EMA 10/20 surfing rule.
     """
     n = len(highs)
     if n < 20:
@@ -32,6 +35,7 @@ def detect_breakout(
             "breakout_is_setup": False,
             "breakout_runup_pct": 0.0,
             "breakout_consolidation_days": 0,
+            "breakout_peak_high": 0.0,
             "ema_surfing": False,
             "ema_10": ema_10_val,
             "ema_20": ema_20_val
@@ -52,7 +56,7 @@ def detect_breakout(
     peak_idx = (n - 1) - len(recent_highs) + recent_highs.index(peak_high)
     consolidation_days = (n - 1) - peak_idx
 
-    # 2. Prior big move higher (30%-100%+) in the past 1-3 months leading up to peak high
+    # 2. Prior big move higher in the past 1-3 months leading up to peak high
     start_runup_idx = max(0, peak_idx - 40)
     low_before_peak = min(lows[start_runup_idx : peak_idx + 1])
     prior_runup_pct = ((peak_high - low_before_peak) / low_before_peak) * 100.0 if low_before_peak > 0 else 0.0
@@ -77,15 +81,13 @@ def detect_breakout(
     else:
         ema_surfing = False
 
-    # 4. Proximity to breakout pivot (within 5% of resistance peak or breaking out above it)
-    near_pivot = current_close >= peak_high * 0.95
+    # 4. Setup qualification check against customizable thresholds
+    is_runup_ok = (not enable_runup) or (runup_pct >= float(min_runup_pct))
+    is_days_ok = (not enable_days) or (int(min_consolidation_days) <= consolidation_days <= int(max_consolidation_days))
 
-    # 5. Setup qualification check
-    effective_min_runup = min(min_1m_ret, min_runup_pct)
     is_setup = (
-        runup_pct >= effective_min_runup and
-        10 <= consolidation_days <= 44 and
-        near_pivot and
+        is_runup_ok and
+        is_days_ok and
         ema_surfing
     )
 
@@ -93,6 +95,7 @@ def detect_breakout(
         "breakout_is_setup": is_setup,
         "breakout_runup_pct": round(runup_pct, 2),
         "breakout_consolidation_days": consolidation_days,
+        "breakout_peak_high": round(peak_high, 2),
         "ema_surfing": ema_surfing,
         "ema_10": ema_10_val,
         "ema_20": ema_20_val

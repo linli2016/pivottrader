@@ -107,7 +107,14 @@ function App() {
   const [enableParabolicShort, setEnableParabolicShort] = useState(false);
   const [enableParabolicLong, setEnableParabolicLong] = useState(false);
 
-  // Qullamaggie setup inputs
+  // Qullamaggie Breakout setup inputs
+  const [minBreakoutRunupFilter, setMinBreakoutRunupFilter] = useState(30.0);
+  const [enableBreakoutRunup, setEnableBreakoutRunup] = useState(true);
+  const [minBreakoutDaysFilter, setMinBreakoutDaysFilter] = useState(8);
+  const [maxBreakoutDaysFilter, setMaxBreakoutDaysFilter] = useState(45);
+  const [enableBreakoutDays, setEnableBreakoutDays] = useState(true);
+  const [maxBreakoutPivotDistFilter, setMaxBreakoutPivotDistFilter] = useState(5.0);
+  const [enableBreakoutPivotDist, setEnableBreakoutPivotDist] = useState(true);
   const [min1mRetFilter, setMin1mRetFilter] = useState(20.0);
   const [enable1mRet, setEnable1mRet] = useState(true);
   const [enableEmaSurfing, setEnableEmaSurfing] = useState(false);
@@ -423,6 +430,13 @@ function App() {
     max52wDistFilter,
     minSurgeOffLowFilter,
     minNewLeadersRsFilter,
+    minBreakoutRunupFilter,
+    enableBreakoutRunup,
+    minBreakoutDaysFilter,
+    maxBreakoutDaysFilter,
+    enableBreakoutDays,
+    maxBreakoutPivotDistFilter,
+    enableBreakoutPivotDist,
     min1mRetFilter,
     enable1mRet,
     enableEmaSurfing,
@@ -760,6 +774,20 @@ function App() {
             setEnableParabolicShort={setEnableParabolicShort}
             enableParabolicLong={enableParabolicLong}
             setEnableParabolicLong={setEnableParabolicLong}
+            minBreakoutRunupFilter={minBreakoutRunupFilter}
+            setMinBreakoutRunupFilter={setMinBreakoutRunupFilter}
+            enableBreakoutRunup={enableBreakoutRunup}
+            setEnableBreakoutRunup={setEnableBreakoutRunup}
+            minBreakoutDaysFilter={minBreakoutDaysFilter}
+            setMinBreakoutDaysFilter={setMinBreakoutDaysFilter}
+            maxBreakoutDaysFilter={maxBreakoutDaysFilter}
+            setMaxBreakoutDaysFilter={setMaxBreakoutDaysFilter}
+            enableBreakoutDays={enableBreakoutDays}
+            setEnableBreakoutDays={setEnableBreakoutDays}
+            maxBreakoutPivotDistFilter={maxBreakoutPivotDistFilter}
+            setMaxBreakoutPivotDistFilter={setMaxBreakoutPivotDistFilter}
+            enableBreakoutPivotDist={enableBreakoutPivotDist}
+            setEnableBreakoutPivotDist={setEnableBreakoutPivotDist}
             min1mRetFilter={min1mRetFilter}
             setMin1mRetFilter={setMin1mRetFilter}
             enable1mRet={enable1mRet}
