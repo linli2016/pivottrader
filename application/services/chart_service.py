@@ -230,7 +230,7 @@ def save_chart_screenshot(symbol: str, setup_name: str, date_str: str, image_bas
     """
     Decodes base64 PNG data, converts to ultra-compact PNG-8 with level 9 compression,
     and stores the image under:
-    ./charts/{setup_name}/{symbol}_{date}.png
+    ./charts/{setup_name}/{date}_{symbol}.png
     """
     try:
         clean_setup = sanitize_folder_name(setup_name)
@@ -248,7 +248,7 @@ def save_chart_screenshot(symbol: str, setup_name: str, date_str: str, image_bas
         charts_dir = Path("charts") / clean_setup
         charts_dir.mkdir(parents=True, exist_ok=True)
 
-        filename = f"{clean_symbol}_{clean_date}.png"
+        filename = f"{clean_date}_{clean_symbol}.png"
         file_path = charts_dir / filename
 
         with open(file_path, "wb") as f:

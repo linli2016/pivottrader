@@ -57,6 +57,9 @@ export function filterCandidates(candidates, filters) {
   } = filters;
 
   return candidates.filter(c => {
+    // Exclude ETFs from screening candidates
+    if (c.asset_type && c.asset_type.toUpperCase().includes('ETF')) return false;
+
     // 1. Stage 2 (Mandatory / Base filtering)
     if (c.close < minPriceFilter) return false;
     if (c.vol_50d_ma < minVolFilter) return false;

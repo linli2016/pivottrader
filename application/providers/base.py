@@ -47,3 +47,9 @@ class AbstractDataProvider(ABC):
         Returns a DataFrame formatted like fetch_daily_bars for today's date.
         """
         return pd.DataFrame()
+
+    def get_market_session_status(self) -> Dict[str, Any]:
+        """
+        Returns market session status dict: 'CLOSED', 'PRE_OPEN_NO_DATA', 'PRE_MARKET', 'REGULAR'.
+        """
+        return {"state": "REGULAR", "reason": "Default session status"}

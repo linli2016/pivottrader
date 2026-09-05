@@ -27,8 +27,37 @@ class MomentumEngine:
     def detect_power_play(self, highs: List[float], lows: List[float], closes: List[float], dates: List[Any], min_runup_pct: float = 100.0, max_drawdown_pct: float = 25.0) -> dict:
         return detect_power_play(highs, lows, closes, dates, min_runup_pct=min_runup_pct, max_drawdown_pct=max_drawdown_pct)
 
-    def detect_breakout(self, highs: List[float], lows: List[float], closes: List[float], dates: List[Any], ema_10_val: float = None, ema_20_val: float = None, min_1m_ret: float = 20.0) -> dict:
-        return detect_breakout(highs, lows, closes, dates, ema_10_val=ema_10_val, ema_20_val=ema_20_val, min_1m_ret=min_1m_ret)
+    def detect_breakout(
+        self,
+        highs: List[float],
+        lows: List[float],
+        closes: List[float],
+        dates: List[Any],
+        ema_10_val: float = None,
+        ema_20_val: float = None,
+        enable_runup: bool = True,
+        min_runup_pct: float = 30.0,
+        enable_days: bool = True,
+        min_consolidation_days: int = 8,
+        max_consolidation_days: int = 45,
+        enable_ema_surfing: bool = False,
+        **kwargs
+    ) -> dict:
+        return detect_breakout(
+            highs,
+            lows,
+            closes,
+            dates,
+            ema_10_val=ema_10_val,
+            ema_20_val=ema_20_val,
+            enable_runup=enable_runup,
+            min_runup_pct=min_runup_pct,
+            enable_days=enable_days,
+            min_consolidation_days=min_consolidation_days,
+            max_consolidation_days=max_consolidation_days,
+            enable_ema_surfing=enable_ema_surfing,
+            **kwargs
+        )
 
 
     def calculate_and_store_momentum_metrics(self) -> None:
@@ -460,17 +489,20 @@ class MomentumEngine:
                 SELECT MAX(date) as val FROM daily_bars
             )
             SELECT 
-                symbol, date, close, vol_50d_ma, COALESCE(dollar_vol_50d_ma, close * vol_50d_ma) as dollar_vol_50d_ma,
-                rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, 
-                sma_50, sma_150, sma_200, vcp_is_setup, vcp_troughs, vcp_depths, 
-                ipo_days_count, ipo_all_time_high, ipo_drawdown_from_high, ipo_base_depth
-            FROM daily_bars
-            WHERE date = (SELECT val FROM latest_date_const)
-              AND close >= ?
-              AND vol_50d_ma >= ?
-              AND COALESCE(dollar_vol_50d_ma, close * vol_50d_ma) >= ?
-              AND rs_rank >= ?
-            ORDER BY rs_rank DESC;
+                db.symbol, db.date, db.close, db.vol_50d_ma, COALESCE(db.dollar_vol_50d_ma, db.close * db.vol_50d_ma) as dollar_vol_50d_ma,
+                db.rs_score, db.rs_rank, db.atr_20d, db.pp_runup_pct, db.pp_drawdown_pct, 
+                db.sma_50, db.sma_150, db.sma_200, db.vcp_is_setup, db.vcp_troughs, db.vcp_depths, 
+                db.ipo_days_count, db.ipo_all_time_high, db.ipo_drawdown_from_high, db.ipo_base_depth
+            FROM daily_bars db
+            LEFT JOIN symbols s ON db.symbol = s.symbol
+            WHERE db.date = (SELECT val FROM latest_date_const)
+              AND (s.asset_type IS NULL OR (UPPER(s.asset_type) != 'ETF' AND UPPER(s.asset_type) NOT LIKE '%ETF%'))
+              AND (s.industry IS NULL OR UPPER(s.industry) NOT LIKE '%ETF%')
+              AND db.close >= ?
+              AND db.vol_50d_ma >= ?
+              AND COALESCE(db.dollar_vol_50d_ma, db.close * db.vol_50d_ma) >= ?
+              AND db.rs_rank >= ?
+            ORDER BY db.rs_rank DESC;
         """
         
         candidates = []

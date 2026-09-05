@@ -80,106 +80,152 @@ def main():
 
     try:
         # 4. Synchronize Symbol Directory
-        print("\n[Step 1/5] Fetching NYSE/NASDAQ active stock universe...")
-        universe = price_provider.fetch_universe()
-        if not universe:
-            print("Error: Empty universe retrieved. Exiting screening.")
-            sys.exit(1)
-            
-        print(f"Retrieved {len(universe)} symbols from the active universe.")
-        
-        # Apply custom symbol selection, split repairs, or testing limits if specified
-        if getattr(args, "symbols", None):
-            custom_syms = set(s.strip().upper() for s in args.symbols.split(",") if s.strip())
-            universe = [u for u in universe if u["symbol"] in custom_syms]
-            if not universe:
-                universe = [{"symbol": s, "exchange": "UNKNOWN", "name": s, "asset_type": "Common Stock", "active": True} for s in custom_syms]
-            print(f"Restricting run to custom symbols: {[u['symbol'] for u in universe]}")
-        elif getattr(args, "fix_splits", False):
-            print("\n[Split Fixer] Scanning database for tickers with historical split jump/drop anomalies...")
-            with db.get_connection() as conn:
-                split_query = """
-                WITH price_changes AS (
-                    SELECT 
-                        symbol,
-                        date,
-                        close,
-                        LAG(close) OVER (PARTITION BY symbol ORDER BY date) as prev_close
-                    FROM daily_bars
-                )
-                SELECT DISTINCT symbol
-                FROM price_changes
-                WHERE prev_close > 0 AND (close / prev_close > 2.5 OR close / prev_close < 0.4);
-                """
-                suspect_symbols = set(r[0] for r in conn.execute(split_query).fetchall())
-            print(f"[Split Fixer] Identified {len(suspect_symbols)} tickers with unadjusted split anomalies.")
-            if suspect_symbols:
-                universe = [u for u in universe if u["symbol"] in suspect_symbols]
-                if not universe:
-                    universe = [{"symbol": s, "exchange": "UNKNOWN", "name": s, "asset_type": "Common Stock", "active": True} for s in suspect_symbols]
+        if args.include_premarket:
+            existing_active = db.get_active_symbols()
+            if existing_active and not getattr(args, "symbols", None):
+                print("\n[Step 1/5] Using existing active stock universe from database for fast pre-market sync...")
+                active_symbols = existing_active
             else:
-                print("No split anomalies found in database. Exiting.")
-                return
-        elif getattr(args, "limit_tickers", None):
-            print(f"Applying debug limits: restricting run to first {args.limit_tickers} tickers.")
-            universe = universe[:args.limit_tickers]
-
-        # Insert/sync symbol metadata into DuckDB
-        print("Upserting ticker directories into database...")
-        db.upsert_symbols(universe)
-        
-        # Synchronize IPO Dates from yfinance (Incremental & Parallelized)
-        missing_ipo_symbols = db.get_symbols_missing_ipo_date()
-        if missing_ipo_symbols:
-            print(f"\nEvaluating IPO Dates: {len(missing_ipo_symbols)} symbols missing IPO date in database...")
-            from concurrent.futures import ThreadPoolExecutor, as_completed
-            
-            def fetch_single_ipo_date(symbol: str):
-                try:
-                    import requests
-                    url = f"https://query2.finance.yahoo.com/v8/finance/chart/{symbol}"
-                    headers = {"User-Agent": "Mozilla/5.0"}
-                    r = requests.get(url, headers=headers, timeout=5)
-                    if r.status_code == 200:
-                        data = r.json()
-                        result = data.get("chart", {}).get("result")
-                        if result and len(result) > 0:
-                            first_trade_sec = result[0].get("meta", {}).get("firstTradeDate")
-                            if first_trade_sec:
-                                dt = datetime.fromtimestamp(first_trade_sec, tz=timezone.utc)
-                                return symbol, dt.strftime("%Y-%m-%d")
-                except Exception:
-                    pass
-                return symbol, None
-
-            print(f"Fetching IPO dates from Yahoo Finance using parallel workers...")
-            results = []
-            with ThreadPoolExecutor(max_workers=10) as executor:
-                futures = {executor.submit(fetch_single_ipo_date, sym): sym for sym in missing_ipo_symbols}
+                print("\n[Step 1/5] Fetching NYSE/NASDAQ active stock universe...")
+                universe = price_provider.fetch_universe()
+                if not universe:
+                    print("Error: Empty universe retrieved. Exiting screening.")
+                    sys.exit(1)
+                print(f"Retrieved {len(universe)} symbols from the active universe.")
+                if getattr(args, "symbols", None):
+                    custom_syms = set(s.strip().upper() for s in args.symbols.split(",") if s.strip())
+                    universe = [u for u in universe if u["symbol"] in custom_syms]
+                db.upsert_symbols(universe)
+                active_symbols = [item["symbol"] for item in universe]
+        else:
+            print("\n[Step 1/5] Fetching NYSE/NASDAQ active stock universe...")
+            universe = price_provider.fetch_universe()
+            if not universe:
+                print("Error: Empty universe retrieved. Exiting screening.")
+                sys.exit(1)
                 
-                for i, future in enumerate(as_completed(futures), 1):
-                    sym, ipo_date = future.result()
-                    if ipo_date:
-                        results.append((ipo_date, sym))
-                    
-                    if i % 100 == 0 or i == len(missing_ipo_symbols):
-                        print(f"Progress: {i}/{len(missing_ipo_symbols)} symbols evaluated, {len(results)} dates retrieved.")
+            print(f"Retrieved {len(universe)} symbols from the active universe.")
             
-            if results:
-                print(f"Saving {len(results)} IPO dates to database...")
-                db.update_multiple_symbol_ipo_dates(results)
-        
-        active_symbols = [item["symbol"] for item in universe]
+            # Apply custom symbol selection, split repairs, or testing limits if specified
+            if getattr(args, "symbols", None):
+                custom_syms = set(s.strip().upper() for s in args.symbols.split(",") if s.strip())
+                universe = [u for u in universe if u["symbol"] in custom_syms]
+                if not universe:
+                    universe = [{"symbol": s, "exchange": "UNKNOWN", "name": s, "asset_type": "Common Stock", "active": True} for s in custom_syms]
+                print(f"Restricting run to custom symbols: {[u['symbol'] for u in universe]}")
+            elif getattr(args, "fix_splits", False):
+                print("\n[Split Fixer] Scanning database for tickers with historical split jump/drop anomalies...")
+                with db.get_connection() as conn:
+                    split_query = """
+                    WITH price_changes AS (
+                        SELECT 
+                            symbol,
+                            date,
+                            close,
+                            LAG(close) OVER (PARTITION BY symbol ORDER BY date) as prev_close
+                        FROM daily_bars
+                    )
+                    SELECT DISTINCT symbol
+                    FROM price_changes
+                    WHERE prev_close > 0 AND (close / prev_close > 2.5 OR close / prev_close < 0.4);
+                    """
+                    suspect_symbols = set(r[0] for r in conn.execute(split_query).fetchall())
+                print(f"[Split Fixer] Identified {len(suspect_symbols)} tickers with unadjusted split anomalies.")
+                if suspect_symbols:
+                    universe = [u for u in universe if u["symbol"] in suspect_symbols]
+                    if not universe:
+                        universe = [{"symbol": s, "exchange": "UNKNOWN", "name": s, "asset_type": "Common Stock", "active": True} for s in suspect_symbols]
+                else:
+                    print("No split anomalies found in database. Exiting.")
+                    return
+            elif getattr(args, "limit_tickers", None):
+                print(f"Applying debug limits: restricting run to first {args.limit_tickers} tickers.")
+                universe = universe[:args.limit_tickers]
+
+            # Insert/sync symbol metadata into DuckDB
+            print("Upserting ticker directories into database...")
+            db.upsert_symbols(universe)
+            
+            # Synchronize IPO Dates from yfinance (Incremental & Parallelized)
+            missing_ipo_symbols = db.get_symbols_missing_ipo_date()
+            if missing_ipo_symbols:
+                print(f"\nEvaluating IPO Dates: {len(missing_ipo_symbols)} symbols missing IPO date in database...")
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                
+                def fetch_single_ipo_date(symbol: str):
+                    try:
+                        import requests
+                        url = f"https://query2.finance.yahoo.com/v8/finance/chart/{symbol}"
+                        headers = {"User-Agent": "Mozilla/5.0"}
+                        r = requests.get(url, headers=headers, timeout=5)
+                        if r.status_code == 200:
+                            data = r.json()
+                            result = data.get("chart", {}).get("result")
+                            if result and len(result) > 0:
+                                first_trade_sec = result[0].get("meta", {}).get("firstTradeDate")
+                                if first_trade_sec:
+                                    dt = datetime.fromtimestamp(first_trade_sec, tz=timezone.utc)
+                                    return symbol, dt.strftime("%Y-%m-%d")
+                    except Exception:
+                        pass
+                    return symbol, None
+
+                print(f"Fetching IPO dates from Yahoo Finance using parallel workers...")
+                results = []
+                with ThreadPoolExecutor(max_workers=10) as executor:
+                    futures = {executor.submit(fetch_single_ipo_date, sym): sym for sym in missing_ipo_symbols}
+                    
+                    for i, future in enumerate(as_completed(futures), 1):
+                        sym, ipo_date = future.result()
+                        if ipo_date:
+                            results.append((ipo_date, sym))
+                        
+                        if i % 100 == 0 or i == len(missing_ipo_symbols):
+                            print(f"Progress: {i}/{len(missing_ipo_symbols)} symbols evaluated, {len(results)} dates retrieved.")
+                
+                if results:
+                    print(f"Saving {len(results)} IPO dates to database...")
+                    db.update_multiple_symbol_ipo_dates(results)
+            
+            active_symbols = [item["symbol"] for item in universe]
 
         # 5. Incremental Daily Bars Ingestion
         if args.include_premarket:
-            print("\n[Step 2/5] Syncing pre-market quotes for active universe...")
-            pm_bars = price_provider.fetch_premarket_bars(active_symbols)
+            print("\n[Step 2/5] Evaluating market session status...")
+            session_info = price_provider.get_market_session_status()
+            state = session_info.get("state")
+            reason = session_info.get("reason")
+            time_str = session_info.get("current_time_et")
+
+            print(f"Current Session Time (ET): {time_str}")
+            print(f"Session State: {state}")
+
+            # Rule 1: Market Closed
+            if state == "CLOSED":
+                print(f"\n⚡ [Pre-Market Sync Skipped]: {reason}")
+                print("No database modifications made. Please run 'Sync Price Data' after market close for official daily bars.")
+                return
+
+            # Rule 2: Market Not Open Yet & No Pre-Market Data
+            if state == "PRE_OPEN_NO_DATA":
+                print(f"\n⚡ [Pre-Market Sync Skipped]: {reason}")
+                print("No database modifications made. Pre-market quotes will be available starting at 04:00 AM ET.")
+                return
+
+            # Rule 3 & 4: Pre-Market Active or Regular Market Open
+            if state == "PRE_MARKET":
+                print(f"\n⚡ [Pre-Market Sync Active]: {reason}")
+                print(f"Downloading pre-market quotes for {len(active_symbols)} symbols (pre-market price -> today's close)...")
+            else:
+                print(f"\n⚡ [Intraday Sync Active]: {reason}")
+                print(f"Downloading live market quotes for {len(active_symbols)} symbols (live price -> today's close)...")
+
+            pm_bars = price_provider.fetch_premarket_or_intraday_bars(active_symbols, session_state=state)
             if not pm_bars.empty:
-                print(f"Upserting {len(pm_bars)} pre-market daily bars into DuckDB...")
+                print(f"Upserting {len(pm_bars)} daily bars with current prices into DuckDB...")
                 db.upsert_daily_bars(pm_bars)
             else:
-                print("No pre-market quotes returned.")
+                print("Notice: No quotes returned.")
         elif args.skip_prices:
             print("\n[Step 2/5] Skipping daily bars price synchronization as requested (--skip-prices).")
         else:
@@ -281,8 +327,8 @@ def main():
             return
 
         # 7. Targeted Fundamental Acceleration Screening
-        if args.skip_fundamentals:
-            print("\n[Step 4/5] Skipping quarterly fundamental statements synchronization as requested (--skip-fundamentals).")
+        if args.skip_fundamentals or args.include_premarket:
+            print("\n[Step 4/5] Skipping quarterly fundamental statements synchronization as requested (--skip-fundamentals / pre-market mode).")
         else:
             print("\n[Step 4/5] Fetching and evaluating quarterly fundamental statement changes...")
             cand_symbols = [c["symbol"] for c in momentum_candidates]

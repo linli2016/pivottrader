@@ -101,7 +101,9 @@ class DatabaseService:
             # Build dynamic WHERE clauses based on filters
             where_clauses = [
                 "db.date = (SELECT val FROM target_date_const)",
-                "db.rs_score IS NOT NULL"
+                "db.rs_score IS NOT NULL",
+                "(s.asset_type IS NULL OR (UPPER(s.asset_type) != 'ETF' AND UPPER(s.asset_type) NOT LIKE '%ETF%'))",
+                "(s.industry IS NULL OR UPPER(s.industry) NOT LIKE '%ETF%')"
             ]
             params = [actual_date_str]
 
@@ -403,7 +405,8 @@ class DatabaseService:
                     db.adr_20d,
                     db.ret_3m,
                     db.ret_6m,
-                    s.next_earnings_date
+                    s.next_earnings_date,
+                    s.asset_type
                 FROM daily_bars db
                 LEFT JOIN latest_fundamentals f ON db.symbol = f.symbol AND f.rn = 1
                 JOIN symbols s ON db.symbol = s.symbol
@@ -458,6 +461,7 @@ class DatabaseService:
                 candidates.append({
                     "symbol": row[0],
                     "name": row[51],
+                    "asset_type": row[57],
                     "close": row[1],
                     "vol_50d_ma": row[2],
                     "dollar_vol_50d_ma": row[3],

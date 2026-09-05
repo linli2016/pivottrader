@@ -21,7 +21,8 @@ def detect_breakout(
     enable_days: bool = True,
     min_consolidation_days: int = 8,
     max_consolidation_days: int = 45,
-    enable_ema_surfing: bool = False
+    enable_ema_surfing: bool = False,
+    **kwargs
 ) -> dict:
     """
     Detects Qullamaggie / High Tight Flag Breakout pattern:
@@ -29,6 +30,9 @@ def detect_breakout(
     2. Orderly consolidation phase (customizable window, default 8 to 45 trading days).
     3. Optional EMA 10/20 surfing rule.
     """
+    if "min_1m_ret" in kwargs and kwargs["min_1m_ret"] is not None:
+        min_runup_pct = kwargs["min_1m_ret"]
+
     n = len(highs)
     if n < 20:
         return {

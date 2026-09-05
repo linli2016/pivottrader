@@ -64,6 +64,21 @@ This method can also be traded by anticipating the breakout but I don’t find i
 - Trail your stop with the 10- or 20-day moving average once they surpass your initial stop.
 #### My notes
 - It has higher success rate if gap up above previous high, or in a good up trend.
+#### Episodic Pivot Catalysts
+- Earnings acceleration
+- Sales Acceleration
+- New Contracts or new orders
+- New Product Launch or news
+- Sector Runaway move
+- Biotech/drug approvals
+- Biotech/drug tie ups with large companies
+- Earnings guidance raised by company
+- Inside buying>1 million
+- IBD Rating/ IBD 100 Addition/IBD highlighting a stock
+- Barron's / Business Week mention ( low success rate)
+- James Crammer mention ( one day phenomenon)
+- For that we look at : - Context of the earnings. Is this a first major earnings acceleration. - What caused this acceleration. Is it one time or likely to persist. - Does this earnings trend represent a structural change in the industry or the position of this company. - Is this surprise reflected in current price level.
+- If a earnings EP happens on low float stock it is ideal situation. 
 
 ### 4. Parabolic (Short / Long)
   - A stock up 50-100%+ in a few days or weeks (if larger cap) or 300-1000%+ (if smaller cap).

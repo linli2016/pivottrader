@@ -180,8 +180,8 @@ export default function CandidatesTab({
   const activeSetupName = React.useMemo(() => {
     if (enablePowerPlay) return 'Power Play';
     if (enableQullamaggieBreakout) return 'QM Breakout';
-    if (enableQullamaggieMomentum) return 'Momentum';
     if (enableEpisodicPivot) return 'Episodic Pivot';
+    if (enableQullamaggieMomentum) return 'Momentum';
     if (isParabolicActive) return 'Parabolic';
     if (enableIpoBase) return 'IPO Base';
     if (enableVcpSetup) return 'VCP';
@@ -198,8 +198,8 @@ export default function CandidatesTab({
   }, [
     enablePowerPlay,
     enableQullamaggieBreakout,
-    enableQullamaggieMomentum,
     enableEpisodicPivot,
+    enableQullamaggieMomentum,
     isParabolicActive,
     enableIpoBase,
     enableVcpSetup,
@@ -493,50 +493,7 @@ export default function CandidatesTab({
               🎯 QM Breakout
             </button>
 
-            {/* 3. Momentum Button */}
-            <button
-              type="button"
-              onClick={() => {
-                const next = !enableQullamaggieMomentum;
-                setEnableQullamaggieMomentum(next);
-                setEnablePowerPlay(false);
-                setEnableQullamaggieBreakout(false);
-                setEnableEpisodicPivot(false);
-                if (setEnableParabolicClimax) setEnableParabolicClimax(false);
-                if (setEnableParabolicShort) setEnableParabolicShort(false);
-                if (setEnableParabolicLong) setEnableParabolicLong(false);
-                setEnableIpoBase(false);
-                setEnableVcpSetup(false);
-                setEnableNewLeaders(false);
-                if (next) {
-                  setMinPriceFilter(5.00);
-                  setMinVolFilter(100000);
-                  setMinAdrFilter(4.0);
-                  if (setEnableAdr) setEnableAdr(true);
-                  setEnforceStage2(false);
-                  setEnableRs(false);
-                  if (setEnablePivotTightness) setEnablePivotTightness(false);
-                } else {
-                  if (setEnableAdr) setEnableAdr(false);
-                }
-              }}
-              style={{
-                padding: '5px 12px',
-                fontSize: '12px',
-                fontWeight: '600',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                border: enableQullamaggieMomentum ? '1px solid #a855f7' : '1px solid rgba(255, 255, 255, 0.12)',
-                background: enableQullamaggieMomentum ? 'rgba(168, 85, 247, 0.2)' : 'rgba(15, 23, 42, 0.5)',
-                color: enableQullamaggieMomentum ? '#c084fc' : 'var(--text-secondary)',
-                boxShadow: enableQullamaggieMomentum ? '0 2px 8px rgba(168, 85, 247, 0.25)' : 'none'
-              }}
-            >
-              ⚡ Momentum
-            </button>
-
-            {/* 4. Episodic Pivot Button */}
+            {/* 3. Episodic Pivot Button */}
             <button
               type="button"
               onClick={() => {
@@ -577,6 +534,49 @@ export default function CandidatesTab({
               }}
             >
               ⚡ Episodic Pivot
+            </button>
+
+            {/* 4. Momentum Button */}
+            <button
+              type="button"
+              onClick={() => {
+                const next = !enableQullamaggieMomentum;
+                setEnableQullamaggieMomentum(next);
+                setEnablePowerPlay(false);
+                setEnableQullamaggieBreakout(false);
+                setEnableEpisodicPivot(false);
+                if (setEnableParabolicClimax) setEnableParabolicClimax(false);
+                if (setEnableParabolicShort) setEnableParabolicShort(false);
+                if (setEnableParabolicLong) setEnableParabolicLong(false);
+                setEnableIpoBase(false);
+                setEnableVcpSetup(false);
+                setEnableNewLeaders(false);
+                if (next) {
+                  setMinPriceFilter(5.00);
+                  setMinVolFilter(100000);
+                  setMinAdrFilter(4.0);
+                  if (setEnableAdr) setEnableAdr(true);
+                  setEnforceStage2(false);
+                  setEnableRs(false);
+                  if (setEnablePivotTightness) setEnablePivotTightness(false);
+                } else {
+                  if (setEnableAdr) setEnableAdr(false);
+                }
+              }}
+              style={{
+                padding: '5px 12px',
+                fontSize: '12px',
+                fontWeight: '600',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                border: enableQullamaggieMomentum ? '1px solid #a855f7' : '1px solid rgba(255, 255, 255, 0.12)',
+                background: enableQullamaggieMomentum ? 'rgba(168, 85, 247, 0.2)' : 'rgba(15, 23, 42, 0.5)',
+                color: enableQullamaggieMomentum ? '#c084fc' : 'var(--text-secondary)',
+                boxShadow: enableQullamaggieMomentum ? '0 2px 8px rgba(168, 85, 247, 0.25)' : 'none'
+              }}
+            >
+              ⚡ Momentum
             </button>
 
             {/* 5. Parabolic Button */}
@@ -1872,7 +1872,7 @@ export default function CandidatesTab({
                     className="btn btn-secondary btn-sm"
                     onClick={() => chartComponentRef.current?.saveScreenshot()}
                     disabled={!currentCandidate || loadingBrowsePrices || browsePrices.length === 0}
-                    title={`Take chart screenshot and store in ./charts/${activeSetupName}/${currentCandidate?.symbol || 'STOCK'}_${currentCandidate?.screen_date || (selectedDate !== 'latest' ? selectedDate : 'date')}.png`}
+                    title={`Take chart screenshot and store in ./charts/${activeSetupName}/${currentCandidate?.screen_date || (selectedDate !== 'latest' ? selectedDate : 'date')}_${currentCandidate?.symbol || 'STOCK'}.png`}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',

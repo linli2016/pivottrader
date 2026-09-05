@@ -386,7 +386,7 @@ def update_setups_and_rules(payload: RulesUpdateSchema):
 
 @router.post("/api/charts/screenshot")
 def save_chart_screenshot_endpoint(payload: ChartScreenshotSchema):
-    """Save chart screenshot PNG under ./charts/{setup_name}/{symbol}_{date}.png."""
+    """Save chart screenshot PNG under ./charts/{setup_name}/{date}_{symbol}.png."""
     try:
         res = chart_service.save_chart_screenshot(
             symbol=payload.symbol,

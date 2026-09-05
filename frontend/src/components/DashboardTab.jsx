@@ -42,45 +42,54 @@ export default function DashboardTab({
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', color: 'var(--text-secondary)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: syncPremarket ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '500', color: syncPremarket ? 'var(--text-muted)' : 'var(--text-secondary)', opacity: syncPremarket ? 0.5 : 1 }}>
               <input
                 type="checkbox"
                 checked={syncPrices}
                 onChange={(e) => setSyncPrices(e.target.checked)}
-                disabled={syncStatus.status === 'running'}
-                style={{ cursor: 'pointer', accentColor: 'var(--accent-color)' }}
+                disabled={syncStatus.status === 'running' || syncPremarket}
+                style={{ cursor: syncPremarket ? 'not-allowed' : 'pointer', accentColor: 'var(--accent-color)' }}
               />
               Sync Price Data
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', color: '#ec4899' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#ec4899' }}>
               <input
                 type="checkbox"
                 checked={syncPremarket}
-                onChange={(e) => setSyncPremarket(e.target.checked)}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setSyncPremarket(checked);
+                  if (checked) {
+                    setSyncPrices(false);
+                    setSyncFundamentals(false);
+                  } else {
+                    setSyncPrices(true);
+                  }
+                }}
                 disabled={syncStatus.status === 'running'}
                 style={{ cursor: 'pointer', accentColor: '#ec4899' }}
               />
               ⚡ Pre-Market Quotes (Today)
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', color: 'var(--text-secondary)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: syncPremarket ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '500', color: syncPremarket ? 'var(--text-muted)' : 'var(--text-secondary)', opacity: syncPremarket ? 0.5 : 1 }}>
               <input
                 type="checkbox"
                 checked={syncFundamentals}
                 onChange={(e) => setSyncFundamentals(e.target.checked)}
-                disabled={syncStatus.status === 'running'}
-                style={{ cursor: 'pointer', accentColor: 'var(--accent-color)' }}
+                disabled={syncStatus.status === 'running' || syncPremarket}
+                style={{ cursor: syncPremarket ? 'not-allowed' : 'pointer', accentColor: 'var(--accent-color)' }}
               />
               Sync Fundamentals
             </label>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '1px solid var(--border-color)', paddingLeft: '16px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '500', color: 'var(--text-secondary)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '1px solid var(--border-color)', paddingLeft: '16px', opacity: syncPremarket ? 0.5 : 1 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '500', color: syncPremarket ? 'var(--text-muted)' : 'var(--text-secondary)' }}>
               <span>Lookback History:</span>
               <select
                 value={syncHistoryYears}
                 onChange={(e) => setSyncHistoryYears(parseInt(e.target.value, 10))}
-                disabled={syncStatus.status === 'running'}
+                disabled={syncStatus.status === 'running' || syncPremarket}
                 style={{
                   background: 'var(--bg-card)',
                   color: 'var(--text-primary)',
@@ -88,7 +97,7 @@ export default function DashboardTab({
                   borderRadius: '6px',
                   padding: '3px 8px',
                   fontSize: '12px',
-                  cursor: 'pointer'
+                  cursor: syncPremarket ? 'not-allowed' : 'pointer'
                 }}
               >
                 <option value={2}>2 Years (~500 Days)</option>
@@ -98,13 +107,13 @@ export default function DashboardTab({
               </select>
             </label>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', color: '#3b82f6' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: syncPremarket ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '500', color: syncPremarket ? 'var(--text-muted)' : '#3b82f6' }}>
               <input
                 type="checkbox"
                 checked={syncForceFull}
                 onChange={(e) => setSyncForceFull(e.target.checked)}
-                disabled={syncStatus.status === 'running'}
-                style={{ cursor: 'pointer', accentColor: '#3b82f6' }}
+                disabled={syncStatus.status === 'running' || syncPremarket}
+                style={{ cursor: syncPremarket ? 'not-allowed' : 'pointer', accentColor: '#3b82f6' }}
               />
               🔄 Force Full Backfill History
             </label>
@@ -114,8 +123,11 @@ export default function DashboardTab({
             className="btn btn-primary"
             onClick={handleTriggerSync}
             disabled={syncStatus.status === 'running' || (!syncPrices && !syncFundamentals && !syncPremarket)}
+            style={syncPremarket ? { background: '#ec4899', borderColor: '#db2777' } : {}}
           >
-            {syncStatus.status === 'running' ? 'Running Sync...' : 'Sync Database Tickers'}
+            {syncStatus.status === 'running'
+              ? 'Running Sync...'
+              : (syncPremarket ? '⚡ Sync Pre-Market Quotes' : 'Sync Database Tickers')}
           </button>
         </div>
       </div>

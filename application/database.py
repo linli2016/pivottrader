@@ -245,6 +245,12 @@ class DatabaseManager:
             """)
             conn.execute("DROP TABLE temp_symbols")
 
+    def get_active_symbols(self) -> List[str]:
+        """Returns a list of all active stock symbols stored in the database."""
+        with self.get_connection() as conn:
+            res = conn.execute("SELECT symbol FROM symbols WHERE active = TRUE ORDER BY symbol").fetchall()
+            return [r[0] for r in res]
+
     def get_symbols_missing_ipo_date(self) -> List[str]:
         """Returns a list of active symbols that do not have an IPO date in the symbols table."""
         with self.get_connection() as conn:

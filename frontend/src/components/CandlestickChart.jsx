@@ -273,6 +273,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   showScreenshotButton = false,
   onScreenshotSaved = null
 }, ref) {
+  const rootContainerRef = useRef(null);
   const chartContainerRef = useRef();
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
@@ -280,10 +281,65 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   const verticalLineRef = useRef(null);
   const legendRef = useRef(null);
   const dataLookupRef = useRef({ timeMap: new Map(), data: [], defaultBar: null, defaultPrevBar: null, symbol: null });
+  const lastCancelTimestampRef = useRef(0);
 
   const [savingScreenshot, setSavingScreenshot] = useState(false);
   const [screenshotSuccess, setScreenshotSuccess] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+
+  // TradingView-style Measurement Tool ("Ruler") State
+  const [measureState, setMeasureState] = useState(null);
+  const [isShiftDown, setIsShiftDown] = useState(false);
+  const [isMeasureModeActive, setIsMeasureModeActive] = useState(false);
+  const [rangeUpdateTick, setRangeUpdateTick] = useState(0);
+  const measureStateRef = useRef(null);
+  measureStateRef.current = measureState;
+
+  // Global Shift and Escape key listeners for TradingView measurement workflow
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Shift') {
+        setIsShiftDown(true);
+      }
+      if (e.key === 'Escape') {
+        setMeasureState(null);
+        setIsMeasureModeActive(false);
+      }
+    };
+
+    const handleKeyUp = (e) => {
+      if (e.key === 'Shift') {
+        setIsShiftDown(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
+  // Suppress browser context menu unconditionally when cancelling measurement via right-click
+  useEffect(() => {
+    const container = rootContainerRef.current;
+    if (!container) return;
+
+    const handleRootContextMenu = (e) => {
+      if (measureStateRef.current || isMeasureModeActive || (Date.now() - lastCancelTimestampRef.current < 1000)) {
+        e.preventDefault();
+        e.stopPropagation();
+        setMeasureState(null);
+        setIsMeasureModeActive(false);
+      }
+    };
+
+    container.addEventListener('contextmenu', handleRootContextMenu, { capture: true });
+    return () => {
+      container.removeEventListener('contextmenu', handleRootContextMenu, { capture: true });
+    };
+  }, [isMeasureModeActive]);
 
   const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
@@ -565,6 +621,17 @@ const CandlestickChart = forwardRef(function CandlestickChart({
 
         renderLegend(bar, prevBar, curSymbol);
       });
+      // Subscribe to Logical Range Changes for Measurement Overlay Re-projection
+      chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+        setRangeUpdateTick((t) => t + 1);
+      });
+
+      // Clicking chart background without Shift dismisses pinned measurement
+      chart.subscribeClick(() => {
+        if (measureStateRef.current?.isPinned) {
+          setMeasureState(null);
+        }
+      });
     }
 
     // Always update height and container width
@@ -580,6 +647,10 @@ const CandlestickChart = forwardRef(function CandlestickChart({
 
     // Populate or update series data whenever data prop is available
     if (data && data.length > 0 && seriesRef.current) {
+      // Reset measure state when stock or data changes
+      setMeasureState(null);
+      setIsMeasureModeActive(false);
+
       const {
         candlestickSeries,
         volumeSeries,
@@ -713,8 +784,213 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     };
   }, [height]);
 
+  // Measurement tool coordinate resolver & mouse event handlers
+  const getPointFromEvent = (e) => {
+    if (!chartContainerRef.current || !chartRef.current || !seriesRef.current?.candlestickSeries) return null;
+    const rect = chartContainerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const timeScale = chartRef.current.timeScale();
+    const series = seriesRef.current.candlestickSeries;
+
+    const logical = timeScale.coordinateToLogical(x);
+    const price = series.coordinateToPrice(y);
+
+    if (logical === null || price === null || isNaN(price)) return null;
+
+    const curData = dataLookupRef.current.data || [];
+    const index = Math.max(0, Math.min(curData.length - 1, Math.round(logical)));
+    const time = curData[index]?.time || null;
+
+    return { x, y, logical, price, index, time };
+  };
+
+  const handleContextMenu = (e) => {
+    if (measureState || isMeasureModeActive || (Date.now() - lastCancelTimestampRef.current < 1000)) {
+      e.preventDefault();
+      e.stopPropagation();
+      setMeasureState(null);
+      setIsMeasureModeActive(false);
+    }
+  };
+
+  const handleMouseDown = (e) => {
+    // Right mouse click cancels active or pinned measurement
+    if (e.button === 2) {
+      if (measureState || isMeasureModeActive) {
+        e.preventDefault();
+        e.stopPropagation();
+        lastCancelTimestampRef.current = Date.now();
+        setMeasureState(null);
+        setIsMeasureModeActive(false);
+      }
+      return;
+    }
+
+    if (e.button !== 0) return;
+
+    // 1. If currently measuring, ANY second left-click locks and pins the measurement
+    if (measureState?.isMeasuring) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const pt = getPointFromEvent(e);
+      if (pt) {
+        setMeasureState((prev) => (prev ? {
+          ...prev,
+          isMeasuring: false,
+          isPinned: true,
+          isDragging: false,
+          current: pt,
+        } : null));
+      } else {
+        setMeasureState((prev) => (prev ? {
+          ...prev,
+          isMeasuring: false,
+          isPinned: true,
+          isDragging: false,
+        } : null));
+      }
+      setIsMeasureModeActive(false);
+      return;
+    }
+
+    // 2. If measurement is already pinned, clicking without Shift removes it from the chart
+    if (measureState?.isPinned) {
+      if (!e.shiftKey && !isMeasureModeActive) {
+        e.preventDefault();
+        e.stopPropagation();
+        setMeasureState(null);
+        return;
+      }
+    }
+
+    // 3. First click with Shift or Measure Tool active: start new measurement
+    if (e.shiftKey || isMeasureModeActive) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const pt = getPointFromEvent(e);
+      if (!pt) return;
+
+      setMeasureState({
+        isMeasuring: true,
+        isPinned: false,
+        isDragging: true,
+        start: pt,
+        current: pt,
+      });
+    }
+  };
+
+  const handleMouseMove = (e) => {
+    if (!measureState?.isMeasuring) return;
+    const pt = getPointFromEvent(e);
+    if (!pt) return;
+    setMeasureState((prev) => (prev ? { ...prev, current: pt } : null));
+  };
+
+  const handleMouseUp = (e) => {
+    if (measureState?.isMeasuring && measureState.isDragging) {
+      const pt = getPointFromEvent(e);
+      const startPt = measureState.start;
+      if (pt && startPt) {
+        const dx = Math.abs(pt.x - startPt.x);
+        const dy = Math.abs(pt.y - startPt.y);
+        if (dx > 6 || dy > 6) {
+          // If user dragged with mouse down, lock and pin on mouse release
+          setMeasureState((prev) => (prev ? {
+            ...prev,
+            isMeasuring: false,
+            isPinned: true,
+            isDragging: false,
+            current: pt,
+          } : null));
+          setIsMeasureModeActive(false);
+        } else {
+          // User single-clicked: stay in measuring mode and wait for the second click
+          setMeasureState((prev) => (prev ? {
+            ...prev,
+            isDragging: false,
+          } : null));
+        }
+      }
+    }
+  };
+
+  // Re-project measurement coordinates dynamically on zoom/pan/render
+  let measureRender = null;
+  if (measureState && chartRef.current && seriesRef.current?.candlestickSeries) {
+    const timeScale = chartRef.current.timeScale();
+    const series = seriesRef.current.candlestickSeries;
+
+    const x1 = timeScale.logicalToCoordinate(measureState.start.logical);
+    const y1 = series.priceToCoordinate(measureState.start.price);
+
+    let x2 = null;
+    let y2 = null;
+    if (measureState.isMeasuring && measureState.current.x !== undefined && measureState.current.y !== undefined) {
+      x2 = measureState.current.x;
+      y2 = measureState.current.y;
+    } else {
+      x2 = timeScale.logicalToCoordinate(measureState.current.logical);
+      y2 = series.priceToCoordinate(measureState.current.price);
+    }
+
+    if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
+      const startPrice = measureState.start.price;
+      const curPrice = measureState.current.price;
+      const deltaPrice = curPrice - startPrice;
+      const deltaPct = startPrice !== 0 ? (deltaPrice / startPrice) * 100 : 0;
+      const isUp = deltaPrice >= 0;
+      const sign = isUp ? '+' : '';
+
+      const startIdx = measureState.start.index;
+      const endIdx = measureState.current.index;
+      const minIdx = Math.min(startIdx, endIdx);
+      const maxIdx = Math.max(startIdx, endIdx);
+      const barsCount = Math.abs(endIdx - startIdx) + 1;
+
+      const curData = dataLookupRef.current.data || [];
+      let totalVolume = 0;
+      for (let i = minIdx; i <= maxIdx && i < curData.length; i++) {
+        totalVolume += Number(curData[i]?.volume || curData[i]?.value || 0);
+      }
+
+      let daysCount = 0;
+      if (curData[minIdx]?.time && curData[maxIdx]?.time) {
+        const t1 = new Date(curData[minIdx].time).getTime();
+        const t2 = new Date(curData[maxIdx].time).getTime();
+        if (!isNaN(t1) && !isNaN(t2)) {
+          daysCount = Math.round(Math.abs(t2 - t1) / (1000 * 60 * 60 * 24));
+        }
+      }
+
+      const boxX = Math.min(x1, x2);
+      const boxY = Math.min(y1, y2);
+      const boxW = Math.max(Math.abs(x2 - x1), 1);
+      const boxH = Math.max(Math.abs(y2 - y1), 1);
+
+      measureRender = {
+        x1, y1, x2, y2,
+        boxX, boxY, boxW, boxH,
+        isUp,
+        sign,
+        deltaPrice,
+        deltaPct,
+        barsCount,
+        daysCount,
+        totalVolume,
+        isPinned: measureState.isPinned,
+        isMeasuring: measureState.isMeasuring,
+      };
+    }
+  }
+
   return (
     <div
+      ref={rootContainerRef}
       style={{
         position: 'relative',
         width: '100%',
@@ -745,24 +1021,57 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         }}
       />
 
-      {/* Top-Right Chart Action Overlay (Screenshot Button) */}
-      {showScreenshotButton && (
-        <div
+      {/* Top-Right Chart Action Overlay (Measure & Screenshot Buttons) */}
+      <div
+        style={{
+          position: 'absolute',
+          top: '8px',
+          right: '12px',
+          zIndex: 10,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+        }}
+      >
+        {/* TradingView Measure Tool Toggle Button */}
+        <button
+          type="button"
+          onClick={() => {
+            setIsMeasureModeActive((prev) => !prev);
+            if (!isMeasureModeActive) {
+              setMeasureState(null);
+            }
+          }}
+          title={isMeasureModeActive ? 'Measuring Mode Active (Click to disable, or hold Shift + Click chart)' : 'Measure Distance (Hold Shift + Left Click)'}
           style={{
-            position: 'absolute',
-            top: '8px',
-            right: '12px',
-            zIndex: 10,
-            display: 'flex',
+            display: 'inline-flex',
             alignItems: 'center',
-            gap: '8px',
+            justifyContent: 'center',
+            width: '28px',
+            height: '28px',
+            padding: 0,
+            background: isMeasureModeActive ? 'rgba(168, 85, 247, 0.4)' : 'rgba(15, 23, 42, 0.82)',
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
+            border: isMeasureModeActive ? '1px solid #a855f7' : '1px solid rgba(255, 255, 255, 0.2)',
+            color: isMeasureModeActive ? '#c084fc' : '#94a3b8',
+            borderRadius: '6px',
+            fontSize: '13px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
+            transition: 'all 0.2s ease',
           }}
         >
+          📐
+        </button>
+
+        {showScreenshotButton && (
           <button
             type="button"
             onClick={() => handleSaveScreenshot()}
             disabled={savingScreenshot || !data || data.length === 0}
-            title={`Take screenshot and store to ./charts/${setupName || 'Setup'}/${symbol || 'SYMBOL'}_${asOfDate || 'date'}.png`}
+            title={`Take screenshot and store to ./charts/${setupName || 'Setup'}/${asOfDate || 'date'}_${symbol || 'SYMBOL'}.png`}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -794,8 +1103,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
               </svg>
             )}
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Floating Toast Notification Overlay */}
       {toastMessage && (
@@ -824,6 +1133,146 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           <span>{toastMessage}</span>
         </div>
       )}
+
+      {/* Interactive Measurement SVG Overlay */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          zIndex: 6,
+          pointerEvents: (isShiftDown || isMeasureModeActive || measureState?.isMeasuring || measureState?.isPinned) ? 'auto' : 'none',
+          cursor: (isShiftDown || isMeasureModeActive || measureState?.isMeasuring) ? 'crosshair' : 'default',
+          overflow: 'hidden',
+        }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onContextMenu={handleContextMenu}
+      >
+        {measureRender && (
+          <>
+            <svg
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                pointerEvents: 'none',
+              }}
+            >
+              {/* Shaded Measurement Bounding Box */}
+              <rect
+                x={measureRender.boxX}
+                y={measureRender.boxY}
+                width={measureRender.boxW}
+                height={measureRender.boxH}
+                fill={measureRender.isUp ? 'rgba(16, 185, 129, 0.16)' : 'rgba(239, 68, 68, 0.16)'}
+                stroke={measureRender.isUp ? 'rgba(16, 185, 129, 0.75)' : 'rgba(239, 68, 68, 0.75)'}
+                strokeWidth="1.5"
+                strokeDasharray="4 3"
+                rx="4"
+              />
+              {/* Connecting Line from Start to Current */}
+              <line
+                x1={measureRender.x1}
+                y1={measureRender.y1}
+                x2={measureRender.x2}
+                y2={measureRender.y2}
+                stroke={measureRender.isUp ? '#10b981' : '#ef4444'}
+                strokeWidth="1.5"
+              />
+              {/* Start Point Circle */}
+              <circle
+                cx={measureRender.x1}
+                cy={measureRender.y1}
+                r="3.5"
+                fill={measureRender.isUp ? '#10b981' : '#ef4444'}
+                stroke="#0f172a"
+                strokeWidth="1"
+              />
+              {/* End Point Circle */}
+              <circle
+                cx={measureRender.x2}
+                cy={measureRender.y2}
+                r="3.5"
+                fill={measureRender.isUp ? '#10b981' : '#ef4444'}
+                stroke="#0f172a"
+                strokeWidth="1"
+              />
+            </svg>
+
+            {/* Floating Measurement Stat Pill */}
+            <div
+              style={{
+                position: 'absolute',
+                left: `${Math.max(10, Math.min((measureRender.x1 + measureRender.x2) / 2 - 110, (chartContainerRef.current?.clientWidth || 600) - 240))}px`,
+                top: `${measureRender.isUp ? Math.max(10, measureRender.boxY - 32) : Math.min((chartContainerRef.current?.clientHeight || 280) - 38, measureRender.boxY + measureRender.boxH + 8)}px`,
+                zIndex: 8,
+                background: measureRender.isUp ? 'rgba(6, 78, 59, 0.94)' : 'rgba(127, 29, 29, 0.94)',
+                border: `1px solid ${measureRender.isUp ? '#10b981' : '#ef4444'}`,
+                backdropFilter: 'blur(8px)',
+                WebkitBackdropFilter: 'blur(8px)',
+                borderRadius: '6px',
+                padding: '4px 10px',
+                color: '#ffffff',
+                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.45)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '11.5px',
+                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                fontVariantNumeric: 'tabular-nums',
+                pointerEvents: measureRender.isPinned ? 'auto' : 'none',
+                userSelect: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <span style={{ fontWeight: 700, color: measureRender.isUp ? '#34d399' : '#fca5a5' }}>
+                {measureRender.sign}{measureRender.deltaPrice.toFixed(2)} ({measureRender.sign}{measureRender.deltaPct.toFixed(2)}%)
+              </span>
+              <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>|</span>
+              <span style={{ color: '#e2e8f0', fontWeight: 500 }}>
+                {measureRender.barsCount} bar{measureRender.barsCount > 1 ? 's' : ''}{measureRender.daysCount > 0 ? ` (${measureRender.daysCount}d)` : ''}
+              </span>
+              {measureRender.totalVolume > 0 && (
+                <>
+                  <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>|</span>
+                  <span style={{ color: '#38bdf8', fontWeight: 600 }}>
+                    Vol {formatVolume(measureRender.totalVolume)}
+                  </span>
+                </>
+              )}
+              {measureRender.isPinned && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMeasureState(null);
+                  }}
+                  title="Close measurement (or press Esc)"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'rgba(255, 255, 255, 0.7)',
+                    cursor: 'pointer',
+                    padding: '0 0 0 4px',
+                    fontSize: '12px',
+                    lineHeight: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
 
       <div
         ref={chartContainerRef}
