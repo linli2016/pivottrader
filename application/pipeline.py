@@ -21,7 +21,7 @@ def main():
     parser.add_argument("--history-years", type=int, help="Number of historical years of daily price bars to fetch (e.g., 2, 5, 10)")
     parser.add_argument("--skip-prices", action="store_true", help="Skip historical daily bars price synchronization")
     parser.add_argument("--skip-fundamentals", action="store_true", help="Skip quarterly fundamental statements synchronization")
-    parser.add_argument("--include-premarket", action="store_true", help="Fetch pre-market quotes for current trading session")
+    parser.add_argument("--include-premarket", "--include-extended", "--include-prepost", "--include-live", dest="include_premarket", action="store_true", help="Fetch real-time live market quotes (pre-market, intraday, and post-market)")
     args = parser.parse_args()
 
     print("=" * 60)
@@ -127,7 +127,7 @@ def main():
                     )
                     SELECT DISTINCT symbol
                     FROM price_changes
-                    WHERE prev_close > 0 AND (close / prev_close > 2.5 OR close / prev_close < 0.4);
+                    WHERE prev_close > 0 AND (close / prev_close >= 1.7 OR close / prev_close <= 0.6);
                     """
                     suspect_symbols = set(r[0] for r in conn.execute(split_query).fetchall())
                 print(f"[Split Fixer] Identified {len(suspect_symbols)} tickers with unadjusted split anomalies.")
@@ -196,34 +196,41 @@ def main():
             state = session_info.get("state")
             reason = session_info.get("reason")
             time_str = session_info.get("current_time_et")
+            target_date = session_info.get("target_date")
+            base_date = session_info.get("base_date")
 
             print(f"Current Session Time (ET): {time_str}")
             print(f"Session State: {state}")
+            if target_date:
+                print(f"Target Session Date: {target_date} (Preceding Regular Close: {base_date})")
 
-            # Rule 1: Market Closed
+            # Check if market is completely closed with no quote access
             if state == "CLOSED":
-                print(f"\n⚡ [Pre-Market Sync Skipped]: {reason}")
+                print(f"\n⚡ [Sync Skipped]: {reason}")
                 print("No database modifications made. Please run 'Sync Price Data' after market close for official daily bars.")
                 return
 
-            # Rule 2: Market Not Open Yet & No Pre-Market Data
             if state == "PRE_OPEN_NO_DATA":
-                print(f"\n⚡ [Pre-Market Sync Skipped]: {reason}")
+                print(f"\n⚡ [Sync Skipped]: {reason}")
                 print("No database modifications made. Pre-market quotes will be available starting at 04:00 AM ET.")
                 return
 
-            # Rule 3 & 4: Pre-Market Active or Regular Market Open
-            if state == "PRE_MARKET":
+            if state == "POST_MARKET":
+                print(f"\n⚡ [Post-Market Sync Active]: {reason}")
+                print(f"Downloading post-market quotes for {len(active_symbols)} symbols (staged as opening prices for next session: {target_date})...")
+            elif state == "PRE_MARKET":
                 print(f"\n⚡ [Pre-Market Sync Active]: {reason}")
-                print(f"Downloading pre-market quotes for {len(active_symbols)} symbols (pre-market price -> today's close)...")
+                print(f"Downloading pre-market quotes for {len(active_symbols)} symbols (pre-market price -> today's session: {target_date})...")
             else:
                 print(f"\n⚡ [Intraday Sync Active]: {reason}")
-                print(f"Downloading live market quotes for {len(active_symbols)} symbols (live price -> today's close)...")
+                print(f"Downloading live market quotes for {len(active_symbols)} symbols (live price -> today's session: {target_date})...")
 
-            pm_bars = price_provider.fetch_premarket_or_intraday_bars(active_symbols, session_state=state)
-            if not pm_bars.empty:
-                print(f"Upserting {len(pm_bars)} daily bars with current prices into DuckDB...")
-                db.upsert_daily_bars(pm_bars)
+            ext_bars = price_provider.fetch_premarket_or_intraday_bars(
+                active_symbols, session_state=state, target_date=target_date, base_date=base_date
+            )
+            if not ext_bars.empty:
+                print(f"Upserting {len(ext_bars)} daily bars with current prices into DuckDB...")
+                db.upsert_daily_bars(ext_bars)
             else:
                 print("Notice: No quotes returned.")
         elif args.skip_prices:
@@ -310,8 +317,15 @@ def main():
                     print("No incremental bars fetched.")
 
         # 6. Relative Strength Scoring & Ranking
-        print("\n[Step 3/5] Computing momentum scores & percentile ranks...")
         mom_engine = MomentumEngine(db_path)
+        if args.include_premarket:
+            print("\n[Step 3/5] Computing fast intraday momentum & Episodic Pivot metrics...")
+            ep_count = mom_engine.update_intraday_metrics(target_date=target_date)
+            print(f"⚡ Live metrics and Episodic Pivots updated ({ep_count} candidates gapping >= 8.0%).")
+            print("\n[Sync Process] Live quotes and Episodic Pivot datasets successfully synchronized and updated.")
+            return
+
+        print("\n[Step 3/5] Computing momentum scores & percentile ranks...")
         mom_engine.calculate_and_store_momentum_metrics()
         momentum_candidates = mom_engine.get_momentum_candidates(
             min_price=config.min_price,

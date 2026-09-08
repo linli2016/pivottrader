@@ -48,8 +48,14 @@ class AbstractDataProvider(ABC):
         """
         return pd.DataFrame()
 
-    def get_market_session_status(self) -> Dict[str, Any]:
+    def fetch_extended_or_intraday_bars(self, symbols: List[str], session_state: str = None, target_date: str = None, base_date: str = None) -> pd.DataFrame:
         """
-        Returns market session status dict: 'CLOSED', 'PRE_OPEN_NO_DATA', 'PRE_MARKET', 'REGULAR'.
+        Fetch extended-hours (pre/post-market) or intraday quotes.
+        """
+        return self.fetch_premarket_bars(symbols)
+
+    def get_market_session_status(self, as_of: Any = None) -> Dict[str, Any]:
+        """
+        Returns market session status dict: 'CLOSED', 'PRE_OPEN_NO_DATA', 'PRE_MARKET', 'REGULAR', 'POST_MARKET'.
         """
         return {"state": "REGULAR", "reason": "Default session status"}

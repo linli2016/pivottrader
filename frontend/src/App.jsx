@@ -40,10 +40,12 @@ function App() {
       if (res.ok) {
         const data = await res.json();
         setTradingDates(data);
+        return data;
       }
     } catch (e) {
       console.error("Error fetching trading dates: ", e);
     }
+    return [];
   };
 
 
@@ -261,7 +263,11 @@ function App() {
 
   useEffect(() => {
     fetchSummary();
-    fetchTradingDates();
+    fetchTradingDates().then((dates) => {
+      if (dates && dates.length > 0) {
+        setSelectedDate(dates[0]);
+      }
+    });
     fetchConfig();
     fetchSyncStatus();
   }, []);
@@ -279,7 +285,12 @@ function App() {
         syncIntervalRef.current = null;
         // Re-fetch datasets upon completion
         fetchSummary();
-        fetchCandidates();
+        fetchTradingDates().then((dates) => {
+          if (dates && dates.length > 0) {
+            setSelectedDate(dates[0]);
+          }
+          fetchCandidates();
+        });
       }
     }
     return () => {
@@ -317,6 +328,7 @@ function App() {
           skip_prices: !syncPrices && !syncPremarket,
           skip_fundamentals: !syncFundamentals,
           include_premarket: syncPremarket,
+          include_extended: syncPremarket,
           history_years: parseInt(syncHistoryYears, 10),
           force_full: syncForceFull
         })
@@ -324,6 +336,25 @@ function App() {
       fetchSyncStatus();
     } catch (e) {
       console.error("Error triggering sync run: ", e);
+    }
+  };
+
+  // Trigger ultra-fast live / pre-market quotes sync
+  const handleTriggerLiveQuotesSync = async () => {
+    try {
+      await fetch(`${API_BASE}/api/sync/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          skip_prices: false,
+          skip_fundamentals: true,
+          include_premarket: true,
+          include_extended: true
+        })
+      });
+      fetchSyncStatus();
+    } catch (e) {
+      console.error("Error triggering live quotes sync: ", e);
     }
   };
 
@@ -882,6 +913,8 @@ function App() {
             setEnableNewLeaders52wHigh={setEnableNewLeaders52wHigh}
             enableNewLeadersBase={enableNewLeadersBase}
             setEnableNewLeadersBase={setEnableNewLeadersBase}
+            handleTriggerLiveQuotesSync={handleTriggerLiveQuotesSync}
+            syncStatus={syncStatus}
             handleSelectStock={handleSelectStock}
           />
         )}

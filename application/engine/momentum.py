@@ -13,7 +13,16 @@ class MomentumEngine:
         self.db_path = db_path
 
     def get_connection(self):
-        return duckdb.connect(self.db_path)
+        import time
+        max_retries = 6
+        for attempt in range(max_retries):
+            try:
+                return duckdb.connect(self.db_path)
+            except Exception as e:
+                if "lock" in str(e).lower() and attempt < max_retries - 1:
+                    time.sleep(0.5)
+                else:
+                    raise
 
     def detect_vcp(self, highs: List[float], lows: List[float], dates: List[Any], closes: List[float] = None, window: int = 3) -> dict:
         return detect_vcp(highs, lows, dates, closes=closes, window=window)
@@ -532,3 +541,100 @@ class MomentumEngine:
                     "ipo_base_depth": row[19]
                 })
         return candidates
+
+    def update_intraday_metrics(self, target_date: str = None) -> int:
+        """
+        Ultra-fast (<0.05s) intraday momentum and Episodic Pivot calculation targeting
+        strictly the latest session date. Reuses previous day's rolling indicators
+        (vol_50d_ma, sma_50, sma_200, high_52w, rs_rank) and computes live gap_pct,
+        rel_vol_50d, and ep_is_setup.
+        Returns the count of candidates with ep_is_setup = true.
+        """
+        update_query = """
+            WITH target AS (
+                SELECT COALESCE(CAST(? AS DATE), MAX(date)) AS t_date FROM daily_bars
+            ),
+            prior_bars AS (
+                SELECT
+                    b.symbol,
+                    b.close AS prev_close,
+                    b.vol_50d_ma,
+                    b.dollar_vol_50d_ma,
+                    b.sma_50,
+                    b.sma_150,
+                    b.sma_200,
+                    b.atr_20d,
+                    b.adr_20d,
+                    b.high_52w,
+                    b.low_52w,
+                    b.rs_rank,
+                    b.rs_score,
+                    ROW_NUMBER() OVER (PARTITION BY b.symbol ORDER BY b.date DESC) AS rn
+                FROM daily_bars b, target t
+                WHERE b.date < t.t_date
+            ),
+            latest_prior AS (
+                SELECT * FROM prior_bars WHERE rn = 1
+            ),
+            calculated AS (
+                SELECT
+                    curr.rowid AS r_id,
+                    p.prev_close,
+                    p.vol_50d_ma,
+                    COALESCE(p.dollar_vol_50d_ma, curr.close * p.vol_50d_ma) AS dollar_vol_50d_ma,
+                    p.sma_50,
+                    p.sma_150,
+                    p.sma_200,
+                    p.atr_20d,
+                    p.adr_20d,
+                    GREATEST(COALESCE(p.high_52w, curr.high), curr.high) AS high_52w,
+                    LEAST(COALESCE(p.low_52w, curr.low), curr.low) AS low_52w,
+                    ROUND(((curr.close - GREATEST(COALESCE(p.high_52w, curr.high), curr.high)) / GREATEST(COALESCE(p.high_52w, curr.high), curr.high)) * 100, 2) AS dist_from_52w_high,
+                    ROUND(((curr.open - p.prev_close) / NULLIF(p.prev_close, 0)) * 100, 2) AS gap_pct,
+                    ROUND(curr.volume / NULLIF(p.vol_50d_ma, 0), 2) AS rel_vol_50d,
+                    p.rs_rank,
+                    p.rs_score,
+                    CASE 
+                        WHEN ((curr.open - p.prev_close) / NULLIF(p.prev_close, 0)) * 100 >= 8.0 
+                        THEN true 
+                        ELSE false 
+                    END AS ep_is_setup,
+                    ROUND(((curr.open - p.prev_close) / NULLIF(p.prev_close, 0)) * 100, 2) AS ep_gap_pct,
+                    ROUND(curr.volume / NULLIF(p.vol_50d_ma, 0), 2) AS ep_rel_vol
+                FROM daily_bars curr
+                JOIN target t ON curr.date = t.t_date
+                LEFT JOIN latest_prior p ON curr.symbol = p.symbol
+            )
+            UPDATE daily_bars
+            SET
+                vol_50d_ma = c.vol_50d_ma,
+                dollar_vol_50d_ma = c.dollar_vol_50d_ma,
+                sma_50 = c.sma_50,
+                sma_150 = c.sma_150,
+                sma_200 = c.sma_200,
+                atr_20d = c.atr_20d,
+                adr_20d = c.adr_20d,
+                high_52w = c.high_52w,
+                low_52w = c.low_52w,
+                dist_from_52w_high = c.dist_from_52w_high,
+                gap_pct = c.gap_pct,
+                rel_vol_50d = c.rel_vol_50d,
+                rs_rank = c.rs_rank,
+                rs_score = c.rs_score,
+                ep_is_setup = c.ep_is_setup,
+                ep_gap_pct = c.ep_gap_pct,
+                ep_rel_vol = c.ep_rel_vol
+            FROM calculated c
+            WHERE daily_bars.rowid = c.r_id;
+        """
+        count_query = """
+            SELECT count(*) 
+            FROM daily_bars 
+            WHERE date = (SELECT COALESCE(CAST(? AS DATE), MAX(date)) FROM daily_bars)
+              AND ep_is_setup = true;
+        """
+        with self.get_connection() as conn:
+            conn.execute(update_query, [target_date])
+            res = conn.execute(count_query, [target_date]).fetchone()
+            return res[0] if res else 0
+

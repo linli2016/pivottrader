@@ -158,9 +158,17 @@ export default function CandidatesTab({
   setEnableNewLeaders52wHigh,
   enableNewLeadersBase,
   setEnableNewLeadersBase,
+  handleTriggerLiveQuotesSync = () => { },
+  syncStatus = {},
   _handleSelectStock,
 }) {
   const isParabolicActive = enableParabolicClimax || enableParabolicShort || enableParabolicLong;
+
+  const todayStr = new Date().toLocaleDateString('en-CA');
+  const latestDbDate = tradingDates && tradingDates.length > 0 ? tradingDates[0] : todayStr;
+  const maxSelectableDate = (latestDbDate && latestDbDate > todayStr)
+    ? latestDbDate
+    : new Date(Date.now() + 86400000 * 7).toLocaleDateString('en-CA');
 
   // Stock Browse Mode (Chart Flip) states
   const [browseIndex, setBrowseIndex] = React.useState(0);
@@ -516,6 +524,8 @@ export default function CandidatesTab({
                   setEnforceStage2(false);
                   setEnableRs(false);
                   if (setEnablePivotTightness) setEnablePivotTightness(false);
+                  if (setEnableEpGap) setEnableEpGap(true);
+                  if (setEnableEpRelVol) setEnableEpRelVol(false);
                 } else {
                   if (setEnableAdr) setEnableAdr(false);
                 }
@@ -716,9 +726,9 @@ export default function CandidatesTab({
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <input
                 type="date"
-                value={selectedDate || new Date().toLocaleDateString('en-CA')}
+                value={selectedDate || latestDbDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                max={new Date().toLocaleDateString('en-CA')}
+                max={maxSelectableDate}
                 style={{
                   background: 'rgba(30, 41, 59, 0.9)',
                   color: '#f8fafc',
@@ -751,6 +761,29 @@ export default function CandidatesTab({
             >
               <span className={loadingCandidates ? "spin-icon" : ""}>🔄</span>
               <span>{loadingCandidates ? "Loading" : "Rescan"}</span>
+            </button>
+
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={handleTriggerLiveQuotesSync}
+              disabled={syncStatus?.status === 'running' || loadingCandidates}
+              title="Fetch latest pre/post/intraday quotes and recalculate Episodic Pivots in real time (<3s)"
+              style={{
+                padding: '5px 12px',
+                fontSize: '12px',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                whiteSpace: 'nowrap',
+                background: syncStatus?.status === 'running' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(15, 23, 42, 0.5)',
+                border: syncStatus?.status === 'running' ? '1px solid #38bdf8' : '1px solid rgba(56, 189, 248, 0.4)',
+                color: '#38bdf8',
+                cursor: syncStatus?.status === 'running' ? 'not-allowed' : 'pointer'
+              }}
+            >
+              <span className={syncStatus?.status === 'running' ? "spin-icon" : ""}>⚡</span>
+              <span>{syncStatus?.status === 'running' ? "Refreshing..." : "Live Quotes"}</span>
             </button>
 
             <button

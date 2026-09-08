@@ -22,7 +22,11 @@ def detect_episodic_pivot(opens: List[float], highs: List[float], lows: List[flo
     gap_pct = ((today_open - prev_close) / prev_close) * 100.0
     rel_vol = today_vol / vol_50d
 
-    if gap_pct >= 10.0 and rel_vol >= 2.5:
+    # An Episodic Pivot candidate fundamentally requires a significant gap up (>= 10%).
+    # In pre-market and post-market sessions, volume has only partially accumulated.
+    # We qualify the setup flag if gap_pct >= 10.0, while accurately recording ep_rel_vol
+    # so that callers/users can optionally filter on volume (e.g. rel_vol >= 2.5 in regular sessions).
+    if gap_pct >= 10.0:
         return {
             "ep_is_setup": True,
             "ep_gap_pct": round(gap_pct, 2),

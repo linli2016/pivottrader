@@ -23,7 +23,7 @@
    - **Minimum Daily Dollar Volume:** $\ge \$10,000,000$ (\$10M) in 50-day average daily turnover ($\text{Price} \times \text{Volume}$). Ensures sufficient liquidity for institutional position sizing without severe slippage.
 
 6. **Market Trend Environment Filter:**
-   - **Green Light:** Market Monitor 10/20-day SMA ratio positive, S&P 500 above 21 EMA. Full size allowed.
+   - **Green Light:** Market Monitor 10/20-day SMA ratio positive, S&P 500 above 21 EMA. Full size allowed. Qullamaggie: QQQ EMA10> EMA20, and both are up
    - **Yellow Light:** Distribution days accumulating, market below 21 EMA. Cut size to 50%.
    - **Red Light:** S&P 500 below 50 SMA and 200 SMA. Cash is king — no new breakout trades.
 

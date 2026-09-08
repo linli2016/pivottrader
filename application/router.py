@@ -26,6 +26,7 @@ class SyncTriggerSchema(BaseModel):
     skip_prices: bool = False
     skip_fundamentals: bool = False
     include_premarket: bool = False
+    include_extended: Optional[bool] = None
     history_years: Optional[int] = None
     force_full: bool = False
 
@@ -247,11 +248,13 @@ def update_config(payload: ConfigUpdateSchema):
 @router.post("/api/sync/run")
 def trigger_sync_run(background_tasks: BackgroundTasks, payload: SyncTriggerSchema):
     """Triggers the screening pipeline in the background."""
+    is_ext = bool(payload.include_premarket or payload.include_extended)
     return sync_service.trigger_sync_run(
         background_tasks,
         skip_prices=payload.skip_prices,
         skip_fundamentals=payload.skip_fundamentals,
-        include_premarket=payload.include_premarket,
+        include_premarket=is_ext,
+        include_extended=is_ext,
         history_years=payload.history_years,
         force_full=payload.force_full
     )

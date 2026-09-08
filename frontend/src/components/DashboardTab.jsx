@@ -69,8 +69,13 @@ export default function DashboardTab({
                 disabled={syncStatus.status === 'running'}
                 style={{ cursor: 'pointer', accentColor: '#ec4899' }}
               />
-              ⚡ Pre-Market Quotes (Today)
+              ⚡ Live Market Quotes
             </label>
+            {syncPremarket && (
+              <span style={{ fontSize: '11px', color: '#f472b6', marginTop: '-4px', marginBottom: '2px', lineHeight: '1.2' }}>
+                Real-time quotes for pre-market (04:00–09:30), live trading session (09:30–16:00), and post-market (16:00–20:00 ET).
+              </span>
+            )}
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: syncPremarket ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '500', color: syncPremarket ? 'var(--text-muted)' : 'var(--text-secondary)', opacity: syncPremarket ? 0.5 : 1 }}>
               <input
                 type="checkbox"
@@ -127,7 +132,7 @@ export default function DashboardTab({
           >
             {syncStatus.status === 'running'
               ? 'Running Sync...'
-              : (syncPremarket ? '⚡ Sync Pre-Market Quotes' : 'Sync Database Tickers')}
+              : (syncPremarket ? '⚡ Sync Live Market Quotes' : 'Sync Database Tickers')}
           </button>
         </div>
       </div>

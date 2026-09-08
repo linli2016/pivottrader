@@ -15,7 +15,7 @@ class SyncService:
         }
         self.sync_lock = threading.Lock()
 
-    def run_sync_subprocess(self, skip_prices: bool = False, skip_fundamentals: bool = False, include_premarket: bool = False, history_years: int = None, force_full: bool = False):
+    def run_sync_subprocess(self, skip_prices: bool = False, skip_fundamentals: bool = False, include_premarket: bool = False, include_extended: bool = False, history_years: int = None, force_full: bool = False):
         with self.sync_lock:
             self.sync_status["status"] = "running"
             self.sync_status["start_time"] = datetime.now().isoformat()
@@ -25,7 +25,7 @@ class SyncService:
 
         # Call the python application.pipeline module with unbuffered output
         cmd = [sys.executable, "-u", "-m", "application.pipeline"]
-        if include_premarket:
+        if include_premarket or include_extended:
             cmd.append("--include-premarket")
         elif skip_prices:
             cmd.append("--skip-prices")
@@ -68,7 +68,7 @@ class SyncService:
                 self.sync_status["error_message"] = str(e)
                 self.sync_status["end_time"] = datetime.now().isoformat()
 
-    def trigger_sync_run(self, background_tasks, skip_prices: bool = False, skip_fundamentals: bool = False, include_premarket: bool = False, history_years: int = None, force_full: bool = False) -> Dict[str, Any]:
+    def trigger_sync_run(self, background_tasks, skip_prices: bool = False, skip_fundamentals: bool = False, include_premarket: bool = False, include_extended: bool = False, history_years: int = None, force_full: bool = False) -> Dict[str, Any]:
         with self.sync_lock:
             if self.sync_status["status"] == "running":
                 return {"message": "Sync pipeline is already running", "status": self.sync_status}
@@ -78,6 +78,7 @@ class SyncService:
             skip_prices=skip_prices, 
             skip_fundamentals=skip_fundamentals,
             include_premarket=include_premarket,
+            include_extended=include_extended,
             history_years=history_years,
             force_full=force_full
         )

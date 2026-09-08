@@ -8,6 +8,115 @@ import yfinance as yf
 from typing import List, Dict, Any
 from application.providers.base import AbstractDataProvider
 
+def _calculate_easter(year: int) -> datetime.date:
+    """Computes Easter Sunday for a given year using Butcher's algorithm."""
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    return datetime.date(year, month, day)
+
+def get_us_market_holidays(year: int) -> set:
+    """Returns official NYSE/NASDAQ stock market holidays for a given year."""
+    import datetime
+    holidays = set()
+
+    # 1. New Year's Day (Jan 1)
+    nyd = datetime.date(year, 1, 1)
+    if nyd.weekday() == 6:  # Sunday -> Monday
+        holidays.add(datetime.date(year, 1, 2))
+    elif nyd.weekday() != 5:  # If not Saturday
+        holidays.add(nyd)
+
+    # 2. Martin Luther King Jr. Day (Third Monday of January)
+    first_jan = datetime.date(year, 1, 1)
+    first_mon = first_jan + datetime.timedelta(days=(0 - first_jan.weekday()) % 7)
+    holidays.add(first_mon + datetime.timedelta(days=14))
+
+    # 3. Washington's Birthday / Presidents' Day (Third Monday of February)
+    first_feb = datetime.date(year, 2, 1)
+    first_mon_feb = first_feb + datetime.timedelta(days=(0 - first_feb.weekday()) % 7)
+    holidays.add(first_mon_feb + datetime.timedelta(days=14))
+
+    # 4. Good Friday (Friday before Easter)
+    easter = _calculate_easter(year)
+    holidays.add(easter - datetime.timedelta(days=2))
+
+    # 5. Memorial Day (Last Monday of May)
+    last_may = datetime.date(year, 5, 31)
+    memorial_day = last_may - datetime.timedelta(days=(last_may.weekday() - 0) % 7)
+    holidays.add(memorial_day)
+
+    # 6. Juneteenth National Independence Day (June 19, since 2021)
+    if year >= 2021:
+        jt = datetime.date(year, 6, 19)
+        if jt.weekday() == 5:
+            holidays.add(datetime.date(year, 6, 18))
+        elif jt.weekday() == 6:
+            holidays.add(datetime.date(year, 6, 20))
+        else:
+            holidays.add(jt)
+
+    # 7. Independence Day (July 4)
+    july4 = datetime.date(year, 7, 4)
+    if july4.weekday() == 5:
+        holidays.add(datetime.date(year, 7, 3))
+    elif july4.weekday() == 6:
+        holidays.add(datetime.date(year, 7, 5))
+    else:
+        holidays.add(july4)
+
+    # 8. Labor Day (First Monday of September)
+    first_sep = datetime.date(year, 9, 1)
+    labor_day = first_sep + datetime.timedelta(days=(0 - first_sep.weekday()) % 7)
+    holidays.add(labor_day)
+
+    # 9. Thanksgiving Day (Fourth Thursday of November)
+    first_nov = datetime.date(year, 11, 1)
+    first_thu_nov = first_nov + datetime.timedelta(days=(3 - first_nov.weekday()) % 7)
+    holidays.add(first_thu_nov + datetime.timedelta(days=21))
+
+    # 10. Christmas Day (Dec 25)
+    xmas = datetime.date(year, 12, 25)
+    if xmas.weekday() == 5:
+        holidays.add(datetime.date(year, 12, 24))
+    elif xmas.weekday() == 6:
+        holidays.add(datetime.date(year, 12, 26))
+    else:
+        holidays.add(xmas)
+
+    return holidays
+
+def is_us_market_holiday(d: datetime.date) -> bool:
+    """Checks if date is an official US stock market holiday."""
+    return d in get_us_market_holidays(d.year)
+
+def get_next_trading_day(d: datetime.date) -> datetime.date:
+    """Returns next active US stock market trading day (skipping weekends and market holidays)."""
+    import datetime
+    cur = d + datetime.timedelta(days=1)
+    while cur.weekday() in (5, 6) or is_us_market_holiday(cur):
+        cur += datetime.timedelta(days=1)
+    return cur
+
+def get_previous_trading_day(d: datetime.date) -> datetime.date:
+    """Returns most recent active US stock market trading day before date."""
+    import datetime
+    cur = d - datetime.timedelta(days=1)
+    while cur.weekday() in (5, 6) or is_us_market_holiday(cur):
+        cur -= datetime.timedelta(days=1)
+    return cur
+
 class YFinanceProvider(AbstractDataProvider):
     def connect(self) -> None:
         """No persistent connection required for yfinance."""
@@ -161,72 +270,10 @@ class YFinanceProvider(AbstractDataProvider):
                         if col in sym_df.columns:
                             sym_df[col] = sym_df[col].astype(float)
 
-                    # Apply backward stock split adjustments for split-adjusted price consistency
                     if "stock_splits" in sym_df.columns:
-                        splits = sym_df[(sym_df["stock_splits"] > 0) & (sym_df["stock_splits"] != 1.0)]
-                        if not splits.empty:
-                            sym_df = sym_df.sort_values("date").reset_index(drop=True)
-                            # Process splits in reverse chronological order (newest to oldest)
-                            splits_sorted = splits.sort_values("date", ascending=False)
-                            for _, s_row in splits_sorted.iterrows():
-                                s_ratio = float(s_row["stock_splits"])
-                                s_date = s_row["date"]
-                                if s_ratio <= 0 or s_ratio == 1.0:
-                                    continue
-                                
-                                post_split_df = sym_df[sym_df["date"] >= s_date]
-                                valid_post_close = post_split_df["close"].dropna()
-                                valid_post_open = post_split_df["open"].dropna()
-                                
-                                if not valid_post_close.empty and float(valid_post_close.iloc[0]) > 0:
-                                    post_baseline = float(valid_post_close.head(5).median())
-                                elif not valid_post_open.empty and float(valid_post_open.iloc[0]) > 0:
-                                    post_baseline = float(valid_post_open.head(5).median())
-                                else:
-                                    try:
-                                        t = yf.Ticker(sym)
-                                        fi = getattr(t, "fast_info", {})
-                                        post_baseline = float(fi.get("lastPrice") or fi.get("preMarketPrice") or fi.get("regularMarketPreviousClose") or 0.0)
-                                    except Exception:
-                                        post_baseline = 0.0
-
-                                pre_split_indices = sym_df[sym_df["date"] < s_date].index
-                                if len(pre_split_indices) == 0 or post_baseline <= 0:
-                                    continue
-                                    
-                                ref_price = post_baseline
-                                for idx in reversed(pre_split_indices):
-                                    c_val = sym_df.at[idx, "close"]
-                                    if pd.isna(c_val) or c_val <= 0:
-                                        continue
-                                    if s_ratio < 1.0: # Reverse split
-                                        is_unadj = (c_val < ref_price * math.sqrt(s_ratio) * 1.5)
-                                    else: # Forward split
-                                        is_unadj = (c_val > ref_price * math.sqrt(s_ratio) * 0.7)
-                                    
-                                    if is_unadj:
-                                        sym_df.at[idx, "open"] /= s_ratio
-                                        sym_df.at[idx, "high"] /= s_ratio
-                                        sym_df.at[idx, "low"] /= s_ratio
-                                        sym_df.at[idx, "close"] /= s_ratio
-                                        v_val = sym_df.at[idx, "volume"]
-                                        if pd.notna(v_val):
-                                            sym_df.at[idx, "volume"] = max(1, int(round(float(v_val) * s_ratio)))
-                                    
-                                    ref_price = sym_df.at[idx, "close"]
-
-                    # Preserve split information before dropping rows where close is NaN
-                    has_split = False
-                    if "stock_splits" in sym_df.columns:
-                        non_trivial_splits = sym_df[(sym_df["stock_splits"] > 0) & (sym_df["stock_splits"] != 1.0)]
-                        if not non_trivial_splits.empty:
-                            has_split = True
-                            last_split_ratio = float(non_trivial_splits.iloc[-1]["stock_splits"])
+                        sym_df["stock_splits"] = sym_df["stock_splits"].fillna(0.0).astype(float)
 
                     sym_df = sym_df.dropna(subset=["close"])
-                    if not sym_df.empty and has_split:
-                        # Ensure the split indicator is preserved on the last available row
-                        sym_df.loc[sym_df.index[-1], "stock_splits"] = last_split_ratio
 
                     if not sym_df.empty:
                         if "volume" in sym_df.columns:
@@ -382,263 +429,296 @@ class YFinanceProvider(AbstractDataProvider):
             return pd.concat(all_funds, ignore_index=True)
         return pd.DataFrame()
 
-    def get_market_session_status(self, as_of: datetime = None) -> Dict[str, Any]:
+    def get_market_session_status(self, as_of: datetime.datetime = None) -> Dict[str, Any]:
         """
         Determines current US Equities market session status based on America/New_York time
         and benchmark (SPY) quote validation.
 
         Returns dict with:
-          - state: 'CLOSED' | 'PRE_OPEN_NO_DATA' | 'PRE_MARKET' | 'REGULAR'
+          - state: 'POST_MARKET' | 'PRE_MARKET' | 'REGULAR' | 'CLOSED'
+          - target_date: YYYY-MM-DD for the bar date in DuckDB
+          - base_date: YYYY-MM-DD for the preceding regular trading bar
           - reason: Human-readable explanation of session status
           - current_time_et: Formatted time string in ET
           - trading_date: YYYY-MM-DD in ET
           - market_state: Raw Yahoo marketState if available ('PRE', 'REGULAR', 'POST', 'CLOSED')
         """
         from zoneinfo import ZoneInfo
-        from datetime import datetime, time
+        from datetime import datetime as dt, time
 
         if as_of is not None:
             now_et = as_of if as_of.tzinfo else as_of.replace(tzinfo=ZoneInfo("America/New_York"))
             now_et = now_et.astimezone(ZoneInfo("America/New_York"))
         else:
-            now_et = datetime.now(ZoneInfo("America/New_York"))
+            now_et = dt.now(ZoneInfo("America/New_York"))
 
-        today_str = now_et.strftime("%Y-%m-%d")
+        today_dt = now_et.date()
+        today_str = today_dt.strftime("%Y-%m-%d")
         time_str = now_et.strftime("%Y-%m-%d %H:%M:%S %Z")
-        weekday = now_et.weekday() # 0 = Monday, ..., 4 = Friday, 5 = Saturday, 6 = Sunday
+        weekday = now_et.weekday()  # 0 = Monday, ..., 4 = Friday, 5 = Saturday, 6 = Sunday
         cur_time = now_et.time()
 
-        # 1. Weekend Check (Rule 1: Market closed)
+        next_trade_dt = get_next_trading_day(today_dt)
+        next_trade_str = next_trade_dt.strftime("%Y-%m-%d")
+
+        # 1. Weekend Check: Sat/Sun -> POST_MARKET staging for next trading day
         if weekday in (5, 6):
             day_name = now_et.strftime("%A")
+            last_trade_dt = get_previous_trading_day(today_dt)
             return {
-                "state": "CLOSED",
-                "reason": f"Today is {day_name} (weekend). US equities markets are closed.",
+                "state": "POST_MARKET",
+                "reason": f"Today is {day_name} (weekend). Staging latest after-hours quotes as opening prices for next session ({next_trade_str}).",
                 "current_time_et": time_str,
                 "trading_date": today_str,
-                "market_state": "CLOSED"
-            }
-
-        # 2. Post-Market / Evening Check (Rule 1: Market closed for today)
-        # Regular trading ends at 16:00 ET.
-        if cur_time >= time(16, 0):
-            return {
-                "state": "CLOSED",
-                "reason": f"Regular market closed at 16:00 ET (current time is {now_et.strftime('%H:%M %Z')}). Pre-market sync is not applicable after market close. Please use 'Sync Price Data' to synchronize official closing prices.",
-                "current_time_et": time_str,
-                "trading_date": today_str,
+                "target_date": next_trade_str,
+                "base_date": last_trade_dt.strftime("%Y-%m-%d"),
                 "market_state": "POST"
             }
 
-        # 3. Overnight / Early Morning Check (Rule 2: Market not open yet, before pre-market starts at 04:00 ET)
+        # 2. Holiday Check: Weekday holiday -> POST_MARKET staging for next trading day
+        if is_us_market_holiday(today_dt):
+            last_trade_dt = get_previous_trading_day(today_dt)
+            return {
+                "state": "POST_MARKET",
+                "reason": f"Today is a US market holiday. Staging latest after-hours quotes as opening prices for next session ({next_trade_str}).",
+                "current_time_et": time_str,
+                "trading_date": today_str,
+                "target_date": next_trade_str,
+                "base_date": last_trade_dt.strftime("%Y-%m-%d"),
+                "market_state": "POST"
+            }
+
+        # 3. Post-Market / Evening Check (16:00 ET onwards on active trading day)
+        if cur_time >= time(16, 0):
+            return {
+                "state": "POST_MARKET",
+                "reason": f"Post-market session active ({now_et.strftime('%H:%M %Z')}). After-hours quotes are staged for next trading session ({next_trade_str}).",
+                "current_time_et": time_str,
+                "trading_date": today_str,
+                "target_date": next_trade_str,
+                "base_date": today_str,
+                "market_state": "POST"
+            }
+
+        # 4. Overnight / Early Morning Check (00:00 to 04:00 ET on active trading day)
+        # Pre-market hasn't opened yet for today_str, so the latest quotes are prior session's post-market quotes,
+        # which stage as the baseline for today_str.
         if cur_time < time(4, 0):
+            prev_trade_dt = get_previous_trading_day(today_dt)
             return {
-                "state": "PRE_OPEN_NO_DATA",
-                "reason": f"Market has not opened and pre-market session has not begun (pre-market starts at 04:00 ET, current time is {now_et.strftime('%H:%M %Z')}). No pre-market data available.",
+                "state": "POST_MARKET",
+                "reason": f"Overnight session before pre-market open ({now_et.strftime('%H:%M %Z')}). Staging post-market quotes for today's session ({today_str}). Pre-market opens at 04:00 ET.",
                 "current_time_et": time_str,
                 "trading_date": today_str,
-                "market_state": "CLOSED"
+                "target_date": today_str,
+                "base_date": prev_trade_dt.strftime("%Y-%m-%d"),
+                "market_state": "POST"
             }
 
-        # 4. Check Benchmark Quote (SPY) to verify marketState and detect holidays
-        benchmark_state = None
-        has_pm_price = False
-        try:
-            from yfinance.data import YfData
-            data_mgr = YfData()
-            res = data_mgr.get_raw_json("https://query1.finance.yahoo.com/v7/finance/quote", params={"symbols": "SPY"})
-            if res and "quoteResponse" in res and res["quoteResponse"].get("result"):
-                spy_quote = res["quoteResponse"]["result"][0]
-                benchmark_state = spy_quote.get("marketState") # e.g. 'PRE', 'REGULAR', 'POST', 'CLOSED'
-                pm_price = spy_quote.get("preMarketPrice")
-                if pm_price and float(pm_price) > 0:
-                    has_pm_price = True
-        except Exception:
-            pass
-
-        # Holiday check: If it's a weekday between 04:00 and 16:00 ET, but Yahoo says marketState is CLOSED
-        if benchmark_state == "CLOSED":
-            return {
-                "state": "CLOSED",
-                "reason": f"Today is a US market holiday. US equities markets are closed.",
-                "current_time_et": time_str,
-                "trading_date": today_str,
-                "market_state": "CLOSED"
-            }
-
-        # 5. Pre-Market Session: 04:00 ET to 09:30 ET (Rules 2 & 3)
+        # 5. Pre-Market Session: 04:00 ET to 09:30 ET
         if cur_time < time(9, 30):
-            if benchmark_state in ("PRE", "PREPRE") or has_pm_price or cur_time >= time(4, 30):
-                return {
-                    "state": "PRE_MARKET",
-                    "reason": f"Pre-market trading session is currently active ({now_et.strftime('%H:%M %Z')}).",
-                    "current_time_et": time_str,
-                    "trading_date": today_str,
-                    "market_state": benchmark_state or "PRE"
-                }
-            else:
-                return {
-                    "state": "PRE_OPEN_NO_DATA",
-                    "reason": f"Market has not opened and no pre-market quotes are available yet for today.",
-                    "current_time_et": time_str,
-                    "trading_date": today_str,
-                    "market_state": "PRE_OPEN_NO_DATA"
-                }
+            prev_trade_dt = get_previous_trading_day(today_dt)
+            return {
+                "state": "PRE_MARKET",
+                "reason": f"Pre-market trading session is currently active ({now_et.strftime('%H:%M %Z')}). Updating quotes for today ({today_str}).",
+                "current_time_et": time_str,
+                "trading_date": today_str,
+                "target_date": today_str,
+                "base_date": prev_trade_dt.strftime("%Y-%m-%d"),
+                "market_state": "PRE"
+            }
 
-        # 6. Regular Trading Session: 09:30 ET to 16:00 ET (Rule 4)
+        # 6. Regular Trading Session: 09:30 ET to 16:00 ET
+        prev_trade_dt = get_previous_trading_day(today_dt)
         return {
             "state": "REGULAR",
-            "reason": f"Regular market trading is OPEN ({now_et.strftime('%H:%M %Z')}).",
+            "reason": f"Regular market trading is OPEN ({now_et.strftime('%H:%M %Z')}). Updating live intraday quotes for today ({today_str}).",
             "current_time_et": time_str,
             "trading_date": today_str,
-            "market_state": benchmark_state or "REGULAR"
+            "target_date": today_str,
+            "base_date": prev_trade_dt.strftime("%Y-%m-%d"),
+            "market_state": "REGULAR"
         }
 
-    def fetch_premarket_or_intraday_bars(self, symbols: List[str], session_state: str = None) -> pd.DataFrame:
+    def fetch_premarket_or_intraday_bars(
+        self,
+        symbols: List[str],
+        session_state: str = None,
+        target_date: str = None,
+        base_date: str = None
+    ) -> pd.DataFrame:
         """
-        Fetches pre-market or intraday live quotes for symbols using fast batch querying.
-        If session_state is None, it inspects get_market_session_status() first.
-        - In 'PRE_MARKET': sets close = preMarketPrice (Rule 3)
-        - In 'REGULAR': sets close = regularMarketPrice (Rule 4)
-        - In 'CLOSED' or 'PRE_OPEN_NO_DATA': returns empty DataFrame (Rules 1 & 2)
+        Fetches pre-market, post-market, or intraday live quotes for symbols using fast batch querying.
+        If session_state or target_date is None, inspects get_market_session_status() first.
+        - In 'POST_MARKET': sets close = postMarketPrice, target date = next trading day. Also stages base_date regular close.
+        - In 'PRE_MARKET': sets close = preMarketPrice, target date = today (overwriting previous post-market bar).
+        - In 'REGULAR': sets close = regularMarketPrice, target date = today (overwriting pre-market bar).
         """
         if not symbols:
             return pd.DataFrame()
 
-        from zoneinfo import ZoneInfo
-        from datetime import datetime
-
-        now_et = datetime.now(ZoneInfo("America/New_York"))
-        today_str = now_et.strftime("%Y-%m-%d")
-
-        if session_state is None:
+        if session_state is None or target_date is None:
             status = self.get_market_session_status()
-            session_state = status["state"]
-            if session_state in ("CLOSED", "PRE_OPEN_NO_DATA"):
-                print(f"[Market Status] {status['reason']}")
-                return pd.DataFrame()
+            if session_state is None:
+                session_state = status["state"]
+            if target_date is None:
+                target_date = status.get("target_date") or status.get("trading_date")
+            if base_date is None:
+                base_date = status.get("base_date")
 
-        mode_name = "Pre-Market" if session_state == "PRE_MARKET" else "Intraday Live"
-        print(f"Fetching {mode_name} real-time quotes for {len(symbols)} symbols as of {today_str} (ET)...")
+        mode_name = "Post-Market" if session_state == "POST_MARKET" else ("Pre-Market" if session_state == "PRE_MARKET" else "Intraday Live")
+        print(f"Fetching {mode_name} real-time quotes for {len(symbols)} symbols (Target Date: {target_date})...")
 
         records = []
-        batch_size = 250
+        batch_size = 500
         total = len(symbols)
+        batches = [symbols[i:i+batch_size] for i in range(0, total, batch_size)]
 
-        # Attempt high-speed batch fetching via Yahoo quote endpoint
-        use_fallback = False
-        try:
-            from yfinance.data import YfData
-            data_mgr = YfData()
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from yfinance.data import YfData
+        data_mgr = YfData()
 
-            for i in range(0, total, batch_size):
-                batch = symbols[i:i+batch_size]
-                done = min(i + batch_size, total)
-                pct = (done / total) * 100
-                sys.stdout.write(f"\r[{mode_name.upper()}] Batch {done}/{total} ({pct:.1f}%) | Last: {batch[-1]:<5}")
+        def fetch_batch_quotes(b):
+            params = {"symbols": ",".join(b), "formatted": "false"}
+            for attempt in range(2):
+                try:
+                    data = data_mgr.get_raw_json("https://query1.finance.yahoo.com/v7/finance/quote", params=params)
+                    if data and "quoteResponse" in data:
+                        return data["quoteResponse"].get("result", [])
+                except Exception:
+                    if attempt == 0:
+                        time.sleep(0.5)
+            return []
+
+        quotes = []
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_batch = {executor.submit(fetch_batch_quotes, b): b for b in batches}
+            done_count = 0
+            for future in as_completed(future_to_batch):
+                batch_res = future.result()
+                quotes.extend(batch_res)
+                done_count += len(future_to_batch[future])
+                pct = (min(done_count, total) / total) * 100
+                sys.stdout.write(f"\r[{mode_name.upper()}] Fetched {min(done_count, total)}/{total} ({pct:.1f}%) symbols...")
                 sys.stdout.flush()
 
-                params = {"symbols": ",".join(batch), "formatted": "false"}
-                data = data_mgr.get_raw_json("https://query1.finance.yahoo.com/v7/finance/quote", params=params)
-                quotes = data.get("quoteResponse", {}).get("result", []) if data else []
+        sys.stdout.write("\n")
+        sys.stdout.flush()
 
-                for q in quotes:
-                    sym = q.get("symbol")
-                    if not sym:
-                        continue
+        for q in quotes:
+            sym = q.get("symbol")
+            if not sym:
+                continue
 
-                    if session_state == "PRE_MARKET":
-                        pm_price = q.get("preMarketPrice")
-                        if pm_price and float(pm_price) > 0:
-                            p_val = float(pm_price)
-                            prev_c = float(q.get("regularMarketPreviousClose") or p_val)
-                            vol = int(q.get("preMarketVolume") or q.get("regularMarketVolume") or 0)
-                            records.append({
-                                "symbol": sym,
-                                "date": today_str,
-                                "open": p_val,
-                                "high": max(p_val, prev_c),
-                                "low": min(p_val, prev_c),
-                                "close": p_val,
-                                "volume": vol,
-                                "vol_50d_ma": 0
-                            })
-                    else:  # REGULAR
-                        reg_price = q.get("regularMarketPrice")
-                        if reg_price and float(reg_price) > 0:
-                            p_val = float(reg_price)
-                            o_val = float(q.get("regularMarketOpen") or p_val)
-                            h_val = float(q.get("regularMarketDayHigh") or max(p_val, o_val))
-                            l_val = float(q.get("regularMarketDayLow") or min(p_val, o_val))
-                            vol = int(q.get("regularMarketVolume") or 0)
-                            records.append({
-                                "symbol": sym,
-                                "date": today_str,
-                                "open": o_val,
-                                "high": h_val,
-                                "low": l_val,
-                                "close": p_val,
-                                "volume": vol,
-                                "vol_50d_ma": 0
-                            })
+            if session_state == "POST_MARKET":
+                post_price = q.get("postMarketPrice")
+                reg_price = q.get("regularMarketPrice")
+                prev_c = float(q.get("regularMarketPreviousClose") or reg_price or 0.0)
 
-            sys.stdout.write("\n")
-            sys.stdout.flush()
+                if post_price and float(post_price) > 0:
+                    p_val = float(post_price)
+                    vol = int(q.get("postMarketVolume") or 0)
+                elif reg_price and float(reg_price) > 0:
+                    p_val = float(reg_price)
+                    vol = int(q.get("regularMarketVolume") or 0)
+                else:
+                    continue
 
-        except Exception as e:
-            sys.stdout.write("\n")
-            print(f"Warning: Batch quote endpoint encountered an error: {e}. Falling back to multi-threaded lookup...")
-            use_fallback = True
+                if base_date and base_date != target_date and reg_price and float(reg_price) > 0:
+                    reg_p = float(reg_price)
+                    r_open = float(q.get("regularMarketOpen") or reg_p)
+                    r_high = float(q.get("regularMarketDayHigh") or max(reg_p, r_open))
+                    r_low = float(q.get("regularMarketDayLow") or min(reg_p, r_open))
+                    r_vol = int(q.get("regularMarketVolume") or 0)
+                    records.append({
+                        "symbol": sym,
+                        "date": base_date,
+                        "open": r_open,
+                        "high": r_high,
+                        "low": r_low,
+                        "close": reg_p,
+                        "volume": r_vol,
+                        "vol_50d_ma": 0
+                    })
 
-        # Fallback to ThreadPoolExecutor fast_info if batch failed or yielded 0 records
-        if use_fallback or (not records and total > 0):
-            records = []
-            from concurrent.futures import ThreadPoolExecutor, as_completed
+                records.append({
+                    "symbol": sym,
+                    "date": target_date,
+                    "open": p_val,
+                    "high": max(p_val, float(reg_price or p_val)),
+                    "low": min(p_val, float(reg_price or p_val)),
+                    "close": p_val,
+                    "volume": vol,
+                    "vol_50d_ma": 0
+                })
 
-            def fetch_single_fallback(sym: str):
-                try:
-                    t = yf.Ticker(sym)
-                    fi = getattr(t, "fast_info", {})
-                    if session_state == "PRE_MARKET":
-                        price = fi.get("preMarketPrice") or fi.get("lastPrice")
-                    else:
-                        price = fi.get("lastPrice") or fi.get("open")
-                    prev_close = fi.get("regularMarketPreviousClose") or price
-                    volume = fi.get("lastVolume") or 0
-
-                    if price and prev_close:
-                        p_val = float(price)
-                        prev_c = float(prev_close)
-                        return {
+            elif session_state == "PRE_MARKET":
+                pm_price = q.get("preMarketPrice")
+                if pm_price and float(pm_price) > 0:
+                    p_val = float(pm_price)
+                    prev_c = float(q.get("regularMarketPreviousClose") or p_val)
+                    vol = int(q.get("preMarketVolume") or q.get("regularMarketVolume") or 0)
+                    records.append({
+                        "symbol": sym,
+                        "date": target_date,
+                        "open": p_val,
+                        "high": max(p_val, prev_c),
+                        "low": min(p_val, prev_c),
+                        "close": p_val,
+                        "volume": vol,
+                        "vol_50d_ma": 0
+                    })
+                else:
+                    reg_price = q.get("regularMarketPrice")
+                    if reg_price and float(reg_price) > 0:
+                        p_val = float(reg_price)
+                        records.append({
                             "symbol": sym,
-                            "date": today_str,
+                            "date": target_date,
                             "open": p_val,
-                            "high": float(fi.get("dayHigh") or max(p_val, prev_c)),
-                            "low": float(fi.get("dayLow") or min(p_val, prev_c)),
+                            "high": p_val,
+                            "low": p_val,
                             "close": p_val,
-                            "volume": int(volume),
+                            "volume": 0,
                             "vol_50d_ma": 0
-                        }
-                except Exception:
-                    pass
-                return None
+                        })
 
-            with ThreadPoolExecutor(max_workers=25) as executor:
-                futures = {executor.submit(fetch_single_fallback, s): s for s in symbols}
-                for i, future in enumerate(as_completed(futures), 1):
-                    res = future.result()
-                    if res:
-                        records.append(res)
-                    if i % 500 == 0 or i == total:
-                        sys.stdout.write(f"\rFallback Fetch Progress: {i}/{total} symbols evaluated...")
-                        sys.stdout.flush()
-            sys.stdout.write("\n")
+            else:  # REGULAR
+                reg_price = q.get("regularMarketPrice")
+                if reg_price and float(reg_price) > 0:
+                    p_val = float(reg_price)
+                    o_val = float(q.get("regularMarketOpen") or p_val)
+                    h_val = float(q.get("regularMarketDayHigh") or max(p_val, o_val))
+                    l_val = float(q.get("regularMarketDayLow") or min(p_val, o_val))
+                    vol = int(q.get("regularMarketVolume") or 0)
+                    records.append({
+                        "symbol": sym,
+                        "date": target_date,
+                        "open": o_val,
+                        "high": h_val,
+                        "low": l_val,
+                        "close": p_val,
+                        "volume": vol,
+                        "vol_50d_ma": 0
+                    })
 
         if records:
             df = pd.DataFrame(records)
-            print(f"Successfully retrieved {len(df)} {mode_name.lower()} bar records for {today_str}.")
+            print(f"Successfully retrieved {len(df)} {mode_name.lower()} bar records (Target Date: {target_date}).")
             return df
         return pd.DataFrame()
+
+    def fetch_extended_or_intraday_bars(
+        self,
+        symbols: List[str],
+        session_state: str = None,
+        target_date: str = None,
+        base_date: str = None
+    ) -> pd.DataFrame:
+        """Alias for fetch_premarket_or_intraday_bars to reflect pre and post market support."""
+        return self.fetch_premarket_or_intraday_bars(
+            symbols, session_state=session_state, target_date=target_date, base_date=base_date
+        )
 
     def fetch_premarket_bars(self, symbols: List[str]) -> pd.DataFrame:
         """Maintains backwards-compatibility by delegating to fetch_premarket_or_intraday_bars."""
