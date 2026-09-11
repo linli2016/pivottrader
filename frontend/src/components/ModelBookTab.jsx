@@ -3,6 +3,13 @@ import CandlestickChart from './CandlestickChart';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
+const SETUP_CANONICAL_NAMES = {
+  power_play: 'Power Play',
+  breakout: 'QM Breakout',
+  episodic_pivot: 'Episodic Pivot',
+  vcp: 'VCP'
+};
+
 export default function ModelBookTab({
   onSelectStock = null,
   watchlists = [],
@@ -10,6 +17,7 @@ export default function ModelBookTab({
 }) {
   // Screening Parameters
   const [setupType, setSetupType] = useState('power_play');
+  const modelBookChartRef = useRef(null);
   const [targetGainPct, setTargetGainPct] = useState(20.0);
   const [customGain, setCustomGain] = useState('');
   const [forwardDays, setForwardDays] = useState(20);
@@ -979,6 +987,31 @@ export default function ModelBookTab({
                       🔍 Inspect
                     </button>
                   )}
+
+                  {/* Header Quick Screenshot Action Button */}
+                  <button
+                    onClick={() => modelBookChartRef.current?.saveScreenshot()}
+                    disabled={!selectedCandidate || loadingPrices || !stockPrices || stockPrices.length === 0}
+                    title={`Take chart screenshot and store in ./charts/${SETUP_CANONICAL_NAMES[setupType] || 'Power Play'}/${(selectedCandidate?.date || selectedCandidate?.screen_date || 'date')}_${selectedCandidate?.symbol || 'STOCK'}.png`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '28px',
+                      height: '28px',
+                      padding: 0,
+                      borderRadius: '4px',
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid var(--border-color)',
+                      color: 'var(--text-secondary)',
+                      cursor: (!selectedCandidate || loadingPrices || !stockPrices || stockPrices.length === 0) ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                      <circle cx="12" cy="13" r="4"></circle>
+                    </svg>
+                  </button>
                 </div>
               </div>
 
@@ -989,26 +1022,41 @@ export default function ModelBookTab({
               )}
 
               {/* Candlestick Chart */}
-              <div style={{ width: '100%', minHeight: '480px', position: 'relative' }}>
-                {loadingPrices ? (
-                  <div style={{ height: '480px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                    <span className="spin-icon" style={{ marginRight: '8px' }}>⟳</span> Loading price history for {selectedCandidate.symbol}...
-                  </div>
-                ) : stockPrices && stockPrices.length > 0 ? (
-                  <CandlestickChart
-                    data={stockPrices}
-                    height={480}
-                    asOfDate={selectedCandidate.date}
-                    symbol={selectedCandidate.symbol}
-                    setupName={`${setupType.replace('_', ' ').toUpperCase()} (+${selectedCandidate.peak_gain_pct}%)`}
-                    companyName={selectedCandidate.name}
-                    showScreenshotButton={true}
-                  />
-                ) : (
-                  <div style={{ height: '480px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                    No historical prices available for {selectedCandidate.symbol}.
+              <div style={{ width: '100%', height: '480px', minHeight: '480px', position: 'relative' }}>
+                {loadingPrices && (
+                  <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(22, 30, 47, 0.75)',
+                    backdropFilter: 'blur(3px)',
+                    zIndex: 20,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--text-muted)'
+                  }}>
+                    <span className="spin-icon" style={{ marginRight: '8px' }}>⟳</span> Loading price history for {selectedCandidate?.symbol}...
                   </div>
                 )}
+                {stockPrices && stockPrices.length > 0 ? (
+                  <CandlestickChart
+                    ref={modelBookChartRef}
+                    data={stockPrices}
+                    height={480}
+                    asOfDate={selectedCandidate?.date || selectedCandidate?.screen_date}
+                    symbol={selectedCandidate?.symbol}
+                    setupName={SETUP_CANONICAL_NAMES[setupType] || 'Power Play'}
+                    companyName={selectedCandidate?.name}
+                    showScreenshotButton={true}
+                  />
+                ) : !loadingPrices ? (
+                  <div style={{ height: '480px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                    No historical prices available for {selectedCandidate?.symbol}.
+                  </div>
+                ) : null}
               </div>
 
               {/* Setup Characteristics Footprint */}

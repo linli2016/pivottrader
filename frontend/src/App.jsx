@@ -93,7 +93,7 @@ function App() {
   const [minEpsGrowthFilter, setMinEpsGrowthFilter] = useState(20.0);
   const [minPriceFilter, setMinPriceFilter] = useState(5.00);
   const [minVolFilter, setMinVolFilter] = useState(100000);
-  const [minDollarVolFilter, setMinDollarVolFilter] = useState(10000000.0);
+  const [minDollarVolFilter, setMinDollarVolFilter] = useState(3000000.0);
   const [enforceStage2, setEnforceStage2] = useState(false);
   const [enablePowerPlay, setEnablePowerPlay] = useState(true);
   const [enableIpoBase, setEnableIpoBase] = useState(false);
@@ -172,7 +172,7 @@ function App() {
   // Power play inputs
   const [minPpRunupFilter, setMinPpRunupFilter] = useState(100.0);
   const [maxPpDrawdownFilter, setMaxPpDrawdownFilter] = useState(25.0);
-  const [minPpDaysSincePeakFilter, setMinPpDaysSincePeakFilter] = useState(10);
+  const [minPpDaysSincePeakFilter, setMinPpDaysSincePeakFilter] = useState(5);
   const [maxPpVolRatioFilter, setMaxPpVolRatioFilter] = useState(0.5);
 
   // IPO base inputs
@@ -244,7 +244,8 @@ function App() {
       setMinPriceFilter(data.min_price);
       setMinVolFilter(data.min_volume_sma_50);
       if (data.min_dollar_volume_50d !== undefined) {
-        setMinDollarVolFilter(data.min_dollar_volume_50d);
+        // If Power Play is active, maintain the $3.0M floor for emerging momentum setups
+        setMinDollarVolFilter((prev) => enablePowerPlay ? 3000000.0 : data.min_dollar_volume_50d);
       }
     } catch (e) {
       console.error("Error fetching config: ", e);

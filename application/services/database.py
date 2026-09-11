@@ -138,14 +138,22 @@ class DatabaseService:
                 where_clauses.append("db.vol_50d_ma >= ?")
                 params.append(float(min_vol))
 
-            min_dollar_vol = get_f("min_dollar_volume_50d", "minDollarVolFilter", default=get_f("min_dollar_vol", "minDollarVol"))
-            if min_dollar_vol is not None:
-                where_clauses.append("COALESCE(db.dollar_vol_50d_ma, db.close * db.vol_50d_ma) >= ?")
-                params.append(float(min_dollar_vol))
-
             enable_power_play = get_f("enable_power_play", "enablePowerPlay", False)
             enable_breakout = get_f("enable_qullamaggie_breakout", "enableQullamaggieBreakout", False)
             bypass_trend_filters = enable_power_play or enable_breakout
+
+            min_dollar_vol = get_f("min_dollar_volume_50d", "minDollarVolFilter", default=get_f("min_dollar_vol", "minDollarVol"))
+            enable_dollar_vol = get_f("enable_dollar_vol", "enableDollarVol", True)
+            if min_dollar_vol is not None and enable_dollar_vol:
+                if enable_power_play:
+                    # Power Play setups often emerge from dormant phases where prior 50d dollar volume was $2M-$5M.
+                    # Relax to min($3M, user_filter) so high tight flag runners like BIOA/CRML are not blocked.
+                    effective_dollar_vol = min(float(min_dollar_vol), 3000000.0)
+                    where_clauses.append("COALESCE(db.dollar_vol_50d_ma, db.close * db.vol_50d_ma) >= ?")
+                    params.append(effective_dollar_vol)
+                else:
+                    where_clauses.append("COALESCE(db.dollar_vol_50d_ma, db.close * db.vol_50d_ma) >= ?")
+                    params.append(float(min_dollar_vol))
 
             # Stage 2 Trend Template (Combo Criteria) - Bypassed for Power Play & Breakout
             if not bypass_trend_filters and get_f("enforce_stage2", "enforceStage2", False):
@@ -283,11 +291,7 @@ class DatabaseService:
                     params.append(float(min_ep_rel_vol))
 
             # Parabolic Climax Overlay
-            is_parabolic = (
-                get_f("enable_parabolic_climax", "enableParabolicClimax", False) or
-                get_f("enable_parabolic_short", "enableParabolicShort", False) or
-                get_f("enable_parabolic_long", "enableParabolicLong", False)
-            )
+            is_parabolic = bool(get_f("enable_parabolic_climax", "enableParabolicClimax", False))
             if is_parabolic:
                 enable_short = get_f("enable_parabolic_short", "enableParabolicShort", True)
                 enable_long = get_f("enable_parabolic_long", "enableParabolicLong", True)
@@ -635,6 +639,8 @@ class DatabaseService:
                             if enable_power_play:
                                 pp_res = detect_power_play(h_list, l_list, cl_list, dt_list)
                                 c["pp_is_setup"] = pp_res.get("pp_is_setup", False)
+                                c["pp_is_trigger"] = pp_res.get("pp_is_trigger", False)
+                                c["pp_pivot_price"] = pp_res.get("pp_pivot_price", 0.0)
                                 c["pp_runup_pct"] = pp_res.get("pp_runup_pct", c.get("pp_runup_pct", 0.0))
                                 c["pp_drawdown_pct"] = pp_res.get("pp_drawdown_pct", c.get("pp_drawdown_pct", 0.0))
                                 c["pp_days_since_peak"] = pp_res.get("pp_days_since_peak", c.get("pp_days_since_peak", 0))
@@ -667,7 +673,9 @@ class DatabaseService:
 
             # Ensure default boolean and metrics for all candidates
             for c in candidates:
-                c.setdefault("pp_is_setup", bool((c.get("pp_runup_pct") or 0) >= 100.0 and (c.get("pp_drawdown_pct") or 100) <= 25.0 and (c.get("pp_days_since_peak") or 0) >= 10))
+                c.setdefault("pp_is_setup", bool((c.get("pp_runup_pct") or 0) >= 100.0 and (c.get("pp_drawdown_pct") or 100) <= 25.0 and (c.get("pp_days_since_peak") or 0) >= 5))
+                c.setdefault("pp_is_trigger", False)
+                c.setdefault("pp_pivot_price", 0.0)
                 c.setdefault("pp_runup_pct", 0.0)
                 c.setdefault("pp_drawdown_pct", 0.0)
                 c.setdefault("pp_days_since_peak", 0)
@@ -690,7 +698,7 @@ class DatabaseService:
                     enable_pp_drawdown = get_f("enable_pp_drawdown", "enablePpDrawdown", True)
                     max_pp_drawdown = float(get_f("max_pp_drawdown", "maxPpDrawdownFilter", 25.0))
                     enable_pp_days = get_f("enable_pp_days_since_peak", "enablePpDaysSincePeak", True)
-                    min_pp_days = int(get_f("min_pp_days_since_peak", "minPpDaysSincePeakFilter", 10))
+                    min_pp_days = int(get_f("min_pp_days_since_peak", "minPpDaysSincePeakFilter", 5))
                     enable_pp_vol = get_f("enable_pp_vol_ratio", "enablePpVolRatio", False)
                     max_pp_vol = float(get_f("max_pp_vol_ratio", "maxPpVolRatioFilter", 0.5))
 
@@ -698,7 +706,7 @@ class DatabaseService:
                         c for c in candidates
                         if (not enable_pp_runup or (c.get("pp_runup_pct") is not None and c["pp_runup_pct"] >= min_pp_runup))
                         and (not enable_pp_drawdown or (c.get("pp_drawdown_pct") is not None and c["pp_drawdown_pct"] <= max_pp_drawdown))
-                        and (not enable_pp_days or (c.get("pp_days_since_peak") is not None and c["pp_days_since_peak"] >= min_pp_days))
+                        and (not enable_pp_days or c.get("pp_is_trigger") or (c.get("pp_days_since_peak") is not None and c["pp_days_since_peak"] >= min_pp_days))
                         and (not enable_pp_vol or not c.get("volume") or not c.get("vol_50d_ma") or ((c["volume"] / c["vol_50d_ma"]) <= max_pp_vol))
                     ]
 

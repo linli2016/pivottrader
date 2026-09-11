@@ -15,7 +15,7 @@ export default function CandidatesTab({
   setMinPriceFilter,
   minVolFilter,
   setMinVolFilter,
-  minDollarVolFilter = 10000000.0,
+  minDollarVolFilter = 3000000.0,
   setMinDollarVolFilter = () => { },
   minRsFilter,
   setMinRsFilter,
@@ -162,7 +162,7 @@ export default function CandidatesTab({
   syncStatus = {},
   _handleSelectStock,
 }) {
-  const isParabolicActive = enableParabolicClimax || enableParabolicShort || enableParabolicLong;
+  const isParabolicActive = !!enableParabolicClimax;
 
   const todayStr = new Date().toLocaleDateString('en-CA');
   const latestDbDate = tradingDates && tradingDates.length > 0 ? tradingDates[0] : todayStr;
@@ -432,12 +432,14 @@ export default function CandidatesTab({
                 if (next) {
                   setMinPriceFilter(5.00);
                   setMinVolFilter(100000);
+                  setMinDollarVolFilter(3000000.0);
                   setMinAdrFilter(4.0);
                   if (setEnableAdr) setEnableAdr(false);
                   setEnforceStage2(false);
                   setEnableRs(false);
                   if (setEnablePivotTightness) setEnablePivotTightness(false);
                 } else {
+                  setMinDollarVolFilter(10000000.0);
                   if (setEnableAdr) setEnableAdr(false);
                 }
               }}
@@ -595,8 +597,8 @@ export default function CandidatesTab({
               onClick={() => {
                 const next = !isParabolicActive;
                 if (setEnableParabolicClimax) setEnableParabolicClimax(next);
-                if (setEnableParabolicShort) setEnableParabolicShort(false);
-                if (setEnableParabolicLong) setEnableParabolicLong(false);
+                if (setEnableParabolicShort) setEnableParabolicShort(next);
+                if (setEnableParabolicLong) setEnableParabolicLong(next);
                 if (setEnableQullamaggieMomentum) setEnableQullamaggieMomentum(false);
                 setEnablePowerPlay(false);
                 setEnableQullamaggieBreakout(false);
@@ -918,16 +920,18 @@ export default function CandidatesTab({
 
               {/* Min Daily Dollar Volume (50d) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>
-                  💵 Min Daily Dollar Vol (${((minDollarVolFilter || 0) / 1000000).toFixed(1)}M):
-                </label>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>
+                    💵 Min Daily Dollar Vol (${((minDollarVolFilter || 0) / 1000000).toFixed(1)}M):
+                  </label>
+                </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <input
                     type="range"
                     min="500000"
                     max="50000000"
                     step="500000"
-                    value={minDollarVolFilter || 10000000}
+                    value={minDollarVolFilter || (enablePowerPlay ? 3000000 : 10000000)}
                     onChange={(e) => setMinDollarVolFilter(parseFloat(e.target.value) || 0)}
                     style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
                   />
@@ -2054,6 +2058,27 @@ export default function CandidatesTab({
                       title={`IPO Base: ${currentCandidate.ipo_days_count} trading days since IPO${currentCandidate.ipo_base_depth !== null && currentCandidate.ipo_base_depth !== undefined ? ` • Base Depth: ${Math.round(currentCandidate.ipo_base_depth)}%` : ''}`}
                     >
                       🌱 IPO {currentCandidate.ipo_days_count}d{currentCandidate.ipo_base_depth !== null && currentCandidate.ipo_base_depth !== undefined ? ` (${Math.round(currentCandidate.ipo_base_depth)}%)` : ''}
+                    </span>
+                  )}
+
+                  {/* Power Play Badge */}
+                  {currentCandidate?.pp_is_setup && (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        background: currentCandidate?.pp_is_trigger ? 'rgba(239, 68, 68, 0.22)' : 'rgba(245, 158, 11, 0.18)',
+                        color: currentCandidate?.pp_is_trigger ? '#f87171' : '#fbbf24',
+                        border: currentCandidate?.pp_is_trigger ? '1px solid rgba(239, 68, 68, 0.45)' : '1px solid rgba(245, 158, 11, 0.35)',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                      title={`Power Play (High Tight Flag): ${currentCandidate?.pp_runup_pct}% prior runup, ${currentCandidate?.pp_drawdown_pct}% base pullback over ${currentCandidate?.pp_days_since_peak}d${currentCandidate?.pp_is_trigger ? ' • BREAKOUT TRIGGER TODAY!' : ' • In Base'}`}
+                    >
+                      {currentCandidate?.pp_is_trigger ? '🚀 PP Breakout' : `🚀 PP Base ${currentCandidate?.pp_days_since_peak}d`} (+{Math.round(currentCandidate?.pp_runup_pct || 0)}%)
                     </span>
                   )}
                 </div>

@@ -109,7 +109,9 @@ export function filterCandidates(candidates, filters) {
         if (c.pp_drawdown_pct === null || c.pp_drawdown_pct === undefined || c.pp_drawdown_pct > maxPpDrawdownFilter) return false;
       }
       if (enablePpDaysSincePeak) {
-        if (c.pp_days_since_peak === null || c.pp_days_since_peak === undefined || c.pp_days_since_peak < minPpDaysSincePeakFilter) return false;
+        if (!c.pp_is_trigger) {
+          if (c.pp_days_since_peak === null || c.pp_days_since_peak === undefined || c.pp_days_since_peak < minPpDaysSincePeakFilter) return false;
+        }
       }
       if (enablePpVolRatio) {
         if (c.volume && c.vol_50d_ma) {

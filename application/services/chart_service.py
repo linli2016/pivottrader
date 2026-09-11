@@ -9,12 +9,48 @@ from typing import Dict, Any
 
 logger = logging.getLogger("pivottrader.chart_service")
 
+SETUP_ALIASES = {
+    "power_play": "Power Play",
+    "power play": "Power Play",
+    "pp": "Power Play",
+    "breakout": "QM Breakout",
+    "qm breakout": "QM Breakout",
+    "qullamaggie breakout": "QM Breakout",
+    "episodic_pivot": "Episodic Pivot",
+    "episodic pivot": "Episodic Pivot",
+    "ep": "Episodic Pivot",
+    "vcp": "VCP",
+    "momentum": "Momentum",
+    "parabolic": "Parabolic",
+    "ipo_base": "IPO Base",
+    "ipo base": "IPO Base",
+    "new_leaders": "New Leaders",
+    "new leaders": "New Leaders",
+}
+
 def sanitize_folder_name(name: str) -> str:
-    """Sanitize directory name allowing alphanumeric characters, spaces, hyphens, and underscores."""
+    """Sanitize directory name allowing alphanumeric characters, spaces, hyphens, and underscores,
+    and normalize setup names to canonical folder names."""
     if not name:
         return "General"
+
+    # Strip any trailing parentheses/brackets or stats (e.g. "POWER PLAY (+296.9%)", "QM Breakout [30%]")
+    stripped = re.sub(r'\s*[\(\[][^()\[\]]*[\)\]]\s*$', '', name).strip()
+    if not stripped:
+        stripped = name.strip()
+
+    # Normalize underscores and dashes for alias lookup
+    norm_key = stripped.lower().replace('-', ' ').replace('_', ' ').strip()
+    if norm_key in SETUP_ALIASES:
+        return SETUP_ALIASES[norm_key]
+
+    norm_key_underscore = stripped.lower().replace(' ', '_').replace('-', '_').strip()
+    if norm_key_underscore in SETUP_ALIASES:
+        return SETUP_ALIASES[norm_key_underscore]
+
     # Remove characters that are unsafe for directory names
-    clean = re.sub(r'[^\w\s-]', '', name).strip()
+    clean = re.sub(r'[^\w\s-]', '', stripped).strip()
+    clean = re.sub(r'\s+', ' ', clean)
     return clean or "General"
 
 def sanitize_filename_part(part: str) -> str:
