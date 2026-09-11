@@ -746,44 +746,24 @@ export default function CandidatesTab({
 
             <button
               className="btn btn-secondary btn-sm"
-              onClick={() => fetchCandidates && fetchCandidates(selectedDate)}
-              disabled={loadingCandidates}
-              title="Rescan and evaluate stock setups for current date"
-              style={{
-                padding: '5px 12px',
-                fontSize: '12px',
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              <span className={loadingCandidates ? "spin-icon" : ""}>🔄</span>
-              <span>{loadingCandidates ? "Loading" : "Rescan"}</span>
-            </button>
-
-            <button
-              className="btn btn-secondary btn-sm"
               onClick={handleTriggerLiveQuotesSync}
               disabled={syncStatus?.status === 'running' || loadingCandidates}
-              title="Fetch latest pre/post/intraday quotes and recalculate Episodic Pivots in real time (<3s)"
+              title={syncStatus?.status === 'running' ? "Refreshing Live Quotes..." : "Sync Live Market Quotes (<3s)"}
               style={{
-                padding: '5px 12px',
-                fontSize: '12px',
+                padding: '5px 10px',
+                fontSize: '14px',
                 fontWeight: 600,
                 display: 'flex',
                 alignItems: 'center',
-                gap: '5px',
-                whiteSpace: 'nowrap',
-                background: syncStatus?.status === 'running' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(15, 23, 42, 0.5)',
+                justifyContent: 'center',
+                background: syncStatus?.status === 'running' ? 'rgba(56, 189, 248, 0.25)' : 'rgba(15, 23, 42, 0.5)',
                 border: syncStatus?.status === 'running' ? '1px solid #38bdf8' : '1px solid rgba(56, 189, 248, 0.4)',
                 color: '#38bdf8',
-                cursor: syncStatus?.status === 'running' ? 'not-allowed' : 'pointer'
+                cursor: syncStatus?.status === 'running' ? 'not-allowed' : 'pointer',
+                lineHeight: 1
               }}
             >
               <span className={syncStatus?.status === 'running' ? "spin-icon" : ""}>⚡</span>
-              <span>{syncStatus?.status === 'running' ? "Refreshing..." : "Live Quotes"}</span>
             </button>
 
             <button
@@ -1933,6 +1913,26 @@ export default function CandidatesTab({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                 {/* Left: Badges Group */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  {(currentCandidate?.screen_date || (selectedDate && selectedDate !== 'latest')) && (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        background: 'rgba(56, 189, 248, 0.18)',
+                        color: '#38bdf8',
+                        border: '1px solid rgba(56, 189, 248, 0.35)',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                      title="Trigger / Screen Date for this setup candidate"
+                    >
+                      📅 Trigger: {currentCandidate?.screen_date || selectedDate}
+                    </span>
+                  )}
+
                   <span className="pill pill-success" style={{ fontSize: '11px', padding: '3px 8px' }}>
                     RS: {currentCandidate?.rs_rank ?? 'N/A'}
                   </span>

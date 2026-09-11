@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks, Response
 from pydantic import BaseModel, Field, AliasChoices, ConfigDict
 from typing import Optional
 
-from application.services import config_service, db_service, sync_service, chart_service
+from application.services import config_service, db_service, sync_service, chart_service, model_book_service
 
 logger = logging.getLogger("pivottrader.api")
 router = APIRouter()
@@ -44,6 +44,21 @@ class ChartScreenshotSchema(BaseModel):
     setup_name: str = "General"
     date: str = "latest"
     image_base64: str
+
+class ModelBookScanSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    setup_type: str = "power_play"
+    target_gain_pct: float = 20.0
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    forward_days: int = 20
+    max_drawdown_limit: Optional[float] = None
+    min_price: float = 5.0
+    min_volume_50d: int = 100000
+    min_runup_pct: Optional[float] = None
+    max_base_depth: Optional[float] = None
+    episode_window_days: int = 15
 
 class CandidateFilterSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -400,7 +415,29 @@ def save_chart_screenshot_endpoint(payload: ChartScreenshotSchema):
         return res
     except Exception as e:
         logger.error(f"Error saving chart screenshot: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to save chart screenshot: {str(e)}")
+# ----------------- Model Book / Winner Study Endpoints -----------------
+
+@router.post("/api/model-book/scan")
+def scan_model_book_endpoint(payload: ModelBookScanSchema):
+    """Scan historical setups and return winners with forward metrics."""
+    try:
+        data = model_book_service.scan_setups(
+            setup_type=payload.setup_type,
+            target_gain_pct=payload.target_gain_pct,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            forward_days=payload.forward_days,
+            max_drawdown_limit=payload.max_drawdown_limit,
+            min_price=payload.min_price,
+            min_volume_50d=payload.min_volume_50d,
+            min_runup_pct=payload.min_runup_pct,
+            max_base_depth=payload.max_base_depth,
+            episode_window_days=payload.episode_window_days
+        )
+        return data
+    except Exception as e:
+        logger.error(f"Error in scan_model_book_endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 

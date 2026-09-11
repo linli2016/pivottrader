@@ -9,6 +9,7 @@ import SectorCompareTab from './components/SectorCompareTab';
 import StockDetailDrawer from './components/StockDetailDrawer';
 import WatchlistsTab from './components/WatchlistsTab';
 import SetupsAndRulesTab from './components/SetupsAndRulesTab';
+import ModelBookTab from './components/ModelBookTab';
 
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
@@ -674,6 +675,16 @@ function App() {
             <div className="nav-section-title">Tools & Config</div>
             <ul className="nav-menu">
               <li
+                className={`nav-item ${activeTab === 'model-book' ? 'active' : ''}`}
+                onClick={() => setActiveTab('model-book')}
+                title="Model Book Study (Historical Winners)"
+              >
+                <div className="nav-item-content">
+                  <span className="nav-icon">📚</span>
+                  <span className="nav-label">Model Book Study</span>
+                </div>
+              </li>
+              <li
                 className={`nav-item ${activeTab === 'setups-rules' ? 'active' : ''}`}
                 onClick={() => setActiveTab('setups-rules')}
                 title="Setups & Rules Playbook"
@@ -939,6 +950,14 @@ function App() {
             loadingSql={loadingSql}
             sqlResult={sqlResult}
             handleRunSQL={handleRunSQL}
+          />
+        )}
+
+        {activeTab === 'model-book' && (
+          <ModelBookTab
+            onSelectStock={handleSelectStock}
+            watchlists={watchlists}
+            fetchWatchlists={fetchWatchlists}
           />
         )}
 

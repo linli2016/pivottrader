@@ -54,7 +54,7 @@ function getResponsiveVisibleBars(containerWidth) {
   return Math.max(147, Math.min(252, bars));
 }
 
-// Custom Primitive to draw a vertical dashed line for As-of Date
+// Custom Primitive to draw a vertical dashed line and label for As-of / Trigger Date
 class VerticalLinePrimitive {
   constructor(time, options = {}) {
     this._time = time;
@@ -69,6 +69,21 @@ class VerticalLinePrimitive {
       }),
       zOrder: () => 'top',
     };
+    this._timeAxisViews = [
+      {
+        coordinate: () => {
+          if (!this._chart || !this._time) return -1000;
+          const timeScale = this._chart.timeScale();
+          const coord = timeScale.timeToCoordinate(this._time);
+          return coord !== null ? coord : -1000;
+        },
+        text: () => (this._time ? `Trigger: ${this._time}` : ''),
+        textColor: () => '#0f172a',
+        backColor: () => '#38bdf8',
+        visible: () => Boolean(this._time),
+        tickVisible: () => Boolean(this._time),
+      }
+    ];
   }
 
   attached({ chart, series, requestUpdate }) {
@@ -94,24 +109,65 @@ class VerticalLinePrimitive {
     return [this._paneView];
   }
 
+  timeAxisViews() {
+    return this._time ? this._timeAxisViews : [];
+  }
+
   _draw(target) {
     if (!this._chart || !this._series || !this._time) return;
     const timeScale = this._chart.timeScale();
     const x = timeScale.timeToCoordinate(this._time);
     if (x === null || x < 0) return;
 
-    target.useBitmapCoordinateSpace(({ context: ctx, horizontalPixelRatio, bitmapSize }) => {
+    target.useBitmapCoordinateSpace(({ context: ctx, horizontalPixelRatio, verticalPixelRatio, bitmapSize }) => {
       const pixelX = Math.round(x * horizontalPixelRatio);
       if (pixelX < 0 || pixelX > bitmapSize.width) return;
 
+      const hRatio = horizontalPixelRatio || 1;
+      const vRatio = verticalPixelRatio || horizontalPixelRatio || 1;
+
       ctx.save();
+
+      // 1. Draw dashed vertical line across entire chart height
       ctx.beginPath();
-      ctx.setLineDash([3 * horizontalPixelRatio, 3 * horizontalPixelRatio]);
-      ctx.strokeStyle = this._options.color || 'rgba(56, 189, 248, 0.45)';
-      ctx.lineWidth = 1 * horizontalPixelRatio;
+      ctx.setLineDash([4 * vRatio, 4 * vRatio]);
+      ctx.strokeStyle = this._options.color || 'rgba(56, 189, 248, 0.65)';
+      ctx.lineWidth = Math.max(1, Math.round(1.5 * hRatio));
       ctx.moveTo(pixelX, 0);
       ctx.lineTo(pixelX, bitmapSize.height);
       ctx.stroke();
+
+      // 2. Draw Trigger Date pill badge at top of the line
+      const labelText = `Trigger: ${this._time}`;
+      const fontSize = Math.round(11 * vRatio);
+      ctx.font = `700 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+      const textMetrics = ctx.measureText(labelText);
+      const padX = 7 * hRatio;
+      const padY = 3.5 * vRatio;
+      const badgeW = textMetrics.width + (padX * 2);
+      const badgeH = fontSize + (padY * 2);
+      const badgeX = Math.max(6 * hRatio, Math.min(bitmapSize.width - badgeW - (6 * hRatio), pixelX - (badgeW / 2)));
+      const badgeY = 6 * vRatio;
+
+      // Draw badge background pill
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1 * hRatio;
+      ctx.beginPath();
+      if (typeof ctx.roundRect === 'function') {
+        ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 4 * hRatio);
+      } else {
+        ctx.rect(badgeX, badgeY, badgeW, badgeH);
+      }
+      ctx.fill();
+      ctx.stroke();
+
+      // Draw badge label text
+      ctx.fillStyle = '#38bdf8';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(labelText, badgeX + (badgeW / 2), badgeY + (badgeH / 2) + 0.5);
+
       ctx.restore();
     });
   }
@@ -370,9 +426,21 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     const changeSign = isUp ? '+' : '';
     const volFormatted = formatVolume(volume);
 
+    const barTimeStr = !bar?.time ? '' : (
+      typeof bar.time === 'string'
+        ? bar.time
+        : (bar.time?.year ? `${bar.time.year}-${String(bar.time.month).padStart(2, '0')}-${String(bar.time.day).padStart(2, '0')}` : String(bar.time))
+    );
+
+    const isTriggerBar = asOfDate && barTimeStr && (barTimeStr === asOfDate);
+    const dateBadgeHtml = isTriggerBar
+      ? `<span style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 700; border: 1px solid rgba(56, 189, 248, 0.4);">📅 Trigger: ${barTimeStr}</span>`
+      : (barTimeStr ? `<span style="color: #94a3b8; font-weight: 600;">(${barTimeStr})</span>` : '');
+
     legendRef.current.innerHTML = `
       <div style="display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.2;">
         ${symbolStr ? `<span style="font-weight: 700; color: #f8fafc; margin-right: 2px;">${symbolStr}</span>` : ''}
+        ${dateBadgeHtml}
         <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">O</span><span style="color: ${ohlcColor}; font-weight: 600;">${open.toFixed(2)}</span></span>
         <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">H</span><span style="color: ${ohlcColor}; font-weight: 600;">${high.toFixed(2)}</span></span>
         <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">L</span><span style="color: ${ohlcColor}; font-weight: 600;">${low.toFixed(2)}</span></span>
@@ -677,11 +745,23 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       sma150Series.setData(calculateSMA(data, 150));
       sma220Series.setData(calculateSMA(data, 220));
 
-      // Resolve and apply As-of Date vertical line
+      // Resolve and apply As-of Date vertical line & marker
       const asOfIdx = resolveAsOfIndex(data, asOfDate);
       const resolvedTime = asOfIdx !== -1 ? data[asOfIdx].time : null;
       if (markersPluginRef.current) {
-        markersPluginRef.current.setMarkers([]);
+        if (resolvedTime) {
+          markersPluginRef.current.setMarkers([
+            {
+              time: resolvedTime,
+              position: 'aboveBar',
+              color: '#38bdf8',
+              shape: 'arrowDown',
+              text: `Trigger ${resolvedTime}`,
+            },
+          ]);
+        } else {
+          markersPluginRef.current.setMarkers([]);
+        }
       }
       if (resolvedTime && verticalLineRef.current) {
         verticalLineRef.current.updateTime(resolvedTime);

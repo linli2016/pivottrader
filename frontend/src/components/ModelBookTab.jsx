@@ -1,0 +1,1051 @@
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import CandlestickChart from './CandlestickChart';
+
+const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
+
+export default function ModelBookTab({
+  onSelectStock = null,
+  watchlists = [],
+  fetchWatchlists = () => {}
+}) {
+  // Screening Parameters
+  const [setupType, setSetupType] = useState('power_play');
+  const [targetGainPct, setTargetGainPct] = useState(20.0);
+  const [customGain, setCustomGain] = useState('');
+  const [forwardDays, setForwardDays] = useState(20);
+  const [maxDrawdownLimit, setMaxDrawdownLimit] = useState('');
+  
+  // Date Range (default: past 1 year up to 30 days ago to allow forward bars)
+  const defaultDates = useMemo(() => {
+    const today = new Date();
+    const end = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const start = new Date(end.getTime() - 365 * 24 * 60 * 60 * 1000);
+    return {
+      start: start.toISOString().split('T')[0],
+      end: end.toISOString().split('T')[0]
+    };
+  }, []);
+
+  const [startDate, setStartDate] = useState(defaultDates.start);
+  const [endDate, setEndDate] = useState(defaultDates.end);
+  const [activeDatePreset, setActiveDatePreset] = useState('1y');
+
+  // Execution State
+  const [loading, setLoading] = useState(false);
+  const [scanResult, setScanResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  // Table & View Filters
+  const [viewMode, setViewMode] = useState('winners'); // 'winners' | 'all'
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedSector, setSelectedSector] = useState('ALL');
+  const [sortField, setSortField] = useState('peak_gain_pct');
+  const [sortDirection, setSortDirection] = useState('desc');
+
+  // Chart Viewer State
+  const [selectedCandidate, setSelectedCandidate] = useState(null);
+  const [stockPrices, setStockPrices] = useState([]);
+  const [loadingPrices, setLoadingPrices] = useState(false);
+
+  // Watchlist action state
+  const [selectedWatchlistId, setSelectedWatchlistId] = useState('');
+  const [watchlistSuccess, setWatchlistSuccess] = useState(null);
+
+  // Set default target watchlist
+  useEffect(() => {
+    if (watchlists && watchlists.length > 0 && !selectedWatchlistId) {
+      setSelectedWatchlistId(watchlists[0].id);
+    }
+  }, [watchlists, selectedWatchlistId]);
+
+  // Quick Date Presets
+  const applyDatePreset = (preset) => {
+    setActiveDatePreset(preset);
+    const today = new Date();
+    const end = new Date(today.getTime() - 25 * 24 * 60 * 60 * 1000); // 25 days ago buffer for forward window
+    let start = new Date(end);
+
+    if (preset === '6m') {
+      start.setMonth(start.getMonth() - 6);
+    } else if (preset === '1y') {
+      start.setFullYear(start.getFullYear() - 1);
+    } else if (preset === '2y') {
+      start.setFullYear(start.getFullYear() - 2);
+    } else if (preset === 'all') {
+      start = new Date('2021-08-27');
+    }
+
+    setStartDate(start.toISOString().split('T')[0]);
+    setEndDate(end.toISOString().split('T')[0]);
+  };
+
+  // Run Scan API
+  const handleRunScan = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const payload = {
+        setup_type: setupType,
+        target_gain_pct: parseFloat(targetGainPct) || 20.0,
+        start_date: startDate,
+        end_date: endDate,
+        forward_days: parseInt(forwardDays, 10) || 20,
+        max_drawdown_limit: maxDrawdownLimit !== '' ? parseFloat(maxDrawdownLimit) : null,
+        min_price: 5.0,
+        min_volume_50d: 100000,
+        episode_window_days: 15
+      };
+
+      const res = await fetch(`${API_BASE}/api/model-book/scan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'Scan failed');
+      }
+
+      const data = await res.json();
+      setScanResult(data);
+
+      // Automatically select the first winner or candidate for charting
+      const candidatesList = data.winners && data.winners.length > 0 ? data.winners : (data.all_candidates || []);
+      if (candidatesList.length > 0) {
+        handleSelectCandidate(candidatesList[0]);
+      } else {
+        setSelectedCandidate(null);
+        setStockPrices([]);
+      }
+    } catch (e) {
+      console.error('Error running model book scan:', e);
+      setError(e.message || 'Error executing study backtest');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Run initial scan on mount
+  useEffect(() => {
+    handleRunScan();
+  }, []);
+
+  // Fetch prices when candidate is selected
+  const handleSelectCandidate = async (candidate) => {
+    if (!candidate) return;
+    setSelectedCandidate(candidate);
+    setLoadingPrices(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/stocks/${candidate.symbol}/prices`);
+      if (res.ok) {
+        const priceData = await res.json();
+        setStockPrices(priceData);
+      }
+    } catch (e) {
+      console.error(`Error loading prices for ${candidate.symbol}:`, e);
+    } finally {
+      setLoadingPrices(false);
+    }
+  };
+
+  // Filter and sort candidates
+  const displayedCandidates = useMemo(() => {
+    if (!scanResult) return [];
+    let list = viewMode === 'winners' ? (scanResult.winners || []) : (scanResult.all_candidates || []);
+
+    if (searchTerm.trim() !== '') {
+      const term = searchTerm.toLowerCase();
+      list = list.filter(
+        c => c.symbol.toLowerCase().includes(term) || (c.name && c.name.toLowerCase().includes(term))
+      );
+    }
+
+    if (selectedSector !== 'ALL') {
+      list = list.filter(c => c.sector === selectedSector);
+    }
+
+    return [...list].sort((a, b) => {
+      let valA = a[sortField];
+      let valB = b[sortField];
+      if (valA === null || valA === undefined) valA = -999999;
+      if (valB === null || valB === undefined) valB = -999999;
+
+      if (typeof valA === 'string') {
+        return sortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      }
+      return sortDirection === 'asc' ? valA - valB : valB - valA;
+    });
+  }, [scanResult, viewMode, searchTerm, selectedSector, sortField, sortDirection]);
+
+  // Sector list for filter dropdown
+  const availableSectors = useMemo(() => {
+    if (!scanResult) return [];
+    const pool = scanResult.all_candidates || [];
+    const set = new Set(pool.map(c => c.sector).filter(Boolean));
+    return Array.from(set).sort();
+  }, [scanResult]);
+
+  // Flipping through candidates (Next / Previous)
+  const currentIndex = useMemo(() => {
+    if (!selectedCandidate || displayedCandidates.length === 0) return -1;
+    return displayedCandidates.findIndex(
+      c => c.symbol === selectedCandidate.symbol && c.date === selectedCandidate.date
+    );
+  }, [selectedCandidate, displayedCandidates]);
+
+  const handlePrevCandidate = () => {
+    if (currentIndex > 0) {
+      handleSelectCandidate(displayedCandidates[currentIndex - 1]);
+    }
+  };
+
+  const handleNextCandidate = () => {
+    if (currentIndex >= 0 && currentIndex < displayedCandidates.length - 1) {
+      handleSelectCandidate(displayedCandidates[currentIndex + 1]);
+    }
+  };
+
+  // Keyboard navigation (ArrowUp = prev, ArrowDown = next)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Don't trigger if user is typing in an input
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      if (e.key === 'ArrowDown' || e.key === 'j') {
+        e.preventDefault();
+        handleNextCandidate();
+      } else if (e.key === 'ArrowUp' || e.key === 'k') {
+        e.preventDefault();
+        handlePrevCandidate();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentIndex, displayedCandidates]);
+
+  // Handle Sort Toggle
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection('desc');
+    }
+  };
+
+  // Export to CSV
+  const handleExportCSV = () => {
+    if (displayedCandidates.length === 0) return;
+    const headers = [
+      'Symbol',
+      'Company Name',
+      'Sector',
+      'Trigger Date',
+      'Entry Price',
+      'Peak Price',
+      'Peak Gain %',
+      'Max Drawdown %',
+      'Days to Target',
+      'Prior Runup %',
+      'Base Depth %',
+      'RS Score'
+    ];
+
+    const rows = displayedCandidates.map(c => [
+      c.symbol,
+      `"${(c.name || '').replace(/"/g, '""')}"`,
+      `"${(c.sector || '').replace(/"/g, '""')}"`,
+      c.date,
+      c.entry_price,
+      c.peak_price || '',
+      c.peak_gain_pct,
+      c.max_drawdown_pct,
+      c.days_to_target ?? '',
+      c.prior_runup_pct,
+      c.base_depth_pct,
+      c.rs_score ?? ''
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `model_book_${setupType}_winners.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Add to Watchlist
+  const handleAddToWatchlist = async () => {
+    if (!selectedCandidate || !selectedWatchlistId) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: selectedCandidate.symbol })
+      });
+      if (res.ok) {
+        setWatchlistSuccess(`Added ${selectedCandidate.symbol} to watchlist!`);
+        fetchWatchlists();
+        setTimeout(() => setWatchlistSuccess(null), 3000);
+      }
+    } catch (e) {
+      console.error('Error adding to watchlist:', e);
+    }
+  };
+
+  const summary = scanResult?.summary;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', paddingBottom: '40px' }}>
+      {/* 1. Header Section */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <h1 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-primary)', letterSpacing: '-0.5px' }}>
+              📚 Model Book Study
+            </h1>
+            <span
+              style={{
+                backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                color: 'var(--accent-color)',
+                fontSize: '11px',
+                fontWeight: '600',
+                padding: '4px 10px',
+                borderRadius: '12px',
+                border: '1px solid rgba(16, 185, 129, 0.3)'
+              }}
+            >
+              Historical Winners Lab
+            </span>
+          </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', marginTop: '4px' }}>
+            Isolate true setup winners (≥ {targetGainPct}% run-ups) and study their pre-breakout characteristics. Volume expansion on Day 1 is skipped to capture early stealth breakouts.
+          </p>
+        </div>
+
+        {/* Global Action Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button
+            onClick={handleExportCSV}
+            disabled={displayedCandidates.length === 0}
+            style={{
+              padding: '8px 14px',
+              backgroundColor: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-secondary)',
+              borderRadius: 'var(--border-radius-md)',
+              fontSize: '13px',
+              cursor: displayedCandidates.length > 0 ? 'pointer' : 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <span>📥</span> Export CSV ({displayedCandidates.length})
+          </button>
+
+          <button
+            onClick={handleRunScan}
+            disabled={loading}
+            style={{
+              padding: '8px 18px',
+              backgroundColor: 'var(--accent-color)',
+              border: 'none',
+              color: '#080b11',
+              fontWeight: '600',
+              borderRadius: 'var(--border-radius-md)',
+              fontSize: '13px',
+              cursor: loading ? 'wait' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              boxShadow: '0 2px 10px rgba(16, 185, 129, 0.3)'
+            }}
+          >
+            {loading ? (
+              <>
+                <span className="spin-icon">⟳</span> Scanning History...
+              </>
+            ) : (
+              <>
+                <span>⚡</span> Run Study Scan
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* 2. Controls & Configuration Toolbar */}
+      <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '16px 20px' }}>
+        {/* Setup Selection Pills */}
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', minWidth: '85px' }}>
+            Setup Pattern:
+          </span>
+          {[
+            { id: 'power_play', label: '🔥 Power Play (HTF)', desc: '100%+ runup, <=25% base' },
+            { id: 'breakout', label: '🚀 Breakout (Qullamaggie)', desc: '30%+ runup, 10/20 EMA' },
+            { id: 'episodic_pivot', label: '⚡ Episodic Pivot (EP)', desc: '>=8% Gap, catalyst' },
+            { id: 'vcp', label: '🎯 VCP Contraction', desc: 'Minervini multi-tightening' }
+          ].map(s => (
+            <button
+              key={s.id}
+              onClick={() => setSetupType(s.id)}
+              style={{
+                padding: '7px 14px',
+                borderRadius: '20px',
+                border: setupType === s.id ? '1px solid var(--accent-color)' : '1px solid var(--border-color)',
+                backgroundColor: setupType === s.id ? 'var(--accent-light)' : 'rgba(255, 255, 255, 0.03)',
+                color: setupType === s.id ? 'var(--accent-color)' : 'var(--text-secondary)',
+                fontSize: '12.5px',
+                fontWeight: setupType === s.id ? '600' : '400',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+              title={s.desc}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Target Gain & Horizon Row */}
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '20px', paddingTop: '8px', borderTop: '1px solid var(--border-color)' }}>
+          {/* Target Gain */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              Target Gain:
+            </span>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              {[15, 20, 30, 50, 100].map(pct => (
+                <button
+                  key={pct}
+                  onClick={() => {
+                    setTargetGainPct(pct);
+                    setCustomGain('');
+                  }}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    border: targetGainPct === pct && !customGain ? '1px solid #34d399' : '1px solid var(--border-color)',
+                    backgroundColor: targetGainPct === pct && !customGain ? 'rgba(52, 211, 153, 0.2)' : 'transparent',
+                    color: targetGainPct === pct && !customGain ? '#34d399' : 'var(--text-secondary)',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >
+                  +{pct}%
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '6px' }}>
+              <input
+                type="number"
+                placeholder="Custom"
+                value={customGain}
+                onChange={e => {
+                  setCustomGain(e.target.value);
+                  if (e.target.value) setTargetGainPct(parseFloat(e.target.value) || 20);
+                }}
+                style={{
+                  width: '65px',
+                  padding: '4px 8px',
+                  backgroundColor: 'rgba(0,0,0,0.3)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  color: 'var(--text-primary)',
+                  fontSize: '12px'
+                }}
+              />
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>%</span>
+            </div>
+          </div>
+
+          {/* Forward Window */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              Horizon:
+            </span>
+            <select
+              value={forwardDays}
+              onChange={e => setForwardDays(Number(e.target.value))}
+              style={{
+                padding: '4px 8px',
+                backgroundColor: 'rgba(0,0,0,0.3)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                fontSize: '12px',
+                cursor: 'pointer'
+              }}
+            >
+              <option value={10}>10 Trading Days (~2 Wks)</option>
+              <option value={20}>20 Trading Days (~1 Mo)</option>
+              <option value={40}>40 Trading Days (~2 Mo)</option>
+              <option value={60}>60 Trading Days (~1 Qtr)</option>
+            </select>
+          </div>
+
+          {/* Stop Loss / Drawdown limit */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              Max Drawdown (Stop):
+            </span>
+            <select
+              value={maxDrawdownLimit}
+              onChange={e => setMaxDrawdownLimit(e.target.value)}
+              style={{
+                padding: '4px 8px',
+                backgroundColor: 'rgba(0,0,0,0.3)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                fontSize: '12px',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="">Any (No Filter)</option>
+              <option value="-5.0">Max -5% Drawdown</option>
+              <option value="-8.0">Max -8% Drawdown</option>
+              <option value="-10.0">Max -10% Drawdown</option>
+              <option value="-15.0">Max -15% Drawdown</option>
+            </select>
+          </div>
+
+          {/* Date Range Presets & Pickers */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              Date Range:
+            </span>
+            <div style={{ display: 'flex', gap: '3px' }}>
+              {['6m', '1y', '2y', 'all'].map(p => (
+                <button
+                  key={p}
+                  onClick={() => applyDatePreset(p)}
+                  style={{
+                    padding: '3px 8px',
+                    borderRadius: '4px',
+                    border: activeDatePreset === p ? '1px solid var(--accent-color)' : '1px solid var(--border-color)',
+                    backgroundColor: activeDatePreset === p ? 'var(--accent-light)' : 'transparent',
+                    color: activeDatePreset === p ? 'var(--accent-color)' : 'var(--text-secondary)',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {p.toUpperCase()}
+                </button>
+              ))}
+            </div>
+
+            <input
+              type="date"
+              value={startDate}
+              onChange={e => {
+                setStartDate(e.target.value);
+                setActiveDatePreset('custom');
+              }}
+              style={{
+                padding: '3px 6px',
+                backgroundColor: 'rgba(0,0,0,0.3)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                color: 'var(--text-primary)',
+                fontSize: '11.5px'
+              }}
+            />
+            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>to</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={e => {
+                setEndDate(e.target.value);
+                setActiveDatePreset('custom');
+              }}
+              style={{
+                padding: '3px 6px',
+                backgroundColor: 'rgba(0,0,0,0.3)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                color: 'var(--text-primary)',
+                fontSize: '11.5px'
+              }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Error Message */}
+      {error && (
+        <div style={{ padding: '12px 16px', backgroundColor: 'rgba(244, 63, 94, 0.15)', border: '1px solid rgba(244, 63, 94, 0.3)', borderRadius: '8px', color: '#fda4af', fontSize: '13px' }}>
+          ⚠️ {error}
+        </div>
+      )}
+
+      {/* 3. Summary Statistics Cards */}
+      {summary && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
+          {/* Card 1: Win Rate */}
+          <div className="glass-card stat-card" style={{ padding: '14px 18px' }}>
+            <span className="stat-label">Win Rate (≥ +{summary.target_gain_pct}%)</span>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+              <span className="stat-value" style={{ color: summary.win_rate_pct >= 30 ? '#34d399' : '#f87171' }}>
+                {summary.win_rate_pct}%
+              </span>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                ({summary.total_winners}/{summary.total_setups})
+              </span>
+            </div>
+            <span className="stat-subtext" style={{ color: 'var(--text-muted)' }}>
+              Horizon: {summary.forward_days} trading days
+            </span>
+          </div>
+
+          {/* Card 2: Avg Winner Gain */}
+          <div className="glass-card stat-card" style={{ padding: '14px 18px' }}>
+            <span className="stat-label">Avg Winner MFE Gain</span>
+            <span className="stat-value" style={{ color: '#34d399' }}>
+              +{summary.avg_winner_gain_pct}%
+            </span>
+            <span className="stat-subtext" style={{ color: 'var(--text-muted)' }}>
+              Peak high reached within horizon
+            </span>
+          </div>
+
+          {/* Card 3: Median Days to Target */}
+          <div className="glass-card stat-card" style={{ padding: '14px 18px' }}>
+            <span className="stat-label">Median Days to Target</span>
+            <span className="stat-value" style={{ color: '#38bdf8' }}>
+              {summary.median_days_to_target || '-'} <span style={{ fontSize: '16px', fontWeight: '400' }}>days</span>
+            </span>
+            <span className="stat-subtext" style={{ color: 'var(--text-muted)' }}>
+              Avg drawdown: {summary.avg_drawdown_pct}%
+            </span>
+          </div>
+
+          {/* Card 4: Top Performer */}
+          <div className="glass-card stat-card" style={{ padding: '14px 18px' }}>
+            <span className="stat-label">Best Winner</span>
+            {summary.best_performer ? (
+              <>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                  <span className="stat-value" style={{ color: '#facc15' }}>
+                    {summary.best_performer.symbol}
+                  </span>
+                  <span style={{ fontSize: '16px', fontWeight: '700', color: '#34d399' }}>
+                    +{summary.best_performer.gain_pct}%
+                  </span>
+                </div>
+                <span className="stat-subtext" style={{ color: 'var(--text-muted)' }}>
+                  {summary.best_performer.date} • {summary.best_performer.sector || 'Equities'}
+                </span>
+              </>
+            ) : (
+              <span style={{ color: 'var(--text-muted)', fontSize: '14px', marginTop: '6px' }}>None</span>
+            )}
+          </div>
+
+          {/* Card 5: Winner Profile Characteristics */}
+          <div className="glass-card stat-card" style={{ padding: '14px 18px' }}>
+            <span className="stat-label">Winner Profile</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Prior Runup: <strong style={{ color: 'var(--text-primary)' }}>+{summary.avg_winner_runup_pct}%</strong>
+              </span>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Base Depth: <strong style={{ color: 'var(--text-primary)' }}>{summary.avg_winner_base_depth}%</strong>
+              </span>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                RS Score: <strong style={{ color: 'var(--text-primary)' }}>{summary.avg_winner_rs_score || '-'}</strong>
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Split-Screen Layout: Master Table (Left) + Interactive Model Book Chart (Right) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(420px, 46%) 1fr', gap: '18px', alignItems: 'start' }}>
+        {/* Left Column: Candidates & Winners Table */}
+        <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* Table Header Controls */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            {/* View Mode Pills: Winners vs All */}
+            <div style={{ display: 'flex', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '6px', padding: '2px' }}>
+              <button
+                onClick={() => setViewMode('winners')}
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  backgroundColor: viewMode === 'winners' ? 'var(--accent-color)' : 'transparent',
+                  color: viewMode === 'winners' ? '#080b11' : 'var(--text-secondary)',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                🏆 Winners Only ({scanResult?.winners?.length || 0})
+              </button>
+              <button
+                onClick={() => setViewMode('all')}
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  backgroundColor: viewMode === 'all' ? 'var(--accent-color)' : 'transparent',
+                  color: viewMode === 'all' ? '#080b11' : 'var(--text-secondary)',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                All Setups ({scanResult?.all_candidates?.length || 0})
+              </button>
+            </div>
+
+            {/* Sector filter */}
+            <select
+              value={selectedSector}
+              onChange={e => setSelectedSector(e.target.value)}
+              style={{
+                padding: '4px 8px',
+                backgroundColor: 'rgba(0,0,0,0.3)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                fontSize: '12px',
+                maxWidth: '150px'
+              }}
+            >
+              <option value="ALL">All Sectors</option>
+              {availableSectors.map(sec => (
+                <option key={sec} value={sec}>{sec}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Search bar */}
+          <div>
+            <input
+              type="text"
+              placeholder="Search ticker or company name..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '6px 12px',
+                backgroundColor: 'rgba(0,0,0,0.25)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                fontSize: '12.5px'
+              }}
+            />
+          </div>
+
+          {/* Table Container */}
+          <div style={{ overflowX: 'auto', maxHeight: '600px', overflowY: 'auto', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+            <table className="data-table compact-table" style={{ width: '100%', fontSize: '12px' }}>
+              <thead>
+                <tr>
+                  <th onClick={() => handleSort('symbol')} style={{ cursor: 'pointer' }}>
+                    Ticker {sortField === 'symbol' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+                  </th>
+                  <th onClick={() => handleSort('date')} style={{ cursor: 'pointer' }}>
+                    Trigger Date {sortField === 'date' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+                  </th>
+                  <th onClick={() => handleSort('entry_price')} style={{ cursor: 'pointer' }}>
+                    Entry
+                  </th>
+                  <th onClick={() => handleSort('peak_gain_pct')} style={{ cursor: 'pointer', color: '#34d399' }}>
+                    Peak Gain {sortField === 'peak_gain_pct' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+                  </th>
+                  <th onClick={() => handleSort('max_drawdown_pct')} style={{ cursor: 'pointer' }}>
+                    Max DD
+                  </th>
+                  <th onClick={() => handleSort('days_to_target')} style={{ cursor: 'pointer' }}>
+                    Days
+                  </th>
+                  <th onClick={() => handleSort('prior_runup_pct')} style={{ cursor: 'pointer' }}>
+                    Prior Move
+                  </th>
+                  <th onClick={() => handleSort('base_depth_pct')} style={{ cursor: 'pointer' }}>
+                    Depth
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayedCandidates.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                      {loading ? 'Analyzing historical bars...' : 'No setups found matching criteria.'}
+                    </td>
+                  </tr>
+                ) : (
+                  displayedCandidates.map(cand => {
+                    const isSelected = selectedCandidate && selectedCandidate.symbol === cand.symbol && selectedCandidate.date === cand.date;
+                    const isWinner = cand.hit_target;
+
+                    return (
+                      <tr
+                        key={`${cand.symbol}_${cand.date}`}
+                        onClick={() => handleSelectCandidate(cand)}
+                        style={{
+                          backgroundColor: isSelected ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
+                          borderLeft: isSelected ? '3px solid var(--accent-color)' : '3px solid transparent',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontWeight: '700', color: isWinner ? '#34d399' : 'var(--text-primary)' }}>
+                              {cand.symbol}
+                            </span>
+                            {isWinner && <span style={{ fontSize: '10px' }}>🏆</span>}
+                          </div>
+                        </td>
+                        <td style={{ color: 'var(--text-secondary)' }}>{cand.date}</td>
+                        <td>${cand.entry_price.toFixed(2)}</td>
+                        <td style={{ fontWeight: '700', color: cand.peak_gain_pct >= targetGainPct ? '#34d399' : 'var(--text-secondary)' }}>
+                          +{cand.peak_gain_pct}%
+                        </td>
+                        <td style={{ color: cand.max_drawdown_pct < -10 ? '#f87171' : 'var(--text-secondary)' }}>
+                          {cand.max_drawdown_pct}%
+                        </td>
+                        <td style={{ color: cand.days_to_target ? '#38bdf8' : 'var(--text-muted)' }}>
+                          {cand.days_to_target ? `${cand.days_to_target}d` : '-'}
+                        </td>
+                        <td style={{ color: 'var(--text-secondary)' }}>+{cand.prior_runup_pct}%</td>
+                        <td style={{ color: 'var(--text-secondary)' }}>{cand.base_depth_pct}%</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-muted)', paddingTop: '4px' }}>
+            <span>Showing {displayedCandidates.length} setups</span>
+            <span>Use ↑ / ↓ arrow keys to flip charts</span>
+          </div>
+        </div>
+
+        {/* Right Column: Model Book Chart Reviewer */}
+        <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {selectedCandidate ? (
+            <>
+              {/* Active Winner Banner */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', paddingBottom: '10px', borderBottom: '1px solid var(--border-color)' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <h2 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                      {selectedCandidate.symbol}
+                    </h2>
+                    <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                      {selectedCandidate.name}
+                    </span>
+                    <span
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: '10px',
+                        fontSize: '11px',
+                        backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                        color: '#38bdf8'
+                      }}
+                    >
+                      {selectedCandidate.sector}
+                    </span>
+                    {selectedCandidate.date && (
+                      <span
+                        className="pill"
+                        style={{
+                          fontSize: '11px',
+                          padding: '3px 8px',
+                          background: 'rgba(56, 189, 248, 0.18)',
+                          color: '#38bdf8',
+                          border: '1px solid rgba(56, 189, 248, 0.35)',
+                          fontWeight: 700,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                        title="Trigger / Screen Date for this setup candidate"
+                      >
+                        📅 Trigger: {selectedCandidate.date}
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '6px', fontSize: '12.5px' }}>
+                    <span>
+                      Trigger Date: <strong style={{ color: '#38bdf8' }}>{selectedCandidate.date}</strong>
+                    </span>
+                    <span>
+                      Entry Price: <strong>${selectedCandidate.entry_price.toFixed(2)}</strong>
+                    </span>
+                    <span>
+                      Peak: <strong style={{ color: '#34d399' }}>${selectedCandidate.peak_price?.toFixed(2) || '-'} (+{selectedCandidate.peak_gain_pct}%)</strong>
+                    </span>
+                    <span>
+                      Max Pullback: <strong style={{ color: selectedCandidate.max_drawdown_pct < -8 ? '#f87171' : 'var(--text-secondary)' }}>{selectedCandidate.max_drawdown_pct}%</strong>
+                    </span>
+                    {selectedCandidate.days_to_target && (
+                      <span style={{ color: '#38bdf8', fontWeight: '600' }}>
+                        ⚡ Hit +{targetGainPct}% in {selectedCandidate.days_to_target} days
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Navigation and Actions */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {/* Previous / Next buttons */}
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button
+                      onClick={handlePrevCandidate}
+                      disabled={currentIndex <= 0}
+                      title="Previous Winner (↑ Arrow)"
+                      style={{
+                        padding: '6px 10px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '4px',
+                        color: currentIndex > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
+                        cursor: currentIndex > 0 ? 'pointer' : 'not-allowed',
+                        fontSize: '12px'
+                      }}
+                    >
+                      ◀ Prev
+                    </button>
+                    <button
+                      onClick={handleNextCandidate}
+                      disabled={currentIndex >= displayedCandidates.length - 1}
+                      title="Next Winner (↓ Arrow)"
+                      style={{
+                        padding: '6px 10px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '4px',
+                        color: currentIndex < displayedCandidates.length - 1 ? 'var(--text-primary)' : 'var(--text-muted)',
+                        cursor: currentIndex < displayedCandidates.length - 1 ? 'pointer' : 'not-allowed',
+                        fontSize: '12px'
+                      }}
+                    >
+                      Next ▶
+                    </button>
+                  </div>
+
+                  {/* Watchlist Add */}
+                  {watchlists && watchlists.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <button
+                        onClick={handleAddToWatchlist}
+                        style={{
+                          padding: '6px 10px',
+                          backgroundColor: 'rgba(250, 204, 21, 0.15)',
+                          border: '1px solid rgba(250, 204, 21, 0.3)',
+                          color: '#facc15',
+                          borderRadius: '4px',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                          cursor: 'pointer'
+                        }}
+                        title="Save to Watchlist"
+                      >
+                        ⭐️ Watchlist
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Open Inspector Drawer if available */}
+                  {onSelectStock && (
+                    <button
+                      onClick={() => onSelectStock({ symbol: selectedCandidate.symbol })}
+                      style={{
+                        padding: '6px 10px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid var(--border-color)',
+                        color: 'var(--text-secondary)',
+                        borderRadius: '4px',
+                        fontSize: '12px',
+                        cursor: 'pointer'
+                      }}
+                      title="Open full inspector details"
+                    >
+                      🔍 Inspect
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {watchlistSuccess && (
+                <div style={{ padding: '6px 12px', backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#34d399', borderRadius: '4px', fontSize: '12px' }}>
+                  ✓ {watchlistSuccess}
+                </div>
+              )}
+
+              {/* Candlestick Chart */}
+              <div style={{ width: '100%', minHeight: '480px', position: 'relative' }}>
+                {loadingPrices ? (
+                  <div style={{ height: '480px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                    <span className="spin-icon" style={{ marginRight: '8px' }}>⟳</span> Loading price history for {selectedCandidate.symbol}...
+                  </div>
+                ) : stockPrices && stockPrices.length > 0 ? (
+                  <CandlestickChart
+                    data={stockPrices}
+                    height={480}
+                    asOfDate={selectedCandidate.date}
+                    symbol={selectedCandidate.symbol}
+                    setupName={`${setupType.replace('_', ' ').toUpperCase()} (+${selectedCandidate.peak_gain_pct}%)`}
+                    companyName={selectedCandidate.name}
+                    showScreenshotButton={true}
+                  />
+                ) : (
+                  <div style={{ height: '480px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                    No historical prices available for {selectedCandidate.symbol}.
+                  </div>
+                )}
+              </div>
+
+              {/* Setup Characteristics Footprint */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', padding: '10px 14px', backgroundColor: 'rgba(0, 0, 0, 0.25)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Prior Runup</span>
+                  <span style={{ fontSize: '13px', fontWeight: '700', color: '#34d399' }}>+{selectedCandidate.prior_runup_pct}%</span>
+                </div>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Base Depth</span>
+                  <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>{selectedCandidate.base_depth_pct}%</span>
+                </div>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Pivot Price</span>
+                  <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>${selectedCandidate.pivot_price ? selectedCandidate.pivot_price.toFixed(2) : '-'}</span>
+                </div>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>RS Score</span>
+                  <span style={{ fontSize: '13px', fontWeight: '700', color: '#38bdf8' }}>{selectedCandidate.rs_score || '-'}</span>
+                </div>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>End of Period Return</span>
+                  <span style={{ fontSize: '13px', fontWeight: '700', color: selectedCandidate.end_return_pct >= 0 ? '#34d399' : '#f87171' }}>
+                    {selectedCandidate.end_return_pct >= 0 ? `+${selectedCandidate.end_return_pct}%` : `${selectedCandidate.end_return_pct}%`}
+                  </span>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div style={{ height: '520px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', gap: '10px' }}>
+              <span style={{ fontSize: '40px' }}>📖</span>
+              <p style={{ fontSize: '14px' }}>Select a winner candidate from the table to load its chart and study setup characteristics.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
