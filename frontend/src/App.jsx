@@ -88,102 +88,10 @@ function App() {
   const [sqlResult, setSqlResult] = useState(null);
   const [loadingSql, setLoadingSql] = useState(false);
 
-  // Candidates filter configurations states
-  const [minRsFilter, setMinRsFilter] = useState(70);
-  const [minEpsGrowthFilter, setMinEpsGrowthFilter] = useState(20.0);
-  const [minPriceFilter, setMinPriceFilter] = useState(5.00);
-  const [minVolFilter, setMinVolFilter] = useState(100000);
-  const [minDollarVolFilter, setMinDollarVolFilter] = useState(3000000.0);
-  const [enforceStage2, setEnforceStage2] = useState(false);
-  const [enablePowerPlay, setEnablePowerPlay] = useState(true);
-  const [enableIpoBase, setEnableIpoBase] = useState(false);
-  const [enableVcpSetup, setEnableVcpSetup] = useState(false);
-  const [enableNewLeaders, setEnableNewLeaders] = useState(false);
-  const [enableQullamaggieBreakout, setEnableQullamaggieBreakout] = useState(false);
-  const [enableQullamaggieMomentum, setEnableQullamaggieMomentum] = useState(false);
-  const [qmSubview, setQmSubview] = useState('all'); // 'all' | '1m' | '3m' | '6m'
-  const [qmTopN, setQmTopN] = useState(75);
-  const [minAdrFilter, setMinAdrFilter] = useState(4.0);
-  const [enableAdr, setEnableAdr] = useState(false);
-  const [enableEpisodicPivot, setEnableEpisodicPivot] = useState(false);
-  const [enableParabolicClimax, setEnableParabolicClimax] = useState(false);
-  const [enableParabolicShort, setEnableParabolicShort] = useState(false);
-  const [enableParabolicLong, setEnableParabolicLong] = useState(false);
-
-  // Qullamaggie Breakout setup inputs
-  const [minBreakoutRunupFilter, setMinBreakoutRunupFilter] = useState(30.0);
-  const [enableBreakoutRunup, setEnableBreakoutRunup] = useState(true);
-  const [minBreakoutDaysFilter, setMinBreakoutDaysFilter] = useState(8);
-  const [maxBreakoutDaysFilter, setMaxBreakoutDaysFilter] = useState(45);
-  const [enableBreakoutDays, setEnableBreakoutDays] = useState(true);
-  const [maxBreakoutPivotDistFilter, setMaxBreakoutPivotDistFilter] = useState(5.0);
-  const [enableBreakoutPivotDist, setEnableBreakoutPivotDist] = useState(true);
-  const [min1mRetFilter, setMin1mRetFilter] = useState(20.0);
-  const [enable1mRet, setEnable1mRet] = useState(true);
-  const [enableEmaSurfing, setEnableEmaSurfing] = useState(false);
-
-  const [minEpGapFilter, setMinEpGapFilter] = useState(10.0);
-  const [enableEpGap, setEnableEpGap] = useState(true);
-  const [minEpRelVolFilter, setMinEpRelVolFilter] = useState(2.5);
-  const [enableEpRelVol, setEnableEpRelVol] = useState(true);
-  const [enableEpFlag, setEnableEpFlag] = useState(true);
-
-  const [minParabolicRunupFilter, setMinParabolicRunupFilter] = useState(40.0);
-  const [enableParabolicRunup, setEnableParabolicRunup] = useState(true);
-  const [minParabolicEmaDistFilter, setMinParabolicEmaDistFilter] = useState(18.0);
-  const [enableParabolicEmaDist, setEnableParabolicEmaDist] = useState(true);
-  const [minParabolicUpDaysFilter, setMinParabolicUpDaysFilter] = useState(3);
-  const [enableParabolicUpDays, setEnableParabolicUpDays] = useState(true);
-
-
-  // Optional filter checkbox states
-  const [enablePpRunup, setEnablePpRunup] = useState(true);
-  const [enablePpDrawdown, setEnablePpDrawdown] = useState(true);
-  const [enablePpDaysSincePeak, setEnablePpDaysSincePeak] = useState(true);
-  const [enablePpVolRatio, setEnablePpVolRatio] = useState(false);
-
-  const [enableIpoAge, setEnableIpoAge] = useState(true);
-  const [enableIpoDist, setEnableIpoDist] = useState(true);
-  const [enableIpoDepth, setEnableIpoDepth] = useState(true);
-
-  const [enableVcpEpsGrowth, setEnableVcpEpsGrowth] = useState(false);
-  const [enableVcpPattern, setEnableVcpPattern] = useState(true);
-
-  const [enableRs, setEnableRs] = useState(false);
-
-  const [enableRsNewHigh, setEnableRsNewHigh] = useState(false);
-
-  const [enableTi65, setEnableTi65] = useState(false);
-  const [minTi65Filter, setMinTi65Filter] = useState(1.05);
-
-  // Pivot Tightness (VDU) Filter
-  const [enablePivotTightness, setEnablePivotTightness] = useState(false);
-  const [maxPivotSpreadFilter, setMaxPivotSpreadFilter] = useState(8.0);
-  const [maxPivotClusteringFilter, setMaxPivotClusteringFilter] = useState(3.0);
-  const [maxPivotVolRatioFilter, setMaxPivotVolRatioFilter] = useState(0.8);
-
-  // New Leaders optional filter checkboxes
-  const [enable52wDist, setEnable52wDist] = useState(true);
-  const [enableSurgeOffLow, setEnableSurgeOffLow] = useState(true);
-  const [enableNewLeadersRs, setEnableNewLeadersRs] = useState(true);
-  const [enableNewLeaders52wHigh, setEnableNewLeaders52wHigh] = useState(false);
-  const [enableNewLeadersBase, setEnableNewLeadersBase] = useState(true);
-
-  // Power play inputs
-  const [minPpRunupFilter, setMinPpRunupFilter] = useState(100.0);
-  const [maxPpDrawdownFilter, setMaxPpDrawdownFilter] = useState(25.0);
-  const [minPpDaysSincePeakFilter, setMinPpDaysSincePeakFilter] = useState(5);
-  const [maxPpVolRatioFilter, setMaxPpVolRatioFilter] = useState(0.5);
-
-  // IPO base inputs
-  const [maxIpoAgeFilter, setMaxIpoAgeFilter] = useState(350);
-  const [maxIpoDistFilter, setMaxIpoDistFilter] = useState(25.0);
-  const [maxIpoDepthFilter, setMaxIpoDepthFilter] = useState(35.0);
-
-  // New Leaders inputs
-  const [max52wDistFilter, setMax52wDistFilter] = useState(25.0);
-  const [minSurgeOffLowFilter, setMinSurgeOffLowFilter] = useState(20.0);
-  const [minNewLeadersRsFilter, setMinNewLeadersRsFilter] = useState(80);
+  // Centralized setups configuration and filter states
+  const [setupsConfig, setSetupsConfig] = useState({ setups: [], filters: {} });
+  const [activeSetupKey, setActiveSetupKey] = useState('power_play');
+  const [activeFilters, setActiveFilters] = useState({});
 
   // Full inspector state
   const [inspectorSymbol, setInspectorSymbol] = useState('');
@@ -208,14 +116,56 @@ function App() {
     }
   };
 
+  // Fetch setups and filter definitions from centralized config
+  const fetchSetups = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/setups`);
+      if (res.ok) {
+        const data = await res.json();
+        setSetupsConfig(data);
+        const defaultSetup = (data.setups || []).find(s => s.id === 'power_play') || (data.setups || [])[0];
+        if (defaultSetup) {
+          setActiveSetupKey(defaultSetup.id);
+          setActiveFilters({ ...(defaultSetup.filters || {}) });
+        }
+        return data;
+      }
+    } catch (e) {
+      console.error("Error fetching setups configuration:", e);
+    }
+    return null;
+  };
+
+  const handleSelectSetup = (setupKey) => {
+    setActiveSetupKey(setupKey);
+    const setup = (setupsConfig.setups || []).find(s => s.id === setupKey);
+    if (setup) {
+      setActiveFilters({ ...(setup.filters || {}) });
+    }
+  };
+
+  const handleFilterChange = (filterKey, value) => {
+    setActiveFilters(prev => ({
+      ...prev,
+      [filterKey]: value
+    }));
+  };
+
+  const handleResetFilters = () => {
+    const setup = (setupsConfig.setups || []).find(s => s.id === activeSetupKey);
+    if (setup) {
+      setActiveFilters({ ...(setup.filters || {}) });
+    }
+  };
+
   // Fetch candidates from backend with server-side filtering
   const fetchCandidates = async (targetDt = selectedDate, currentFilters = null) => {
     setLoadingCandidates(true);
     try {
-      const filtersToSend = currentFilters !== null ? currentFilters : activeFiltersRef.current;
+      const filtersToSend = currentFilters !== null ? currentFilters : (activeFiltersRef.current || {});
       const payload = {
         date: targetDt && targetDt !== 'latest' ? targetDt : undefined,
-        ...filtersToSend
+        filters: filtersToSend
       };
       const res = await fetch(`${API_BASE}/api/candidates`, {
         method: 'POST',
@@ -239,14 +189,6 @@ function App() {
       const res = await fetch(`${API_BASE}/api/config`);
       const data = await res.json();
       setConfig(data);
-      setMinRsFilter(data.min_rs_percentile);
-      setMinEpsGrowthFilter(data.min_eps_growth_qoq);
-      setMinPriceFilter(data.min_price);
-      setMinVolFilter(data.min_volume_sma_50);
-      if (data.min_dollar_volume_50d !== undefined) {
-        // If Power Play is active, maintain the $3.0M floor for emerging momentum setups
-        setMinDollarVolFilter((prev) => enablePowerPlay ? 3000000.0 : data.min_dollar_volume_50d);
-      }
     } catch (e) {
       console.error("Error fetching config: ", e);
     }
@@ -270,6 +212,7 @@ function App() {
         setSelectedDate(dates[0]);
       }
     });
+    fetchSetups();
     fetchConfig();
     fetchSyncStatus();
   }, []);
@@ -431,90 +374,12 @@ function App() {
     }
   };
 
-  // Collect active filters for server-side screening
-  const activeFilters = {
-    minPriceFilter,
-    minVolFilter,
-    minDollarVolFilter,
-    minRsFilter,
-    minEpsGrowthFilter,
-    enforceStage2,
-    enablePowerPlay,
-    enableIpoBase,
-    enableVcpSetup,
-    enableNewLeaders,
-    enableQullamaggieBreakout,
-    enableQullamaggieMomentum,
-    qmSubview,
-    qmTopN,
-    minAdrFilter,
-    enableAdr,
-    enableEpisodicPivot,
-    enableParabolicClimax,
-    enableParabolicShort,
-    enableParabolicLong,
-    minPpRunupFilter,
-    maxPpDrawdownFilter,
-    minPpDaysSincePeakFilter,
-    maxPpVolRatioFilter,
-    maxIpoAgeFilter,
-    maxIpoDistFilter,
-    maxIpoDepthFilter,
-    max52wDistFilter,
-    minSurgeOffLowFilter,
-    minNewLeadersRsFilter,
-    minBreakoutRunupFilter,
-    enableBreakoutRunup,
-    minBreakoutDaysFilter,
-    maxBreakoutDaysFilter,
-    enableBreakoutDays,
-    maxBreakoutPivotDistFilter,
-    enableBreakoutPivotDist,
-    min1mRetFilter,
-    enable1mRet,
-    enableEmaSurfing,
-    minEpGapFilter,
-    enableEpGap,
-    minEpRelVolFilter,
-    enableEpRelVol,
-    enableEpFlag,
-    minParabolicRunupFilter,
-    enableParabolicRunup,
-    minParabolicEmaDistFilter,
-    enableParabolicEmaDist,
-    minParabolicUpDaysFilter,
-    enableParabolicUpDays,
-
-    // Optional checkbox states
-    enablePpRunup,
-    enablePpDrawdown,
-    enablePpDaysSincePeak,
-    enablePpVolRatio,
-    enableIpoAge,
-    enableIpoDist,
-    enableIpoDepth,
-    enableVcpEpsGrowth,
-    enableVcpPattern,
-    enableRs,
-    enableRsNewHigh,
-    enableTi65,
-    minTi65Filter,
-    enablePivotTightness,
-    maxPivotSpreadFilter,
-    maxPivotClusteringFilter,
-    maxPivotVolRatioFilter,
-    enable52wDist,
-    enableSurgeOffLow,
-    enableNewLeadersRs,
-    enableNewLeaders52wHigh,
-    enableNewLeadersBase,
-  };
-
   activeFiltersRef.current = activeFilters;
   const activeFiltersKey = JSON.stringify(activeFilters);
 
   // Debounced server-side candidate fetching when filters or selected date change
   useEffect(() => {
+    if (!activeFilters || Object.keys(activeFilters).length === 0) return;
     const handler = setTimeout(() => {
       fetchCandidates(selectedDate, activeFilters);
     }, 200);
@@ -777,154 +642,12 @@ function App() {
             tradingDates={tradingDates}
             selectedDate={selectedDate}
             setSelectedDate={setSelectedDate}
-            minPriceFilter={minPriceFilter}
-            setMinPriceFilter={setMinPriceFilter}
-            minVolFilter={minVolFilter}
-            setMinVolFilter={setMinVolFilter}
-            minDollarVolFilter={minDollarVolFilter}
-            setMinDollarVolFilter={setMinDollarVolFilter}
-            minRsFilter={minRsFilter}
-            setMinRsFilter={setMinRsFilter}
-            minEpsGrowthFilter={minEpsGrowthFilter}
-            setMinEpsGrowthFilter={setMinEpsGrowthFilter}
-            enforceStage2={enforceStage2}
-            setEnforceStage2={setEnforceStage2}
-            enablePowerPlay={enablePowerPlay}
-            setEnablePowerPlay={setEnablePowerPlay}
-            enableIpoBase={enableIpoBase}
-            setEnableIpoBase={setEnableIpoBase}
-            enableVcpSetup={enableVcpSetup}
-            setEnableVcpSetup={setEnableVcpSetup}
-            enableNewLeaders={enableNewLeaders}
-            setEnableNewLeaders={setEnableNewLeaders}
-            enableQullamaggieBreakout={enableQullamaggieBreakout}
-            setEnableQullamaggieBreakout={setEnableQullamaggieBreakout}
-            enableQullamaggieMomentum={enableQullamaggieMomentum}
-            setEnableQullamaggieMomentum={setEnableQullamaggieMomentum}
-            qmSubview={qmSubview}
-            setQmSubview={setQmSubview}
-            qmTopN={qmTopN}
-            setQmTopN={setQmTopN}
-            minAdrFilter={minAdrFilter}
-            setMinAdrFilter={setMinAdrFilter}
-            enableAdr={enableAdr}
-            setEnableAdr={setEnableAdr}
-            enableEpisodicPivot={enableEpisodicPivot}
-            setEnableEpisodicPivot={setEnableEpisodicPivot}
-            enableParabolicClimax={enableParabolicClimax}
-            setEnableParabolicClimax={setEnableParabolicClimax}
-            enableParabolicShort={enableParabolicShort}
-            setEnableParabolicShort={setEnableParabolicShort}
-            enableParabolicLong={enableParabolicLong}
-            setEnableParabolicLong={setEnableParabolicLong}
-            minBreakoutRunupFilter={minBreakoutRunupFilter}
-            setMinBreakoutRunupFilter={setMinBreakoutRunupFilter}
-            enableBreakoutRunup={enableBreakoutRunup}
-            setEnableBreakoutRunup={setEnableBreakoutRunup}
-            minBreakoutDaysFilter={minBreakoutDaysFilter}
-            setMinBreakoutDaysFilter={setMinBreakoutDaysFilter}
-            maxBreakoutDaysFilter={maxBreakoutDaysFilter}
-            setMaxBreakoutDaysFilter={setMaxBreakoutDaysFilter}
-            enableBreakoutDays={enableBreakoutDays}
-            setEnableBreakoutDays={setEnableBreakoutDays}
-            maxBreakoutPivotDistFilter={maxBreakoutPivotDistFilter}
-            setMaxBreakoutPivotDistFilter={setMaxBreakoutPivotDistFilter}
-            enableBreakoutPivotDist={enableBreakoutPivotDist}
-            setEnableBreakoutPivotDist={setEnableBreakoutPivotDist}
-            min1mRetFilter={min1mRetFilter}
-            setMin1mRetFilter={setMin1mRetFilter}
-            enable1mRet={enable1mRet}
-            setEnable1mRet={setEnable1mRet}
-            enableEmaSurfing={enableEmaSurfing}
-            setEnableEmaSurfing={setEnableEmaSurfing}
-            minEpGapFilter={minEpGapFilter}
-            setMinEpGapFilter={setMinEpGapFilter}
-            enableEpGap={enableEpGap}
-            setEnableEpGap={setEnableEpGap}
-            minEpRelVolFilter={minEpRelVolFilter}
-            setMinEpRelVolFilter={setMinEpRelVolFilter}
-            enableEpRelVol={enableEpRelVol}
-            setEnableEpRelVol={setEnableEpRelVol}
-            enableEpFlag={enableEpFlag}
-            setEnableEpFlag={setEnableEpFlag}
-            minParabolicRunupFilter={minParabolicRunupFilter}
-            setMinParabolicRunupFilter={setMinParabolicRunupFilter}
-            enableParabolicRunup={enableParabolicRunup}
-            setEnableParabolicRunup={setEnableParabolicRunup}
-            minParabolicEmaDistFilter={minParabolicEmaDistFilter}
-            setMinParabolicEmaDistFilter={setMinParabolicEmaDistFilter}
-            enableParabolicEmaDist={enableParabolicEmaDist}
-            setEnableParabolicEmaDist={setEnableParabolicEmaDist}
-            minParabolicUpDaysFilter={minParabolicUpDaysFilter}
-            setMinParabolicUpDaysFilter={setMinParabolicUpDaysFilter}
-            enableParabolicUpDays={enableParabolicUpDays}
-            setEnableParabolicUpDays={setEnableParabolicUpDays}
-
-            minPpRunupFilter={minPpRunupFilter}
-            setMinPpRunupFilter={setMinPpRunupFilter}
-            maxPpDrawdownFilter={maxPpDrawdownFilter}
-            setMaxPpDrawdownFilter={setMaxPpDrawdownFilter}
-            minPpDaysSincePeakFilter={minPpDaysSincePeakFilter}
-            setMinPpDaysSincePeakFilter={setMinPpDaysSincePeakFilter}
-            maxPpVolRatioFilter={maxPpVolRatioFilter}
-            setMaxPpVolRatioFilter={setMaxPpVolRatioFilter}
-            maxIpoAgeFilter={maxIpoAgeFilter}
-            setMaxIpoAgeFilter={setMaxIpoAgeFilter}
-            maxIpoDistFilter={maxIpoDistFilter}
-            setMaxIpoDistFilter={setMaxIpoDistFilter}
-            maxIpoDepthFilter={maxIpoDepthFilter}
-            setMaxIpoDepthFilter={setMaxIpoDepthFilter}
-            max52wDistFilter={max52wDistFilter}
-            setMax52wDistFilter={setMax52wDistFilter}
-            minSurgeOffLowFilter={minSurgeOffLowFilter}
-            setMinSurgeOffLowFilter={setMinSurgeOffLowFilter}
-            minNewLeadersRsFilter={minNewLeadersRsFilter}
-            setMinNewLeadersRsFilter={setMinNewLeadersRsFilter}
-            // Optional checkbox states & setters
-            enablePpRunup={enablePpRunup}
-            setEnablePpRunup={setEnablePpRunup}
-            enablePpDrawdown={enablePpDrawdown}
-            setEnablePpDrawdown={setEnablePpDrawdown}
-            enablePpDaysSincePeak={enablePpDaysSincePeak}
-            setEnablePpDaysSincePeak={setEnablePpDaysSincePeak}
-            enablePpVolRatio={enablePpVolRatio}
-            setEnablePpVolRatio={setEnablePpVolRatio}
-            enableIpoAge={enableIpoAge}
-            setEnableIpoAge={setEnableIpoAge}
-            enableIpoDist={enableIpoDist}
-            setEnableIpoDist={setEnableIpoDist}
-            enableIpoDepth={enableIpoDepth}
-            setEnableIpoDepth={setEnableIpoDepth}
-            enableVcpEpsGrowth={enableVcpEpsGrowth}
-            setEnableVcpEpsGrowth={setEnableVcpEpsGrowth}
-            enableVcpPattern={enableVcpPattern}
-            setEnableVcpPattern={setEnableVcpPattern}
-            enableRs={enableRs}
-            setEnableRs={setEnableRs}
-            enableRsNewHigh={enableRsNewHigh}
-            setEnableRsNewHigh={setEnableRsNewHigh}
-            enableTi65={enableTi65}
-            setEnableTi65={setEnableTi65}
-            minTi65Filter={minTi65Filter}
-            setMinTi65Filter={setMinTi65Filter}
-            enablePivotTightness={enablePivotTightness}
-            setEnablePivotTightness={setEnablePivotTightness}
-            maxPivotSpreadFilter={maxPivotSpreadFilter}
-            setMaxPivotSpreadFilter={setMaxPivotSpreadFilter}
-            maxPivotClusteringFilter={maxPivotClusteringFilter}
-            setMaxPivotClusteringFilter={setMaxPivotClusteringFilter}
-            maxPivotVolRatioFilter={maxPivotVolRatioFilter}
-            setMaxPivotVolRatioFilter={setMaxPivotVolRatioFilter}
-            enable52wDist={enable52wDist}
-            setEnable52wDist={setEnable52wDist}
-            enableSurgeOffLow={enableSurgeOffLow}
-            setEnableSurgeOffLow={setEnableSurgeOffLow}
-            enableNewLeadersRs={enableNewLeadersRs}
-            setEnableNewLeadersRs={setEnableNewLeadersRs}
-            enableNewLeaders52wHigh={enableNewLeaders52wHigh}
-            setEnableNewLeaders52wHigh={setEnableNewLeaders52wHigh}
-            enableNewLeadersBase={enableNewLeadersBase}
-            setEnableNewLeadersBase={setEnableNewLeadersBase}
+            setupsConfig={setupsConfig}
+            activeSetupKey={activeSetupKey}
+            onSelectSetup={handleSelectSetup}
+            activeFilters={activeFilters}
+            onFilterChange={handleFilterChange}
+            onResetFilters={handleResetFilters}
             handleTriggerLiveQuotesSync={handleTriggerLiveQuotesSync}
             syncStatus={syncStatus}
             handleSelectStock={handleSelectStock}
@@ -959,6 +682,7 @@ function App() {
             onSelectStock={handleSelectStock}
             watchlists={watchlists}
             fetchWatchlists={fetchWatchlists}
+            setupsConfig={setupsConfig}
           />
         )}
 

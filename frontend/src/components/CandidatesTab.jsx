@@ -1,6 +1,129 @@
 import React from 'react';
 import CandlestickChart from './CandlestickChart';
 
+function FilterControl({ filterKey, filterDef, value, onChange }) {
+  if (!filterDef) return null;
+
+  if (filterDef.type === 'boolean') {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', height: '100%', minHeight: '38px' }}>
+        <label
+          title={filterDef.description || ''}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '13px',
+            color: value ? '#f8fafc' : 'var(--text-secondary)',
+            fontWeight: '500',
+            cursor: 'pointer',
+            userSelect: 'none'
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={!!value}
+            onChange={(e) => onChange(e.target.checked)}
+            style={{ accentColor: 'var(--accent-color)', cursor: 'pointer', width: '16px', height: '16px' }}
+          />
+          {filterDef.name || filterKey}
+        </label>
+      </div>
+    );
+  }
+
+  if (filterDef.type === 'select') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }} title={filterDef.description || ''}>
+        <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>
+          {filterDef.name || filterKey}
+        </label>
+        <select
+          value={value !== undefined ? value : (filterDef.default || '')}
+          onChange={(e) => onChange(e.target.value)}
+          style={{
+            background: 'rgba(30, 41, 59, 0.8)',
+            color: '#f8fafc',
+            border: '1px solid var(--border-color)',
+            borderRadius: '6px',
+            padding: '6px 10px',
+            fontSize: '12px',
+            outline: 'none',
+            cursor: 'pointer'
+          }}
+        >
+          {(filterDef.options || []).map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
+  // Number type with range + numeric input
+  const numVal = Number(value !== undefined && value !== null ? value : (filterDef.default || 0));
+
+  const formatDisplay = () => {
+    if (filterDef.unit === '$' && numVal >= 1000000) return `$${(numVal / 1000000).toFixed(1)}M`;
+    if (filterDef.unit === '$') return `$${numVal.toFixed(2)}`;
+    if (filterDef.unit === 'shares' && numVal >= 1000) return `${(numVal / 1000).toFixed(0)}k shares`;
+    if (filterDef.unit === '%') return `${numVal}%`;
+    return `${numVal}${filterDef.unit ? ' ' + filterDef.unit : ''}`;
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }} title={filterDef.description || ''}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>
+          {filterDef.name || filterKey}:
+        </label>
+        <span style={{ fontSize: '12px', fontWeight: '600', color: '#38bdf8' }}>
+          {formatDisplay()}
+        </span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <input
+          type="range"
+          min={filterDef.min ?? 0}
+          max={filterDef.max ?? 100}
+          step={filterDef.step ?? 1}
+          value={numVal}
+          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+          style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
+        />
+        <input
+          type="number"
+          min={filterDef.min ?? 0}
+          max={filterDef.max ? filterDef.max * 10 : 1000000000}
+          step={filterDef.step ?? 1}
+          value={numVal}
+          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+          style={{
+            width: (filterDef.max && filterDef.max >= 10000) ? '80px' : '60px',
+            padding: '4px',
+            borderRadius: '4px',
+            border: '1px solid var(--border-color)',
+            background: 'var(--bg-primary)',
+            color: '#fff',
+            fontSize: '12px',
+            textAlign: 'center'
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+const SETUP_COLORS = {
+  power_play: '#38bdf8',
+  breakout: '#f59e0b',
+  episodic_pivot: '#ec4899',
+  momentum: '#a855f7',
+  parabolic: '#ef4444',
+  ipo_base: '#06b6d4',
+  vcp: '#10b981',
+};
+
 export default function CandidatesTab({
   watchlists = [],
   fetchWatchlists,
@@ -11,159 +134,16 @@ export default function CandidatesTab({
   tradingDates = [],
   selectedDate = 'latest',
   setSelectedDate = () => { },
-  minPriceFilter,
-  setMinPriceFilter,
-  minVolFilter,
-  setMinVolFilter,
-  minDollarVolFilter = 3000000.0,
-  setMinDollarVolFilter = () => { },
-  minRsFilter,
-  setMinRsFilter,
-  minEpsGrowthFilter,
-  setMinEpsGrowthFilter,
-  enforceStage2,
-  setEnforceStage2,
-  enablePowerPlay,
-  setEnablePowerPlay,
-  enableIpoBase,
-  setEnableIpoBase,
-  enableVcpSetup,
-  setEnableVcpSetup,
-  enableNewLeaders,
-  setEnableNewLeaders,
-  enableQullamaggieBreakout,
-  setEnableQullamaggieBreakout,
-  enableQullamaggieMomentum,
-  setEnableQullamaggieMomentum,
-  qmSubview = 'all',
-  setQmSubview = () => { },
-  qmTopN = 75,
-  setQmTopN = () => { },
-  minAdrFilter = 4.0,
-  setMinAdrFilter = () => { },
-  enableAdr = false,
-  setEnableAdr = () => { },
-  enableEpisodicPivot,
-  setEnableEpisodicPivot,
-  enableParabolicClimax,
-  setEnableParabolicClimax,
-  enableParabolicShort,
-  setEnableParabolicShort,
-  enableParabolicLong,
-  setEnableParabolicLong,
-  minBreakoutRunupFilter = 30.0,
-  setMinBreakoutRunupFilter = () => { },
-  enableBreakoutRunup = true,
-  setEnableBreakoutRunup = () => { },
-  minBreakoutDaysFilter = 8,
-  setMinBreakoutDaysFilter = () => { },
-  maxBreakoutDaysFilter = 45,
-  setMaxBreakoutDaysFilter = () => { },
-  enableBreakoutDays = true,
-  setEnableBreakoutDays = () => { },
-  maxBreakoutPivotDistFilter = 5.0,
-  setMaxBreakoutPivotDistFilter = () => { },
-  enableBreakoutPivotDist = true,
-  setEnableBreakoutPivotDist = () => { },
-  min1mRetFilter = 20.0,
-  setMin1mRetFilter = () => { },
-  enable1mRet = true,
-  setEnable1mRet = () => { },
-  enableEmaSurfing = false,
-  setEnableEmaSurfing = () => { },
-  minEpGapFilter,
-  setMinEpGapFilter,
-  enableEpGap,
-  setEnableEpGap,
-  minEpRelVolFilter,
-  setMinEpRelVolFilter,
-  enableEpRelVol,
-  setEnableEpRelVol,
-  enableEpFlag,
-  setEnableEpFlag,
-  minParabolicRunupFilter,
-  setMinParabolicRunupFilter,
-  enableParabolicRunup,
-  setEnableParabolicRunup,
-  minParabolicEmaDistFilter,
-  setMinParabolicEmaDistFilter,
-  enableParabolicEmaDist,
-  setEnableParabolicEmaDist,
-  minParabolicUpDaysFilter,
-  setMinParabolicUpDaysFilter,
-  enableParabolicUpDays,
-  setEnableParabolicUpDays,
-  minPpRunupFilter,
-  setMinPpRunupFilter,
-  maxPpDrawdownFilter,
-  setMaxPpDrawdownFilter,
-  minPpDaysSincePeakFilter,
-  setMinPpDaysSincePeakFilter,
-  maxPpVolRatioFilter,
-  setMaxPpVolRatioFilter,
-  maxIpoAgeFilter,
-  setMaxIpoAgeFilter,
-  maxIpoDistFilter,
-  setMaxIpoDistFilter,
-  maxIpoDepthFilter,
-  setMaxIpoDepthFilter,
-  max52wDistFilter,
-  setMax52wDistFilter,
-  minSurgeOffLowFilter,
-  setMinSurgeOffLowFilter,
-  minNewLeadersRsFilter,
-  setMinNewLeadersRsFilter,
-  // Optional checkbox states & setters
-  enablePpRunup,
-  setEnablePpRunup,
-  enablePpDrawdown,
-  setEnablePpDrawdown,
-  enablePpDaysSincePeak,
-  setEnablePpDaysSincePeak,
-  enablePpVolRatio,
-  setEnablePpVolRatio,
-  enableIpoAge,
-  setEnableIpoAge,
-  enableIpoDist,
-  setEnableIpoDist,
-  enableIpoDepth,
-  setEnableIpoDepth,
-  enableVcpEpsGrowth,
-  setEnableVcpEpsGrowth,
-  enableVcpPattern,
-  setEnableVcpPattern,
-  enableRs,
-  setEnableRs,
-  enableRsNewHigh,
-  setEnableRsNewHigh,
-  enableTi65,
-  setEnableTi65,
-  minTi65Filter,
-  setMinTi65Filter,
-  enablePivotTightness,
-  setEnablePivotTightness,
-  maxPivotSpreadFilter,
-  setMaxPivotSpreadFilter,
-  maxPivotClusteringFilter,
-  setMaxPivotClusteringFilter,
-  maxPivotVolRatioFilter,
-  setMaxPivotVolRatioFilter,
-  enable52wDist,
-  setEnable52wDist,
-  enableSurgeOffLow,
-  setEnableSurgeOffLow,
-  enableNewLeadersRs,
-  setEnableNewLeadersRs,
-  enableNewLeaders52wHigh,
-  setEnableNewLeaders52wHigh,
-  enableNewLeadersBase,
-  setEnableNewLeadersBase,
+  setupsConfig = { setups: [], filters: {} },
+  activeSetupKey = 'power_play',
+  onSelectSetup = () => { },
+  activeFilters = {},
+  onFilterChange = () => { },
+  onResetFilters = () => { },
   handleTriggerLiveQuotesSync = () => { },
   syncStatus = {},
-  _handleSelectStock,
+  handleSelectStock = () => { },
 }) {
-  const isParabolicActive = !!enableParabolicClimax;
-
   const todayStr = new Date().toLocaleDateString('en-CA');
   const latestDbDate = tradingDates && tradingDates.length > 0 ? tradingDates[0] : todayStr;
   const maxSelectableDate = (latestDbDate && latestDbDate > todayStr)
@@ -185,35 +165,20 @@ export default function CandidatesTab({
 
   const currentCandidate = filteredCandidates[browseIndex] || null;
 
-  const activeSetupName = React.useMemo(() => {
-    if (enablePowerPlay) return 'Power Play';
-    if (enableQullamaggieBreakout) return 'QM Breakout';
-    if (enableEpisodicPivot) return 'Episodic Pivot';
-    if (enableQullamaggieMomentum) return 'Momentum';
-    if (isParabolicActive) return 'Parabolic';
-    if (enableIpoBase) return 'IPO Base';
-    if (enableVcpSetup) return 'VCP';
-    if (enableNewLeaders) return 'New Leaders';
+  const currentSetup = React.useMemo(() => {
+    return (setupsConfig?.setups || []).find(s => s.id === activeSetupKey) || null;
+  }, [setupsConfig, activeSetupKey]);
 
+  const activeSetupName = React.useMemo(() => {
+    if (currentSetup?.name) return currentSetup.name;
     if (currentCandidate?.pp_is_setup) return 'Power Play';
     if (currentCandidate?.breakout_is_setup) return 'QM Breakout';
     if (currentCandidate?.ep_is_setup) return 'Episodic Pivot';
     if (currentCandidate?.parabolic_short_is_setup || currentCandidate?.parabolic_long_is_setup) return 'Parabolic';
     if (currentCandidate?.vcp_is_setup) return 'VCP';
     if (currentCandidate?.ipo_days_count !== undefined && currentCandidate?.ipo_days_count <= 350) return 'IPO Base';
-
     return 'General';
-  }, [
-    enablePowerPlay,
-    enableQullamaggieBreakout,
-    enableEpisodicPivot,
-    enableQullamaggieMomentum,
-    isParabolicActive,
-    enableIpoBase,
-    enableVcpSetup,
-    enableNewLeaders,
-    currentCandidate
-  ]);
+  }, [currentSetup, currentCandidate]);
 
   const browseEarningsBadge = React.useMemo(() => {
     const dt = currentCandidate?.next_earnings_date || browseDetail?.next_earnings_date || browseDetail?.metadata?.next_earnings_date;
@@ -410,316 +375,36 @@ export default function CandidatesTab({
     <div className="stock-screen-container">
       {/* Interactive Strategy & Filter controls */}
       <div className="glass-card" style={{ marginBottom: '10px', padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
-        {/* Top Integrated Header: Strategy Checkboxes + Right Action Controls */}
+        {/* Top Integrated Header: Strategy Buttons + Right Action Controls */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          {/* Strategy Selector (Left Side: Mutually Exclusive Setup Buttons) */}
+          {/* Strategy Selector (Left Side: Setup Buttons) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            {/* 1. Power Play Button */}
-            <button
-              type="button"
-              onClick={() => {
-                const next = !enablePowerPlay;
-                setEnablePowerPlay(next);
-                if (setEnableQullamaggieMomentum) setEnableQullamaggieMomentum(false);
-                setEnableQullamaggieBreakout(false);
-                setEnableEpisodicPivot(false);
-                if (setEnableParabolicClimax) setEnableParabolicClimax(false);
-                if (setEnableParabolicShort) setEnableParabolicShort(false);
-                if (setEnableParabolicLong) setEnableParabolicLong(false);
-                setEnableIpoBase(false);
-                setEnableVcpSetup(false);
-                setEnableNewLeaders(false);
-                if (next) {
-                  setMinPriceFilter(5.00);
-                  setMinVolFilter(100000);
-                  setMinDollarVolFilter(3000000.0);
-                  setMinAdrFilter(4.0);
-                  if (setEnableAdr) setEnableAdr(false);
-                  setEnforceStage2(false);
-                  setEnableRs(false);
-                  if (setEnablePivotTightness) setEnablePivotTightness(false);
-                } else {
-                  setMinDollarVolFilter(10000000.0);
-                  if (setEnableAdr) setEnableAdr(false);
-                }
-              }}
-              style={{
-                padding: '5px 12px',
-                fontSize: '12px',
-                fontWeight: '600',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                border: enablePowerPlay ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.12)',
-                background: enablePowerPlay ? 'rgba(56, 189, 248, 0.2)' : 'rgba(15, 23, 42, 0.5)',
-                color: enablePowerPlay ? '#38bdf8' : 'var(--text-secondary)',
-                boxShadow: enablePowerPlay ? '0 2px 8px rgba(56, 189, 248, 0.25)' : 'none'
-              }}
-            >
-              🚀 Power Play
-            </button>
-
-            {/* 2. Breakout Button */}
-            <button
-              type="button"
-              onClick={() => {
-                const next = !enableQullamaggieBreakout;
-                setEnableQullamaggieBreakout(next);
-                if (setEnableQullamaggieMomentum) setEnableQullamaggieMomentum(false);
-                setEnablePowerPlay(false);
-                setEnableEpisodicPivot(false);
-                if (setEnableParabolicClimax) setEnableParabolicClimax(false);
-                if (setEnableParabolicShort) setEnableParabolicShort(false);
-                if (setEnableParabolicLong) setEnableParabolicLong(false);
-                setEnableIpoBase(false);
-                setEnableVcpSetup(false);
-                setEnableNewLeaders(false);
-                if (next) {
-                  setMinPriceFilter(5.00);
-                  setMinVolFilter(100000);
-                  setMinAdrFilter(4.0);
-                  if (setEnableAdr) setEnableAdr(true);
-                  setEnforceStage2(false);
-                  setEnableRs(false);
-                  if (setEnablePivotTightness) setEnablePivotTightness(true);
-                } else {
-                  if (setEnableAdr) setEnableAdr(false);
-                  if (setEnablePivotTightness) setEnablePivotTightness(false);
-                }
-              }}
-              style={{
-                padding: '5px 12px',
-                fontSize: '12px',
-                fontWeight: '600',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                border: enableQullamaggieBreakout ? '1px solid #f59e0b' : '1px solid rgba(255, 255, 255, 0.12)',
-                background: enableQullamaggieBreakout ? 'rgba(245, 158, 11, 0.2)' : 'rgba(15, 23, 42, 0.5)',
-                color: enableQullamaggieBreakout ? '#f59e0b' : 'var(--text-secondary)',
-                boxShadow: enableQullamaggieBreakout ? '0 2px 8px rgba(245, 158, 11, 0.25)' : 'none'
-              }}
-            >
-              🎯 QM Breakout
-            </button>
-
-            {/* 3. Episodic Pivot Button */}
-            <button
-              type="button"
-              onClick={() => {
-                const next = !enableEpisodicPivot;
-                setEnableEpisodicPivot(next);
-                if (setEnableQullamaggieMomentum) setEnableQullamaggieMomentum(false);
-                setEnablePowerPlay(false);
-                setEnableQullamaggieBreakout(false);
-                if (setEnableParabolicClimax) setEnableParabolicClimax(false);
-                if (setEnableParabolicShort) setEnableParabolicShort(false);
-                if (setEnableParabolicLong) setEnableParabolicLong(false);
-                setEnableIpoBase(false);
-                setEnableVcpSetup(false);
-                setEnableNewLeaders(false);
-                if (next) {
-                  setMinPriceFilter(5.00);
-                  setMinVolFilter(100000);
-                  setMinAdrFilter(4.0);
-                  if (setEnableAdr) setEnableAdr(false);
-                  setEnforceStage2(false);
-                  setEnableRs(false);
-                  if (setEnablePivotTightness) setEnablePivotTightness(false);
-                  if (setEnableEpGap) setEnableEpGap(true);
-                  if (setEnableEpRelVol) setEnableEpRelVol(false);
-                } else {
-                  if (setEnableAdr) setEnableAdr(false);
-                }
-              }}
-              style={{
-                padding: '5px 12px',
-                fontSize: '12px',
-                fontWeight: '600',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                border: enableEpisodicPivot ? '1px solid #ec4899' : '1px solid rgba(255, 255, 255, 0.12)',
-                background: enableEpisodicPivot ? 'rgba(236, 72, 153, 0.2)' : 'rgba(15, 23, 42, 0.5)',
-                color: enableEpisodicPivot ? '#ec4899' : 'var(--text-secondary)',
-                boxShadow: enableEpisodicPivot ? '0 2px 8px rgba(236, 72, 153, 0.25)' : 'none'
-              }}
-            >
-              ⚡ Episodic Pivot
-            </button>
-
-            {/* 4. Momentum Button */}
-            <button
-              type="button"
-              onClick={() => {
-                const next = !enableQullamaggieMomentum;
-                setEnableQullamaggieMomentum(next);
-                setEnablePowerPlay(false);
-                setEnableQullamaggieBreakout(false);
-                setEnableEpisodicPivot(false);
-                if (setEnableParabolicClimax) setEnableParabolicClimax(false);
-                if (setEnableParabolicShort) setEnableParabolicShort(false);
-                if (setEnableParabolicLong) setEnableParabolicLong(false);
-                setEnableIpoBase(false);
-                setEnableVcpSetup(false);
-                setEnableNewLeaders(false);
-                if (next) {
-                  setMinPriceFilter(5.00);
-                  setMinVolFilter(100000);
-                  setMinAdrFilter(4.0);
-                  if (setEnableAdr) setEnableAdr(true);
-                  setEnforceStage2(false);
-                  setEnableRs(false);
-                  if (setEnablePivotTightness) setEnablePivotTightness(false);
-                } else {
-                  if (setEnableAdr) setEnableAdr(false);
-                }
-              }}
-              style={{
-                padding: '5px 12px',
-                fontSize: '12px',
-                fontWeight: '600',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                border: enableQullamaggieMomentum ? '1px solid #a855f7' : '1px solid rgba(255, 255, 255, 0.12)',
-                background: enableQullamaggieMomentum ? 'rgba(168, 85, 247, 0.2)' : 'rgba(15, 23, 42, 0.5)',
-                color: enableQullamaggieMomentum ? '#c084fc' : 'var(--text-secondary)',
-                boxShadow: enableQullamaggieMomentum ? '0 2px 8px rgba(168, 85, 247, 0.25)' : 'none'
-              }}
-            >
-              ⚡ Momentum
-            </button>
-
-            {/* 5. Parabolic Button */}
-            <button
-              type="button"
-              onClick={() => {
-                const next = !isParabolicActive;
-                if (setEnableParabolicClimax) setEnableParabolicClimax(next);
-                if (setEnableParabolicShort) setEnableParabolicShort(next);
-                if (setEnableParabolicLong) setEnableParabolicLong(next);
-                if (setEnableQullamaggieMomentum) setEnableQullamaggieMomentum(false);
-                setEnablePowerPlay(false);
-                setEnableQullamaggieBreakout(false);
-                setEnableEpisodicPivot(false);
-                setEnableIpoBase(false);
-                setEnableVcpSetup(false);
-                setEnableNewLeaders(false);
-                if (next) {
-                  setMinPriceFilter(5.00);
-                  setMinVolFilter(100000);
-                  setMinAdrFilter(4.0);
-                  if (setEnableAdr) setEnableAdr(false);
-                  setEnforceStage2(false);
-                  setEnableRs(false);
-                  if (setEnablePivotTightness) setEnablePivotTightness(false);
-                } else {
-                  if (setEnableAdr) setEnableAdr(false);
-                }
-              }}
-              style={{
-                padding: '5px 12px',
-                fontSize: '12px',
-                fontWeight: '600',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                border: isParabolicActive ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.12)',
-                background: isParabolicActive ? 'rgba(239, 68, 68, 0.2)' : 'rgba(15, 23, 42, 0.5)',
-                color: isParabolicActive ? '#ef4444' : 'var(--text-secondary)',
-                boxShadow: isParabolicActive ? '0 2px 8px rgba(239, 68, 68, 0.25)' : 'none'
-              }}
-            >
-              🌋 Parabolic
-            </button>
-
-            {/* 6. IPO Base Button */}
-            <button
-              type="button"
-              onClick={() => {
-                const next = !enableIpoBase;
-                setEnableIpoBase(next);
-                if (setEnableQullamaggieMomentum) setEnableQullamaggieMomentum(false);
-                setEnablePowerPlay(false);
-                setEnableQullamaggieBreakout(false);
-                setEnableEpisodicPivot(false);
-                if (setEnableParabolicClimax) setEnableParabolicClimax(false);
-                if (setEnableParabolicShort) setEnableParabolicShort(false);
-                if (setEnableParabolicLong) setEnableParabolicLong(false);
-                setEnableVcpSetup(false);
-                setEnableNewLeaders(false);
-                if (next) {
-                  setMinPriceFilter(5.00);
-                  setMinVolFilter(100000);
-                  setMinAdrFilter(4.0);
-                  if (setEnableAdr) setEnableAdr(false);
-                  setEnforceStage2(false);
-                  setEnableRs(false);
-                  if (setEnablePivotTightness) setEnablePivotTightness(false);
-                } else {
-                  if (setEnableAdr) setEnableAdr(false);
-                }
-              }}
-              style={{
-                padding: '5px 12px',
-                fontSize: '12px',
-                fontWeight: '600',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                border: enableIpoBase ? '1px solid #06b6d4' : '1px solid rgba(255, 255, 255, 0.12)',
-                background: enableIpoBase ? 'rgba(6, 182, 212, 0.2)' : 'rgba(15, 23, 42, 0.5)',
-                color: enableIpoBase ? '#06b6d4' : 'var(--text-secondary)',
-                boxShadow: enableIpoBase ? '0 2px 8px rgba(6, 182, 212, 0.25)' : 'none'
-              }}
-            >
-              🌱 IPO Base
-            </button>
-
-            {/* 7. VCP Pattern Button */}
-            <button
-              type="button"
-              onClick={() => {
-                const next = !enableVcpSetup;
-                setEnableVcpSetup(next);
-                if (setEnableQullamaggieMomentum) setEnableQullamaggieMomentum(false);
-                setEnablePowerPlay(false);
-                setEnableQullamaggieBreakout(false);
-                setEnableEpisodicPivot(false);
-                if (setEnableParabolicClimax) setEnableParabolicClimax(false);
-                if (setEnableParabolicShort) setEnableParabolicShort(false);
-                if (setEnableParabolicLong) setEnableParabolicLong(false);
-                setEnableIpoBase(false);
-                setEnableNewLeaders(false);
-                if (next) {
-                  setMinPriceFilter(5.00);
-                  setMinVolFilter(100000);
-                  setMinAdrFilter(2.5);
-                  if (setEnableAdr) setEnableAdr(false);
-                  setEnforceStage2(true);
-                  setEnableRs(true);
-                  setMinRsFilter(70);
-                  if (setEnablePivotTightness) setEnablePivotTightness(true);
-                } else {
-                  if (setEnableAdr) setEnableAdr(false);
-                }
-              }}
-              style={{
-                padding: '5px 12px',
-                fontSize: '12px',
-                fontWeight: '600',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                border: enableVcpSetup ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.12)',
-                background: enableVcpSetup ? 'rgba(16, 185, 129, 0.2)' : 'rgba(15, 23, 42, 0.5)',
-                color: enableVcpSetup ? '#10b981' : 'var(--text-secondary)',
-                boxShadow: enableVcpSetup ? '0 2px 8px rgba(16, 185, 129, 0.25)' : 'none'
-              }}
-            >
-              🌀 VCP
-            </button>
+            {(setupsConfig?.setups || []).map((setup) => {
+              const isSelected = activeSetupKey === setup.id;
+              const color = SETUP_COLORS[setup.id] || '#38bdf8';
+              return (
+                <button
+                  key={setup.id}
+                  type="button"
+                  onClick={() => onSelectSetup(setup.id)}
+                  title={setup.description || ''}
+                  style={{
+                    padding: '5px 12px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    border: isSelected ? `1px solid ${color}` : '1px solid rgba(255, 255, 255, 0.12)',
+                    background: isSelected ? `${color}33` : 'rgba(15, 23, 42, 0.5)',
+                    color: isSelected ? color : 'var(--text-secondary)',
+                    boxShadow: isSelected ? `0 2px 8px ${color}40` : 'none'
+                  }}
+                >
+                  {setup.icon ? `${setup.icon} ` : ''}{setup.name}
+                </button>
+              );
+            })}
           </div>
 
           {/* Right Action Controls: Standalone Date Picker & Rules/Sliders Toggle */}
@@ -784,11 +469,12 @@ export default function CandidatesTab({
             >
               ⚙️ {showFiltersSection ? 'Filters ▲' : 'Filters ▼'}
             </button>
+
           </div>
         </div>
 
         {/* Momentum Sub-Bar (Subviews & Top N Selector) */}
-        {enableQullamaggieMomentum && showFiltersSection && (
+        {activeSetupKey === 'momentum' && showFiltersSection && (
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -806,25 +492,25 @@ export default function CandidatesTab({
                 🔍 Momentum View:
               </span>
               {[
-                { id: 'all', label: `🎯 All Combined (~${qmTopN} Each, Deduped)` },
-                { id: '1m', label: `⚡ 1-Month Gainers (Top ${qmTopN})` },
-                { id: '3m', label: `🚀 3-Month Gainers (Top ${qmTopN})` },
-                { id: '6m', label: `🌊 6-Month Gainers (Top ${qmTopN})` }
+                { id: 'all', label: `🎯 All Combined (~${activeFilters.qm_top_n || 75} Each, Deduped)` },
+                { id: '1m', label: `⚡ 1-Month Gainers (Top ${activeFilters.qm_top_n || 75})` },
+                { id: '3m', label: `🚀 3-Month Gainers (Top ${activeFilters.qm_top_n || 75})` },
+                { id: '6m', label: `🌊 6-Month Gainers (Top ${activeFilters.qm_top_n || 75})` }
               ].map(tab => (
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setQmSubview(tab.id)}
+                  onClick={() => onFilterChange('qm_subview', tab.id)}
                   style={{
                     padding: '4px 12px',
                     fontSize: '11.5px',
-                    fontWeight: qmSubview === tab.id ? '700' : '500',
+                    fontWeight: (activeFilters.qm_subview || 'all') === tab.id ? '700' : '500',
                     borderRadius: '6px',
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
-                    border: qmSubview === tab.id ? '1px solid #a855f7' : '1px solid rgba(255, 255, 255, 0.1)',
-                    background: qmSubview === tab.id ? 'rgba(168, 85, 247, 0.3)' : 'rgba(15, 23, 42, 0.4)',
-                    color: qmSubview === tab.id ? '#ffffff' : 'var(--text-secondary)'
+                    border: (activeFilters.qm_subview || 'all') === tab.id ? '1px solid #a855f7' : '1px solid rgba(255, 255, 255, 0.1)',
+                    background: (activeFilters.qm_subview || 'all') === tab.id ? 'rgba(168, 85, 247, 0.3)' : 'rgba(15, 23, 42, 0.4)',
+                    color: (activeFilters.qm_subview || 'all') === tab.id ? '#ffffff' : 'var(--text-secondary)'
                   }}
                 >
                   {tab.label}
@@ -839,16 +525,16 @@ export default function CandidatesTab({
                 <button
                   key={n}
                   type="button"
-                  onClick={() => setQmTopN(n)}
+                  onClick={() => onFilterChange('qm_top_n', n)}
                   style={{
                     padding: '3px 9px',
                     fontSize: '11px',
-                    fontWeight: qmTopN === n ? '700' : '500',
+                    fontWeight: (activeFilters.qm_top_n || 75) === n ? '700' : '500',
                     borderRadius: '4px',
                     cursor: 'pointer',
-                    border: qmTopN === n ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.1)',
-                    background: qmTopN === n ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
-                    color: qmTopN === n ? '#38bdf8' : 'var(--text-secondary)'
+                    border: (activeFilters.qm_top_n || 75) === n ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.1)',
+                    background: (activeFilters.qm_top_n || 75) === n ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
+                    color: (activeFilters.qm_top_n || 75) === n ? '#38bdf8' : 'var(--text-secondary)'
                   }}
                 >
                   {n}
@@ -861,939 +547,21 @@ export default function CandidatesTab({
         {/* Collapsible Section for Rules & Sliders */}
         {showFiltersSection && (
           <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '16px', borderTop: '1px solid var(--border-color)', paddingTop: '14px' }}>
-            {/* Dynamic Parameter Sliders / Inputs */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
-              {/* ========================================== */}
-              {/* 1. Stage 2 Baseline (Mandatory Inputs) */}
-              {/* ========================================== */}
-
-              {/* Min Price */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>
-                  📌 Min Stock Price (${minPriceFilter.toFixed(2)}):
-                </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="range"
-                    min="1"
-                    max="100"
-                    value={minPriceFilter}
-                    onChange={(e) => setMinPriceFilter(parseFloat(e.target.value) || 0)}
-                    style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
+              {(currentSetup?.visible_filters || Object.keys(setupsConfig?.filters || {})).map(fKey => {
+                if (activeSetupKey === 'momentum' && (fKey === 'qm_subview' || fKey === 'qm_top_n')) return null;
+                const fDef = setupsConfig?.filters?.[fKey];
+                if (!fDef) return null;
+                return (
+                  <FilterControl
+                    key={fKey}
+                    filterKey={fKey}
+                    filterDef={fDef}
+                    value={activeFilters[fKey]}
+                    onChange={(val) => onFilterChange(fKey, val)}
                   />
-                  <input
-                    type="number"
-                    min="0"
-                    max="1000"
-                    value={minPriceFilter}
-                    onChange={(e) => setMinPriceFilter(parseFloat(e.target.value) || 0)}
-                    style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                  />
-                </div>
-              </div>
-
-              {/* Min 50d Volume MA */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>
-                  📊 Min 50d Vol MA ({(minVolFilter / 1000).toFixed(0)}k):
-                </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="range"
-                    min="50000"
-                    max="2000000"
-                    step="50000"
-                    value={minVolFilter}
-                    onChange={(e) => setMinVolFilter(parseInt(e.target.value) || 0)}
-                    style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    max="10000000"
-                    value={minVolFilter}
-                    onChange={(e) => setMinVolFilter(parseInt(e.target.value) || 0)}
-                    style={{ width: '70px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                  />
-                </div>
-              </div>
-
-              {/* Min Daily Dollar Volume (50d) */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>
-                    💵 Min Daily Dollar Vol (${((minDollarVolFilter || 0) / 1000000).toFixed(1)}M):
-                  </label>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="range"
-                    min="500000"
-                    max="50000000"
-                    step="500000"
-                    value={minDollarVolFilter || (enablePowerPlay ? 3000000 : 10000000)}
-                    onChange={(e) => setMinDollarVolFilter(parseFloat(e.target.value) || 0)}
-                    style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    max="1000000000"
-                    step="500000"
-                    value={minDollarVolFilter || 0}
-                    onChange={(e) => setMinDollarVolFilter(parseFloat(e.target.value) || 0)}
-                    style={{ width: '80px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                  />
-                </div>
-              </div>
-
-              {/* ADR% (Average Daily Range 20d) (Volatility Filter) */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableAdr ? 1 : 0.5 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={enableAdr}
-                    onChange={(e) => setEnableAdr(e.target.checked)}
-                    style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                  />
-                  ⚡ Min ADR% (20d) ({minAdrFilter.toFixed(1)}%):
-                </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="range"
-                    min="1"
-                    max="15"
-                    step="0.1"
-                    value={minAdrFilter}
-                    disabled={!enableAdr}
-                    onChange={(e) => setMinAdrFilter(parseFloat(e.target.value) || 0)}
-                    style={{ flex: 1, cursor: enableAdr ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    max="30"
-                    step="0.1"
-                    value={minAdrFilter}
-                    disabled={!enableAdr}
-                    onChange={(e) => setMinAdrFilter(parseFloat(e.target.value) || 0)}
-                    style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                  />
-                </div>
-              </div>
-
-              {/* Global Trend & Strength Filters (Hidden for Power Play & Breakout Setups) */}
-              {!enablePowerPlay && !enableQullamaggieBreakout && (
-                <>
-                  {/* Min Relative Strength (RS Rank) */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableRs ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableRs}
-                        onChange={(e) => setEnableRs(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                      />
-                      🏆 Min RS Rank ({minRsFilter}):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="1"
-                        max="99"
-                        step="1"
-                        value={minRsFilter}
-                        disabled={!enableRs}
-                        onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 70)}
-                        style={{ flex: 1, cursor: enableRs ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                      />
-                      <input
-                        type="number"
-                        min="1"
-                        max="99"
-                        value={minRsFilter}
-                        disabled={!enableRs}
-                        onChange={(e) => setMinRsFilter(parseInt(e.target.value) || 70)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Stockbee Trend Intensity (TI65) Filter */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableTi65 ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableTi65}
-                        onChange={(e) => setEnableTi65(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                      />
-                      ⚡ Trend Intensity TI65 ({minTi65Filter ? minTi65Filter.toFixed(2) : '1.05'}):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="0.80"
-                        max="1.50"
-                        step="0.01"
-                        value={minTi65Filter}
-                        disabled={!enableTi65}
-                        onChange={(e) => setMinTi65Filter(parseFloat(e.target.value) || 1.05)}
-                        style={{ flex: 1, cursor: enableTi65 ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                      />
-                      <input
-                        type="number"
-                        min="0.50"
-                        max="2.00"
-                        step="0.01"
-                        value={minTi65Filter}
-                        disabled={!enableTi65}
-                        onChange={(e) => setMinTi65Filter(parseFloat(e.target.value) || 1.05)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* RS Ranking at New High (Global Filter) */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableRsNewHigh ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableRsNewHigh}
-                        onChange={(e) => setEnableRsNewHigh(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                      />
-                      RS Ranking at New High
-                    </label>
-                    <div style={{
-                      padding: '8px 12px',
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      fontSize: '13px',
-                      color: enableRsNewHigh ? 'var(--accent-success)' : 'var(--text-secondary)',
-                      fontWeight: '600',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      height: '38px',
-                      boxSizing: 'border-box'
-                    }}>
-                      {enableRsNewHigh ? '📈 RS Rank at 252-day High' : '⚪ New High Waived'}
-                    </div>
-                  </div>
-
-                  {/* Stage 2 Trend Template (Global Filter) */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enforceStage2 ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enforceStage2}
-                        onChange={(e) => setEnforceStage2(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                      />
-                      📈 Stage 2 Trend
-                    </label>
-                    <div style={{
-                      padding: '8px 12px',
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      fontSize: '13px',
-                      color: enforceStage2 ? 'var(--accent-success)' : 'var(--text-secondary)',
-                      fontWeight: '600',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      height: '38px',
-                      boxSizing: 'border-box'
-                    }}>
-                      {enforceStage2 ? '⚡ Close > 50 > 150 > 200 (SMA200 ↗ (1M), 52w Hi ≤25%, Lo ≥30%)' : '⚪ Stage 2 Trend Waived'}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Pivot Tightness & Volume Dry-Up (VDU) Filter (QM Breakout, Momentum & VCP) */}
-              {(enableQullamaggieBreakout || enableQullamaggieMomentum || enableVcpSetup) && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enablePivotTightness ? 1 : 0.5 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={enablePivotTightness}
-                      onChange={(e) => setEnablePivotTightness(e.target.checked)}
-                      style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                    />
-                    🎯 Pivot Tightness (3d):
-                  </label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {/* Metric 1: Max Price Spread (3d) */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} title="3-Day High-Low price spread / Close price (Price Tightness)">
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '95px' }}>Max Spread:</span>
-                      <input
-                        type="range"
-                        min="1.0"
-                        max="15.0"
-                        step="0.5"
-                        value={maxPivotSpreadFilter}
-                        disabled={!enablePivotTightness}
-                        onChange={(e) => setMaxPivotSpreadFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enablePivotTightness ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                      />
-                      <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', width: '42px', textAlign: 'right' }}>
-                        &le;{maxPivotSpreadFilter.toFixed(1)}%
-                      </span>
-                    </div>
-
-                    {/* Metric 2: Close Clustering (3d) */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} title="3-Day Close Clustering: (Highest Close - Lowest Close) / Close over last 3 days">
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '95px' }}>Close Clust:</span>
-                      <input
-                        type="range"
-                        min="0.5"
-                        max="10.0"
-                        step="0.1"
-                        value={maxPivotClusteringFilter}
-                        disabled={!enablePivotTightness}
-                        onChange={(e) => setMaxPivotClusteringFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enablePivotTightness ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                      />
-                      <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', width: '42px', textAlign: 'right' }}>
-                        &le;{maxPivotClusteringFilter.toFixed(1)}%
-                      </span>
-                    </div>
-
-                    {/* Metric 3: Volume Dry-Up (VDU) */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} title="Volume Dry-Up: Day Volume / 50-DMA Volume">
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '95px' }}>Vol Dry-Up:</span>
-                      <input
-                        type="range"
-                        min="0.10"
-                        max="1.50"
-                        step="0.05"
-                        value={maxPivotVolRatioFilter}
-                        disabled={!enablePivotTightness}
-                        onChange={(e) => setMaxPivotVolRatioFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enablePivotTightness ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                      />
-                      <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', width: '42px', textAlign: 'right' }}>
-                        &le;{maxPivotVolRatioFilter.toFixed(2)}x
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ========================================== */}
-              {/* 2. Power Play Sliders (Visible if selected) */}
-              {/* ========================================== */}
-              {enablePowerPlay && (
-                <>
-                  {/* Min Power Play Run-up */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enablePpRunup ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enablePpRunup}
-                        onChange={(e) => setEnablePpRunup(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                      />
-                      Min 8w Run-up ({minPpRunupFilter}%):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="50"
-                        max="200"
-                        step="5"
-                        value={minPpRunupFilter}
-                        disabled={!enablePpRunup}
-                        onChange={(e) => setMinPpRunupFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enablePpRunup ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                      />
-                      <input
-                        type="number"
-                        min="10"
-                        max="1000"
-                        value={minPpRunupFilter}
-                        disabled={!enablePpRunup}
-                        onChange={(e) => setMinPpRunupFilter(parseFloat(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Max Power Play Drawdown */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enablePpDrawdown ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enablePpDrawdown}
-                        onChange={(e) => setEnablePpDrawdown(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                      />
-                      Max Drawdown ({maxPpDrawdownFilter}%):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="10"
-                        max="40"
-                        step="1"
-                        value={maxPpDrawdownFilter}
-                        disabled={!enablePpDrawdown}
-                        onChange={(e) => setMaxPpDrawdownFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enablePpDrawdown ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                      />
-                      <input
-                        type="number"
-                        min="5"
-                        max="50"
-                        value={maxPpDrawdownFilter}
-                        disabled={!enablePpDrawdown}
-                        onChange={(e) => setMaxPpDrawdownFilter(parseFloat(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Min Days Since Peak (Consolidation Age) */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enablePpDaysSincePeak ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enablePpDaysSincePeak}
-                        onChange={(e) => setEnablePpDaysSincePeak(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                      />
-                      Min Days Since Peak ({minPpDaysSincePeakFilter}d):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="1"
-                        max="40"
-                        step="1"
-                        value={minPpDaysSincePeakFilter}
-                        disabled={!enablePpDaysSincePeak}
-                        onChange={(e) => setMinPpDaysSincePeakFilter(parseInt(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enablePpDaysSincePeak ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                      />
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={minPpDaysSincePeakFilter}
-                        disabled={!enablePpDaysSincePeak}
-                        onChange={(e) => setMinPpDaysSincePeakFilter(parseInt(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Max Volume Contraction */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enablePpVolRatio ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enablePpVolRatio}
-                        onChange={(e) => setEnablePpVolRatio(e.target.checked)}
-                        style={{ accentColor: 'var(--accent-color)', cursor: 'pointer' }}
-                      />
-                      Max Base Vol ({maxPpVolRatioFilter.toFixed(2)}x):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="0.2"
-                        max="1.5"
-                        step="0.05"
-                        value={maxPpVolRatioFilter}
-                        disabled={!enablePpVolRatio}
-                        onChange={(e) => setMaxPpVolRatioFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enablePpVolRatio ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-color)' }}
-                      />
-                      <input
-                        type="number"
-                        min="0.1"
-                        max="5.0"
-                        step="0.1"
-                        value={maxPpVolRatioFilter}
-                        disabled={!enablePpVolRatio}
-                        onChange={(e) => setMaxPpVolRatioFilter(parseFloat(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* ========================================== */}
-              {/* 3. Breakout Sliders (Visible if selected)  */}
-              {/* ========================================== */}
-              {enableQullamaggieBreakout && (
-                <>
-                  {/* 1. Min Prior Run-up */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableBreakoutRunup ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableBreakoutRunup}
-                        onChange={(e) => setEnableBreakoutRunup(e.target.checked)}
-                        style={{ accentColor: '#f59e0b', cursor: 'pointer' }}
-                      />
-                      Min Run-up ({minBreakoutRunupFilter}%):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="10"
-                        max="150"
-                        step="5"
-                        value={minBreakoutRunupFilter}
-                        disabled={!enableBreakoutRunup}
-                        onChange={(e) => setMinBreakoutRunupFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enableBreakoutRunup ? 'pointer' : 'not-allowed', accentColor: '#f59e0b' }}
-                      />
-                      <input
-                        type="number"
-                        min="0"
-                        max="500"
-                        value={minBreakoutRunupFilter}
-                        disabled={!enableBreakoutRunup}
-                        onChange={(e) => setMinBreakoutRunupFilter(parseFloat(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* 2. Consolidation Window (Min & Max Days Since Peak) */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableBreakoutDays ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableBreakoutDays}
-                        onChange={(e) => setEnableBreakoutDays(e.target.checked)}
-                        style={{ accentColor: '#f59e0b', cursor: 'pointer' }}
-                      />
-                      Consolidation Days ({minBreakoutDaysFilter}d - {maxBreakoutDaysFilter}d):
-                    </label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      {/* Min Days */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} title="Minimum trading days since peak high">
-                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '65px' }}>Min Days:</span>
-                        <input
-                          type="range"
-                          min="1"
-                          max="40"
-                          step="1"
-                          value={minBreakoutDaysFilter}
-                          disabled={!enableBreakoutDays}
-                          onChange={(e) => setMinBreakoutDaysFilter(parseInt(e.target.value) || 0)}
-                          style={{ flex: 1, cursor: enableBreakoutDays ? 'pointer' : 'not-allowed', accentColor: '#f59e0b' }}
-                        />
-                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', width: '38px', textAlign: 'right' }}>
-                          {minBreakoutDaysFilter}d
-                        </span>
-                      </div>
-                      {/* Max Days */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} title="Maximum trading days in consolidation">
-                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '65px' }}>Max Days:</span>
-                        <input
-                          type="range"
-                          min="10"
-                          max="90"
-                          step="1"
-                          value={maxBreakoutDaysFilter}
-                          disabled={!enableBreakoutDays}
-                          onChange={(e) => setMaxBreakoutDaysFilter(parseInt(e.target.value) || 0)}
-                          style={{ flex: 1, cursor: enableBreakoutDays ? 'pointer' : 'not-allowed', accentColor: '#f59e0b' }}
-                        />
-                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', width: '38px', textAlign: 'right' }}>
-                          {maxBreakoutDaysFilter}d
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 3. EMA Surfing Filter */}
-                  <div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableEmaSurfing}
-                        onChange={(e) => setEnableEmaSurfing(e.target.checked)}
-                        style={{ accentColor: '#f59e0b', cursor: 'pointer' }}
-                      />
-                      EMA 10 / 20 Surfing Rule
-                    </label>
-                  </div>
-                </>
-              )}
-
-              {/* ========================================== */}
-              {/* 4. Episodic Pivot Sliders (Visible if selected) */}
-              {/* ========================================== */}
-              {enableEpisodicPivot && (
-                <>
-                  {/* Min Gap % */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableEpGap ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableEpGap}
-                        onChange={(e) => setEnableEpGap(e.target.checked)}
-                        style={{ accentColor: '#ec4899', cursor: 'pointer' }}
-                      />
-                      Min Gap Up ({minEpGapFilter}%):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="4"
-                        max="30"
-                        step="1"
-                        value={minEpGapFilter}
-                        disabled={!enableEpGap}
-                        onChange={(e) => setMinEpGapFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enableEpGap ? 'pointer' : 'not-allowed', accentColor: '#ec4899' }}
-                      />
-                      <input
-                        type="number"
-                        min="1"
-                        max="100"
-                        value={minEpGapFilter}
-                        disabled={!enableEpGap}
-                        onChange={(e) => setMinEpGapFilter(parseFloat(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Min 50d Relative Volume */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableEpRelVol ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableEpRelVol}
-                        onChange={(e) => setEnableEpRelVol(e.target.checked)}
-                        style={{ accentColor: '#ec4899', cursor: 'pointer' }}
-                      />
-                      Min Relative Volume ({minEpRelVolFilter.toFixed(1)}x):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="1.0"
-                        max="10.0"
-                        step="0.5"
-                        value={minEpRelVolFilter}
-                        disabled={!enableEpRelVol}
-                        onChange={(e) => setMinEpRelVolFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enableEpRelVol ? 'pointer' : 'not-allowed', accentColor: '#ec4899' }}
-                      />
-                      <input
-                        type="number"
-                        min="0.5"
-                        max="20.0"
-                        step="0.5"
-                        value={minEpRelVolFilter}
-                        disabled={!enableEpRelVol}
-                        onChange={(e) => setMinEpRelVolFilter(parseFloat(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* ========================================== */}
-              {/* 5. Parabolic Sliders (Visible if selected) */}
-              {/* ========================================== */}
-              {isParabolicActive && (
-                <>
-                  {/* Min Parabolic Run-up % */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableParabolicRunup ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableParabolicRunup}
-                        onChange={(e) => setEnableParabolicRunup(e.target.checked)}
-                        style={{ accentColor: '#ef4444', cursor: 'pointer' }}
-                      />
-                      Min Parabolic Runup ({minParabolicRunupFilter}%):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="20"
-                        max="150"
-                        step="5"
-                        value={minParabolicRunupFilter}
-                        disabled={!enableParabolicRunup}
-                        onChange={(e) => setMinParabolicRunupFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enableParabolicRunup ? 'pointer' : 'not-allowed', accentColor: '#ef4444' }}
-                      />
-                      <input
-                        type="number"
-                        min="10"
-                        max="500"
-                        value={minParabolicRunupFilter}
-                        disabled={!enableParabolicRunup}
-                        onChange={(e) => setMinParabolicRunupFilter(parseFloat(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Min 10 EMA Distance % */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableParabolicEmaDist ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableParabolicEmaDist}
-                        onChange={(e) => setEnableParabolicEmaDist(e.target.checked)}
-                        style={{ accentColor: '#ef4444', cursor: 'pointer' }}
-                      />
-                      Min 10 EMA Dist ({minParabolicEmaDistFilter}%):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="10"
-                        max="50"
-                        step="1"
-                        value={minParabolicEmaDistFilter}
-                        disabled={!enableParabolicEmaDist}
-                        onChange={(e) => setMinParabolicEmaDistFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enableParabolicEmaDist ? 'pointer' : 'not-allowed', accentColor: '#ef4444' }}
-                      />
-                      <input
-                        type="number"
-                        min="5"
-                        max="100"
-                        value={minParabolicEmaDistFilter}
-                        disabled={!enableParabolicEmaDist}
-                        onChange={(e) => setMinParabolicEmaDistFilter(parseFloat(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Min Parabolic Up Days */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableParabolicUpDays ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableParabolicUpDays}
-                        onChange={(e) => setEnableParabolicUpDays(e.target.checked)}
-                        style={{ accentColor: '#ef4444', cursor: 'pointer' }}
-                      />
-                      Min Consecutive Up Days (&ge; {minParabolicUpDaysFilter}d):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="1"
-                        max="10"
-                        step="1"
-                        value={minParabolicUpDaysFilter}
-                        disabled={!enableParabolicUpDays}
-                        onChange={(e) => setMinParabolicUpDaysFilter(parseInt(e.target.value, 10) || 1)}
-                        style={{ flex: 1, cursor: enableParabolicUpDays ? 'pointer' : 'not-allowed', accentColor: '#ef4444' }}
-                      />
-                      <input
-                        type="number"
-                        min="1"
-                        max="15"
-                        value={minParabolicUpDaysFilter}
-                        disabled={!enableParabolicUpDays}
-                        onChange={(e) => setMinParabolicUpDaysFilter(parseInt(e.target.value, 10) || 1)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* ========================================== */}
-              {/* 6. IPO Base Sliders (Visible if selected)  */}
-              {/* ========================================== */}
-              {enableIpoBase && (
-                <>
-                  {/* Max IPO Age */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableIpoAge ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableIpoAge}
-                        onChange={(e) => setEnableIpoAge(e.target.checked)}
-                        style={{ accentColor: '#06b6d4', cursor: 'pointer' }}
-                      />
-                      Max IPO Age ({maxIpoAgeFilter}d):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="20"
-                        max="500"
-                        step="10"
-                        value={maxIpoAgeFilter}
-                        disabled={!enableIpoAge}
-                        onChange={(e) => setMaxIpoAgeFilter(parseInt(e.target.value, 10) || 0)}
-                        style={{ flex: 1, cursor: enableIpoAge ? 'pointer' : 'not-allowed', accentColor: '#06b6d4' }}
-                      />
-                      <input
-                        type="number"
-                        min="10"
-                        max="1000"
-                        value={maxIpoAgeFilter}
-                        disabled={!enableIpoAge}
-                        onChange={(e) => setMaxIpoAgeFilter(parseInt(e.target.value, 10) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Max Distance from ATH */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableIpoDist ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableIpoDist}
-                        onChange={(e) => setEnableIpoDist(e.target.checked)}
-                        style={{ accentColor: '#06b6d4', cursor: 'pointer' }}
-                      />
-                      Max Dist from ATH ({maxIpoDistFilter}%):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="5"
-                        max="50"
-                        step="1"
-                        value={maxIpoDistFilter}
-                        disabled={!enableIpoDist}
-                        onChange={(e) => setMaxIpoDistFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enableIpoDist ? 'pointer' : 'not-allowed', accentColor: '#06b6d4' }}
-                      />
-                      <input
-                        type="number"
-                        min="1"
-                        max="100"
-                        value={maxIpoDistFilter}
-                        disabled={!enableIpoDist}
-                        onChange={(e) => setMaxIpoDistFilter(parseFloat(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Max Base Depth */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableIpoDepth ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableIpoDepth}
-                        onChange={(e) => setEnableIpoDepth(e.target.checked)}
-                        style={{ accentColor: '#06b6d4', cursor: 'pointer' }}
-                      />
-                      Max Base Depth ({maxIpoDepthFilter}%):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="5"
-                        max="60"
-                        step="1"
-                        value={maxIpoDepthFilter}
-                        disabled={!enableIpoDepth}
-                        onChange={(e) => setMaxIpoDepthFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enableIpoDepth ? 'pointer' : 'not-allowed', accentColor: '#06b6d4' }}
-                      />
-                      <input
-                        type="number"
-                        min="5"
-                        max="100"
-                        value={maxIpoDepthFilter}
-                        disabled={!enableIpoDepth}
-                        onChange={(e) => setMaxIpoDepthFilter(parseFloat(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* ========================================== */}
-              {/* 7. VCP Setup Sliders (Visible if selected) */}
-              {/* ========================================== */}
-              {enableVcpSetup && (
-                <>
-                  {/* VCP Contraction Pattern Rule */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableVcpPattern ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableVcpPattern}
-                        onChange={(e) => setEnableVcpPattern(e.target.checked)}
-                        style={{ accentColor: '#10b981', cursor: 'pointer' }}
-                      />
-                      VCP Contraction Pattern
-                    </label>
-                    <div style={{
-                      padding: '8px 12px',
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      fontSize: '13px',
-                      color: enableVcpPattern ? '#10b981' : 'var(--text-secondary)',
-                      fontWeight: '600',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      height: '38px',
-                      boxSizing: 'border-box'
-                    }}>
-                      {enableVcpPattern ? '🌀 2~6 Troughs (Final ≤12%)' : '⚪ Pattern Rule Waived'}
-                    </div>
-                  </div>
-
-                  {/* Min QoQ EPS Growth */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', opacity: enableVcpEpsGrowth ? 1 : 0.5 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={enableVcpEpsGrowth}
-                        onChange={(e) => setEnableVcpEpsGrowth(e.target.checked)}
-                        style={{ accentColor: '#10b981', cursor: 'pointer' }}
-                      />
-                      Min QoQ EPS Growth ({minEpsGrowthFilter}%):
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        step="5"
-                        value={minEpsGrowthFilter}
-                        disabled={!enableVcpEpsGrowth}
-                        onChange={(e) => setMinEpsGrowthFilter(parseFloat(e.target.value) || 0)}
-                        style={{ flex: 1, cursor: enableVcpEpsGrowth ? 'pointer' : 'not-allowed', accentColor: '#10b981' }}
-                      />
-                      <input
-                        type="number"
-                        min="0"
-                        max="500"
-                        value={minEpsGrowthFilter}
-                        disabled={!enableVcpEpsGrowth}
-                        onChange={(e) => setMinEpsGrowthFilter(parseFloat(e.target.value) || 0)}
-                        style={{ width: '55px', padding: '4px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: '#fff', fontSize: '12px', textAlign: 'center' }}
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
+                );
+              })}
             </div>
           </div>
         )}
@@ -1917,25 +685,6 @@ export default function CandidatesTab({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                 {/* Left: Badges Group */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  {(currentCandidate?.screen_date || (selectedDate && selectedDate !== 'latest')) && (
-                    <span
-                      className="pill"
-                      style={{
-                        fontSize: '11px',
-                        padding: '3px 8px',
-                        background: 'rgba(56, 189, 248, 0.18)',
-                        color: '#38bdf8',
-                        border: '1px solid rgba(56, 189, 248, 0.35)',
-                        fontWeight: 700,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}
-                      title="Trigger / Screen Date for this setup candidate"
-                    >
-                      📅 Trigger: {currentCandidate?.screen_date || selectedDate}
-                    </span>
-                  )}
 
                   <span className="pill pill-success" style={{ fontSize: '11px', padding: '3px 8px' }}>
                     RS: {currentCandidate?.rs_rank ?? 'N/A'}

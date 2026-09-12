@@ -300,6 +300,16 @@ class MomentumEngine:
                     ARG_MAX(date, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) as ath_date
                 FROM price_lags_raw
             ),
+            price_lags_with_pp_runup AS (
+                SELECT *,
+                    -- Power play run up %: the runup on the peak high day of the last 30 days
+                    ARG_MAX(daily_runup_pct, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as pp_runup_pct
+                FROM price_lags_base
+            ),
+            latest_candidates AS (
+                SELECT * FROM price_lags_with_pp_runup
+                WHERE date = (SELECT val FROM latest_date_const)
+            ),
             price_lags_derived AS (
                 SELECT
                     symbol,
@@ -320,52 +330,21 @@ class MomentumEngine:
                     sma_200,
                     rs_score,
                     rs_rank,
-                    running_peak_30d,
-                    -- Power play run up %: the runup on the peak high day of the last 30 days
-                    ARG_MAX(daily_runup_pct, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as pp_runup_pct,
+                    pp_runup_pct,
                     -- Power play drawdown %: correction from 30-day peak high to lowest close on or after peak date
-                    (running_peak_30d - (SELECT MIN(d.close) FROM daily_bars d WHERE d.symbol = price_lags_base.symbol AND d.date >= price_lags_base.peak_date_30d AND d.date <= price_lags_base.date)) / NULLIF(running_peak_30d, 0) * 100 as pp_drawdown_pct,
+                    (running_peak_30d - (SELECT MIN(d.close) FROM daily_bars d WHERE d.symbol = lc.symbol AND d.date >= lc.peak_date_30d AND d.date <= lc.date)) / NULLIF(running_peak_30d, 0) * 100 as pp_drawdown_pct,
                     -- Power play trading days since 30-day peak high
                     (row_idx - peak_row_idx_30d) as pp_days_since_peak,
                     -- IPO base fields
                     ipo_days_count,
                     running_peak_all_time as ipo_all_time_high,
+                    (running_peak_all_time - close) / NULLIF(running_peak_all_time, 0) * 100 as ipo_drawdown_from_high,
                     -- IPO base depth: correction from all-time high to lowest low on or after ATH date
-                    (running_peak_all_time - (SELECT MIN(d.low) FROM daily_bars d WHERE d.symbol = price_lags_base.symbol AND d.date >= price_lags_base.ath_date AND d.date <= price_lags_base.date)) / NULLIF(running_peak_all_time, 0) * 100 as ipo_base_depth
-                FROM price_lags_base
-            ),
-            returns_calc AS (
-                SELECT 
-                    symbol,
-                    date,
-                    close,
-                    volume,
-                    vol_50d_ma,
-                    dollar_vol_50d_ma,
-                    adr_20d,
-                    atr_20d,
-                    ret_1m,
-                    ret_3m,
-                    ret_6m,
-                    gap_pct,
-                    rel_vol_50d,
-                    sma_50,
-                    sma_150,
-                    sma_200,
-                    rs_score,
-                    rs_rank,
-                    pp_drawdown_pct,
-                    pp_runup_pct,
-                    pp_days_since_peak,
-                    ipo_days_count,
-                    ipo_all_time_high,
-                    (ipo_all_time_high - close) / NULLIF(ipo_all_time_high, 0) * 100 as ipo_drawdown_from_high,
-                    ipo_base_depth
-                FROM price_lags_derived
-                WHERE date = (SELECT val FROM latest_date_const)
+                    (running_peak_all_time - (SELECT MIN(d.low) FROM daily_bars d WHERE d.symbol = lc.symbol AND d.date >= lc.ath_date AND d.date <= lc.date)) / NULLIF(running_peak_all_time, 0) * 100 as ipo_base_depth
+                FROM latest_candidates lc
             )
             SELECT symbol, date, close, vol_50d_ma, dollar_vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, pp_days_since_peak, sma_50, sma_150, sma_200, ipo_days_count, ipo_all_time_high, ipo_drawdown_from_high, ipo_base_depth, ret_1m, gap_pct, rel_vol_50d
-            FROM returns_calc;
+            FROM price_lags_derived;
         """
         
         with self.get_connection() as conn:
@@ -379,10 +358,16 @@ class MomentumEngine:
             
             # 3. Update the daily_bars table with calculated VCP/PowerPlay/IPO/Qullamaggie values for matched date
             if results:
-                # 3.1 Fetch historical bars for VCP, EP, EMA, and Parabolic analysis
+                # 3.1 Fetch historical bars for VCP, EP, EMA, and Parabolic analysis (last 260 bars per symbol)
                 history_rows = conn.execute("""
+                    WITH ranked_bars AS (
+                        SELECT symbol, date, open, high, low, close, volume,
+                               ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
+                        FROM daily_bars
+                    )
                     SELECT symbol, date, open, high, low, close, volume 
-                    FROM daily_bars 
+                    FROM ranked_bars
+                    WHERE rn <= 260
                     ORDER BY symbol, date ASC
                 """).fetchall()
                 

@@ -7,13 +7,17 @@ const SETUP_CANONICAL_NAMES = {
   power_play: 'Power Play',
   breakout: 'QM Breakout',
   episodic_pivot: 'Episodic Pivot',
-  vcp: 'VCP'
+  momentum: 'QM Momentum',
+  parabolic: 'Parabolic',
+  ipo_base: 'IPO Base',
+  vcp: 'Minervini VCP'
 };
 
 export default function ModelBookTab({
   onSelectStock = null,
   watchlists = [],
-  fetchWatchlists = () => {}
+  fetchWatchlists = () => {},
+  setupsConfig = { setups: [], filters: {} }
 }) {
   // Screening Parameters
   const [setupType, setSetupType] = useState('power_play');
@@ -22,11 +26,31 @@ export default function ModelBookTab({
   const [customGain, setCustomGain] = useState('');
   const [forwardDays, setForwardDays] = useState(20);
   const [maxDrawdownLimit, setMaxDrawdownLimit] = useState('');
+
+  // Dynamic setups from centralized config
+  const setupOptions = useMemo(() => {
+    if (setupsConfig?.setups && setupsConfig.setups.length > 0) {
+      return setupsConfig.setups;
+    }
+    return [
+      { id: 'power_play', name: 'Power Play', icon: '🚀', description: 'Explosive 100%+ surge in < 8 weeks followed by tight 3-6 week consolidation.' },
+      { id: 'breakout', name: 'QM Breakout', icon: '🎯', description: 'High-momentum consolidation surfing rising 10/20 EMAs ready to break out.' },
+      { id: 'episodic_pivot', name: 'Episodic Pivot', icon: '⚡', description: 'Massive gap-up (10%+) on heavy relative volume driven by catalyst or earnings.' },
+      { id: 'momentum', name: 'QM Momentum', icon: '🏆', description: 'Top 1-2% strongest momentum leaders over 1M, 3M, and 6M timeframes.' },
+      { id: 'parabolic', name: 'Parabolic', icon: '🌋', description: 'Overextended momentum climaxes or capitulation exhaustion.' },
+      { id: 'ipo_base', name: 'IPO Base', icon: '🌱', description: 'Early institutional accumulation in newly public companies (< 350 days).' },
+      { id: 'vcp', name: 'Minervini VCP', icon: '📐', description: 'Volatility Contraction Pattern with drying volume along Stage 2 uptrend.' }
+    ];
+  }, [setupsConfig]);
+
+  const activeSetup = useMemo(() => {
+    return setupOptions.find(s => s.id === setupType) || setupOptions[0];
+  }, [setupOptions, setupType]);
   
   // Date Range (default: past 1 year up to 30 days ago to allow forward bars)
   const defaultDates = useMemo(() => {
     const today = new Date();
-    const end = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const end = new Date(today.getTime() - 30 * 24 * 60 * 1000);
     const start = new Date(end.getTime() - 365 * 24 * 60 * 60 * 1000);
     return {
       start: start.toISOString().split('T')[0],
@@ -43,12 +67,73 @@ export default function ModelBookTab({
   const [scanResult, setScanResult] = useState(null);
   const [error, setError] = useState(null);
 
+  // Active criteria chips preview
+  const activeFilterChips = useMemo(() => {
+    const filters = scanResult?.summary?.filters || activeSetup?.filters || {};
+    const chips = [];
+
+    // Baseline Liquidity
+    if (filters.min_price !== undefined) {
+      chips.push({ text: `Price: ≥$${filters.min_price}`, highlight: false });
+    }
+    if (filters.min_volume_sma_50 !== undefined) {
+      const k = Math.round(Number(filters.min_volume_sma_50) / 1000);
+      chips.push({ text: `50d Vol: ≥${k}K`, highlight: false });
+    }
+    if (filters.min_dollar_vol !== undefined) {
+      const m = Math.round(Number(filters.min_dollar_vol) / 1000000);
+      chips.push({ text: `$ Vol: ≥$${m}M`, highlight: true });
+    }
+
+    // Trend & Template
+    if (filters.enforce_stage2) {
+      chips.push({ text: `Stage 2 Template`, highlight: true });
+    }
+    if (filters.enable_rs) {
+      chips.push({ text: `RS Rank: ≥${filters.min_rs_percentile || 70}`, highlight: true });
+    }
+
+    // Setup Specifics
+    if (filters.min_pp_runup !== undefined) {
+      chips.push({ text: `Runup: ≥${filters.min_pp_runup}%`, highlight: true });
+    }
+    if (filters.max_pp_drawdown !== undefined) {
+      chips.push({ text: `Base Depth: ≤${filters.max_pp_drawdown}%`, highlight: true });
+    }
+    if (filters.min_pp_days_since_peak !== undefined) {
+      chips.push({ text: `Consolidation: ≥${filters.min_pp_days_since_peak}d`, highlight: false });
+    }
+    if (filters.min_breakout_runup !== undefined) {
+      chips.push({ text: `Runup: ≥${filters.min_breakout_runup}%`, highlight: true });
+    }
+    if (filters.enable_adr && filters.min_adr_20d !== undefined) {
+      chips.push({ text: `ADR: ≥${filters.min_adr_20d}%`, highlight: false });
+    }
+    if (filters.min_ep_gap !== undefined) {
+      chips.push({ text: `Gap: ≥${filters.min_ep_gap}%`, highlight: true });
+    }
+    if (filters.min_ep_rel_vol !== undefined) {
+      chips.push({ text: `Rel Vol: ≥${filters.min_ep_rel_vol}x`, highlight: true });
+    }
+    if (filters.max_ipo_age !== undefined) {
+      chips.push({ text: `IPO Age: ≤${filters.max_ipo_age}d`, highlight: true });
+    }
+    if (filters.max_ipo_dist !== undefined) {
+      chips.push({ text: `From ATH: ≤${filters.max_ipo_dist}%`, highlight: false });
+    }
+    if (filters.max_ipo_depth !== undefined) {
+      chips.push({ text: `Base Depth: ≤${filters.max_ipo_depth}%`, highlight: false });
+    }
+
+    return chips;
+  }, [scanResult, activeSetup]);
+
   // Table & View Filters
   const [viewMode, setViewMode] = useState('winners'); // 'winners' | 'all'
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSector, setSelectedSector] = useState('ALL');
-  const [sortField, setSortField] = useState('peak_gain_pct');
-  const [sortDirection, setSortDirection] = useState('desc');
+  const [sortField, setSortField] = useState('date');
+  const [sortDirection, setSortDirection] = useState('asc');
 
   // Chart Viewer State
   const [selectedCandidate, setSelectedCandidate] = useState(null);
@@ -88,20 +173,21 @@ export default function ModelBookTab({
   };
 
   // Run Scan API
-  const handleRunScan = async () => {
+  const handleRunScan = async (setupToRun = null) => {
+    const targetSetup = typeof setupToRun === 'string' && setupToRun.trim() !== '' ? setupToRun : setupType;
     setLoading(true);
     setError(null);
     try {
+      const activeSetupObj = (setupOptions || []).find(s => s.id === targetSetup);
       const payload = {
-        setup_type: setupType,
+        setup_type: targetSetup,
         target_gain_pct: parseFloat(targetGainPct) || 20.0,
         start_date: startDate,
         end_date: endDate,
         forward_days: parseInt(forwardDays, 10) || 20,
         max_drawdown_limit: maxDrawdownLimit !== '' ? parseFloat(maxDrawdownLimit) : null,
-        min_price: 5.0,
-        min_volume_50d: 100000,
-        episode_window_days: 15
+        episode_window_days: 15,
+        filters: activeSetupObj?.filters || {}
       };
 
       const res = await fetch(`${API_BASE}/api/model-book/scan`, {
@@ -132,6 +218,11 @@ export default function ModelBookTab({
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSelectSetup = (newId) => {
+    setSetupType(newId);
+    handleRunScan(newId);
   };
 
   // Run initial scan on mount
@@ -180,9 +271,13 @@ export default function ModelBookTab({
       if (valB === null || valB === undefined) valB = -999999;
 
       if (typeof valA === 'string') {
-        return sortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        const cmp = sortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        if (cmp !== 0) return cmp;
+        return (a.symbol || '').localeCompare(b.symbol || '');
       }
-      return sortDirection === 'asc' ? valA - valB : valB - valA;
+      const numCmp = sortDirection === 'asc' ? valA - valB : valB - valA;
+      if (numCmp !== 0) return numCmp;
+      return (a.date || '').localeCompare(b.date || '');
     });
   }, [scanResult, viewMode, searchTerm, selectedSector, sortField, sortDirection]);
 
@@ -355,7 +450,7 @@ export default function ModelBookTab({
           </button>
 
           <button
-            onClick={handleRunScan}
+            onClick={() => handleRunScan()}
             disabled={loading}
             style={{
               padding: '8px 18px',
@@ -388,21 +483,16 @@ export default function ModelBookTab({
       {/* 2. Controls & Configuration Toolbar */}
       <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '16px 20px' }}>
         {/* Setup Selection Pills */}
-        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
           <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', minWidth: '85px' }}>
             Setup Pattern:
           </span>
-          {[
-            { id: 'power_play', label: '🔥 Power Play (HTF)', desc: '100%+ runup, <=25% base' },
-            { id: 'breakout', label: '🚀 Breakout (Qullamaggie)', desc: '30%+ runup, 10/20 EMA' },
-            { id: 'episodic_pivot', label: '⚡ Episodic Pivot (EP)', desc: '>=8% Gap, catalyst' },
-            { id: 'vcp', label: '🎯 VCP Contraction', desc: 'Minervini multi-tightening' }
-          ].map(s => (
+          {setupOptions.map(s => (
             <button
               key={s.id}
-              onClick={() => setSetupType(s.id)}
+              onClick={() => handleSelectSetup(s.id)}
               style={{
-                padding: '7px 14px',
+                padding: '6px 14px',
                 borderRadius: '20px',
                 border: setupType === s.id ? '1px solid var(--accent-color)' : '1px solid var(--border-color)',
                 backgroundColor: setupType === s.id ? 'var(--accent-light)' : 'rgba(255, 255, 255, 0.03)',
@@ -410,14 +500,55 @@ export default function ModelBookTab({
                 fontSize: '12.5px',
                 fontWeight: setupType === s.id ? '600' : '400',
                 cursor: 'pointer',
-                transition: 'all 0.15s ease'
+                transition: 'all 0.15s ease',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px'
               }}
-              title={s.desc}
+              title={s.description || s.desc}
             >
-              {s.label}
+              <span>{s.icon || '📌'}</span>
+              <span>{s.name || s.label}</span>
             </button>
           ))}
         </div>
+
+        {/* Active Setup Criteria Preview */}
+        {activeFilterChips && activeFilterChips.length > 0 && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '8px',
+            padding: '8px 12px',
+            backgroundColor: 'rgba(255, 255, 255, 0.02)',
+            borderRadius: '8px',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            fontSize: '12px'
+          }}>
+            <span style={{ color: 'var(--text-muted)', fontWeight: '600', marginRight: '4px', fontSize: '11px', textTransform: 'uppercase' }}>
+              ⚙️ Backtest Criteria:
+            </span>
+            {activeFilterChips.map((chip, idx) => (
+              <span
+                key={idx}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  backgroundColor: chip.highlight ? 'rgba(16, 185, 129, 0.12)' : 'rgba(255, 255, 255, 0.04)',
+                  border: chip.highlight ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid var(--border-color)',
+                  color: chip.highlight ? 'var(--accent-color)' : 'var(--text-secondary)',
+                  fontSize: '11.5px',
+                  fontWeight: '500'
+                }}
+              >
+                {chip.text}
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* Target Gain & Horizon Row */}
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '20px', paddingTop: '8px', borderTop: '1px solid var(--border-color)' }}>
@@ -765,9 +896,6 @@ export default function ModelBookTab({
                   <th onClick={() => handleSort('date')} style={{ cursor: 'pointer' }}>
                     Trigger Date {sortField === 'date' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
                   </th>
-                  <th onClick={() => handleSort('entry_price')} style={{ cursor: 'pointer' }}>
-                    Entry
-                  </th>
                   <th onClick={() => handleSort('peak_gain_pct')} style={{ cursor: 'pointer', color: '#34d399' }}>
                     Peak Gain {sortField === 'peak_gain_pct' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
                   </th>
@@ -788,7 +916,7 @@ export default function ModelBookTab({
               <tbody>
                 {displayedCandidates.length === 0 ? (
                   <tr>
-                    <td colSpan={8} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                    <td colSpan={7} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
                       {loading ? 'Analyzing historical bars...' : 'No setups found matching criteria.'}
                     </td>
                   </tr>
@@ -816,7 +944,6 @@ export default function ModelBookTab({
                           </div>
                         </td>
                         <td style={{ color: 'var(--text-secondary)' }}>{cand.date}</td>
-                        <td>${cand.entry_price.toFixed(2)}</td>
                         <td style={{ fontWeight: '700', color: cand.peak_gain_pct >= targetGainPct ? '#34d399' : 'var(--text-secondary)' }}>
                           +{cand.peak_gain_pct}%
                         </td>
@@ -889,9 +1016,6 @@ export default function ModelBookTab({
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '6px', fontSize: '12.5px' }}>
-                    <span>
-                      Trigger Date: <strong style={{ color: '#38bdf8' }}>{selectedCandidate.date}</strong>
-                    </span>
                     <span>
                       Entry Price: <strong>${selectedCandidate.entry_price.toFixed(2)}</strong>
                     </span>

@@ -1,0 +1,181 @@
+# PivotTrader - Centralized Setup Configurations
+#
+# Filter definitions are managed in `filters.yaml`.
+# Baseline filters and visible controls are defined in `base_setup` and inherited
+# by all setups. Individual setups can override any filter or add specific rules.
+# ==============================================================================
+
+# ==============================================================================
+# Global Base Setup (Universal Defaults)
+# ==============================================================================
+base_setup:
+  id: "base_setup"
+  name: "Global Base Setup"
+  filters:
+    min_price: 5.0
+    min_volume_sma_50: 100000
+    min_dollar_vol: 10000000.0
+    enforce_stage2: false
+    enable_rs: false
+  visible_filters:
+    - min_price
+    - min_dollar_vol
+    - min_volume_sma_50
+
+# ==============================================================================
+# Setup Configurations
+# ==============================================================================
+setups:
+  power_play:
+    id: "power_play"
+    name: "Power Play"
+    icon: "🚀"
+    display_order: 1
+    description: "Explosive 100%+ surge in < 8 weeks followed by tight 3-6 week consolidation."
+    filters:
+      require_power_play: true
+      min_dollar_vol: 3000000.0  # Overrides base_setup (10M -> 3M)
+      min_pp_runup: 100.0
+      max_pp_drawdown: 25.0
+      min_pp_days_since_peak: 8
+    visible_filters:
+      - min_pp_runup
+      - max_pp_drawdown
+      - min_pp_days_since_peak
+
+  breakout:
+    id: "breakout"
+    name: "QM Breakout"
+    icon: "🎯"
+    display_order: 2
+    description: "High-momentum consolidation surfing rising 10/20 EMAs ready to break out."
+    filters:
+      require_breakout: true
+      enable_adr: true
+      min_adr_20d: 4.0
+      min_breakout_runup: 30.0
+      min_breakout_days: 8
+      max_breakout_days: 45
+      enable_ema_surfing: false
+      require_pivot_tightness: true
+      max_pivot_spread: 8.0
+      max_pivot_clustering: 3.0
+      max_pivot_vol_ratio: 0.80
+    visible_filters:
+      - enable_adr
+      - min_adr_20d
+      - min_breakout_runup
+      - min_breakout_days
+      - max_breakout_days
+      - enable_ema_surfing
+      - require_pivot_tightness
+      - max_pivot_spread
+      - max_pivot_clustering
+      - max_pivot_vol_ratio
+
+  episodic_pivot:
+    id: "episodic_pivot"
+    name: "Episodic Pivot"
+    icon: "⚡"
+    display_order: 3
+    description: "Massive gap-up (10%+) on heavy relative volume driven by catalyst or earnings."
+    filters:
+      require_episodic_pivot: true
+      min_dollar_vol: 5000000.0  # Overrides base_setup (10M -> 5M)
+      min_ep_gap: 10.0
+      min_ep_rel_vol: 2.5
+    visible_filters:
+      - min_ep_gap
+      - min_ep_rel_vol
+
+  momentum:
+    id: "momentum"
+    name: "QM Momentum"
+    icon: "🏆"
+    display_order: 4
+    description: "Top 1-2% strongest momentum leaders over 1M, 3M, and 6M timeframes."
+    filters:
+      require_momentum: true
+      min_price: 2.0             # Overrides base_setup (5.0 -> 2.0)
+      min_dollar_vol: 3000000.0  # Overrides base_setup (10M -> 3M)
+      enable_adr: true
+      min_adr_20d: 4.0
+      qm_subview: "all"
+      qm_top_n: 75
+      require_pivot_tightness: false
+      max_pivot_spread: 8.0
+      max_pivot_clustering: 3.0
+      max_pivot_vol_ratio: 0.80
+    visible_filters:
+      - enable_adr
+      - min_adr_20d
+      - qm_subview
+      - qm_top_n
+      - require_pivot_tightness
+      - max_pivot_spread
+      - max_pivot_clustering
+      - max_pivot_vol_ratio
+
+  parabolic:
+    id: "parabolic"
+    name: "Parabolic"
+    icon: "🌋"
+    display_order: 5
+    description: "Overextended momentum climaxes (short side) or capitulation exhaustion (long side)."
+    filters:
+      require_parabolic: true
+      min_dollar_vol: 5000000.0  # Overrides base_setup (10M -> 5M)
+      enable_parabolic_short: true
+      enable_parabolic_long: true
+      min_parabolic_runup: 40.0
+      min_parabolic_ema_dist: 18.0
+      min_parabolic_up_days: 3
+    visible_filters:
+      - enable_parabolic_short
+      - enable_parabolic_long
+      - min_parabolic_runup
+      - min_parabolic_ema_dist
+      - min_parabolic_up_days
+
+  ipo_base:
+    id: "ipo_base"
+    name: "IPO Base"
+    icon: "🌱"
+    display_order: 6
+    description: "Early institutional accumulation in newly public companies (< 350 days)."
+    filters:
+      require_ipo_base: true
+      min_dollar_vol: 5000000.0  # Overrides base_setup (10M -> 5M)
+      max_ipo_age: 350
+      max_ipo_dist: 25.0
+      max_ipo_depth: 35.0
+    visible_filters:
+      - max_ipo_age
+      - max_ipo_dist
+      - max_ipo_depth
+
+  vcp:
+    id: "vcp"
+    name: "Minervini VCP"
+    icon: "📐"
+    display_order: 7
+    description: "Volatility Contraction Pattern with drying volume along Stage 2 uptrend."
+    filters:
+      require_vcp: true
+      enforce_stage2: true       # Overrides base_setup (false -> true)
+      enable_vcp_pattern: true
+      enable_vcp_eps_growth: false
+      min_eps_growth_qoq: 20.0
+      require_pivot_tightness: false
+      max_pivot_spread: 8.0
+      max_pivot_clustering: 3.0
+      max_pivot_vol_ratio: 0.80
+    visible_filters:
+      - enforce_stage2
+      - enable_vcp_pattern
+      - enable_vcp_eps_growth
+      - min_eps_growth_qoq
+      - require_pivot_tightness
+      - max_pivot_spread
+      - max_pivot_clustering
+      - max_pivot_vol_ratio

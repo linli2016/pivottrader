@@ -5,7 +5,7 @@ import sys
 import math
 import pandas as pd
 import yfinance as yf
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from application.providers.base import AbstractDataProvider
 
 def _calculate_easter(year: int) -> datetime.date:
@@ -234,8 +234,11 @@ class YFinanceProvider(AbstractDataProvider):
             batch = symbols[i:i+batch_size]
             done = min(i + batch_size, total)
             pct = (done / total) * 100
-            sys.stdout.write(f"\r[YFINANCE] Progress: {done}/{total} ({pct:.1f}%) | Fetching batch starting with {batch[0]:<5}")
-            sys.stdout.flush()
+            if sys.stdout.isatty():
+                sys.stdout.write(f"\r[YFINANCE] Progress: {done}/{total} ({pct:.1f}%) | Fetching batch starting with {batch[0]:<5}")
+                sys.stdout.flush()
+            else:
+                print(f"[YFINANCE] Progress: {done}/{total} ({pct:.1f}%) | Batch: {batch[0]}", flush=True)
             try:
                 # yf.download performs multi-threaded requests
                 df = yf.download(batch, start=start_date, group_by='ticker', threads=True, progress=False, actions=True)
@@ -298,16 +301,11 @@ class YFinanceProvider(AbstractDataProvider):
         return pd.DataFrame()
 
     def fetch_quarterly_fundamentals(self, symbols: List[str]) -> pd.DataFrame:
-        """Fetches quarterly financials to compute QoQ EPS acceleration."""
+        """Fetches quarterly financials to compute QoQ EPS acceleration using multi-threading."""
         if not symbols:
             return pd.DataFrame()
-            
-        all_funds = []
-        total = len(symbols)
-        for idx, symbol in enumerate(symbols):
-            pct = ((idx + 1) / total) * 100
-            sys.stdout.write(f"\r[YFINANCE] Fetching fundamentals: {idx+1}/{total} ({pct:.1f}%) | Last: {symbol:<5}")
-            sys.stdout.flush()
+
+        def _fetch_single(symbol: str) -> Optional[pd.DataFrame]:
             try:
                 ticker = yf.Ticker(symbol)
                 stmt = ticker.quarterly_income_stmt
@@ -315,7 +313,7 @@ class YFinanceProvider(AbstractDataProvider):
                     stmt = ticker.quarterly_financials
                     
                 if stmt is None or stmt.empty:
-                    continue
+                    return None
                 
                 # Check for EPS row key variations
                 eps_row = None
@@ -325,7 +323,7 @@ class YFinanceProvider(AbstractDataProvider):
                         break
                         
                 if eps_row is None:
-                    continue
+                    return None
                 
                 # Check for Revenue row key variations
                 rev_row = None
@@ -412,16 +410,37 @@ class YFinanceProvider(AbstractDataProvider):
                                     df.at[idz, "eps_qoq_growth"] = float(growth)
                         except Exception:
                             pass
-                            
-                    all_funds.append(df)
-                
-                # Conservative pacing rate limit protection
-                time.sleep(1.0)
-            except Exception as e:
-                sys.stdout.write("\n")
-                print(f"Warning: Failed to fetch fundamentals for {symbol}: {e}")
-                
-        if symbols:
+                    return df
+            except Exception:
+                return None
+            return None
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        all_funds = []
+        total = len(symbols)
+        completed = 0
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            future_to_sym = {executor.submit(_fetch_single, sym): sym for sym in symbols}
+            for future in as_completed(future_to_sym):
+                sym = future_to_sym[future]
+                completed += 1
+                try:
+                    res_df = future.result()
+                    if res_df is not None and not res_df.empty:
+                        all_funds.append(res_df)
+                except Exception:
+                    pass
+
+                pct = (completed / total) * 100
+                if sys.stdout.isatty():
+                    sys.stdout.write(f"\r[YFINANCE] Fetching fundamentals: {completed}/{total} ({pct:.1f}%) | Last: {sym:<5}")
+                    sys.stdout.flush()
+                else:
+                    if completed % 25 == 0 or completed == total:
+                        print(f"[YFINANCE] Fetching fundamentals: {completed}/{total} ({pct:.1f}%) | Last: {sym:<5}", flush=True)
+
+        if sys.stdout.isatty():
             sys.stdout.write("\n")
             sys.stdout.flush()
 
@@ -599,8 +618,11 @@ class YFinanceProvider(AbstractDataProvider):
                 quotes.extend(batch_res)
                 done_count += len(future_to_batch[future])
                 pct = (min(done_count, total) / total) * 100
-                sys.stdout.write(f"\r[{mode_name.upper()}] Fetched {min(done_count, total)}/{total} ({pct:.1f}%) symbols...")
-                sys.stdout.flush()
+                if sys.stdout.isatty():
+                    sys.stdout.write(f"\r[{mode_name.upper()}] Fetched {min(done_count, total)}/{total} ({pct:.1f}%) symbols...")
+                    sys.stdout.flush()
+                else:
+                    print(f"[{mode_name.upper()}] Fetched {min(done_count, total)}/{total} ({pct:.1f}%) symbols...", flush=True)
 
         sys.stdout.write("\n")
         sys.stdout.flush()

@@ -1,0 +1,461 @@
+# PivotTrader - Centralized Filter Registry Configuration
+#
+# This file is the single source of truth for both Backend filtering logic
+# and Frontend UI generation.
+#
+# Each filter has:
+# - name: Display title
+# - type: 'number' | 'boolean' | 'select'
+# - category: 'liquidity' | 'trend' | 'volatility' | 'pattern' | 'fundamental'
+# - default: Default value when not overridden
+# - min/max/step/unit: For 'number' inputs
+# - options: For 'select' inputs
+# - description: Explanatory tooltip
+# ==============================================================================
+
+filters:
+  # Liquidity & Universe Filters
+  min_price:
+    name: "Min Price"
+    type: "number"
+    min: 1.0
+    max: 100.0
+    step: 0.5
+    unit: "$"
+    default: 5.0
+    category: "liquidity"
+    description: "Filters out low-priced penny stocks."
+
+  min_volume_sma_50:
+    name: "Min 50d Vol MA"
+    type: "number"
+    min: 50000
+    max: 2000000
+    step: 50000
+    unit: "shares"
+    default: 100000
+    category: "liquidity"
+    description: "50-day simple moving average of daily trading volume."
+
+  min_dollar_vol:
+    name: "Min 50d Dollar Vol"
+    type: "number"
+    min: 500000
+    max: 50000000
+    step: 500000
+    unit: "$"
+    default: 10000000.0
+    category: "liquidity"
+    description: "50-day average daily turnover (Price x Volume)."
+
+  # Trend & Technical Filters
+  enforce_stage2:
+    name: "Stage 2 Trend Template"
+    type: "boolean"
+    default: false
+    category: "trend"
+    description: "Requires Close > 50 SMA > 150 SMA > 200 SMA and 52w high proximity."
+
+  enable_rs:
+    name: "Min RS Rank"
+    type: "boolean"
+    default: false
+    category: "trend"
+    description: "Enable filtering by IBD-style Relative Strength Rank."
+
+  min_rs_percentile:
+    name: "Min RS Rank Score"
+    type: "number"
+    min: 1
+    max: 99
+    step: 1
+    unit: ""
+    default: 70
+    category: "trend"
+    description: "Relative Strength Rank percentile (0-99)."
+
+  enable_rs_new_high:
+    name: "RS Rank at 52w High"
+    type: "boolean"
+    default: false
+    category: "trend"
+    description: "Requires stock to be at or within 3% of 52-week high."
+
+  enable_ti65:
+    name: "Trend Intensity (TI65)"
+    type: "boolean"
+    default: false
+    category: "trend"
+    description: "Stockbee Trend Intensity indicator (Close / 65 SMA)."
+
+  min_ti65:
+    name: "Min TI65"
+    type: "number"
+    min: 0.80
+    max: 1.50
+    step: 0.01
+    unit: ""
+    default: 1.05
+    category: "trend"
+    description: "Minimum Stockbee TI65 value (typically >= 1.05)."
+
+  # Volatility & Pivot Tightness Filters
+  enable_adr:
+    name: "Filter by ADR% (20d)"
+    type: "boolean"
+    default: false
+    category: "volatility"
+    description: "Enable filtering by 20-day Average Daily Range percentage."
+
+  min_adr_20d:
+    name: "Min ADR% (20d)"
+    type: "number"
+    min: 1.0
+    max: 15.0
+    step: 0.1
+    unit: "%"
+    default: 4.0
+    category: "volatility"
+    description: "Minimum 20-day Average Daily Range (ADR%)."
+
+  require_pivot_tightness:
+    name: "Pivot Tightness (VDU)"
+    type: "boolean"
+    default: false
+    category: "volatility"
+    description: "Checks for tight pivot spread, clustering, and volume dry-up."
+
+  max_pivot_spread:
+    name: "Max Pivot Spread %"
+    type: "number"
+    min: 1.0
+    max: 20.0
+    step: 0.5
+    unit: "%"
+    default: 8.0
+    category: "volatility"
+    description: "Max percentage spread between high and low in the pivot consolidation."
+
+  max_pivot_clustering:
+    name: "Max Pivot Clustering %"
+    type: "number"
+    min: 0.5
+    max: 10.0
+    step: 0.5
+    unit: "%"
+    default: 3.0
+    category: "volatility"
+    description: "Max percentage difference between close prices in the pivot area."
+
+  max_pivot_vol_ratio:
+    name: "Max Pivot Volume Ratio"
+    type: "number"
+    min: 0.1
+    max: 1.5
+    step: 0.05
+    unit: "x"
+    default: 0.80
+    category: "volatility"
+    description: "Ratio of current volume compared to 50-day average volume."
+
+  # Power Play Pattern Criteria
+  require_power_play:
+    name: "Power Play Pattern"
+    type: "boolean"
+    default: false
+    category: "pattern"
+    description: "Enforces Power Play pattern detection."
+
+  min_pp_runup:
+    name: "Min Runup % (8w)"
+    type: "number"
+    min: 30.0
+    max: 300.0
+    step: 5.0
+    unit: "%"
+    default: 100.0
+    category: "pattern"
+    description: "Minimum explosive run-up in the prior 8 weeks."
+
+  max_pp_drawdown:
+    name: "Max Base Drawdown %"
+    type: "number"
+    min: 5.0
+    max: 50.0
+    step: 1.0
+    unit: "%"
+    default: 25.0
+    category: "pattern"
+    description: "Maximum allowable pullback depth during consolidation."
+
+  min_pp_days_since_peak:
+    name: "Min Base Days"
+    type: "number"
+    min: 3
+    max: 40
+    step: 1
+    unit: "days"
+    default: 5
+    category: "pattern"
+    description: "Minimum number of consolidation days since peak high."
+
+  enable_pp_vol_ratio:
+    name: "Enforce Base Vol Dry-Up"
+    type: "boolean"
+    default: false
+    category: "pattern"
+    description: "Enforce volume contraction threshold during Power Play base."
+
+  max_pp_vol_ratio:
+    name: "Max Base Vol Ratio"
+    type: "number"
+    min: 0.1
+    max: 1.0
+    step: 0.05
+    unit: "x"
+    default: 0.50
+    category: "pattern"
+    description: "Max ratio of volume to 50d average during consolidation."
+
+  # QM Breakout Pattern Criteria
+  require_breakout:
+    name: "Breakout Pattern"
+    type: "boolean"
+    default: false
+    category: "pattern"
+    description: "Enforces Qullamaggie Breakout pattern detection."
+
+  min_breakout_runup:
+    name: "Prior Move Runup %"
+    type: "number"
+    min: 15.0
+    max: 150.0
+    step: 5.0
+    unit: "%"
+    default: 30.0
+    category: "pattern"
+    description: "Minimum prior run-up before entering consolidation."
+
+  min_breakout_days:
+    name: "Min Consolidation Days"
+    type: "number"
+    min: 3
+    max: 30
+    step: 1
+    unit: "days"
+    default: 8
+    category: "pattern"
+    description: "Minimum days spent in the consolidation base."
+
+  max_breakout_days:
+    name: "Max Consolidation Days"
+    type: "number"
+    min: 10
+    max: 90
+    step: 1
+    unit: "days"
+    default: 45
+    category: "pattern"
+    description: "Maximum allowable days in consolidation base."
+
+  enable_ema_surfing:
+    name: "Must Surf 10/20 EMA"
+    type: "boolean"
+    default: false
+    category: "pattern"
+    description: "Requires price to respect and surf the rising 10 or 20 EMA."
+
+  # Episodic Pivot (EP) Criteria
+  require_episodic_pivot:
+    name: "Episodic Pivot Pattern"
+    type: "boolean"
+    default: false
+    category: "pattern"
+    description: "Enforces Episodic Pivot gap-and-go criteria."
+
+  min_ep_gap:
+    name: "Min Gap %"
+    type: "number"
+    min: 3.0
+    max: 50.0
+    step: 0.5
+    unit: "%"
+    default: 10.0
+    category: "pattern"
+    description: "Minimum overnight or morning gap percentage."
+
+  min_ep_rel_vol:
+    name: "Min Relative Volume"
+    type: "number"
+    min: 1.0
+    max: 10.0
+    step: 0.1
+    unit: "x"
+    default: 2.5
+    category: "pattern"
+    description: "Minimum relative volume multiple compared to 50d average."
+
+  # Kristjan Qullamaggie Momentum Criteria
+  require_momentum:
+    name: "Momentum Universe Scan"
+    type: "boolean"
+    default: false
+    category: "pattern"
+    description: "Enforces Qullamaggie top 1-2% momentum universe filter."
+
+  qm_subview:
+    name: "Momentum Timeframe"
+    type: "select"
+    options:
+      - value: "all"
+        label: "All Leaders (Combined 1M/3M/6M)"
+      - value: "1m"
+        label: "1-Month Gainers"
+      - value: "3m"
+        label: "3-Month Gainers"
+      - value: "6m"
+        label: "6-Month Gainers"
+    default: "all"
+    category: "pattern"
+    description: "Select which momentum horizon to filter on."
+
+  qm_top_n:
+    name: "Top N Leaders Per Scan"
+    type: "number"
+    min: 25
+    max: 200
+    step: 25
+    unit: ""
+    default: 75
+    category: "pattern"
+    description: "Number of top gainers extracted from each momentum timeframe."
+
+  # Parabolic Climax Criteria
+  require_parabolic:
+    name: "Parabolic Climax Pattern"
+    type: "boolean"
+    default: false
+    category: "pattern"
+    description: "Enforces Parabolic overextension (short) or capitulation (long)."
+
+  enable_parabolic_short:
+    name: "Short Climax (Overbought)"
+    type: "boolean"
+    default: true
+    category: "pattern"
+    description: "Short setups on extreme upward exhaustion."
+
+  enable_parabolic_long:
+    name: "Long Climax (Oversold)"
+    type: "boolean"
+    default: true
+    category: "pattern"
+    description: "Long reversal setups on extreme capitulation drop."
+
+  min_parabolic_runup:
+    name: "Min Climax Move %"
+    type: "number"
+    min: 20.0
+    max: 200.0
+    step: 5.0
+    unit: "%"
+    default: 40.0
+    category: "pattern"
+    description: "Minimum fast move percentage."
+
+  min_parabolic_ema_dist:
+    name: "Min 10 EMA Stretch %"
+    type: "number"
+    min: 5.0
+    max: 50.0
+    step: 1.0
+    unit: "%"
+    default: 18.0
+    category: "pattern"
+    description: "Minimum distance price must be extended away from 10 EMA."
+
+  min_parabolic_up_days:
+    name: "Min Consecutive Days"
+    type: "number"
+    min: 2
+    max: 10
+    step: 1
+    unit: "days"
+    default: 3
+    category: "pattern"
+    description: "Minimum consecutive trending days in the move direction."
+
+  # IPO Base Criteria
+  require_ipo_base:
+    name: "IPO Base Pattern"
+    type: "boolean"
+    default: false
+    category: "pattern"
+    description: "Filters for early accumulation bases in recent IPOs."
+
+  max_ipo_age:
+    name: "Max IPO Age"
+    type: "number"
+    min: 50
+    max: 500
+    step: 25
+    unit: "days"
+    default: 350
+    category: "pattern"
+    description: "Maximum trading days since the company's IPO."
+
+  max_ipo_dist:
+    name: "Max Pullback from ATH %"
+    type: "number"
+    min: 5.0
+    max: 50.0
+    step: 1.0
+    unit: "%"
+    default: 25.0
+    category: "pattern"
+    description: "Maximum allowable drawdown from all-time high."
+
+  max_ipo_depth:
+    name: "Max IPO Base Depth %"
+    type: "number"
+    min: 10.0
+    max: 60.0
+    step: 1.0
+    unit: "%"
+    default: 35.0
+    category: "pattern"
+    description: "Maximum depth of the first base consolidation."
+
+  # VCP & Fundamentals Criteria
+  require_vcp:
+    name: "Minervini VCP Pattern"
+    type: "boolean"
+    default: false
+    category: "pattern"
+    description: "Enforces Volatility Contraction Pattern detection."
+
+  enable_vcp_pattern:
+    name: "Require Contraction Waves"
+    type: "boolean"
+    default: true
+    category: "pattern"
+    description: "Enforces 2 to 4 progressive volatility contractions."
+
+  enable_vcp_eps_growth:
+    name: "Require High EPS Growth"
+    type: "boolean"
+    default: false
+    category: "fundamental"
+    description: "Enforces minimum quarterly EPS QoQ acceleration."
+
+  min_eps_growth_qoq:
+    name: "Min EPS Growth QoQ %"
+    type: "number"
+    min: 5.0
+    max: 100.0
+    step: 5.0
+    unit: "%"
+    default: 20.0
+    category: "fundamental"
+    description: "Minimum Year-over-Year quarterly EPS growth percentage."
+
