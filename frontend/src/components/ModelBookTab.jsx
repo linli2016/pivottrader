@@ -22,9 +22,12 @@ export default function ModelBookTab({
   // Screening Parameters
   const [setupType, setSetupType] = useState('power_play');
   const modelBookChartRef = useRef(null);
-  const [targetGainPct, setTargetGainPct] = useState(20.0);
+  const [targetGainPct, setTargetGainPct] = useState(16.0);
   const [customGain, setCustomGain] = useState('');
-  const [forwardDays, setForwardDays] = useState(20);
+  const [stopLossPct, setStopLossPct] = useState(8.0);
+  const [customStop, setCustomStop] = useState('');
+  const [emaExitType, setEmaExitType] = useState('none'); // 'ema_10', 'ema_20', 'none'
+  const [forwardDays, setForwardDays] = useState(25);
   const [maxDrawdownLimit, setMaxDrawdownLimit] = useState('');
 
   // Dynamic setups from centralized config
@@ -125,8 +128,17 @@ export default function ModelBookTab({
       chips.push({ text: `Base Depth: ≤${filters.max_ipo_depth}%`, highlight: false });
     }
 
+    // Trade Execution & Exit Criteria
+    chips.push({ text: `Entry: Buy-Stop (High > Setup High)`, highlight: true });
+    if (stopLossPct !== null && stopLossPct !== '') {
+      chips.push({ text: `Stop Loss: -${stopLossPct}%`, highlight: true });
+    }
+    if (emaExitType && emaExitType !== 'none') {
+      chips.push({ text: `Trailing Exit: ${emaExitType === 'ema_20' ? 'EMA 20' : 'EMA 10'}`, highlight: true });
+    }
+
     return chips;
-  }, [scanResult, activeSetup]);
+  }, [scanResult, activeSetup, stopLossPct, emaExitType]);
 
   // Table & View Filters
   const [viewMode, setViewMode] = useState('winners'); // 'winners' | 'all'
@@ -183,10 +195,12 @@ export default function ModelBookTab({
       const payload = {
         setup_type: targetSetup,
         target_gain_pct: parseFloat(targetGainPct) || 20.0,
+        stop_loss_pct: stopLossPct !== null && stopLossPct !== '' ? parseFloat(stopLossPct) : null,
+        ema_exit_type: emaExitType || 'ema_10',
         start_date: startDate,
         end_date: endDate,
         forward_days: parseInt(forwardDays, 10) || 20,
-        max_drawdown_limit: maxDrawdownLimit !== '' ? parseFloat(maxDrawdownLimit) : null,
+        max_drawdown_limit: stopLossPct !== null && stopLossPct !== '' ? parseFloat(stopLossPct) : null,
         episode_window_days: 15,
         filters: activeSetupObj?.filters || {}
       };
@@ -272,6 +286,17 @@ export default function ModelBookTab({
     return [...list].sort((a, b) => {
       let valA = a[sortField];
       let valB = b[sortField];
+      if (sortField === 'date' || sortField === 'setup_date') {
+        valA = a.setup_date || a.date || '';
+        valB = b.setup_date || b.date || '';
+      } else if (sortField === 'entry_date') {
+        valA = a.entry_date || '';
+        valB = b.entry_date || '';
+      } else if (sortField === 'exit_date') {
+        valA = a.exit_date || '';
+        valB = b.exit_date || '';
+      }
+
       if (valA === null || valA === undefined) valA = -999999;
       if (valB === null || valB === undefined) valB = -999999;
 
@@ -282,7 +307,7 @@ export default function ModelBookTab({
       }
       const numCmp = sortDirection === 'asc' ? valA - valB : valB - valA;
       if (numCmp !== 0) return numCmp;
-      return (a.date || '').localeCompare(b.date || '');
+      return (a.setup_date || a.date || '').localeCompare(b.setup_date || b.date || '');
     });
   }, [scanResult, viewMode, searchTerm, selectedSector, selectedRegime, sortField, sortDirection]);
 
@@ -298,7 +323,7 @@ export default function ModelBookTab({
   const currentIndex = useMemo(() => {
     if (!selectedCandidate || displayedCandidates.length === 0) return -1;
     return displayedCandidates.findIndex(
-      c => c.symbol === selectedCandidate.symbol && c.date === selectedCandidate.date
+      c => c.symbol === selectedCandidate.symbol && (c.setup_date || c.date) === (selectedCandidate.setup_date || selectedCandidate.date)
     );
   }, [selectedCandidate, displayedCandidates]);
 
@@ -348,16 +373,20 @@ export default function ModelBookTab({
       'Symbol',
       'Company Name',
       'Sector',
-      'Trigger Date',
-      'Market Regime',
-      'Market Stack',
-      'QQQ Close',
+      'Setup Date',
+      'Entry Date',
       'Entry Price',
-      'ADR% (20d)',
-      'Peak Price',
+      'Exit Date',
+      'Exit Price',
+      'Exit Reason',
+      'Trade Return %',
       'Peak Gain %',
       'Max Drawdown %',
-      'Days to Target',
+      'Holding Days',
+      'Target Price',
+      'Stop Price',
+      'Market Regime',
+      'ADR% (20d)',
       'Prior Runup %',
       'Base Depth %',
       'RS Score'
@@ -367,18 +396,22 @@ export default function ModelBookTab({
       c.symbol,
       `"${(c.name || '').replace(/"/g, '""')}"`,
       `"${(c.sector || '').replace(/"/g, '""')}"`,
-      c.date,
+      c.setup_date || c.date,
+      c.entry_date || '',
+      c.entry_price || '',
+      c.exit_date || '',
+      c.exit_price || '',
+      c.exit_reason || '',
+      c.trade_return_pct ?? '',
+      c.peak_gain_pct ?? '',
+      c.max_drawdown_pct ?? '',
+      c.holding_days ?? '',
+      c.target_price ?? '',
+      c.stop_price ?? '',
       c.market_regime || '',
-      `"${(c.market_stack || '').replace(/"/g, '""')}"`,
-      c.market_index_close ?? '',
-      c.entry_price,
       c.adr_20d ?? '',
-      c.peak_price || '',
-      c.peak_gain_pct,
-      c.max_drawdown_pct,
-      c.days_to_target ?? '',
-      c.prior_runup_pct,
-      c.base_depth_pct,
+      c.prior_runup_pct ?? '',
+      c.base_depth_pct ?? '',
       c.rs_score ?? ''
     ]);
 
@@ -386,7 +419,7 @@ export default function ModelBookTab({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `model_book_${setupType}_winners.csv`);
+    link.setAttribute('download', `model_book_${setupType}_trades.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -563,7 +596,7 @@ export default function ModelBookTab({
           </div>
         )}
 
-        {/* Target Gain & Horizon Row */}
+        {/* Trade Execution & Exit Parameters Row */}
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '20px', paddingTop: '8px', borderTop: '1px solid var(--border-color)' }}>
           {/* Target Gain */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -571,7 +604,7 @@ export default function ModelBookTab({
               Target Gain:
             </span>
             <div style={{ display: 'flex', gap: '4px' }}>
-              {[15, 20, 30, 50, 100].map(pct => (
+              {[10, 16, 20, 30, 50].map(pct => (
                 <button
                   key={pct}
                   onClick={() => {
@@ -579,7 +612,7 @@ export default function ModelBookTab({
                     setCustomGain('');
                   }}
                   style={{
-                    padding: '4px 10px',
+                    padding: '4px 9px',
                     borderRadius: '6px',
                     border: targetGainPct === pct && !customGain ? '1px solid #34d399' : '1px solid var(--border-color)',
                     backgroundColor: targetGainPct === pct && !customGain ? 'rgba(52, 211, 153, 0.2)' : 'transparent',
@@ -593,7 +626,7 @@ export default function ModelBookTab({
                 </button>
               ))}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <input
                 type="number"
                 placeholder="Custom"
@@ -603,7 +636,7 @@ export default function ModelBookTab({
                   if (e.target.value) setTargetGainPct(parseFloat(e.target.value) || 20);
                 }}
                 style={{
-                  width: '65px',
+                  width: '60px',
                   padding: '4px 8px',
                   backgroundColor: 'rgba(0,0,0,0.3)',
                   border: '1px solid var(--border-color)',
@@ -616,10 +649,110 @@ export default function ModelBookTab({
             </div>
           </div>
 
-          {/* Forward Window */}
+          {/* Initial Stop Loss */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-              Horizon:
+              Stop Loss:
+            </span>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              {[5, 7, 8, 10].map(pct => (
+                <button
+                  key={pct}
+                  onClick={() => {
+                    setStopLossPct(pct);
+                    setCustomStop('');
+                  }}
+                  style={{
+                    padding: '4px 9px',
+                    borderRadius: '6px',
+                    border: stopLossPct === pct && !customStop ? '1px solid #f87171' : '1px solid var(--border-color)',
+                    backgroundColor: stopLossPct === pct && !customStop ? 'rgba(248, 113, 113, 0.2)' : 'transparent',
+                    color: stopLossPct === pct && !customStop ? '#f87171' : 'var(--text-secondary)',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >
+                  -{pct}%
+                </button>
+              ))}
+              <button
+                onClick={() => {
+                  setStopLossPct(null);
+                  setCustomStop('');
+                }}
+                style={{
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  border: stopLossPct === null ? '1px solid var(--accent-color)' : '1px solid var(--border-color)',
+                  backgroundColor: stopLossPct === null ? 'var(--accent-light)' : 'transparent',
+                  color: stopLossPct === null ? 'var(--accent-color)' : 'var(--text-muted)',
+                  fontSize: '11.5px',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                None
+              </button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <input
+                type="number"
+                placeholder="Custom"
+                value={customStop}
+                onChange={e => {
+                  setCustomStop(e.target.value);
+                  if (e.target.value) setStopLossPct(parseFloat(e.target.value) || null);
+                }}
+                style={{
+                  width: '60px',
+                  padding: '4px 8px',
+                  backgroundColor: 'rgba(0,0,0,0.3)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  color: 'var(--text-primary)',
+                  fontSize: '12px'
+                }}
+              />
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>%</span>
+            </div>
+          </div>
+
+          {/* Trailing EMA Exit */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase' }} title="Exit trade when daily close is below the chosen EMA">
+              Trailing Exit:
+            </span>
+            <div style={{ display: 'flex', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '6px', padding: '2px', border: '1px solid var(--border-color)' }}>
+              {[
+                { id: 'ema_10', label: 'Close < EMA 10' },
+                { id: 'ema_20', label: 'Close < EMA 20' },
+                { id: 'none', label: 'None / Off' }
+              ].map(opt => (
+                <button
+                  key={opt.id}
+                  onClick={() => setEmaExitType(opt.id)}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '4px',
+                    border: 'none',
+                    backgroundColor: emaExitType === opt.id ? '#38bdf8' : 'transparent',
+                    color: emaExitType === opt.id ? '#080b11' : 'var(--text-secondary)',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Forward Window / Horizon */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              Holding Horizon:
             </span>
             <select
               value={forwardDays}
@@ -635,35 +768,12 @@ export default function ModelBookTab({
               }}
             >
               <option value={10}>10 Trading Days (~2 Wks)</option>
+              <option value={15}>15 Trading Days (~3 Wks)</option>
               <option value={20}>20 Trading Days (~1 Mo)</option>
+              <option value={25}>25 Trading Days (~5 Wks)</option>
+              <option value={30}>30 Trading Days (~6 Wks)</option>
               <option value={40}>40 Trading Days (~2 Mo)</option>
               <option value={60}>60 Trading Days (~1 Qtr)</option>
-            </select>
-          </div>
-
-          {/* Stop Loss / Drawdown limit */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-              Max Drawdown (Stop):
-            </span>
-            <select
-              value={maxDrawdownLimit}
-              onChange={e => setMaxDrawdownLimit(e.target.value)}
-              style={{
-                padding: '4px 8px',
-                backgroundColor: 'rgba(0,0,0,0.3)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)',
-                fontSize: '12px',
-                cursor: 'pointer'
-              }}
-            >
-              <option value="">Any (No Filter)</option>
-              <option value="-5.0">Max -5% Drawdown</option>
-              <option value="-8.0">Max -8% Drawdown</option>
-              <option value="-10.0">Max -10% Drawdown</option>
-              <option value="-15.0">Max -15% Drawdown</option>
             </select>
           </div>
 
@@ -740,7 +850,7 @@ export default function ModelBookTab({
       {/* 3. Summary Statistics Cards */}
       {summary && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
-          {/* Card 1: Win Rate */}
+          {/* Card 1: Win Rate & Trades */}
           <div className="glass-card stat-card" style={{ padding: '14px 18px' }}>
             <span className="stat-label">Win Rate (≥ +{summary.target_gain_pct}%)</span>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
@@ -748,39 +858,68 @@ export default function ModelBookTab({
                 {summary.win_rate_pct}%
               </span>
               <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                ({summary.total_winners}/{summary.total_setups})
+                ({summary.total_winners} wins / {summary.total_trades} trades)
               </span>
             </div>
             <span className="stat-subtext" style={{ color: 'var(--text-muted)' }}>
-              Horizon: {summary.forward_days} trading days
+              Setups detected: {summary.total_setups} • Deduplicated
             </span>
           </div>
 
-          {/* Card 2: Avg Winner Gain */}
+          {/* Card 2: Exit Breakdown */}
           <div className="glass-card stat-card" style={{ padding: '14px 18px' }}>
-            <span className="stat-label">Avg Winner MFE Gain</span>
-            <span className="stat-value" style={{ color: '#34d399' }}>
-              +{summary.avg_winner_gain_pct}%
-            </span>
-            <span className="stat-subtext" style={{ color: 'var(--text-muted)' }}>
-              Peak high reached within horizon
-            </span>
+            <span className="stat-label">Exit Breakdown</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '4px', fontSize: '11.5px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#34d399', fontWeight: 600 }}>🎯 Target Hit:</span>
+                <span style={{ fontWeight: 700, color: '#34d399' }}>{summary.win_rate_pct}%</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#f87171', fontWeight: 600 }}>🛑 Stop Loss:</span>
+                <span style={{ fontWeight: 700, color: summary.stop_loss_rate_pct > 0 ? '#f87171' : 'var(--text-secondary)' }}>{summary.stop_loss_rate_pct}%</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#fbbf24', fontWeight: 600 }}>📉 Trailing Exit:</span>
+                <span style={{ fontWeight: 700, color: '#fbbf24' }}>{summary.ema_exit_rate_pct}%</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#94a3b8', fontWeight: 600 }}>⏱️ Expired:</span>
+                <span style={{ fontWeight: 700, color: 'var(--text-muted)' }}>{summary.time_expired_rate_pct}%</span>
+              </div>
+            </div>
           </div>
 
-          {/* Card 3: Median Days to Target */}
+          {/* Card 3: Profit Factor & Expectancy */}
+          <div className="glass-card stat-card" style={{ padding: '14px 18px' }}>
+            <span className="stat-label">Profit Factor & Expectancy</span>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+              <span className="stat-value" style={{ color: summary.profit_factor >= 1.5 ? '#34d399' : (summary.profit_factor >= 1.0 ? '#fbbf24' : '#f87171') }}>
+                {summary.profit_factor}x
+              </span>
+              <span style={{ fontSize: '12px', color: summary.avg_trade_return_pct >= 0 ? '#34d399' : '#f87171' }}>
+                Avg {summary.avg_trade_return_pct >= 0 ? `+${summary.avg_trade_return_pct}%` : `${summary.avg_trade_return_pct}%`}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+              <span>Avg Win: <strong style={{ color: '#34d399' }}>+{summary.avg_winner_gain_pct}%</strong></span>
+              <span>Avg Loss: <strong style={{ color: '#f87171' }}>{summary.avg_loser_loss_pct}%</strong></span>
+            </div>
+          </div>
+
+          {/* Card 4: Median Days to Target */}
           <div className="glass-card stat-card" style={{ padding: '14px 18px' }}>
             <span className="stat-label">Median Days to Target</span>
             <span className="stat-value" style={{ color: '#38bdf8' }}>
               {summary.median_days_to_target || '-'} <span style={{ fontSize: '16px', fontWeight: '400' }}>days</span>
             </span>
             <span className="stat-subtext" style={{ color: 'var(--text-muted)' }}>
-              Avg drawdown: {summary.avg_drawdown_pct}%
+              Avg trade drawdown: {summary.avg_drawdown_pct}%
             </span>
           </div>
 
-          {/* Card 4: Top Performer */}
+          {/* Card 5: Best Trade */}
           <div className="glass-card stat-card" style={{ padding: '14px 18px' }}>
-            <span className="stat-label">Best Winner</span>
+            <span className="stat-label">Best Trade</span>
             {summary.best_performer ? (
               <>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
@@ -798,22 +937,6 @@ export default function ModelBookTab({
             ) : (
               <span style={{ color: 'var(--text-muted)', fontSize: '14px', marginTop: '6px' }}>None</span>
             )}
-          </div>
-
-          {/* Card 5: Winner Profile Characteristics */}
-          <div className="glass-card stat-card" style={{ padding: '14px 18px' }}>
-            <span className="stat-label">Winner Profile</span>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px' }}>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                Prior Runup: <strong style={{ color: 'var(--text-primary)' }}>+{summary.avg_winner_runup_pct}%</strong>
-              </span>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                Base Depth: <strong style={{ color: 'var(--text-primary)' }}>{summary.avg_winner_base_depth}%</strong>
-              </span>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                RS Score: <strong style={{ color: 'var(--text-primary)' }}>{summary.avg_winner_rs_score || '-'}</strong>
-              </span>
-            </div>
           </div>
 
           {/* Card 6: Market Timing Edge */}
@@ -958,46 +1081,44 @@ export default function ModelBookTab({
                     Ticker {sortField === 'symbol' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
                   </th>
                   <th onClick={() => handleSort('date')} style={{ cursor: 'pointer' }}>
-                    Trigger Date {sortField === 'date' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+                    Setup {sortField === 'date' || sortField === 'setup_date' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
                   </th>
-                  <th onClick={() => handleSort('market_regime')} style={{ cursor: 'pointer' }}>
-                    Market Tape {sortField === 'market_regime' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+                  <th onClick={() => handleSort('entry_date')} style={{ cursor: 'pointer' }}>
+                    Entry {sortField === 'entry_date' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
                   </th>
-                  <th onClick={() => handleSort('peak_gain_pct')} style={{ cursor: 'pointer', color: '#34d399' }}>
-                    Peak Gain {sortField === 'peak_gain_pct' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+                  <th onClick={() => handleSort('exit_date')} style={{ cursor: 'pointer' }}>
+                    Exit {sortField === 'exit_date' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
                   </th>
-                  <th onClick={() => handleSort('max_drawdown_pct')} style={{ cursor: 'pointer' }}>
-                    Max DD
+                  <th onClick={() => handleSort('exit_reason')} style={{ cursor: 'pointer' }}>
+                    Reason {sortField === 'exit_reason' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
                   </th>
-                  <th onClick={() => handleSort('days_to_target')} style={{ cursor: 'pointer' }}>
-                    Days
+                  <th onClick={() => handleSort('trade_return_pct')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+                    Return % {sortField === 'trade_return_pct' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
                   </th>
-                  <th onClick={() => handleSort('adr_20d')} style={{ cursor: 'pointer', textAlign: 'right' }}>
-                    ADR% {sortField === 'adr_20d' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+                  <th onClick={() => handleSort('peak_gain_pct')} style={{ cursor: 'pointer', textAlign: 'right', color: '#34d399' }}>
+                    Peak % {sortField === 'peak_gain_pct' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
                   </th>
-                  <th onClick={() => handleSort('prior_runup_pct')} style={{ cursor: 'pointer' }}>
-                    Prior Move
-                  </th>
-                  <th onClick={() => handleSort('base_depth_pct')} style={{ cursor: 'pointer' }}>
-                    Depth
+                  <th onClick={() => handleSort('market_regime')} style={{ cursor: 'pointer', textAlign: 'center' }}>
+                    Tape {sortField === 'market_regime' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {displayedCandidates.length === 0 ? (
                   <tr>
-                    <td colSpan={9} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
-                      {loading ? 'Analyzing historical bars...' : 'No setups found matching criteria.'}
+                    <td colSpan={8} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                      {loading ? 'Analyzing historical setups and trade paths...' : 'No setups found matching criteria.'}
                     </td>
                   </tr>
                 ) : (
                   displayedCandidates.map(cand => {
-                    const isSelected = selectedCandidate && selectedCandidate.symbol === cand.symbol && selectedCandidate.date === cand.date;
+                    const candDate = cand.setup_date || cand.date;
+                    const isSelected = selectedCandidate && selectedCandidate.symbol === cand.symbol && (selectedCandidate.setup_date || selectedCandidate.date) === candDate;
                     const isWinner = cand.hit_target;
 
                     return (
                       <tr
-                        key={`${cand.symbol}_${cand.date}`}
+                        key={`${cand.symbol}_${candDate}`}
                         onClick={() => handleSelectCandidate(cand)}
                         style={{
                           backgroundColor: isSelected ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
@@ -1006,17 +1127,75 @@ export default function ModelBookTab({
                         }}
                       >
                         <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontWeight: '700', color: isWinner ? '#34d399' : 'var(--text-primary)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <span style={{ fontWeight: '700', color: isWinner ? '#34d399' : (cand.trade_return_pct > 0 ? 'var(--text-primary)' : 'var(--text-secondary)') }}>
                               {cand.symbol}
                             </span>
-                            {isWinner && <span style={{ fontSize: '10px' }}>🏆</span>}
+                            {isWinner && <span title="Hit Profit Target" style={{ fontSize: '10px' }}>🏆</span>}
                           </div>
                         </td>
-                        <td style={{ color: 'var(--text-secondary)' }}>{cand.date}</td>
+                        <td style={{ color: 'var(--text-secondary)' }}>{candDate}</td>
+
+                        {/* Entry Date & Price */}
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>${cand.entry_price ? cand.entry_price.toFixed(2) : '-'}</span>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{cand.entry_date}</span>
+                          </div>
+                        </td>
+
+                        {/* Exit Date & Price */}
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>${cand.exit_price ? cand.exit_price.toFixed(2) : '-'}</span>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{cand.exit_date}</span>
+                          </div>
+                        </td>
+
+                        {/* Exit Reason Badge */}
+                        <td>
+                          {cand.exit_reason === 'TARGET' && (
+                            <span className="pill" style={{ background: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.35)', fontSize: '10px', padding: '1px 6px', fontWeight: 700 }}>
+                              🎯 Target
+                            </span>
+                          )}
+                          {cand.exit_reason === 'STOP_LOSS' && (
+                            <span className="pill" style={{ background: 'rgba(244, 63, 94, 0.18)', color: '#fb7185', border: '1px solid rgba(244, 63, 94, 0.35)', fontSize: '10px', padding: '1px 6px', fontWeight: 700 }}>
+                              🛑 Stop
+                            </span>
+                          )}
+                          {cand.exit_reason === 'EMA_10_EXIT' && (
+                            <span className="pill" style={{ background: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.35)', fontSize: '10px', padding: '1px 6px', fontWeight: 700 }}>
+                              📉 EMA10
+                            </span>
+                          )}
+                          {cand.exit_reason === 'EMA_20_EXIT' && (
+                            <span className="pill" style={{ background: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.35)', fontSize: '10px', padding: '1px 6px', fontWeight: 700 }}>
+                              📉 EMA20
+                            </span>
+                          )}
+                          {cand.exit_reason === 'TIME_EXPIRED' && (
+                            <span className="pill" style={{ background: 'rgba(148, 163, 184, 0.18)', color: '#94a3b8', border: '1px solid rgba(148, 163, 184, 0.35)', fontSize: '10px', padding: '1px 6px', fontWeight: 700 }}>
+                              ⏱️ Expired
+                            </span>
+                          )}
+                          {!['TARGET', 'STOP_LOSS', 'EMA_10_EXIT', 'EMA_20_EXIT', 'TIME_EXPIRED'].includes(cand.exit_reason) && (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{cand.exit_reason || '-'}</span>
+                          )}
+                        </td>
+
+                        {/* Trade Return % */}
+                        <td style={{ textAlign: 'right', fontWeight: '700', color: cand.trade_return_pct > 0 ? '#34d399' : (cand.trade_return_pct < 0 ? '#f87171' : 'var(--text-secondary)') }}>
+                          {cand.trade_return_pct >= 0 ? `+${cand.trade_return_pct}%` : `${cand.trade_return_pct}%`}
+                        </td>
+
+                        {/* Peak Gain % */}
+                        <td style={{ textAlign: 'right', fontWeight: '600', color: cand.peak_gain_pct >= targetGainPct ? '#34d399' : 'var(--text-secondary)' }}>
+                          +{cand.peak_gain_pct}%
+                        </td>
 
                         {/* Market Tape Column */}
-                        <td>
+                        <td style={{ textAlign: 'center' }}>
                           {cand.market_regime === 'BULLISH' && (
                             <span
                               className="pill"
@@ -1024,12 +1203,9 @@ export default function ModelBookTab({
                                 background: 'rgba(16, 185, 129, 0.18)',
                                 color: '#34d399',
                                 border: '1px solid rgba(16, 185, 129, 0.35)',
-                                fontSize: '10.5px',
-                                padding: '2px 7px',
-                                fontWeight: 700,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '3px'
+                                fontSize: '10px',
+                                padding: '1px 6px',
+                                fontWeight: 700
                               }}
                               title={`Bullish Uptrend (Green Light)\nQQQ Close: $${cand.market_index_close ?? '-'}\nStack: ${cand.market_stack ?? '-'}`}
                             >
@@ -1043,12 +1219,9 @@ export default function ModelBookTab({
                                 background: 'rgba(245, 158, 11, 0.18)',
                                 color: '#fbbf24',
                                 border: '1px solid rgba(245, 158, 11, 0.35)',
-                                fontSize: '10.5px',
-                                padding: '2px 7px',
-                                fontWeight: 700,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '3px'
+                                fontSize: '10px',
+                                padding: '1px 6px',
+                                fontWeight: 700
                               }}
                               title={`Caution / Pullback (Yellow Light)\nQQQ Close: $${cand.market_index_close ?? '-'}\nStack: ${cand.market_stack ?? '-'}`}
                             >
@@ -1062,12 +1235,9 @@ export default function ModelBookTab({
                                 background: 'rgba(244, 63, 94, 0.18)',
                                 color: '#fb7185',
                                 border: '1px solid rgba(244, 63, 94, 0.35)',
-                                fontSize: '10.5px',
-                                padding: '2px 7px',
-                                fontWeight: 700,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '3px'
+                                fontSize: '10px',
+                                padding: '1px 6px',
+                                fontWeight: 700
                               }}
                               title={`High Risk / Distribution (Red Light)\nQQQ Close: $${cand.market_index_close ?? '-'}\nStack: ${cand.market_stack ?? '-'}`}
                             >
@@ -1078,21 +1248,6 @@ export default function ModelBookTab({
                             <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>-</span>
                           )}
                         </td>
-
-                        <td style={{ fontWeight: '700', color: cand.peak_gain_pct >= targetGainPct ? '#34d399' : 'var(--text-secondary)' }}>
-                          +{cand.peak_gain_pct}%
-                        </td>
-                        <td style={{ color: cand.max_drawdown_pct < -10 ? '#f87171' : 'var(--text-secondary)' }}>
-                          {cand.max_drawdown_pct}%
-                        </td>
-                        <td style={{ color: cand.days_to_target ? '#38bdf8' : 'var(--text-muted)' }}>
-                          {cand.days_to_target ? `${cand.days_to_target}d` : '-'}
-                        </td>
-                        <td style={{ textAlign: 'right', fontWeight: 600, color: (cand.adr_20d >= 5.0 ? '#fbbf24' : 'var(--text-secondary)') }}>
-                          {cand.adr_20d !== null && cand.adr_20d !== undefined ? `${cand.adr_20d.toFixed(1)}%` : '-'}
-                        </td>
-                        <td style={{ color: 'var(--text-secondary)' }}>+{cand.prior_runup_pct}%</td>
-                        <td style={{ color: 'var(--text-secondary)' }}>{cand.base_depth_pct}%</td>
                       </tr>
                     );
                   })
@@ -1132,23 +1287,75 @@ export default function ModelBookTab({
                     >
                       {selectedCandidate.sector}
                     </span>
-                    {selectedCandidate.date && (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        background: 'rgba(56, 189, 248, 0.18)',
+                        color: '#38bdf8',
+                        border: '1px solid rgba(56, 189, 248, 0.35)',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                      title="Setup Bar Date"
+                    >
+                      📅 Setup: {selectedCandidate.setup_date || selectedCandidate.date}
+                    </span>
+                    {selectedCandidate.entry_date && (
                       <span
                         className="pill"
                         style={{
                           fontSize: '11px',
                           padding: '3px 8px',
-                          background: 'rgba(56, 189, 248, 0.18)',
-                          color: '#38bdf8',
-                          border: '1px solid rgba(56, 189, 248, 0.35)',
+                          background: 'rgba(16, 185, 129, 0.18)',
+                          color: '#34d399',
+                          border: '1px solid rgba(16, 185, 129, 0.35)',
                           fontWeight: 700,
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: '4px'
                         }}
-                        title="Trigger / Screen Date for this setup candidate"
+                        title={`Breakout Buy Stop executed on ${selectedCandidate.entry_date}`}
                       >
-                        📅 Trigger: {selectedCandidate.date}
+                        ⚡ Entry: {selectedCandidate.entry_date} @ ${selectedCandidate.entry_price?.toFixed(2)}
+                      </span>
+                    )}
+                    {selectedCandidate.exit_reason && (
+                      <span
+                        className="pill"
+                        style={{
+                          fontSize: '11px',
+                          padding: '3px 8px',
+                          background: selectedCandidate.exit_reason === 'TARGET'
+                            ? 'rgba(16, 185, 129, 0.18)'
+                            : (selectedCandidate.exit_reason === 'STOP_LOSS'
+                              ? 'rgba(244, 63, 94, 0.18)'
+                              : 'rgba(245, 158, 11, 0.18)'),
+                          color: selectedCandidate.exit_reason === 'TARGET'
+                            ? '#34d399'
+                            : (selectedCandidate.exit_reason === 'STOP_LOSS'
+                              ? '#fb7185'
+                              : '#fbbf24'),
+                          border: `1px solid ${selectedCandidate.exit_reason === 'TARGET'
+                            ? 'rgba(16, 185, 129, 0.35)'
+                            : (selectedCandidate.exit_reason === 'STOP_LOSS'
+                              ? 'rgba(244, 63, 94, 0.35)'
+                              : 'rgba(245, 158, 11, 0.35)')}`,
+                          fontWeight: 700,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                        title={`Exit Date: ${selectedCandidate.exit_date} @ $${selectedCandidate.exit_price ? selectedCandidate.exit_price.toFixed(2) : '-'}`}
+                      >
+                        {selectedCandidate.exit_reason === 'TARGET' && `🎯 Target Hit: ${selectedCandidate.exit_date} @ $${selectedCandidate.exit_price?.toFixed(2)}`}
+                        {selectedCandidate.exit_reason === 'STOP_LOSS' && `🛑 Stopped Out: ${selectedCandidate.exit_date} @ $${selectedCandidate.exit_price?.toFixed(2)}`}
+                        {selectedCandidate.exit_reason === 'EMA_10_EXIT' && `📉 < EMA 10: ${selectedCandidate.exit_date} @ $${selectedCandidate.exit_price?.toFixed(2)}`}
+                        {selectedCandidate.exit_reason === 'EMA_20_EXIT' && `📉 < EMA 20: ${selectedCandidate.exit_date} @ $${selectedCandidate.exit_price?.toFixed(2)}`}
+                        {selectedCandidate.exit_reason === 'TIME_EXPIRED' && `⏱️ Expired: ${selectedCandidate.exit_date} @ $${selectedCandidate.exit_price?.toFixed(2)}`}
                       </span>
                     )}
                     {selectedCandidate.adr_20d !== null && selectedCandidate.adr_20d !== undefined && (
@@ -1206,21 +1413,29 @@ export default function ModelBookTab({
                     )}
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '6px', fontSize: '12.5px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '6px', fontSize: '12.5px', flexWrap: 'wrap' }}>
                     <span>
-                      Entry Price: <strong>${selectedCandidate.entry_price.toFixed(2)}</strong>
+                      Trade Return: <strong style={{ color: selectedCandidate.trade_return_pct >= 0 ? '#34d399' : '#f87171', fontSize: '13.5px' }}>
+                        {selectedCandidate.trade_return_pct >= 0 ? `+${selectedCandidate.trade_return_pct}%` : `${selectedCandidate.trade_return_pct}%`}
+                      </strong>
+                    </span>
+                    <span>
+                      Target: <strong style={{ color: '#34d399' }}>${selectedCandidate.target_price?.toFixed(2)} (+{targetGainPct}%)</strong>
+                    </span>
+                    <span>
+                      Stop: <strong style={{ color: selectedCandidate.stop_price ? '#f87171' : 'var(--text-muted)' }}>
+                        {selectedCandidate.stop_price ? `$${selectedCandidate.stop_price.toFixed(2)} (-${stopLossPct}%)` : 'None'}
+                      </strong>
                     </span>
                     <span>
                       Peak: <strong style={{ color: '#34d399' }}>${selectedCandidate.peak_price?.toFixed(2) || '-'} (+{selectedCandidate.peak_gain_pct}%)</strong>
                     </span>
                     <span>
-                      Max Pullback: <strong style={{ color: selectedCandidate.max_drawdown_pct < -8 ? '#f87171' : 'var(--text-secondary)' }}>{selectedCandidate.max_drawdown_pct}%</strong>
+                      Max DD: <strong style={{ color: selectedCandidate.max_drawdown_pct < -8 ? '#f87171' : 'var(--text-secondary)' }}>{selectedCandidate.max_drawdown_pct}%</strong>
                     </span>
-                    {selectedCandidate.days_to_target && (
-                      <span style={{ color: '#38bdf8', fontWeight: '600' }}>
-                        ⚡ Hit +{targetGainPct}% in {selectedCandidate.days_to_target} days
-                      </span>
-                    )}
+                    <span>
+                      Held: <strong style={{ color: '#38bdf8' }}>{selectedCandidate.holding_days || '-'}d</strong>
+                    </span>
                   </div>
                 </div>
 
@@ -1361,7 +1576,7 @@ export default function ModelBookTab({
                     ref={modelBookChartRef}
                     data={stockPrices}
                     height={480}
-                    asOfDate={selectedCandidate?.date || selectedCandidate?.screen_date}
+                    asOfDate={selectedCandidate?.setup_date || selectedCandidate?.date || selectedCandidate?.screen_date}
                     symbol={selectedCandidate?.symbol}
                     setupName={SETUP_CANONICAL_NAMES[setupType] || 'Power Play'}
                     companyName={selectedCandidate?.name}
@@ -1385,8 +1600,10 @@ export default function ModelBookTab({
                   <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>{selectedCandidate.base_depth_pct}%</span>
                 </div>
                 <div>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Pivot Price</span>
-                  <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>${selectedCandidate.pivot_price ? selectedCandidate.pivot_price.toFixed(2) : '-'}</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Setup High / Pivot</span>
+                  <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                    ${selectedCandidate.setup_high ? selectedCandidate.setup_high.toFixed(2) : (selectedCandidate.pivot_price ? selectedCandidate.pivot_price.toFixed(2) : '-')}
+                  </span>
                 </div>
                 <div>
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>ADR (20d)</span>
@@ -1399,9 +1616,19 @@ export default function ModelBookTab({
                   <span style={{ fontSize: '13px', fontWeight: '700', color: '#38bdf8' }}>{selectedCandidate.rs_score || '-'}</span>
                 </div>
                 <div>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>End of Period Return</span>
-                  <span style={{ fontSize: '13px', fontWeight: '700', color: selectedCandidate.end_return_pct >= 0 ? '#34d399' : '#f87171' }}>
-                    {selectedCandidate.end_return_pct >= 0 ? `+${selectedCandidate.end_return_pct}%` : `${selectedCandidate.end_return_pct}%`}
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Trade Return</span>
+                  <span style={{ fontSize: '13px', fontWeight: '700', color: selectedCandidate.trade_return_pct >= 0 ? '#34d399' : '#f87171' }}>
+                    {selectedCandidate.trade_return_pct >= 0 ? `+${selectedCandidate.trade_return_pct}%` : `${selectedCandidate.trade_return_pct}%`}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Exit Reason</span>
+                  <span style={{
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    color: selectedCandidate.exit_reason === 'TARGET' ? '#34d399' : (selectedCandidate.exit_reason === 'STOP_LOSS' ? '#fb7185' : '#fbbf24')
+                  }}>
+                    {selectedCandidate.exit_reason || '-'}
                   </span>
                 </div>
                 <div>

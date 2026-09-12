@@ -49,10 +49,12 @@ class ModelBookScanSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     setup_type: str = "power_play"
-    target_gain_pct: float = 20.0
+    target_gain_pct: float = 16.0
+    stop_loss_pct: Optional[float] = 8.0
+    ema_exit_type: Optional[str] = "none"
     start_date: Optional[str] = None
     end_date: Optional[str] = None
-    forward_days: int = 20
+    forward_days: int = 25
     max_drawdown_limit: Optional[float] = None
     min_price: Optional[float] = None
     min_volume_50d: Optional[int] = None
@@ -350,6 +352,8 @@ def scan_model_book_endpoint(payload: ModelBookScanSchema):
         data = model_book_service.scan_setups(
             setup_type=payload.setup_type,
             target_gain_pct=payload.target_gain_pct,
+            stop_loss_pct=payload.stop_loss_pct if payload.stop_loss_pct is not None else payload.max_drawdown_limit,
+            ema_exit_type=payload.ema_exit_type,
             start_date=payload.start_date,
             end_date=payload.end_date,
             forward_days=payload.forward_days,

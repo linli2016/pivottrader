@@ -2,9 +2,21 @@ import os
 import duckdb
 from typing import Dict, Any, List, Optional
 from datetime import datetime, date, timedelta
+from collections import defaultdict
 from .config import config_service
 from .setup_service import setup_service
 from application.engine.market_regime import get_qullamaggie_daily_lookup
+
+
+def compute_ema_series(prices: List[float], span: int) -> List[float]:
+    """Computes exponential moving average over a series of closing prices."""
+    if not prices:
+        return []
+    k = 2.0 / (span + 1.0)
+    ema = [prices[0]]
+    for p in prices[1:]:
+        ema.append(p * k + ema[-1] * (1.0 - k))
+    return ema
 
 
 class ModelBookService:
@@ -32,10 +44,12 @@ class ModelBookService:
     def scan_setups(
         self,
         setup_type: str = "power_play",
-        target_gain_pct: float = 20.0,
+        target_gain_pct: float = 16.0,
+        stop_loss_pct: Optional[float] = 8.0,
+        ema_exit_type: Optional[str] = "none",
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        forward_days: int = 20,
+        forward_days: int = 25,
         max_drawdown_limit: Optional[float] = None,
         min_price: Optional[float] = None,
         min_volume_50d: Optional[int] = None,
@@ -45,10 +59,20 @@ class ModelBookService:
         filters: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Scans historical daily bars for the chosen setup, measures forward returns up to forward_days,
-        and isolates true winners.
-        Filters automatically inherit baseline and setup-specific configurations from setups.yaml via setup_service.
+        True backtesting engine for stock setups:
+        1. Screens for setup bars matching the exact screen criteria from setups.yaml.
+        2. Deduplicates consecutive setup days: only the first setup day in an episode is tested.
+        3. Simulates next-day breakout entry: enters at max(open_{T+1}, high_T) if high_{T+1} > high_T.
+        4. Evaluates forward multi-path trade exit:
+           - Profit Target % hit
+           - Stop Loss % hit
+           - Trailing EMA exit (Close < EMA10 / EMA20)
+           - Time Expiration (end of holding period)
         """
+        # Backward compatibility for max_drawdown_limit
+        if stop_loss_pct is None and max_drawdown_limit is not None:
+            stop_loss_pct = float(max_drawdown_limit)
+
         # 0. Resolve setup configuration from setup_service
         setup_def = setup_service.get_setup_by_id(setup_type)
         configured_filters = dict(setup_def.get("filters", {}))
@@ -57,7 +81,7 @@ class ModelBookService:
         if filters and isinstance(filters, dict):
             effective_filters.update(filters)
 
-        # Apply any explicit parameter overrides if passed
+        # Apply explicit parameter overrides if passed
         if min_price is not None:
             effective_filters["min_price"] = min_price
         if min_volume_50d is not None:
@@ -102,7 +126,7 @@ class ModelBookService:
             else:
                 start_date_str = str(start_date).strip()
 
-            # 2. Build SQL based on setup type and exact setup filter criteria
+            # 2. Build and execute SQL based on exact setup criteria
             buffer_start_dt = datetime.strptime(start_date_str, "%Y-%m-%d").date() - timedelta(days=120)
             buffer_start_str = buffer_start_dt.strftime("%Y-%m-%d")
 
@@ -111,37 +135,75 @@ class ModelBookService:
                 buffer_start_str=buffer_start_str,
                 start_date_str=start_date_str,
                 end_date_str=end_date_str,
-                forward_days=forward_days,
                 effective_filters=effective_filters
             )
 
             raw_rows = conn.execute(query, params).fetchall()
 
-            # 3. Deduplicate episodes within episode_window_days for the same symbol
-            raw_rows.sort(key=lambda r: (r[0], r[1]))  # symbol, date
-            deduped_candidates = []
-            last_seen = {}
-
+            # 3. Group by symbol and find breakout entries with consecutive day deduplication
+            sym_rows = defaultdict(list)
             for r in raw_rows:
-                sym = r[0]
-                dt = r[1]
-                if sym in last_seen:
-                    if (dt - last_seen[sym]).days <= episode_window_days:
-                        continue
-                last_seen[sym] = dt
-                deduped_candidates.append(r)
+                sym_rows[r[0]].append(r)
 
-            if not deduped_candidates:
+            # 3. Enter all setup bars where next_high > setup_high as independent candidate trades
+            triggered_trades = []
+            for sym, b_list in sym_rows.items():
+                b_list.sort(key=lambda x: x[1])  # sort by date ASC
+
+                for b in b_list:
+                    setup_dt = b[1]
+                    next_dt = b[15]
+                    if not next_dt:
+                        continue
+
+                    setup_high = float(b[3])
+                    next_open = float(b[16]) if b[16] is not None else float(b[5])
+                    next_high = float(b[17]) if b[17] is not None else float(b[5])
+
+                    # Next-day buy-stop condition: High_{T+1} > High_T
+                    if next_high > setup_high:
+                        entry_price = max(next_open, setup_high)
+                        setup_dt_str = setup_dt.strftime("%Y-%m-%d") if hasattr(setup_dt, "strftime") else str(setup_dt)
+                        entry_dt_str = next_dt.strftime("%Y-%m-%d") if hasattr(next_dt, "strftime") else str(next_dt)
+
+                        triggered_trades.append({
+                            "symbol": sym,
+                            "setup_date": setup_dt_str,
+                            "entry_date": entry_dt_str,
+                            "date": setup_dt_str,
+                            "screen_date": setup_dt_str,
+                            "entry_price": round(float(entry_price), 2),
+                            "setup_high": round(float(setup_high), 2),
+                            "name": b[7] or sym,
+                            "sector": b[8] or "Unknown",
+                            "industry": b[9] or "Unknown",
+                            "prior_runup_pct": round(float(b[10]), 1) if b[10] is not None else 0.0,
+                            "base_depth_pct": round(float(b[11]), 1) if b[11] is not None else 0.0,
+                            "rs_score": round(float(b[12]), 1) if b[12] is not None else None,
+                            "adr_20d": round(float(b[13]), 2) if b[13] is not None else None,
+                            "pivot_price": round(float(b[14]), 2) if b[14] is not None else round(float(setup_high), 2)
+                        })
+
+            if not triggered_trades:
                 return {
                     "summary": {
                         "setup_type": setup_type,
                         "target_gain_pct": target_gain_pct,
+                        "stop_loss_pct": stop_loss_pct,
+                        "ema_exit_type": ema_exit_type,
                         "forward_days": forward_days,
                         "date_range": {"start": start_date_str, "end": end_date_str},
-                        "total_setups": 0,
+                        "total_setups": len(raw_rows),
+                        "total_trades": 0,
                         "total_winners": 0,
                         "win_rate_pct": 0.0,
+                        "stop_loss_rate_pct": 0.0,
+                        "ema_exit_rate_pct": 0.0,
+                        "time_expired_rate_pct": 0.0,
+                        "avg_trade_return_pct": 0.0,
                         "avg_winner_gain_pct": 0.0,
+                        "avg_loser_loss_pct": 0.0,
+                        "profit_factor": 0.0,
                         "median_days_to_target": 0,
                         "avg_drawdown_pct": 0.0,
                         "regime_breakdown": {},
@@ -151,31 +213,101 @@ class ModelBookService:
                     "all_candidates": []
                 }
 
-            # 4. Resolve exact days_to_target and check max_drawdown_limit
-            processed = self._evaluate_forward_paths(
+            # 4. Multi-exit trade forward path simulation for all independent candidate trades
+            simulated_trades = self._evaluate_forward_paths(
                 conn=conn,
-                candidates=deduped_candidates,
+                trades=triggered_trades,
                 target_gain_pct=target_gain_pct,
-                forward_days=forward_days,
-                max_drawdown_limit=max_drawdown_limit
+                stop_loss_pct=stop_loss_pct,
+                ema_exit_type=ema_exit_type,
+                forward_days=forward_days
             )
 
-            # Separate winners vs non-winners
-            winners = [c for c in processed if c["hit_target"]]
-            if max_drawdown_limit is not None:
-                winners = [w for w in winners if not w["stopped_out_before_target"]]
+            # 5. Cluster-based episode deduplication:
+            # - Group overlapping trades of the same stock into episode clusters
+            # - If all fail -> count as 1 fail (pick the first setup attempt)
+            # - If all succeed -> pick the first one
+            # - If some fail and some succeed -> keep the non-overlapping successful ones
+            sym_sim_trades = defaultdict(list)
+            for t in simulated_trades:
+                sym_sim_trades[t["symbol"]].append(t)
 
-            # Sort winners and all candidates by trigger date ASC
-            winners.sort(key=lambda x: (x["date"], x["symbol"]))
-            processed.sort(key=lambda x: (x["date"], x["symbol"]))
+            processed = []
+            for sym, t_list in sym_sim_trades.items():
+                t_list.sort(key=lambda x: x["setup_date"])
+
+                clusters = []
+                current_cluster = []
+                cluster_end_dt = None
+
+                for t in t_list:
+                    s_dt = datetime.strptime(t["setup_date"], "%Y-%m-%d").date() if isinstance(t["setup_date"], str) else t["setup_date"]
+                    e_dt = datetime.strptime(t["exit_date"], "%Y-%m-%d").date() if isinstance(t["exit_date"], str) else t["exit_date"]
+
+                    if not current_cluster:
+                        current_cluster.append(t)
+                        cluster_end_dt = e_dt
+                    else:
+                        if s_dt <= cluster_end_dt + timedelta(days=5):
+                            current_cluster.append(t)
+                            cluster_end_dt = max(cluster_end_dt, e_dt)
+                        else:
+                            clusters.append(current_cluster)
+                            current_cluster = [t]
+                            cluster_end_dt = e_dt
+
+                if current_cluster:
+                    clusters.append(current_cluster)
+
+                for c in clusters:
+                    successes = [t for t in c if t["hit_target"]]
+                    fails = [t for t in c if not t["hit_target"]]
+
+                    if not successes:
+                        # All failed -> count as one fail (pick first)
+                        processed.append(fails[0])
+                    else:
+                        # Keep non-overlapping successes (always includes first success)
+                        active_end = None
+                        for s in successes:
+                            s_entry = s["entry_date"]
+                            s_exit = s["exit_date"]
+                            if not active_end or s_entry > active_end:
+                                processed.append(s)
+                                active_end = s_exit
+
+            # Separate winners (hit target or profitable trade)
+            winners = [c for c in processed if c["hit_target"]]
+
+            # Sort winners and all candidates by trigger / entry date ASC
+            winners.sort(key=lambda x: (x["setup_date"], x["symbol"]))
+            processed.sort(key=lambda x: (x["setup_date"], x["symbol"]))
 
             # 5. Compute summary statistics
-            total_setups = len(processed)
+            total_trades = len(processed)
             total_winners = len(winners)
-            win_rate_pct = round((total_winners / total_setups * 100.0), 1) if total_setups > 0 else 0.0
-            
-            avg_winner_gain = round(sum(w["peak_gain_pct"] for w in winners) / total_winners, 1) if total_winners > 0 else 0.0
-            avg_drawdown = round(sum(c["max_drawdown_pct"] for c in processed) / total_setups, 1) if total_setups > 0 else 0.0
+            win_rate_pct = round((total_winners / total_trades * 100.0), 1) if total_trades > 0 else 0.0
+
+            stops = [t for t in processed if t.get("stopped_out")]
+            stop_loss_rate = round((len(stops) / total_trades * 100.0), 1) if total_trades > 0 else 0.0
+
+            ema_exits = [t for t in processed if "EMA" in t.get("exit_reason", "")]
+            ema_exit_rate = round((len(ema_exits) / total_trades * 100.0), 1) if total_trades > 0 else 0.0
+
+            expired = [t for t in processed if t.get("exit_reason") == "TIME_EXPIRED"]
+            expired_rate = round((len(expired) / total_trades * 100.0), 1) if total_trades > 0 else 0.0
+
+            avg_trade_ret = round(sum(t["trade_return_pct"] for t in processed) / total_trades, 2) if total_trades > 0 else 0.0
+            avg_winner_gain = round(sum(w["trade_return_pct"] for w in winners) / total_winners, 2) if total_winners > 0 else 0.0
+
+            losing_trades = [t for t in processed if t["trade_return_pct"] <= 0]
+            avg_loser_loss = round(sum(l["trade_return_pct"] for l in losing_trades) / len(losing_trades), 2) if losing_trades else 0.0
+
+            sum_win = sum(t["trade_return_pct"] for t in processed if t["trade_return_pct"] > 0)
+            sum_loss = abs(sum(t["trade_return_pct"] for t in losing_trades))
+            profit_factor = round(sum_win / sum_loss, 2) if sum_loss > 0 else (round(sum_win, 2) if sum_win > 0 else 0.0)
+
+            avg_drawdown = round(sum(c["max_drawdown_pct"] for c in processed) / total_trades, 1) if total_trades > 0 else 0.0
 
             days_list = [w["days_to_target"] for w in winners if w["days_to_target"] is not None]
             median_days = 0
@@ -185,12 +317,12 @@ class ModelBookService:
                 median_days = days_list[mid] if len(days_list) % 2 != 0 else round((days_list[mid - 1] + days_list[mid]) / 2, 1)
 
             best_performer = None
-            if winners:
-                best_w = max(winners, key=lambda x: x["peak_gain_pct"])
+            if processed:
+                best_w = max(processed, key=lambda x: x["peak_gain_pct"])
                 best_performer = {
                     "symbol": best_w["symbol"],
                     "gain_pct": best_w["peak_gain_pct"],
-                    "date": best_w["date"],
+                    "date": best_w["setup_date"],
                     "sector": best_w.get("sector")
                 }
 
@@ -206,7 +338,7 @@ class ModelBookService:
                 tot = len(r_cands)
                 w_cnt = len(r_win)
                 rate = round((w_cnt / tot * 100.0), 1) if tot > 0 else 0.0
-                avg_g = round(sum(w["peak_gain_pct"] for w in r_win) / w_cnt, 1) if w_cnt > 0 else 0.0
+                avg_g = round(sum(w["trade_return_pct"] for w in r_win) / w_cnt, 1) if w_cnt > 0 else 0.0
                 regime_breakdown[r_key] = {
                     "name": r_name,
                     "total": tot,
@@ -218,12 +350,21 @@ class ModelBookService:
             summary = {
                 "setup_type": setup_type,
                 "target_gain_pct": target_gain_pct,
+                "stop_loss_pct": stop_loss_pct,
+                "ema_exit_type": ema_exit_type,
                 "forward_days": forward_days,
                 "date_range": {"start": start_date_str, "end": end_date_str},
-                "total_setups": total_setups,
+                "total_setups": len(raw_rows),
+                "total_trades": total_trades,
                 "total_winners": total_winners,
                 "win_rate_pct": win_rate_pct,
+                "stop_loss_rate_pct": stop_loss_rate,
+                "ema_exit_rate_pct": ema_exit_rate,
+                "time_expired_rate_pct": expired_rate,
+                "avg_trade_return_pct": avg_trade_ret,
                 "avg_winner_gain_pct": avg_winner_gain,
+                "avg_loser_loss_pct": avg_loser_loss,
+                "profit_factor": profit_factor,
                 "median_days_to_target": median_days,
                 "avg_drawdown_pct": avg_drawdown,
                 "best_performer": best_performer,
@@ -246,15 +387,14 @@ class ModelBookService:
         buffer_start_str: str,
         start_date_str: str,
         end_date_str: str,
-        forward_days: int,
         effective_filters: Dict[str, Any]
     ) -> tuple[str, list]:
         """Constructs high-performance DuckDB query tailored to each setup using exact setup filter criteria."""
 
-        # 1. Universal baseline filters from base_setup (or overridden by setup / user)
+        # Universal baseline filters from base_setup
         min_price = float(effective_filters.get("min_price", 5.0))
         min_volume_50d = float(effective_filters.get("min_volume_sma_50", 100000))
-        min_dollar_vol = float(effective_filters.get("min_dollar_vol", 10000000.0))
+        min_dollar_vol = float(effective_filters.get("min_dollar_vol", 3000000.0))
         enforce_stage2 = bool(effective_filters.get("enforce_stage2", False))
         enable_rs = bool(effective_filters.get("enable_rs", False))
         min_rs = float(effective_filters.get("min_rs_percentile", 70.0))
@@ -276,193 +416,134 @@ class ModelBookService:
 
         base_params = [buffer_start_str, start_date_str, end_date_str, min_price, min_volume_50d, min_dollar_vol] + rs_params
 
-        # 2. Setup-specific queries
+        # Setup-specific queries
         if setup_type == "power_play":
             runup_thresh = float(effective_filters.get("min_pp_runup", 100.0))
             depth_thresh = float(effective_filters.get("max_pp_drawdown", 25.0))
+            min_pp_days = int(effective_filters.get("min_pp_days_since_peak", 5))
+            max_pp_days = int(effective_filters.get("max_pp_days_since_peak", 35))
 
             query = f"""
-            WITH price_window AS (
+            WITH numbered AS (
                 SELECT 
-                    d.symbol,
-                    d.date,
-                    d.open,
-                    d.high,
-                    d.low,
-                    d.close,
-                    d.volume,
-                    d.vol_50d_ma,
-                    d.dollar_vol_50d_ma,
-                    d.adr_20d,
-                    d.rs_score,
-                    d.sma_50,
-                    d.sma_150,
-                    d.sma_200,
-                    d.dist_from_52w_high,
-                    d.surge_off_low_pct,
-                    s.name,
-                    s.sector,
-                    s.industry,
-                    MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 40 PRECEDING AND 1 PRECEDING) as min_low_40d,
-                    MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 30 PRECEDING AND 1 PRECEDING) as max_high_30d,
-                    MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 15 PRECEDING AND 1 PRECEDING) as min_low_15d,
-                    MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 1 FOLLOWING AND {forward_days} FOLLOWING) as fwd_max_high,
-                    MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 1 FOLLOWING AND {forward_days} FOLLOWING) as fwd_min_low,
-                    LEAD(d.close, {forward_days}) OVER (PARTITION BY d.symbol ORDER BY d.date) as fwd_close_end
+                    d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
+                    d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
+                    d.adr_20d, d.rs_score, d.rs_rank,
+                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
+                    s.name, s.sector, s.industry, s.asset_type,
+                    ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date) as rn,
+                    LEAD(d.date, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_date,
+                    LEAD(d.open, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_open,
+                    LEAD(d.high, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_high,
+                    LEAD(d.low, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_low,
+                    LEAD(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_close
                 FROM daily_bars d
                 LEFT JOIN symbols s ON d.symbol = s.symbol
                 WHERE d.date >= CAST(? AS DATE)
+                  AND (s.asset_type IS NULL OR UPPER(s.asset_type) NOT LIKE '%ETF%')
+                  AND (s.industry IS NULL OR UPPER(s.industry) NOT LIKE '%ETF%')
+                  AND d.symbol NOT IN ('SPY', 'QQQ', 'IWM', 'XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC')
+            ),
+            peaks AS (
+                SELECT *,
+                    MAX(high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 35 PRECEDING AND 1 PRECEDING) as base_peak_high,
+                    ARG_MAX(rn, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 35 PRECEDING AND 1 PRECEDING) as base_peak_rn,
+                    MIN(low) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 75 PRECEDING AND 1 PRECEDING) as runup_min_low,
+                    MIN(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 35 PRECEDING AND 1 PRECEDING) as base_min_close
+                FROM numbered
             ),
             candidates AS (
-                SELECT 
-                    symbol,
-                    date,
-                    close,
-                    name,
-                    sector,
-                    industry,
-                    vol_50d_ma,
-                    dollar_vol_50d_ma,
-                    adr_20d,
-                    rs_score,
-                    sma_50,
-                    sma_150,
-                    sma_200,
-                    dist_from_52w_high,
-                    surge_off_low_pct,
-                    max_high_30d,
-                    (max_high_30d - min_low_40d) / NULLIF(min_low_40d, 0) * 100 as runup_pct,
-                    (max_high_30d - min_low_15d) / NULLIF(max_high_30d, 0) * 100 as drawdown_pct,
-                    (fwd_max_high - close) / NULLIF(close, 0) * 100 as fwd_mfe_pct,
-                    (fwd_min_low - close) / NULLIF(close, 0) * 100 as fwd_mae_pct,
-                    (fwd_close_end - close) / NULLIF(close, 0) * 100 as fwd_end_return_pct,
-                    fwd_max_high
-                FROM price_window
+                SELECT *,
+                    (rn - base_peak_rn) as days_since_peak,
+                    (base_peak_high - runup_min_low) / NULLIF(runup_min_low, 0) * 100 as runup_pct,
+                    (base_peak_high - base_min_close) / NULLIF(base_peak_high, 0) * 100 as drawdown_pct
+                FROM peaks
                 WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE)
                   AND close >= ?
                   AND vol_50d_ma >= ?
-                  AND COALESCE(dollar_vol_50d_ma, close * vol_50d_ma) >= ?
+                  AND dollar_vol_50d_ma >= ?
                   {stage2_sql}
                   {rs_sql}
-                  AND (symbol NOT LIKE '%ETF%' AND symbol NOT IN ('SPY', 'QQQ', 'IWM', 'XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC'))
             )
             SELECT 
-                symbol, 
-                date, 
-                close as entry_price, 
-                name, 
-                sector, 
-                industry,
-                runup_pct, 
-                drawdown_pct as base_depth_pct,
-                fwd_mfe_pct, 
-                fwd_mae_pct, 
-                fwd_end_return_pct,
-                rs_score,
-                fwd_max_high,
-                max_high_30d as pivot_price,
-                adr_20d
+                symbol, date, open, high, low, close, volume,
+                name, sector, industry,
+                runup_pct, drawdown_pct as base_depth_pct,
+                rs_score, adr_20d, base_peak_high as pivot_price,
+                next_date, next_open, next_high, next_low, next_close
             FROM candidates
-            WHERE runup_pct >= {runup_thresh} 
+            WHERE days_since_peak >= {min_pp_days} 
+              AND days_since_peak <= {max_pp_days}
+              AND runup_pct >= {runup_thresh} 
               AND drawdown_pct <= {depth_thresh} 
-              AND close > max_high_30d
+              AND close <= base_peak_high * 1.05
             ORDER BY symbol, date ASC;
             """
             return query, base_params
 
         elif setup_type == "breakout":
             runup_thresh = float(effective_filters.get("min_breakout_runup", 30.0))
-            depth_thresh = float(effective_filters.get("max_pivot_spread", 25.0))
+            min_days = int(effective_filters.get("min_breakout_days", 8))
+            max_days = int(effective_filters.get("max_breakout_days", 45))
+            depth_thresh = float(effective_filters.get("max_breakout_drawdown", 35.0))
             min_adr = float(effective_filters.get("min_adr_20d", 4.0)) if effective_filters.get("enable_adr", True) else None
-
             adr_sql = f"AND adr_20d >= {min_adr}" if min_adr is not None else ""
 
             query = f"""
-            WITH price_window AS (
+            WITH numbered AS (
                 SELECT 
-                    d.symbol,
-                    d.date,
-                    d.open,
-                    d.high,
-                    d.low,
-                    d.close,
-                    d.volume,
-                    d.vol_50d_ma,
-                    d.dollar_vol_50d_ma,
-                    d.adr_20d,
-                    d.rs_score,
-                    d.sma_50,
-                    d.sma_150,
-                    d.sma_200,
-                    d.dist_from_52w_high,
-                    d.surge_off_low_pct,
-                    s.name,
-                    s.sector,
-                    s.industry,
-                    MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 45 PRECEDING AND 1 PRECEDING) as min_low_45d,
-                    MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) as max_high_20d,
-                    MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 15 PRECEDING AND 1 PRECEDING) as min_low_15d,
-                    MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 1 FOLLOWING AND {forward_days} FOLLOWING) as fwd_max_high,
-                    MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 1 FOLLOWING AND {forward_days} FOLLOWING) as fwd_min_low,
-                    LEAD(d.close, {forward_days}) OVER (PARTITION BY d.symbol ORDER BY d.date) as fwd_close_end
+                    d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
+                    d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
+                    d.adr_20d, d.rs_score, d.rs_rank,
+                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
+                    s.name, s.sector, s.industry, s.asset_type,
+                    ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date) as rn,
+                    LEAD(d.date, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_date,
+                    LEAD(d.open, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_open,
+                    LEAD(d.high, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_high,
+                    LEAD(d.low, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_low,
+                    LEAD(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_close
                 FROM daily_bars d
                 LEFT JOIN symbols s ON d.symbol = s.symbol
                 WHERE d.date >= CAST(? AS DATE)
+                  AND (s.asset_type IS NULL OR UPPER(s.asset_type) NOT LIKE '%ETF%')
+                  AND (s.industry IS NULL OR UPPER(s.industry) NOT LIKE '%ETF%')
+                  AND d.symbol NOT IN ('SPY', 'QQQ', 'IWM', 'XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC')
+            ),
+            peaks AS (
+                SELECT *,
+                    MAX(high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 45 PRECEDING AND 1 PRECEDING) as base_peak_high,
+                    ARG_MAX(rn, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 45 PRECEDING AND 1 PRECEDING) as base_peak_rn,
+                    MIN(low) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 75 PRECEDING AND 1 PRECEDING) as runup_min_low,
+                    MIN(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 45 PRECEDING AND 1 PRECEDING) as base_min_close
+                FROM numbered
             ),
             candidates AS (
-                SELECT 
-                    symbol,
-                    date,
-                    close,
-                    name,
-                    sector,
-                    industry,
-                    vol_50d_ma,
-                    dollar_vol_50d_ma,
-                    adr_20d,
-                    rs_score,
-                    sma_50,
-                    sma_150,
-                    sma_200,
-                    dist_from_52w_high,
-                    surge_off_low_pct,
-                    max_high_20d,
-                    (max_high_20d - min_low_45d) / NULLIF(min_low_45d, 0) * 100 as runup_pct,
-                    (max_high_20d - min_low_15d) / NULLIF(max_high_20d, 0) * 100 as drawdown_pct,
-                    (fwd_max_high - close) / NULLIF(close, 0) * 100 as fwd_mfe_pct,
-                    (fwd_min_low - close) / NULLIF(close, 0) * 100 as fwd_mae_pct,
-                    (fwd_close_end - close) / NULLIF(close, 0) * 100 as fwd_end_return_pct,
-                    fwd_max_high
-                FROM price_window
+                SELECT *,
+                    (rn - base_peak_rn) as days_since_peak,
+                    (base_peak_high - runup_min_low) / NULLIF(runup_min_low, 0) * 100 as runup_pct,
+                    (base_peak_high - base_min_close) / NULLIF(base_peak_high, 0) * 100 as drawdown_pct
+                FROM peaks
                 WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE)
                   AND close >= ?
                   AND vol_50d_ma >= ?
-                  AND COALESCE(dollar_vol_50d_ma, close * vol_50d_ma) >= ?
+                  AND dollar_vol_50d_ma >= ?
                   {adr_sql}
                   {stage2_sql}
                   {rs_sql}
-                  AND (symbol NOT LIKE '%ETF%' AND symbol NOT IN ('SPY', 'QQQ', 'IWM', 'XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC'))
             )
             SELECT 
-                symbol, 
-                date, 
-                close as entry_price, 
-                name, 
-                sector, 
-                industry,
-                runup_pct, 
-                drawdown_pct as base_depth_pct,
-                fwd_mfe_pct, 
-                fwd_mae_pct, 
-                fwd_end_return_pct,
-                rs_score,
-                fwd_max_high,
-                max_high_20d as pivot_price,
-                adr_20d
+                symbol, date, open, high, low, close, volume,
+                name, sector, industry,
+                runup_pct, drawdown_pct as base_depth_pct,
+                rs_score, adr_20d, base_peak_high as pivot_price,
+                next_date, next_open, next_high, next_low, next_close
             FROM candidates
-            WHERE runup_pct >= {runup_thresh} 
+            WHERE days_since_peak >= {min_days}
+              AND days_since_peak <= {max_days}
+              AND runup_pct >= {runup_thresh} 
               AND drawdown_pct <= {depth_thresh} 
-              AND close > max_high_20d
+              AND close <= base_peak_high * 1.05
             ORDER BY symbol, date ASC;
             """
             return query, base_params
@@ -472,82 +553,44 @@ class ModelBookService:
             min_rel_vol = float(effective_filters.get("min_ep_rel_vol", 2.5))
 
             query = f"""
-            WITH price_window AS (
+            WITH numbered AS (
                 SELECT 
-                    d.symbol,
-                    d.date,
-                    d.open,
-                    d.high,
-                    d.low,
-                    d.close,
-                    d.volume,
-                    d.vol_50d_ma,
-                    d.dollar_vol_50d_ma,
-                    d.adr_20d,
-                    d.rel_vol_50d,
-                    d.gap_pct,
-                    d.rs_score,
-                    d.sma_50,
-                    d.sma_150,
-                    d.sma_200,
-                    d.dist_from_52w_high,
-                    d.surge_off_low_pct,
-                    s.name,
-                    s.sector,
-                    s.industry,
+                    d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
+                    d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
+                    d.adr_20d, d.rel_vol_50d, d.gap_pct, d.rs_score,
+                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
+                    s.name, s.sector, s.industry,
                     LAG(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as prev_close,
-                    MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 1 FOLLOWING AND {forward_days} FOLLOWING) as fwd_max_high,
-                    MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 1 FOLLOWING AND {forward_days} FOLLOWING) as fwd_min_low,
-                    LEAD(d.close, {forward_days}) OVER (PARTITION BY d.symbol ORDER BY d.date) as fwd_close_end
+                    LEAD(d.date, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_date,
+                    LEAD(d.open, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_open,
+                    LEAD(d.high, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_high,
+                    LEAD(d.low, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_low,
+                    LEAD(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_close
                 FROM daily_bars d
                 LEFT JOIN symbols s ON d.symbol = s.symbol
                 WHERE d.date >= CAST(? AS DATE)
+                  AND (s.asset_type IS NULL OR UPPER(s.asset_type) NOT LIKE '%ETF%')
+                  AND (s.industry IS NULL OR UPPER(s.industry) NOT LIKE '%ETF%')
+                  AND d.symbol NOT IN ('SPY', 'QQQ', 'IWM', 'XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC')
             ),
             candidates AS (
-                SELECT 
-                    symbol,
-                    date,
-                    close,
-                    name,
-                    sector,
-                    industry,
-                    vol_50d_ma,
-                    dollar_vol_50d_ma,
-                    adr_20d,
-                    rs_score,
-                    open,
-                    prev_close,
+                SELECT *,
                     COALESCE(gap_pct, (open - prev_close) / NULLIF(prev_close, 0) * 100) as calc_gap_pct,
-                    COALESCE(rel_vol_50d, volume / NULLIF(vol_50d_ma, 0)) as calc_rel_vol,
-                    (fwd_max_high - close) / NULLIF(close, 0) * 100 as fwd_mfe_pct,
-                    (fwd_min_low - close) / NULLIF(close, 0) * 100 as fwd_mae_pct,
-                    (fwd_close_end - close) / NULLIF(close, 0) * 100 as fwd_end_return_pct,
-                    fwd_max_high
-                FROM price_window
+                    COALESCE(rel_vol_50d, volume / NULLIF(vol_50d_ma, 0)) as calc_rel_vol
+                FROM numbered
                 WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE)
                   AND close >= ?
                   AND vol_50d_ma >= ?
-                  AND COALESCE(dollar_vol_50d_ma, close * vol_50d_ma) >= ?
+                  AND dollar_vol_50d_ma >= ?
                   {stage2_sql}
                   {rs_sql}
-                  AND (symbol NOT LIKE '%ETF%' AND symbol NOT IN ('SPY', 'QQQ', 'IWM', 'XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC'))
             )
             SELECT 
-                symbol, 
-                date, 
-                close as entry_price, 
-                name, 
-                sector, 
-                industry,
-                calc_gap_pct as runup_pct, 
-                0.0 as base_depth_pct,
-                fwd_mfe_pct, 
-                fwd_mae_pct, 
-                fwd_end_return_pct,
-                rs_score,
-                fwd_max_high,
-                open as pivot_price,
-                adr_20d
+                symbol, date, open, high, low, close, volume,
+                name, sector, industry,
+                calc_gap_pct as runup_pct, 0.0 as base_depth_pct,
+                rs_score, adr_20d, open as pivot_price,
+                next_date, next_open, next_high, next_low, next_close
             FROM candidates
             WHERE calc_gap_pct >= {min_gap} 
               AND calc_rel_vol >= {min_rel_vol}
@@ -562,90 +605,54 @@ class ModelBookService:
             max_ipo_depth = float(effective_filters.get("max_ipo_depth", 35.0))
 
             query = f"""
-            WITH price_window AS (
+            WITH numbered AS (
                 SELECT 
-                    d.symbol,
-                    d.date,
-                    d.open,
-                    d.high,
-                    d.low,
-                    d.close,
-                    d.volume,
-                    d.vol_50d_ma,
-                    d.dollar_vol_50d_ma,
-                    d.adr_20d,
-                    d.rs_score,
-                    d.sma_50,
-                    d.sma_150,
-                    d.sma_200,
-                    d.dist_from_52w_high,
-                    d.surge_off_low_pct,
-                    d.ipo_days_count,
-                    s.name,
-                    s.sector,
-                    s.industry,
+                    d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
+                    d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
+                    d.adr_20d, d.rs_score, d.ipo_days_count,
+                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
+                    s.name, s.sector, s.industry,
                     ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date) as ipo_days_calc,
                     MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) as all_time_high_prior,
                     MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) as base_high_20d,
                     MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) as base_low_20d,
-                    MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 1 FOLLOWING AND {forward_days} FOLLOWING) as fwd_max_high,
-                    MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 1 FOLLOWING AND {forward_days} FOLLOWING) as fwd_min_low,
-                    LEAD(d.close, {forward_days}) OVER (PARTITION BY d.symbol ORDER BY d.date) as fwd_close_end
+                    LEAD(d.date, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_date,
+                    LEAD(d.open, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_open,
+                    LEAD(d.high, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_high,
+                    LEAD(d.low, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_low,
+                    LEAD(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_close
                 FROM daily_bars d
                 LEFT JOIN symbols s ON d.symbol = s.symbol
                 WHERE d.date >= CAST(? AS DATE)
+                  AND (s.asset_type IS NULL OR UPPER(s.asset_type) NOT LIKE '%ETF%')
+                  AND (s.industry IS NULL OR UPPER(s.industry) NOT LIKE '%ETF%')
+                  AND d.symbol NOT IN ('SPY', 'QQQ', 'IWM', 'XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC')
             ),
             candidates AS (
-                SELECT 
-                    symbol,
-                    date,
-                    close,
-                    name,
-                    sector,
-                    industry,
-                    vol_50d_ma,
-                    dollar_vol_50d_ma,
-                    adr_20d,
-                    rs_score,
-                    base_high_20d,
+                SELECT *,
                     COALESCE(ipo_days_count, ipo_days_calc) as ipo_age,
                     (all_time_high_prior - close) / NULLIF(all_time_high_prior, 0) * 100 as ipo_drawdown,
                     (base_high_20d - base_low_20d) / NULLIF(base_high_20d, 0) * 100 as ipo_depth,
-                    (all_time_high_prior - base_low_20d) / NULLIF(base_low_20d, 0) * 100 as runup_pct,
-                    (fwd_max_high - close) / NULLIF(close, 0) * 100 as fwd_mfe_pct,
-                    (fwd_min_low - close) / NULLIF(close, 0) * 100 as fwd_mae_pct,
-                    (fwd_close_end - close) / NULLIF(close, 0) * 100 as fwd_end_return_pct,
-                    fwd_max_high
-                FROM price_window
+                    (all_time_high_prior - base_low_20d) / NULLIF(base_low_20d, 0) * 100 as runup_pct
+                FROM numbered
                 WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE)
                   AND close >= ?
                   AND vol_50d_ma >= ?
-                  AND COALESCE(dollar_vol_50d_ma, close * vol_50d_ma) >= ?
+                  AND dollar_vol_50d_ma >= ?
                   {stage2_sql}
                   {rs_sql}
-                  AND (symbol NOT LIKE '%ETF%' AND symbol NOT IN ('SPY', 'QQQ', 'IWM', 'XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC'))
             )
             SELECT 
-                symbol, 
-                date, 
-                close as entry_price, 
-                name, 
-                sector, 
-                industry,
-                runup_pct, 
-                ipo_depth as base_depth_pct,
-                fwd_mfe_pct, 
-                fwd_mae_pct, 
-                fwd_end_return_pct,
-                rs_score,
-                fwd_max_high,
-                base_high_20d as pivot_price,
-                adr_20d
+                symbol, date, open, high, low, close, volume,
+                name, sector, industry,
+                runup_pct, ipo_depth as base_depth_pct,
+                rs_score, adr_20d, base_high_20d as pivot_price,
+                next_date, next_open, next_high, next_low, next_close
             FROM candidates
             WHERE ipo_age >= 10 AND ipo_age <= {max_ipo_age}
               AND ipo_drawdown <= {max_ipo_dist}
               AND ipo_depth <= {max_ipo_depth}
-              AND close > base_high_20d
+              AND close <= base_high_20d * 1.05
             ORDER BY symbol, date ASC;
             """
             return query, base_params
@@ -655,188 +662,150 @@ class ModelBookService:
             max_contraction = float(effective_filters.get("max_pivot_spread", 12.0))
 
             query = f"""
-            WITH price_window AS (
+            WITH numbered AS (
                 SELECT 
-                    d.symbol,
-                    d.date,
-                    d.open,
-                    d.high,
-                    d.low,
-                    d.close,
-                    d.volume,
-                    d.vol_50d_ma,
-                    d.dollar_vol_50d_ma,
-                    d.adr_20d,
-                    d.rs_score,
-                    d.sma_50,
-                    d.sma_150,
-                    d.sma_200,
-                    d.dist_from_52w_high,
-                    d.surge_off_low_pct,
-                    s.name,
-                    s.sector,
-                    s.industry,
+                    d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
+                    d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
+                    d.adr_20d, d.rs_score, d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
+                    s.name, s.sector, s.industry,
                     MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as high_52w,
                     MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 10 PRECEDING AND 1 PRECEDING) as high_10d,
                     MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 10 PRECEDING AND 1 PRECEDING) as low_10d,
                     MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 30 PRECEDING AND 1 PRECEDING) as high_30d,
                     MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 30 PRECEDING AND 1 PRECEDING) as low_30d,
-                    MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 1 FOLLOWING AND {forward_days} FOLLOWING) as fwd_max_high,
-                    MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 1 FOLLOWING AND {forward_days} FOLLOWING) as fwd_min_low,
-                    LEAD(d.close, {forward_days}) OVER (PARTITION BY d.symbol ORDER BY d.date) as fwd_close_end
+                    LEAD(d.date, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_date,
+                    LEAD(d.open, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_open,
+                    LEAD(d.high, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_high,
+                    LEAD(d.low, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_low,
+                    LEAD(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_close
                 FROM daily_bars d
                 LEFT JOIN symbols s ON d.symbol = s.symbol
                 WHERE d.date >= CAST(? AS DATE)
+                  AND (s.asset_type IS NULL OR UPPER(s.asset_type) NOT LIKE '%ETF%')
+                  AND (s.industry IS NULL OR UPPER(s.industry) NOT LIKE '%ETF%')
+                  AND d.symbol NOT IN ('SPY', 'QQQ', 'IWM', 'XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC')
             ),
             candidates AS (
-                SELECT 
-                    symbol,
-                    date,
-                    close,
-                    name,
-                    sector,
-                    industry,
-                    vol_50d_ma,
-                    dollar_vol_50d_ma,
-                    adr_20d,
-                    rs_score,
-                    sma_50,
-                    sma_150,
-                    sma_200,
-                    dist_from_52w_high,
-                    surge_off_low_pct,
-                    high_52w,
-                    high_10d,
+                SELECT *,
                     COALESCE(dist_from_52w_high, (high_52w - close) / NULLIF(high_52w, 0) * 100) as calc_dist_52w_high,
                     (high_10d - low_10d) / NULLIF(high_10d, 0) * 100 as contraction_tight_pct,
-                    (high_30d - low_30d) / NULLIF(high_30d, 0) * 100 as contraction_wide_pct,
-                    (fwd_max_high - close) / NULLIF(close, 0) * 100 as fwd_mfe_pct,
-                    (fwd_min_low - close) / NULLIF(close, 0) * 100 as fwd_mae_pct,
-                    (fwd_close_end - close) / NULLIF(close, 0) * 100 as fwd_end_return_pct,
-                    fwd_max_high
-                FROM price_window
+                    (high_30d - low_30d) / NULLIF(high_30d, 0) * 100 as contraction_wide_pct
+                FROM numbered
                 WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE)
                   AND close >= ?
                   AND vol_50d_ma >= ?
                   AND COALESCE(dollar_vol_50d_ma, close * vol_50d_ma) >= ?
                   {stage2_sql}
                   {rs_sql}
-                  AND (symbol NOT LIKE '%ETF%' AND symbol NOT IN ('SPY', 'QQQ', 'IWM', 'XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC'))
             )
             SELECT 
-                symbol, 
-                date, 
-                close as entry_price, 
-                name, 
-                sector, 
-                industry,
-                contraction_wide_pct as runup_pct, 
-                contraction_tight_pct as base_depth_pct,
-                fwd_mfe_pct, 
-                fwd_mae_pct, 
-                fwd_end_return_pct,
-                rs_score,
-                fwd_max_high,
-                high_10d as pivot_price,
-                adr_20d
+                symbol, date, open, high, low, close, volume,
+                name, sector, industry,
+                contraction_wide_pct as runup_pct, contraction_tight_pct as base_depth_pct,
+                rs_score, adr_20d, high_10d as pivot_price,
+                next_date, next_open, next_high, next_low, next_close
             FROM candidates
             WHERE calc_dist_52w_high <= {dist_52w} 
               AND contraction_tight_pct <= {max_contraction}
-              AND close > high_10d
+              AND close <= high_10d * 1.05
+            ORDER BY symbol, date ASC;
+            """
+            return query, base_params
+
+        elif setup_type == "parabolic":
+            min_runup = float(effective_filters.get("min_parabolic_runup", 40.0))
+            min_ema_dist = float(effective_filters.get("min_parabolic_ema_dist", 18.0))
+
+            query = f"""
+            WITH numbered AS (
+                SELECT 
+                    d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
+                    d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
+                    d.adr_20d, d.rs_score, d.dist_ema10_pct, d.parabolic_runup_pct,
+                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
+                    s.name, s.sector, s.industry,
+                    MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 10 PRECEDING AND 1 PRECEDING) as min_low_10d,
+                    LEAD(d.date, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_date,
+                    LEAD(d.open, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_open,
+                    LEAD(d.high, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_high,
+                    LEAD(d.low, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_low,
+                    LEAD(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_close
+                FROM daily_bars d
+                LEFT JOIN symbols s ON d.symbol = s.symbol
+                WHERE d.date >= CAST(? AS DATE)
+                  AND (s.asset_type IS NULL OR UPPER(s.asset_type) NOT LIKE '%ETF%')
+                  AND (s.industry IS NULL OR UPPER(s.industry) NOT LIKE '%ETF%')
+                  AND d.symbol NOT IN ('SPY', 'QQQ', 'IWM', 'XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC')
+            ),
+            candidates AS (
+                SELECT *,
+                    COALESCE(parabolic_runup_pct, (close - min_low_10d) / NULLIF(min_low_10d, 0) * 100) as calc_runup
+                FROM numbered
+                WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE)
+                  AND close >= ?
+                  AND vol_50d_ma >= ?
+                  AND dollar_vol_50d_ma >= ?
+                  {stage2_sql}
+                  {rs_sql}
+            )
+            SELECT 
+                symbol, date, open, high, low, close, volume,
+                name, sector, industry,
+                calc_runup as runup_pct, 0.0 as base_depth_pct,
+                rs_score, adr_20d, close as pivot_price,
+                next_date, next_open, next_high, next_low, next_close
+            FROM candidates
+            WHERE calc_runup >= {min_runup}
+              AND (dist_ema10_pct IS NULL OR dist_ema10_pct >= {min_ema_dist})
             ORDER BY symbol, date ASC;
             """
             return query, base_params
 
         else:
-            # General / momentum breakout fallback
-            runup_thresh = float(effective_filters.get("min_breakout_runup", 25.0))
-            depth_thresh = float(effective_filters.get("max_pivot_spread", 25.0))
+            # Default / QM Momentum
+            min_adr = float(effective_filters.get("min_adr_20d", 4.0)) if effective_filters.get("enable_adr", True) else 4.0
 
             query = f"""
-            WITH price_window AS (
+            WITH numbered AS (
                 SELECT 
-                    d.symbol,
-                    d.date,
-                    d.open,
-                    d.high,
-                    d.low,
-                    d.close,
-                    d.volume,
-                    d.vol_50d_ma,
-                    d.dollar_vol_50d_ma,
-                    d.adr_20d,
-                    d.rs_score,
-                    d.sma_50,
-                    d.sma_150,
-                    d.sma_200,
-                    d.dist_from_52w_high,
-                    d.surge_off_low_pct,
-                    s.name,
-                    s.sector,
-                    s.industry,
-                    MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 45 PRECEDING AND 1 PRECEDING) as min_low_45d,
+                    d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
+                    d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
+                    d.adr_20d, d.rs_score, d.rs_rank,
+                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
+                    s.name, s.sector, s.industry,
                     MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) as max_high_20d,
-                    MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 15 PRECEDING AND 1 PRECEDING) as min_low_15d,
-                    MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 1 FOLLOWING AND {forward_days} FOLLOWING) as fwd_max_high,
-                    MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 1 FOLLOWING AND {forward_days} FOLLOWING) as fwd_min_low,
-                    LEAD(d.close, {forward_days}) OVER (PARTITION BY d.symbol ORDER BY d.date) as fwd_close_end
+                    MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) as min_low_20d,
+                    LEAD(d.date, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_date,
+                    LEAD(d.open, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_open,
+                    LEAD(d.high, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_high,
+                    LEAD(d.low, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_low,
+                    LEAD(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_close
                 FROM daily_bars d
                 LEFT JOIN symbols s ON d.symbol = s.symbol
                 WHERE d.date >= CAST(? AS DATE)
+                  AND (s.asset_type IS NULL OR UPPER(s.asset_type) NOT LIKE '%ETF%')
+                  AND (s.industry IS NULL OR UPPER(s.industry) NOT LIKE '%ETF%')
+                  AND d.symbol NOT IN ('SPY', 'QQQ', 'IWM', 'XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC')
             ),
             candidates AS (
-                SELECT 
-                    symbol,
-                    date,
-                    close,
-                    name,
-                    sector,
-                    industry,
-                    vol_50d_ma,
-                    dollar_vol_50d_ma,
-                    adr_20d,
-                    rs_score,
-                    sma_50,
-                    sma_150,
-                    sma_200,
-                    dist_from_52w_high,
-                    surge_off_low_pct,
-                    max_high_20d,
-                    (max_high_20d - min_low_45d) / NULLIF(min_low_45d, 0) * 100 as runup_pct,
-                    (max_high_20d - min_low_15d) / NULLIF(max_high_20d, 0) * 100 as drawdown_pct,
-                    (fwd_max_high - close) / NULLIF(close, 0) * 100 as fwd_mfe_pct,
-                    (fwd_min_low - close) / NULLIF(close, 0) * 100 as fwd_mae_pct,
-                    (fwd_close_end - close) / NULLIF(close, 0) * 100 as fwd_end_return_pct,
-                    fwd_max_high
-                FROM price_window
+                SELECT *,
+                    (max_high_20d - min_low_20d) / NULLIF(max_high_20d, 0) * 100 as drawdown_pct
+                FROM numbered
                 WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE)
                   AND close >= ?
                   AND vol_50d_ma >= ?
-                  AND COALESCE(dollar_vol_50d_ma, close * vol_50d_ma) >= ?
+                  AND dollar_vol_50d_ma >= ?
+                  AND (rs_rank IS NOT NULL AND rs_rank >= 80)
+                  AND adr_20d >= {min_adr}
                   {stage2_sql}
-                  {rs_sql}
-                  AND (symbol NOT LIKE '%ETF%' AND symbol NOT IN ('SPY', 'QQQ', 'IWM', 'XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC'))
             )
             SELECT 
-                symbol, 
-                date, 
-                close as entry_price, 
-                name, 
-                sector, 
-                industry,
-                runup_pct, 
-                drawdown_pct as base_depth_pct,
-                fwd_mfe_pct, 
-                fwd_mae_pct, 
-                fwd_end_return_pct,
-                rs_score,
-                fwd_max_high,
-                max_high_20d as pivot_price,
-                adr_20d
+                symbol, date, open, high, low, close, volume,
+                name, sector, industry,
+                COALESCE(rs_score, 0.0) as runup_pct, drawdown_pct as base_depth_pct,
+                rs_score, adr_20d, max_high_20d as pivot_price,
+                next_date, next_open, next_high, next_low, next_close
             FROM candidates
-            WHERE runup_pct >= {runup_thresh} 
-              AND drawdown_pct <= {depth_thresh} 
-              AND close > max_high_20d
             ORDER BY symbol, date ASC;
             """
             return query, base_params
@@ -844,42 +813,161 @@ class ModelBookService:
     def _evaluate_forward_paths(
         self,
         conn,
-        candidates: List[tuple],
+        trades: List[Dict[str, Any]],
         target_gain_pct: float,
-        forward_days: int,
-        max_drawdown_limit: Optional[float]
+        stop_loss_pct: Optional[float],
+        ema_exit_type: Optional[str],
+        forward_days: int
     ) -> List[Dict[str, Any]]:
         """
-        Fetches day-by-day forward price paths for the candidates to accurately calculate
-        the exact days_to_target and whether a stop loss was hit before reaching the target.
+        Simulates multi-path trade executions from exact next-day breakout entries:
+        - Profit Target hit (High >= Entry * (1 + target))
+        - Stop Loss hit (Low <= Entry * (1 - stop))
+        - Trailing EMA Exit (Close < EMA10 or Close < EMA20)
+        - Time Expiration (Holding Period end close)
         """
-        if not candidates:
+        if not trades:
             return []
 
         kq_lookup = get_qullamaggie_daily_lookup(conn, symbol="QQQ")
+        symbols = list({t["symbol"] for t in trades})
 
-        cand_dict = {}
-        for r in candidates:
-            sym, dt = r[0], r[1]
-            dt_str = dt.strftime("%Y-%m-%d") if hasattr(dt, "strftime") else str(dt)
-            m_info = kq_lookup.get(dt_str, {})
-            cand_dict[(sym, dt_str)] = {
-                "symbol": sym,
-                "date": dt_str,
-                "screen_date": dt_str,
-                "entry_price": round(float(r[2]), 2) if r[2] is not None else 0.0,
-                "name": r[3] or sym,
-                "sector": r[4] or "Unknown",
-                "industry": r[5] or "Unknown",
-                "prior_runup_pct": round(float(r[6]), 1) if r[6] is not None else 0.0,
-                "base_depth_pct": round(float(r[7]), 1) if r[7] is not None else 0.0,
-                "peak_gain_pct": round(float(r[8]), 1) if r[8] is not None else 0.0,
-                "max_drawdown_pct": round(float(r[9]), 1) if r[9] is not None else 0.0,
-                "end_return_pct": round(float(r[10]), 1) if r[10] is not None else 0.0,
-                "rs_score": round(float(r[11]), 1) if r[11] is not None else None,
-                "peak_price": round(float(r[12]), 2) if r[12] is not None else None,
-                "pivot_price": round(float(r[13]), 2) if r[13] is not None else None,
-                "adr_20d": round(float(r[14]), 2) if len(r) > 14 and r[14] is not None else None,
+        min_entry_date = min(t["entry_date"] for t in trades)
+        max_entry_date = max(t["entry_date"] for t in trades)
+        
+        # Buffer back 90 days for accurate running EMA calculation, and forward by forward_days + 15
+        fetch_start_date = (datetime.strptime(min_entry_date, "%Y-%m-%d").date() - timedelta(days=90)).strftime("%Y-%m-%d")
+        fetch_end_date = (datetime.strptime(max_entry_date, "%Y-%m-%d").date() + timedelta(days=int(forward_days * 2) + 20)).strftime("%Y-%m-%d")
+
+        placeholders = ",".join(["?"] * len(symbols))
+        forward_bars_query = f"""
+            SELECT symbol, date, open, high, low, close 
+            FROM daily_bars 
+            WHERE symbol IN ({placeholders}) 
+              AND date >= CAST(? AS DATE) AND date <= CAST(? AS DATE)
+            ORDER BY symbol, date ASC
+        """
+        fwd_rows = conn.execute(forward_bars_query, symbols + [fetch_start_date, fetch_end_date]).fetchall()
+
+        sym_all_bars = defaultdict(list)
+        for row in fwd_rows:
+            sym, b_date, b_open, b_high, b_low, b_close = row
+            b_dt_str = b_date.strftime("%Y-%m-%d") if hasattr(b_date, "strftime") else str(b_date)
+            sym_all_bars[sym].append((b_dt_str, float(b_open), float(b_high), float(b_low), float(b_close)))
+
+        # Precompute EMAs for symbols
+        sym_emas = {}
+        for sym, b_list in sym_all_bars.items():
+            closes = [b[4] for b in b_list]
+            dates = [b[0] for b in b_list]
+            sym_emas[sym] = {
+                "dates": dates,
+                "bars": b_list,
+                "ema10": compute_ema_series(closes, 10),
+                "ema20": compute_ema_series(closes, 20)
+            }
+
+        simulated_results = []
+        target_mult = 1.0 + (target_gain_pct / 100.0)
+        stop_mult = 1.0 - (stop_loss_pct / 100.0) if stop_loss_pct is not None else None
+
+        for trade in trades:
+            sym = trade["symbol"]
+            entry_date = trade["entry_date"]
+            setup_date = trade["setup_date"]
+            entry_price = trade["entry_price"]
+
+            if entry_price <= 0:
+                continue
+
+            e_info = sym_emas.get(sym)
+            if not e_info:
+                continue
+
+            dates = e_info["dates"]
+            if entry_date not in dates:
+                continue
+
+            entry_idx = dates.index(entry_date)
+            fwd_bars = e_info["bars"][entry_idx : entry_idx + forward_days]
+            if not fwd_bars:
+                continue
+
+            target_price = round(entry_price * target_mult, 2)
+            stop_price = round(entry_price * stop_mult, 2) if stop_mult is not None else None
+
+            exit_price = None
+            exit_date = None
+            exit_reason = None
+            holding_days = 0
+            hit_day = None
+
+            for day_idx, b in enumerate(fwd_bars, 1):
+                dt_str = b[0]
+                b_open, b_high, b_low, b_close = b[1], b[2], b[3], b[4]
+                global_idx = entry_idx + day_idx - 1
+                e10_val = e_info["ema10"][global_idx]
+                e20_val = e_info["ema20"][global_idx]
+
+                # 1. Stop Loss check (conservative priority)
+                if stop_price is not None and b_low <= stop_price:
+                    exit_price = min(b_open, stop_price)
+                    exit_date = dt_str
+                    exit_reason = "STOP_LOSS"
+                    holding_days = day_idx
+                    break
+
+                # 2. Profit Target check
+                if b_high >= target_price:
+                    exit_price = max(b_open, target_price)
+                    exit_date = dt_str
+                    exit_reason = "TARGET"
+                    holding_days = day_idx
+                    hit_day = day_idx
+                    break
+
+                # 3. Trailing EMA Exit check
+                if ema_exit_type == "ema_10" and b_close < e10_val:
+                    exit_price = b_close
+                    exit_date = dt_str
+                    exit_reason = "EMA_10_EXIT"
+                    holding_days = day_idx
+                    break
+                elif ema_exit_type == "ema_20" and b_close < e20_val:
+                    exit_price = b_close
+                    exit_date = dt_str
+                    exit_reason = "EMA_20_EXIT"
+                    holding_days = day_idx
+                    break
+            else:
+                # 4. Time Expiration check
+                last_b = fwd_bars[-1]
+                exit_price = last_b[4]
+                exit_date = last_b[0]
+                exit_reason = "TIME_EXPIRED"
+                holding_days = len(fwd_bars)
+
+            trade_ret_pct = round(((exit_price - entry_price) / entry_price) * 100.0, 2)
+            path_bars = fwd_bars[:holding_days]
+            peak_gain_pct = round(((max(b[2] for b in path_bars) - entry_price) / entry_price) * 100.0, 2)
+            max_dd_pct = round(((min(b[3] for b in path_bars) - entry_price) / entry_price) * 100.0, 2)
+
+            m_info = kq_lookup.get(setup_date, {})
+
+            sim_trade = dict(trade)
+            sim_trade.update({
+                "exit_price": round(float(exit_price), 2),
+                "exit_date": exit_date,
+                "exit_reason": exit_reason,
+                "holding_days": holding_days,
+                "trade_return_pct": trade_ret_pct,
+                "peak_gain_pct": peak_gain_pct,
+                "max_drawdown_pct": max_dd_pct,
+                "target_price": target_price,
+                "stop_price": stop_price,
+                "hit_target": (exit_reason == "TARGET"),
+                "stopped_out": (exit_reason == "STOP_LOSS"),
+                "days_to_target": hit_day,
                 "market_regime": m_info.get("regime", "UNKNOWN"),
                 "market_label": m_info.get("label", "Unknown"),
                 "market_badge": m_info.get("badge", "-"),
@@ -893,73 +981,11 @@ class ModelBookService:
                     "dist_ema10_pct": m_info.get("dist_ema10_pct"),
                     "dist_ema20_pct": m_info.get("dist_ema20_pct"),
                     "dist_sma50_pct": m_info.get("dist_sma50_pct")
-                },
-                "days_to_target": None,
-                "hit_target": False,
-                "stopped_out_before_target": False
-            }
+                }
+            })
+            simulated_results.append(sim_trade)
 
-        symbols = list({c["symbol"] for c in cand_dict.values()})
-        min_cand_date = min(c["date"] for c in cand_dict.values())
-        max_cand_date = max(c["date"] for c in cand_dict.values())
-        max_fwd_date = (datetime.strptime(max_cand_date, "%Y-%m-%d").date() + timedelta(days=int(forward_days * 2) + 15)).strftime("%Y-%m-%d")
-
-        placeholders = ",".join(["?"] * len(symbols))
-        forward_bars_query = f"""
-            SELECT symbol, date, open, high, low, close 
-            FROM daily_bars 
-            WHERE symbol IN ({placeholders}) 
-              AND date >= CAST(? AS DATE) AND date <= CAST(? AS DATE)
-            ORDER BY symbol, date ASC
-        """
-        fwd_rows = conn.execute(forward_bars_query, symbols + [min_cand_date, max_fwd_date]).fetchall()
-
-        from collections import defaultdict
-        sym_bars = defaultdict(list)
-        for row in fwd_rows:
-            sym, b_date, b_open, b_high, b_low, b_close = row
-            b_dt_str = b_date.strftime("%Y-%m-%d") if hasattr(b_date, "strftime") else str(b_date)
-            sym_bars[sym].append((b_dt_str, b_open, b_high, b_low, b_close))
-
-        stop_loss_pct = float(max_drawdown_limit) if max_drawdown_limit is not None else None
-
-        for (sym, dt_str), cand in cand_dict.items():
-            entry_price = cand["entry_price"]
-            if entry_price <= 0:
-                continue
-
-            all_bars = sym_bars.get(sym, [])
-            entry_idx = -1
-            for i, bar in enumerate(all_bars):
-                if bar[0] == dt_str:
-                    entry_idx = i
-                    break
-
-            if entry_idx == -1:
-                cand["hit_target"] = cand["peak_gain_pct"] >= target_gain_pct
-                continue
-
-            fwd_bars = all_bars[entry_idx + 1 : entry_idx + 1 + forward_days]
-            hit_day = None
-            stopped_out = False
-
-            for day_idx, (_, _, b_high, b_low, _) in enumerate(fwd_bars, start=1):
-                gain_on_day = ((b_high - entry_price) / entry_price) * 100.0
-                dd_on_day = ((b_low - entry_price) / entry_price) * 100.0
-
-                if stop_loss_pct is not None and hit_day is None:
-                    if dd_on_day <= stop_loss_pct:
-                        stopped_out = True
-
-                if gain_on_day >= target_gain_pct and hit_day is None:
-                    hit_day = day_idx
-
-            cand["days_to_target"] = hit_day
-            cand["hit_target"] = (hit_day is not None) or (cand["peak_gain_pct"] >= target_gain_pct)
-            cand["stopped_out_before_target"] = stopped_out
-
-        return list(cand_dict.values())
+        return simulated_results
 
 
 model_book_service = ModelBookService(config_service)
-
