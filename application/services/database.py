@@ -1,14 +1,27 @@
 import os
 import duckdb
 import pandas as pd
+import time
+import logging
 from typing import Dict, Any, List, Optional
 from collections import defaultdict
 from .config import config_service
+from application.engine.market_regime import get_qullamaggie_market_summary, get_qullamaggie_daily_lookup, clear_qullamaggie_cache
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseService:
     def __init__(self, config_service):
         self.config_service = config_service
+        self._market_monitor_cache: Dict[int, Dict[str, Any]] = {}
+        self._cache_timestamp: float = 0.0
+
+    def clear_caches(self):
+        """Clears in-memory market monitor and regime caches."""
+        self._market_monitor_cache.clear()
+        self._cache_timestamp = 0.0
+        clear_qullamaggie_cache()
 
     def get_available_trading_dates(self) -> List[str]:
         with self.get_read_only_conn() as conn:
@@ -957,6 +970,91 @@ class DatabaseService:
                 })
             return bars_list
 
+    def get_stock_earnings(self, symbol: str) -> List[Dict[str, Any]]:
+        """Retrieves historical and upcoming earnings report dates, estimates, actuals, and surprise % for a symbol."""
+        symbol = symbol.upper()
+
+        # 1. First read existing records from earnings_calendar
+        existing_rows = []
+        with self.get_read_only_conn() as conn:
+            try:
+                existing_rows = conn.execute("""
+                    SELECT earnings_date, eps_estimate, eps_actual, surprise_pct, time_of_day
+                    FROM earnings_calendar
+                    WHERE symbol = ?
+                    ORDER BY earnings_date ASC
+                """, [symbol]).fetchall()
+            except Exception:
+                pass
+
+        records = []
+        for r in existing_rows:
+            records.append({
+                "date": r[0].strftime("%Y-%m-%d") if hasattr(r[0], "strftime") else str(r[0])[:10],
+                "eps_estimate": float(r[1]) if r[1] is not None else None,
+                "eps_actual": float(r[2]) if r[2] is not None else None,
+                "surprise_pct": float(r[3]) if r[3] is not None else None,
+                "time_of_day": r[4]
+            })
+
+        # 2. If records are few or empty, fetch from yfinance and cache in earnings_calendar
+        if len(records) < 4:
+            try:
+                import yfinance as yf
+                import pandas as pd
+                ticker = yf.Ticker(symbol)
+                ed = ticker.earnings_dates
+                if ed is not None and not ed.empty:
+                    new_records = []
+                    for dt, row in ed.iterrows():
+                        d_str = dt.strftime("%Y-%m-%d")
+                        est = float(row["EPS Estimate"]) if "EPS Estimate" in row and not pd.isna(row["EPS Estimate"]) else None
+                        act = float(row["Reported EPS"]) if "Reported EPS" in row and not pd.isna(row["Reported EPS"]) else None
+                        surp = float(row["Surprise(%)"]) if "Surprise(%)" in row and not pd.isna(row["Surprise(%)"]) else None
+                        hour = dt.hour if hasattr(dt, "hour") else 0
+                        tod = "amc" if hour >= 15 else ("bmo" if hour <= 10 and hour > 0 else None)
+                        new_records.append({
+                            "symbol": symbol,
+                            "earnings_date": d_str,
+                            "eps_estimate": est,
+                            "eps_actual": act,
+                            "surprise_pct": surp,
+                            "time_of_day": tod
+                        })
+                    if new_records:
+                        from application.database import DatabaseManager
+                        db_mgr = DatabaseManager(self.get_db_path())
+                        db_mgr.upsert_earnings_calendar(new_records)
+                        records = [{
+                            "date": nr["earnings_date"],
+                            "eps_estimate": nr["eps_estimate"],
+                            "eps_actual": nr["eps_actual"],
+                            "surprise_pct": nr["surprise_pct"],
+                            "time_of_day": nr["time_of_day"]
+                        } for nr in new_records]
+            except Exception as e:
+                logger.warning(f"Could not fetch live earnings dates for {symbol}: {e}")
+
+        # 3. Ensure symbols.next_earnings_date is represented if available
+        with self.get_read_only_conn() as conn:
+            try:
+                sym_row = conn.execute("SELECT next_earnings_date FROM symbols WHERE symbol = ?", [symbol]).fetchone()
+                if sym_row and sym_row[0]:
+                    next_ed = str(sym_row[0])[:10]
+                    if not any(r["date"] == next_ed for r in records):
+                        records.append({
+                            "date": next_ed,
+                            "eps_estimate": None,
+                            "eps_actual": None,
+                            "surprise_pct": None,
+                            "time_of_day": None
+                        })
+            except Exception:
+                pass
+
+        records = sorted(records, key=lambda x: x["date"])
+        return records
+
     def get_stock_financials(self, symbol: str) -> Dict[str, Any]:
         symbol = symbol.upper()
         # Verify symbol exists
@@ -1220,13 +1318,19 @@ class DatabaseService:
                 "count": 0
             }
 
-    def get_market_monitor(self, limit: int = 252) -> Dict[str, Any]:
-        """Calculates Stockbee Market Monitor metrics across recent trading days instead of full table scan."""
-        lookback_needed = (limit if limit and limit > 0 else 252) + 120
+    def get_market_monitor(self, limit: int = 252, force_refresh: bool = False) -> Dict[str, Any]:
+        """Calculates Stockbee Market Monitor metrics across recent trading days with in-memory caching."""
+        cache_key = limit if limit and limit > 0 else 252
+        now = time.time()
+        # Serve from memory cache if available and fresh (10-minute TTL)
+        if not force_refresh and cache_key in self._market_monitor_cache and (now - self._cache_timestamp < 600):
+            return self._market_monitor_cache[cache_key]
+
+        lookback_needed = cache_key + 120
         query = f"""
             WITH cutoff AS (
                 SELECT MIN(date) as min_date FROM (
-                    SELECT DISTINCT date FROM daily_bars ORDER BY date DESC LIMIT {lookback_needed}
+                    SELECT date FROM daily_bars WHERE symbol = 'QQQ' ORDER BY date DESC LIMIT {lookback_needed}
                 )
             ),
             filtered_bars AS (
@@ -1262,9 +1366,27 @@ class DatabaseService:
             )
             SELECT * FROM daily_counts;
         """
+        bm_query = """
+            WITH bm_bars AS (
+                SELECT 
+                    symbol,
+                    date,
+                    close,
+                    LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) as prev_close,
+                    ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
+                FROM daily_bars
+                WHERE symbol IN ('SPY', 'QQQ')
+            )
+            SELECT symbol, close, prev_close
+            FROM bm_bars
+            WHERE rn = 1
+        """
         try:
             with self.get_read_only_conn() as conn:
                 df = conn.execute(query).df()
+                bm_rows = conn.execute(bm_query).fetchall()
+                kq_summary = get_qullamaggie_market_summary(conn, symbol="QQQ")
+                kq_lookup = get_qullamaggie_daily_lookup(conn, symbol="QQQ")
                 
             if df.empty:
                 return {"summary": {}, "daily_data": []}
@@ -1295,24 +1417,37 @@ class DatabaseService:
                 df_desc = df_desc.head(limit)
 
             daily_list = []
-            for _, row in df_desc.iterrows():
+            for row in df_desc.itertuples(index=False):
+                d_str = str(row.date_str)
+                kq_info = kq_lookup.get(d_str, {})
                 daily_list.append({
-                    "date": str(row['date_str']),
-                    "gainers_4pct": int(row['gainers_4pct']),
-                    "losers_4pct": int(row['losers_4pct']),
-                    "net_4pct": int(row['net_4pct']),
-                    "ratio_4pct": float(row['ratio_4pct']),
-                    "ratio_5d": float(row['ratio_5d']),
-                    "ratio_10d": float(row['ratio_10d']),
-                    "up_25pct_1m": int(row['up_25pct_1m']),
-                    "down_25pct_1m": int(row['down_25pct_1m']),
-                    "up_25pct_3m": int(row['up_25pct_3m']),
-                    "down_25pct_3m": int(row['down_25pct_3m']),
-                    "up_50pct_1m": int(row['up_50pct_1m']),
-                    "up_50pct_3m": int(row['up_50pct_3m']),
-                    "down_50pct_3m": int(row['down_50pct_3m']),
-                    "ema_13_up": float(row['ema_13_up']),
-                    "ema_13_down": float(row['ema_13_down'])
+                    "date": d_str,
+                    "gainers_4pct": int(row.gainers_4pct),
+                    "losers_4pct": int(row.losers_4pct),
+                    "net_4pct": int(row.net_4pct),
+                    "ratio_4pct": float(row.ratio_4pct),
+                    "ratio_5d": float(row.ratio_5d),
+                    "ratio_10d": float(row.ratio_10d),
+                    "up_25pct_1m": int(row.up_25pct_1m),
+                    "down_25pct_1m": int(row.down_25pct_1m),
+                    "up_25pct_3m": int(row.up_25pct_3m),
+                    "down_25pct_3m": int(row.down_25pct_3m),
+                    "up_50pct_1m": int(row.up_50pct_1m),
+                    "up_50pct_3m": int(row.up_50pct_3m),
+                    "down_50pct_3m": int(row.down_50pct_3m),
+                    "ema_13_up": float(row.ema_13_up),
+                    "ema_13_down": float(row.ema_13_down),
+                    "kq_regime": kq_info.get("regime", "UNKNOWN"),
+                    "kq_label": kq_info.get("label", "-"),
+                    "kq_badge": kq_info.get("badge", "-"),
+                    "kq_stack": kq_info.get("stack", "-"),
+                    "qqq_close": kq_info.get("close"),
+                    "qqq_ema_10": kq_info.get("ema_10"),
+                    "qqq_ema_20": kq_info.get("ema_20"),
+                    "qqq_sma_50": kq_info.get("sma_50"),
+                    "qqq_dist_ema10_pct": kq_info.get("dist_ema10_pct"),
+                    "qqq_dist_ema20_pct": kq_info.get("dist_ema20_pct"),
+                    "qqq_dist_sma50_pct": kq_info.get("dist_sma50_pct")
                 })
 
             # Calculate overall Regime Status & Metrics
@@ -1330,39 +1465,19 @@ class DatabaseService:
             elif latest.get("down_25pct_1m", 0) > latest.get("up_25pct_1m", 0) * 1.5:
                 regime = "Bearish Contraction"
 
-            # Query latest benchmark prices for SPY and QQQ
+            # Parse benchmark prices for SPY and QQQ from open conn
             benchmarks = {
                 "SPY": {"close": 0, "change_pct": 0},
                 "QQQ": {"close": 0, "change_pct": 0}
             }
-            try:
-                bm_query = """
-                    WITH bm_bars AS (
-                        SELECT 
-                            symbol,
-                            date,
-                            close,
-                            LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) as prev_close,
-                            ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
-                        FROM daily_bars
-                        WHERE symbol IN ('SPY', 'QQQ')
-                    )
-                    SELECT symbol, close, prev_close
-                    FROM bm_bars
-                    WHERE rn = 1
-                """
-                with self.get_read_only_conn() as conn:
-                    bm_rows = conn.execute(bm_query).fetchall()
-                    for b_sym, b_close, b_prev in bm_rows:
-                        pct = 0.0
-                        if b_prev and b_prev > 0:
-                            pct = round(((b_close - b_prev) / b_prev) * 100, 2)
-                        benchmarks[b_sym] = {
-                            "close": round(b_close, 2),
-                            "change_pct": pct
-                        }
-            except Exception as bm_err:
-                print(f"Error fetching benchmark info: {bm_err}")
+            for b_sym, b_close, b_prev in bm_rows:
+                pct = 0.0
+                if b_prev and b_prev > 0:
+                    pct = round(((b_close - b_prev) / b_prev) * 100, 2)
+                benchmarks[b_sym] = {
+                    "close": round(b_close, 2),
+                    "change_pct": pct
+                }
 
             summary = {
                 "latest_date": latest.get("date"),
@@ -1377,10 +1492,15 @@ class DatabaseService:
                 "latest_up_25pct_3m": latest.get("up_25pct_3m"),
                 "latest_down_25pct_3m": latest.get("down_25pct_3m"),
                 "regime": regime,
-                "benchmarks": benchmarks
+                "benchmarks": benchmarks,
+                "kq_evaluation": kq_summary
             }
 
-            return {"summary": summary, "daily_data": daily_list}
+            result = {"summary": summary, "daily_data": daily_list}
+            self._market_monitor_cache[cache_key] = result
+            self._cache_timestamp = now
+            return result
+
         except Exception as e:
             return {"error": str(e), "summary": {}, "daily_data": []}
 

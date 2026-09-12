@@ -210,6 +210,20 @@ class DatabaseManager:
                 );
             """)
 
+            # 4. Earnings Calendar Table (Historical actuals and upcoming earnings dates)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS earnings_calendar (
+                    symbol VARCHAR NOT NULL,
+                    earnings_date DATE NOT NULL,
+                    eps_estimate DOUBLE,
+                    eps_actual DOUBLE,
+                    surprise_pct DOUBLE,
+                    time_of_day VARCHAR, -- 'amc', 'bmo', or null
+                    PRIMARY KEY (symbol, earnings_date)
+                );
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_earnings_calendar_sym ON earnings_calendar(symbol);")
+
     def upsert_symbols(self, symbols_data: List[Dict[str, Any]]) -> None:
         """Inserts or updates records in the symbols table."""
         if not symbols_data:
@@ -352,6 +366,24 @@ class DatabaseManager:
                 WHERE quarterly_fundamentals.symbol = prior.symbol
                   AND CAST(SUBSTRING(quarterly_fundamentals.fiscal_quarter, 1, 4) AS INTEGER) - 1 || SUBSTRING(quarterly_fundamentals.fiscal_quarter, 5) = prior.fiscal_quarter
                   AND (quarterly_fundamentals.eps_qoq_growth IS NULL OR quarterly_fundamentals.eps_qoq_growth = 0)
+            """)
+
+    def upsert_earnings_calendar(self, records: List[Dict[str, Any]]) -> None:
+        """Inserts or replaces records in the earnings_calendar table."""
+        if not records:
+            return
+        df = pd.DataFrame(records)
+        columns = ["symbol", "earnings_date", "eps_estimate", "eps_actual", "surprise_pct", "time_of_day"]
+        for col in columns:
+            if col not in df.columns:
+                df[col] = None
+        df = df[columns]
+        with self.get_connection() as conn:
+            conn.execute("CREATE OR REPLACE TEMP TABLE temp_earnings_calendar AS SELECT * FROM df")
+            conn.execute("""
+                INSERT OR REPLACE INTO earnings_calendar (symbol, earnings_date, eps_estimate, eps_actual, surprise_pct, time_of_day)
+                SELECT symbol, CAST(earnings_date AS DATE), CAST(eps_estimate AS DOUBLE), CAST(eps_actual AS DOUBLE), CAST(surprise_pct AS DOUBLE), CAST(time_of_day AS VARCHAR)
+                FROM temp_earnings_calendar
             """)
 
     def get_last_bar_dates(self) -> Dict[str, str]:

@@ -16,6 +16,7 @@ __pycache__/
 *.db.tmp
 data.db
 *.txt
+!requirements.txt
 Minervini_VCP_Candidates.txt
 
 # Node / frontend builds

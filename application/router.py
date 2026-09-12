@@ -159,6 +159,15 @@ def get_stock_financials(symbol: str):
         logger.error(f"Error in get_stock_financials({symbol}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/api/stocks/{symbol}/earnings")
+def get_stock_earnings(symbol: str):
+    """Retrieve historical and upcoming earnings dates, estimates, and EPS surprises for a symbol."""
+    try:
+        return db_service.get_stock_earnings(symbol)
+    except Exception as e:
+        logger.error(f"Error in get_stock_earnings({symbol}): {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/api/config")
 def get_config():
     """Retrieve current screener parameters."""
@@ -202,10 +211,10 @@ def execute_sql_query(payload: SQLQuerySchema):
     return db_service.execute_sql_query(payload.query)
 
 @router.get("/api/market-monitor")
-def get_market_monitor(limit: int = 252):
+def get_market_monitor(limit: int = 252, refresh: bool = False):
     """Retrieve Stockbee Market Monitor daily breadth metrics and regime summary across the entire market."""
     try:
-        return db_service.get_market_monitor(limit=limit)
+        return db_service.get_market_monitor(limit=limit, force_refresh=refresh)
     except Exception as e:
         logger.error(f"Error in get_market_monitor: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

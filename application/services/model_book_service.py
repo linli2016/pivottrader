@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, date, timedelta
 from .config import config_service
 from .setup_service import setup_service
+from application.engine.market_regime import get_qullamaggie_daily_lookup
 
 
 class ModelBookService:
@@ -143,6 +144,7 @@ class ModelBookService:
                         "avg_winner_gain_pct": 0.0,
                         "median_days_to_target": 0,
                         "avg_drawdown_pct": 0.0,
+                        "regime_breakdown": {},
                         "filters": effective_filters
                     },
                     "winners": [],
@@ -196,6 +198,23 @@ class ModelBookService:
             avg_winner_base_depth = round(sum(w["base_depth_pct"] for w in winners) / total_winners, 1) if total_winners > 0 else 0.0
             avg_winner_rs = round(sum(w["rs_score"] for w in winners if w.get("rs_score")) / max(1, len([w for w in winners if w.get("rs_score")])), 1) if total_winners > 0 else 0.0
 
+            # Regime breakdown statistics
+            regime_breakdown = {}
+            for r_key, r_name in [("BULLISH", "Bullish Uptrend"), ("CAUTION", "Caution / Pullback"), ("BEARISH", "High Risk / Bearish")]:
+                r_cands = [c for c in processed if c.get("market_regime") == r_key]
+                r_win = [w for w in winners if w.get("market_regime") == r_key]
+                tot = len(r_cands)
+                w_cnt = len(r_win)
+                rate = round((w_cnt / tot * 100.0), 1) if tot > 0 else 0.0
+                avg_g = round(sum(w["peak_gain_pct"] for w in r_win) / w_cnt, 1) if w_cnt > 0 else 0.0
+                regime_breakdown[r_key] = {
+                    "name": r_name,
+                    "total": tot,
+                    "winners": w_cnt,
+                    "win_rate_pct": rate,
+                    "avg_winner_gain_pct": avg_g
+                }
+
             summary = {
                 "setup_type": setup_type,
                 "target_gain_pct": target_gain_pct,
@@ -211,6 +230,7 @@ class ModelBookService:
                 "avg_winner_runup_pct": avg_winner_runup,
                 "avg_winner_base_depth": avg_winner_base_depth,
                 "avg_winner_rs_score": avg_winner_rs,
+                "regime_breakdown": regime_breakdown,
                 "filters": effective_filters
             }
 
@@ -273,6 +293,7 @@ class ModelBookService:
                     d.volume,
                     d.vol_50d_ma,
                     d.dollar_vol_50d_ma,
+                    d.adr_20d,
                     d.rs_score,
                     d.sma_50,
                     d.sma_150,
@@ -302,6 +323,7 @@ class ModelBookService:
                     industry,
                     vol_50d_ma,
                     dollar_vol_50d_ma,
+                    adr_20d,
                     rs_score,
                     sma_50,
                     sma_150,
@@ -338,7 +360,8 @@ class ModelBookService:
                 fwd_end_return_pct,
                 rs_score,
                 fwd_max_high,
-                max_high_30d as pivot_price
+                max_high_30d as pivot_price,
+                adr_20d
             FROM candidates
             WHERE runup_pct >= {runup_thresh} 
               AND drawdown_pct <= {depth_thresh} 
@@ -434,7 +457,8 @@ class ModelBookService:
                 fwd_end_return_pct,
                 rs_score,
                 fwd_max_high,
-                max_high_20d as pivot_price
+                max_high_20d as pivot_price,
+                adr_20d
             FROM candidates
             WHERE runup_pct >= {runup_thresh} 
               AND drawdown_pct <= {depth_thresh} 
@@ -459,6 +483,7 @@ class ModelBookService:
                     d.volume,
                     d.vol_50d_ma,
                     d.dollar_vol_50d_ma,
+                    d.adr_20d,
                     d.rel_vol_50d,
                     d.gap_pct,
                     d.rs_score,
@@ -488,6 +513,7 @@ class ModelBookService:
                     industry,
                     vol_50d_ma,
                     dollar_vol_50d_ma,
+                    adr_20d,
                     rs_score,
                     open,
                     prev_close,
@@ -520,7 +546,8 @@ class ModelBookService:
                 fwd_end_return_pct,
                 rs_score,
                 fwd_max_high,
-                open as pivot_price
+                open as pivot_price,
+                adr_20d
             FROM candidates
             WHERE calc_gap_pct >= {min_gap} 
               AND calc_rel_vol >= {min_rel_vol}
@@ -546,6 +573,7 @@ class ModelBookService:
                     d.volume,
                     d.vol_50d_ma,
                     d.dollar_vol_50d_ma,
+                    d.adr_20d,
                     d.rs_score,
                     d.sma_50,
                     d.sma_150,
@@ -577,6 +605,7 @@ class ModelBookService:
                     industry,
                     vol_50d_ma,
                     dollar_vol_50d_ma,
+                    adr_20d,
                     rs_score,
                     base_high_20d,
                     COALESCE(ipo_days_count, ipo_days_calc) as ipo_age,
@@ -610,7 +639,8 @@ class ModelBookService:
                 fwd_end_return_pct,
                 rs_score,
                 fwd_max_high,
-                base_high_20d as pivot_price
+                base_high_20d as pivot_price,
+                adr_20d
             FROM candidates
             WHERE ipo_age >= 10 AND ipo_age <= {max_ipo_age}
               AND ipo_drawdown <= {max_ipo_dist}
@@ -636,6 +666,7 @@ class ModelBookService:
                     d.volume,
                     d.vol_50d_ma,
                     d.dollar_vol_50d_ma,
+                    d.adr_20d,
                     d.rs_score,
                     d.sma_50,
                     d.sma_150,
@@ -667,6 +698,7 @@ class ModelBookService:
                     industry,
                     vol_50d_ma,
                     dollar_vol_50d_ma,
+                    adr_20d,
                     rs_score,
                     sma_50,
                     sma_150,
@@ -705,7 +737,8 @@ class ModelBookService:
                 fwd_end_return_pct,
                 rs_score,
                 fwd_max_high,
-                high_10d as pivot_price
+                high_10d as pivot_price,
+                adr_20d
             FROM candidates
             WHERE calc_dist_52w_high <= {dist_52w} 
               AND contraction_tight_pct <= {max_contraction}
@@ -731,6 +764,7 @@ class ModelBookService:
                     d.volume,
                     d.vol_50d_ma,
                     d.dollar_vol_50d_ma,
+                    d.adr_20d,
                     d.rs_score,
                     d.sma_50,
                     d.sma_150,
@@ -760,6 +794,7 @@ class ModelBookService:
                     industry,
                     vol_50d_ma,
                     dollar_vol_50d_ma,
+                    adr_20d,
                     rs_score,
                     sma_50,
                     sma_150,
@@ -796,7 +831,8 @@ class ModelBookService:
                 fwd_end_return_pct,
                 rs_score,
                 fwd_max_high,
-                max_high_20d as pivot_price
+                max_high_20d as pivot_price,
+                adr_20d
             FROM candidates
             WHERE runup_pct >= {runup_thresh} 
               AND drawdown_pct <= {depth_thresh} 
@@ -820,10 +856,13 @@ class ModelBookService:
         if not candidates:
             return []
 
+        kq_lookup = get_qullamaggie_daily_lookup(conn, symbol="QQQ")
+
         cand_dict = {}
         for r in candidates:
             sym, dt = r[0], r[1]
             dt_str = dt.strftime("%Y-%m-%d") if hasattr(dt, "strftime") else str(dt)
+            m_info = kq_lookup.get(dt_str, {})
             cand_dict[(sym, dt_str)] = {
                 "symbol": sym,
                 "date": dt_str,
@@ -840,6 +879,21 @@ class ModelBookService:
                 "rs_score": round(float(r[11]), 1) if r[11] is not None else None,
                 "peak_price": round(float(r[12]), 2) if r[12] is not None else None,
                 "pivot_price": round(float(r[13]), 2) if r[13] is not None else None,
+                "adr_20d": round(float(r[14]), 2) if len(r) > 14 and r[14] is not None else None,
+                "market_regime": m_info.get("regime", "UNKNOWN"),
+                "market_label": m_info.get("label", "Unknown"),
+                "market_badge": m_info.get("badge", "-"),
+                "market_stack": m_info.get("stack", "-"),
+                "market_index_close": m_info.get("close"),
+                "market_details": {
+                    "qqq_close": m_info.get("close"),
+                    "ema_10": m_info.get("ema_10"),
+                    "ema_20": m_info.get("ema_20"),
+                    "sma_50": m_info.get("sma_50"),
+                    "dist_ema10_pct": m_info.get("dist_ema10_pct"),
+                    "dist_ema20_pct": m_info.get("dist_ema20_pct"),
+                    "dist_sma50_pct": m_info.get("dist_sma50_pct")
+                },
                 "days_to_target": None,
                 "hit_target": False,
                 "stopped_out_before_target": False

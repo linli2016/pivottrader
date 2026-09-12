@@ -132,6 +132,7 @@ export default function ModelBookTab({
   const [viewMode, setViewMode] = useState('winners'); // 'winners' | 'all'
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSector, setSelectedSector] = useState('ALL');
+  const [selectedRegime, setSelectedRegime] = useState('ALL'); // 'ALL' | 'BULLISH' | 'CAUTION' | 'BEARISH'
   const [sortField, setSortField] = useState('date');
   const [sortDirection, setSortDirection] = useState('asc');
 
@@ -264,6 +265,10 @@ export default function ModelBookTab({
       list = list.filter(c => c.sector === selectedSector);
     }
 
+    if (selectedRegime !== 'ALL') {
+      list = list.filter(c => c.market_regime === selectedRegime);
+    }
+
     return [...list].sort((a, b) => {
       let valA = a[sortField];
       let valB = b[sortField];
@@ -279,7 +284,7 @@ export default function ModelBookTab({
       if (numCmp !== 0) return numCmp;
       return (a.date || '').localeCompare(b.date || '');
     });
-  }, [scanResult, viewMode, searchTerm, selectedSector, sortField, sortDirection]);
+  }, [scanResult, viewMode, searchTerm, selectedSector, selectedRegime, sortField, sortDirection]);
 
   // Sector list for filter dropdown
   const availableSectors = useMemo(() => {
@@ -344,7 +349,11 @@ export default function ModelBookTab({
       'Company Name',
       'Sector',
       'Trigger Date',
+      'Market Regime',
+      'Market Stack',
+      'QQQ Close',
       'Entry Price',
+      'ADR% (20d)',
       'Peak Price',
       'Peak Gain %',
       'Max Drawdown %',
@@ -359,7 +368,11 @@ export default function ModelBookTab({
       `"${(c.name || '').replace(/"/g, '""')}"`,
       `"${(c.sector || '').replace(/"/g, '""')}"`,
       c.date,
+      c.market_regime || '',
+      `"${(c.market_stack || '').replace(/"/g, '""')}"`,
+      c.market_index_close ?? '',
       c.entry_price,
+      c.adr_20d ?? '',
       c.peak_price || '',
       c.peak_gain_pct,
       c.max_drawdown_pct,
@@ -802,6 +815,33 @@ export default function ModelBookTab({
               </span>
             </div>
           </div>
+
+          {/* Card 6: Market Timing Edge */}
+          {summary.regime_breakdown && (
+            <div className="glass-card stat-card" style={{ padding: '14px 18px' }}>
+              <span className="stat-label">Market Timing Edge</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '2px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px' }}>
+                  <span style={{ color: '#34d399', fontWeight: 600 }}>🟢 Bullish Tape:</span>
+                  <span style={{ fontWeight: 700, color: (summary.regime_breakdown.BULLISH?.win_rate_pct ?? 0) >= 25 ? '#34d399' : 'var(--text-primary)' }}>
+                    {summary.regime_breakdown.BULLISH?.win_rate_pct ?? 0}% ({summary.regime_breakdown.BULLISH?.winners ?? 0}/{summary.regime_breakdown.BULLISH?.total ?? 0})
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px' }}>
+                  <span style={{ color: '#fbbf24', fontWeight: 600 }}>🟡 Caution Tape:</span>
+                  <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>
+                    {summary.regime_breakdown.CAUTION?.win_rate_pct ?? 0}% ({summary.regime_breakdown.CAUTION?.winners ?? 0}/{summary.regime_breakdown.CAUTION?.total ?? 0})
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px' }}>
+                  <span style={{ color: '#fb7185', fontWeight: 600 }}>🔴 Bearish Tape:</span>
+                  <span style={{ fontWeight: 700, color: '#fb7185' }}>
+                    {summary.regime_breakdown.BEARISH?.win_rate_pct ?? 0}% ({summary.regime_breakdown.BEARISH?.winners ?? 0}/{summary.regime_breakdown.BEARISH?.total ?? 0})
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -845,25 +885,49 @@ export default function ModelBookTab({
               </button>
             </div>
 
-            {/* Sector filter */}
-            <select
-              value={selectedSector}
-              onChange={e => setSelectedSector(e.target.value)}
-              style={{
-                padding: '4px 8px',
-                backgroundColor: 'rgba(0,0,0,0.3)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)',
-                fontSize: '12px',
-                maxWidth: '150px'
-              }}
-            >
-              <option value="ALL">All Sectors</option>
-              {availableSectors.map(sec => (
-                <option key={sec} value={sec}>{sec}</option>
-              ))}
-            </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {/* Market Tape filter */}
+              <select
+                value={selectedRegime}
+                onChange={e => setSelectedRegime(e.target.value)}
+                style={{
+                  padding: '4px 8px',
+                  backgroundColor: 'rgba(0,0,0,0.3)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  color: selectedRegime === 'BULLISH' ? '#34d399' : (selectedRegime === 'BEARISH' ? '#fb7185' : (selectedRegime === 'CAUTION' ? '#fbbf24' : 'var(--text-primary)')),
+                  fontSize: '12px',
+                  fontWeight: selectedRegime !== 'ALL' ? '600' : '400',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="ALL">All Market Tapes</option>
+                <option value="BULLISH">🟢 Bullish Tape</option>
+                <option value="CAUTION">🟡 Caution Tape</option>
+                <option value="BEARISH">🔴 Bearish Tape</option>
+              </select>
+
+              {/* Sector filter */}
+              <select
+                value={selectedSector}
+                onChange={e => setSelectedSector(e.target.value)}
+                style={{
+                  padding: '4px 8px',
+                  backgroundColor: 'rgba(0,0,0,0.3)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  color: 'var(--text-primary)',
+                  fontSize: '12px',
+                  maxWidth: '130px',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="ALL">All Sectors</option>
+                {availableSectors.map(sec => (
+                  <option key={sec} value={sec}>{sec}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Search bar */}
@@ -896,6 +960,9 @@ export default function ModelBookTab({
                   <th onClick={() => handleSort('date')} style={{ cursor: 'pointer' }}>
                     Trigger Date {sortField === 'date' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
                   </th>
+                  <th onClick={() => handleSort('market_regime')} style={{ cursor: 'pointer' }}>
+                    Market Tape {sortField === 'market_regime' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+                  </th>
                   <th onClick={() => handleSort('peak_gain_pct')} style={{ cursor: 'pointer', color: '#34d399' }}>
                     Peak Gain {sortField === 'peak_gain_pct' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
                   </th>
@@ -904,6 +971,9 @@ export default function ModelBookTab({
                   </th>
                   <th onClick={() => handleSort('days_to_target')} style={{ cursor: 'pointer' }}>
                     Days
+                  </th>
+                  <th onClick={() => handleSort('adr_20d')} style={{ cursor: 'pointer', textAlign: 'right' }}>
+                    ADR% {sortField === 'adr_20d' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
                   </th>
                   <th onClick={() => handleSort('prior_runup_pct')} style={{ cursor: 'pointer' }}>
                     Prior Move
@@ -916,7 +986,7 @@ export default function ModelBookTab({
               <tbody>
                 {displayedCandidates.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                    <td colSpan={9} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
                       {loading ? 'Analyzing historical bars...' : 'No setups found matching criteria.'}
                     </td>
                   </tr>
@@ -944,6 +1014,71 @@ export default function ModelBookTab({
                           </div>
                         </td>
                         <td style={{ color: 'var(--text-secondary)' }}>{cand.date}</td>
+
+                        {/* Market Tape Column */}
+                        <td>
+                          {cand.market_regime === 'BULLISH' && (
+                            <span
+                              className="pill"
+                              style={{
+                                background: 'rgba(16, 185, 129, 0.18)',
+                                color: '#34d399',
+                                border: '1px solid rgba(16, 185, 129, 0.35)',
+                                fontSize: '10.5px',
+                                padding: '2px 7px',
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}
+                              title={`Bullish Uptrend (Green Light)\nQQQ Close: $${cand.market_index_close ?? '-'}\nStack: ${cand.market_stack ?? '-'}`}
+                            >
+                              🟢 Bullish
+                            </span>
+                          )}
+                          {cand.market_regime === 'CAUTION' && (
+                            <span
+                              className="pill"
+                              style={{
+                                background: 'rgba(245, 158, 11, 0.18)',
+                                color: '#fbbf24',
+                                border: '1px solid rgba(245, 158, 11, 0.35)',
+                                fontSize: '10.5px',
+                                padding: '2px 7px',
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}
+                              title={`Caution / Pullback (Yellow Light)\nQQQ Close: $${cand.market_index_close ?? '-'}\nStack: ${cand.market_stack ?? '-'}`}
+                            >
+                              🟡 Caution
+                            </span>
+                          )}
+                          {cand.market_regime === 'BEARISH' && (
+                            <span
+                              className="pill"
+                              style={{
+                                background: 'rgba(244, 63, 94, 0.18)',
+                                color: '#fb7185',
+                                border: '1px solid rgba(244, 63, 94, 0.35)',
+                                fontSize: '10.5px',
+                                padding: '2px 7px',
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}
+                              title={`High Risk / Distribution (Red Light)\nQQQ Close: $${cand.market_index_close ?? '-'}\nStack: ${cand.market_stack ?? '-'}`}
+                            >
+                              🔴 Bearish
+                            </span>
+                          )}
+                          {!['BULLISH', 'CAUTION', 'BEARISH'].includes(cand.market_regime) && (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>-</span>
+                          )}
+                        </td>
+
                         <td style={{ fontWeight: '700', color: cand.peak_gain_pct >= targetGainPct ? '#34d399' : 'var(--text-secondary)' }}>
                           +{cand.peak_gain_pct}%
                         </td>
@@ -952,6 +1087,9 @@ export default function ModelBookTab({
                         </td>
                         <td style={{ color: cand.days_to_target ? '#38bdf8' : 'var(--text-muted)' }}>
                           {cand.days_to_target ? `${cand.days_to_target}d` : '-'}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 600, color: (cand.adr_20d >= 5.0 ? '#fbbf24' : 'var(--text-secondary)') }}>
+                          {cand.adr_20d !== null && cand.adr_20d !== undefined ? `${cand.adr_20d.toFixed(1)}%` : '-'}
                         </td>
                         <td style={{ color: 'var(--text-secondary)' }}>+{cand.prior_runup_pct}%</td>
                         <td style={{ color: 'var(--text-secondary)' }}>{cand.base_depth_pct}%</td>
@@ -1011,6 +1149,59 @@ export default function ModelBookTab({
                         title="Trigger / Screen Date for this setup candidate"
                       >
                         📅 Trigger: {selectedCandidate.date}
+                      </span>
+                    )}
+                    {selectedCandidate.adr_20d !== null && selectedCandidate.adr_20d !== undefined && (
+                      <span
+                        className="pill"
+                        style={{
+                          fontSize: '11px',
+                          padding: '3px 8px',
+                          background: selectedCandidate.adr_20d >= 5.0 ? 'rgba(245, 158, 11, 0.18)' : 'rgba(59, 130, 246, 0.15)',
+                          color: selectedCandidate.adr_20d >= 5.0 ? '#fbbf24' : '#60a5fa',
+                          border: selectedCandidate.adr_20d >= 5.0 ? '1px solid rgba(245, 158, 11, 0.35)' : '1px solid rgba(59, 130, 246, 0.3)',
+                          fontWeight: 700,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                        title="20-Day Average Daily Range (ADR%) on Trigger Date"
+                      >
+                        ⚡ ADR: {selectedCandidate.adr_20d.toFixed(1)}%
+                      </span>
+                    )}
+                    {selectedCandidate.market_regime && (
+                      <span
+                        className="pill"
+                        style={{
+                          fontSize: '11px',
+                          padding: '3px 8px',
+                          background: selectedCandidate.market_regime === 'BULLISH'
+                            ? 'rgba(16, 185, 129, 0.18)'
+                            : (selectedCandidate.market_regime === 'BEARISH'
+                              ? 'rgba(244, 63, 94, 0.18)'
+                              : 'rgba(245, 158, 11, 0.18)'),
+                          color: selectedCandidate.market_regime === 'BULLISH'
+                            ? '#34d399'
+                            : (selectedCandidate.market_regime === 'BEARISH'
+                              ? '#fb7185'
+                              : '#fbbf24'),
+                          border: `1px solid ${selectedCandidate.market_regime === 'BULLISH'
+                            ? 'rgba(16, 185, 129, 0.35)'
+                            : (selectedCandidate.market_regime === 'BEARISH'
+                              ? 'rgba(244, 63, 94, 0.35)'
+                              : 'rgba(245, 158, 11, 0.35)')}`,
+                          fontWeight: 700,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                        title={`Market on trigger date: ${selectedCandidate.market_label || selectedCandidate.market_regime}\nQQQ Close: $${selectedCandidate.market_index_close ?? '-'}\nStack: ${selectedCandidate.market_stack ?? '-'}`}
+                      >
+                        {selectedCandidate.market_regime === 'BULLISH' && '🟢 Tape: Bullish'}
+                        {selectedCandidate.market_regime === 'CAUTION' && '🟡 Tape: Caution'}
+                        {selectedCandidate.market_regime === 'BEARISH' && '🔴 Tape: Bearish'}
+                        {!['BULLISH', 'CAUTION', 'BEARISH'].includes(selectedCandidate.market_regime) && `Tape: ${selectedCandidate.market_regime}`}
                       </span>
                     )}
                   </div>
@@ -1184,7 +1375,7 @@ export default function ModelBookTab({
               </div>
 
               {/* Setup Characteristics Footprint */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', padding: '10px 14px', backgroundColor: 'rgba(0, 0, 0, 0.25)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(115px, 1fr))', gap: '10px', padding: '10px 14px', backgroundColor: 'rgba(0, 0, 0, 0.25)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
                 <div>
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Prior Runup</span>
                   <span style={{ fontSize: '13px', fontWeight: '700', color: '#34d399' }}>+{selectedCandidate.prior_runup_pct}%</span>
@@ -1198,6 +1389,12 @@ export default function ModelBookTab({
                   <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>${selectedCandidate.pivot_price ? selectedCandidate.pivot_price.toFixed(2) : '-'}</span>
                 </div>
                 <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>ADR (20d)</span>
+                  <span style={{ fontSize: '13px', fontWeight: '700', color: selectedCandidate.adr_20d >= 5.0 ? '#fbbf24' : '#60a5fa' }}>
+                    {selectedCandidate.adr_20d !== null && selectedCandidate.adr_20d !== undefined ? `${selectedCandidate.adr_20d.toFixed(1)}%` : '-'}
+                  </span>
+                </div>
+                <div>
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>RS Score</span>
                   <span style={{ fontSize: '13px', fontWeight: '700', color: '#38bdf8' }}>{selectedCandidate.rs_score || '-'}</span>
                 </div>
@@ -1205,6 +1402,25 @@ export default function ModelBookTab({
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>End of Period Return</span>
                   <span style={{ fontSize: '13px', fontWeight: '700', color: selectedCandidate.end_return_pct >= 0 ? '#34d399' : '#f87171' }}>
                     {selectedCandidate.end_return_pct >= 0 ? `+${selectedCandidate.end_return_pct}%` : `${selectedCandidate.end_return_pct}%`}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Market Tape</span>
+                  <span style={{
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    color: selectedCandidate.market_regime === 'BULLISH' ? '#34d399' : (selectedCandidate.market_regime === 'BEARISH' ? '#fb7185' : '#fbbf24')
+                  }}>
+                    {selectedCandidate.market_regime || 'UNKNOWN'}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>QQQ MA Stack</span>
+                  <span
+                    style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'monospace' }}
+                    title={`QQQ Close on Trigger: $${selectedCandidate.market_index_close ?? '-'}`}
+                  >
+                    {selectedCandidate.market_stack || '-'}
                   </span>
                 </div>
               </div>

@@ -1,0 +1,20 @@
+# Web Framework & API Server
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+starlette>=0.36.0
+pydantic>=2.0.0
+aiofiles>=23.2.0
+
+# Database & Data Analysis
+duckdb>=0.10.0
+pandas>=2.0.0
+
+# Market Data Providers
+yfinance>=0.2.36
+requests>=2.31.0
+ib_insync>=0.9.86
+
+# Configuration & Utilities
+PyYAML>=6.0.1
+pyperclip>=1.8.2
+

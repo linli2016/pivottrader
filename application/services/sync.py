@@ -57,6 +57,11 @@ class SyncService:
             with self.sync_lock:
                 if return_code == 0:
                     self.sync_status["status"] = "completed"
+                    try:
+                        from application.services.database import db_service
+                        db_service.clear_caches()
+                    except Exception:
+                        pass
                 else:
                     self.sync_status["status"] = "failed"
                     self.sync_status["error_message"] = f"Pipeline exited with return code {return_code}"
