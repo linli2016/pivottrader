@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import CandlestickChart from './CandlestickChart';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
@@ -10,13 +10,14 @@ const SETUP_CANONICAL_NAMES = {
   momentum: 'QM Momentum',
   parabolic: 'Parabolic',
   ipo_base: 'IPO Base',
-  vcp: 'Minervini VCP'
+  vcp: 'Minervini VCP',
+  low_cheat: 'Minervini Low Cheat'
 };
 
 export default function ModelBookTab({
   onSelectStock = null,
-  watchlists = [],
-  fetchWatchlists = () => {},
+  watchlists: _watchlists = [],
+  fetchWatchlists: _fetchWatchlists = () => {},
   setupsConfig = { setups: [], filters: {} }
 }) {
   // Screening Parameters
@@ -42,7 +43,8 @@ export default function ModelBookTab({
       { id: 'momentum', name: 'QM Momentum', icon: '🏆', description: 'Top 1-2% strongest momentum leaders over 1M, 3M, and 6M timeframes.' },
       { id: 'parabolic', name: 'Parabolic', icon: '🌋', description: 'Overextended momentum climaxes or capitulation exhaustion.' },
       { id: 'ipo_base', name: 'IPO Base', icon: '🌱', description: 'Early institutional accumulation in newly public companies (< 350 days).' },
-      { id: 'vcp', name: 'Minervini VCP', icon: '📐', description: 'Volatility Contraction Pattern with drying volume along Stage 2 uptrend.' }
+      { id: 'vcp', name: 'Minervini VCP', icon: '📐', description: 'Volatility Contraction Pattern with drying volume along Stage 2 uptrend.' },
+      { id: 'low_cheat', name: 'Minervini Low Cheat', icon: '🏹', description: 'Early entry in the lower 1/3 to 1/2 of a base on volume exhaustion and character change.' }
     ];
   }, [setupsConfig]);
 
@@ -50,25 +52,44 @@ export default function ModelBookTab({
     return setupOptions.find(s => s.id === setupType) || setupOptions[0];
   }, [setupOptions, setupType]);
   
-  // Date Range (default: past 1 year up to 30 days ago to allow forward bars)
+  // Date Range (default: current year)
   const defaultDates = useMemo(() => {
     const today = new Date();
-    const end = new Date(today.getTime() - 30 * 24 * 60 * 1000);
-    const start = new Date(end.getTime() - 365 * 24 * 60 * 60 * 1000);
-    return {
-      start: start.toISOString().split('T')[0],
-      end: end.toISOString().split('T')[0]
-    };
+    const currentYear = today.getFullYear();
+    const start = `${currentYear}-01-01`;
+    const end = today.toISOString().split('T')[0];
+    return { start, end };
   }, []);
 
   const [startDate, setStartDate] = useState(defaultDates.start);
   const [endDate, setEndDate] = useState(defaultDates.end);
-  const [activeDatePreset, setActiveDatePreset] = useState('1y');
+  const [activeDatePreset, setActiveDatePreset] = useState('ytd');
 
   // Execution State
   const [loading, setLoading] = useState(false);
   const [scanResult, setScanResult] = useState(null);
   const [error, setError] = useState(null);
+
+  // Sub-view: 'study' (Historical Winners Lab) vs 'saved' (My Saved Model Book)
+  const [activeSubView, setActiveSubView] = useState('study');
+
+  // Saved Model Book Trades State
+  const [savedTrades, setSavedTrades] = useState([]);
+  const [loadingSavedTrades, setLoadingSavedTrades] = useState(false);
+  const [selectedSavedTrade, setSelectedSavedTrade] = useState(null);
+  const [displayedSavedTrade, setDisplayedSavedTrade] = useState(null);
+  const [savedTradePrices, setSavedTradePrices] = useState([]);
+  const [loadingSavedPrices, setLoadingSavedPrices] = useState(false);
+  const [savedTradeFilterSetup, setSavedTradeFilterSetup] = useState('ALL');
+  const [savedTradeSearch, setSavedTradeSearch] = useState('');
+  const [traderNote, setTraderNote] = useState('');
+  const [isSavingNote, setIsSavingNote] = useState(false);
+  const [noteSavedFeedback, setNoteSavedFeedback] = useState(false);
+
+  // Save action state
+  const [savingToModelBook, setSavingToModelBook] = useState(false);
+  const [dateUpdatedFeedback, setDateUpdatedFeedback] = useState(false);
+  const [isUpdatingDate, setIsUpdatingDate] = useState(false);
 
   // Active criteria chips preview
   const activeFilterChips = useMemo(() => {
@@ -143,46 +164,85 @@ export default function ModelBookTab({
   // Table & View Filters
   const [viewMode, setViewMode] = useState('winners'); // 'winners' | 'all'
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedSector, setSelectedSector] = useState('ALL');
   const [selectedRegime, setSelectedRegime] = useState('ALL'); // 'ALL' | 'BULLISH' | 'CAUTION' | 'BEARISH'
   const [sortField, setSortField] = useState('date');
   const [sortDirection, setSortDirection] = useState('asc');
 
   // Chart Viewer State
   const [selectedCandidate, setSelectedCandidate] = useState(null);
+  const [displayedChartCandidate, setDisplayedChartCandidate] = useState(null);
   const [stockPrices, setStockPrices] = useState([]);
   const [loadingPrices, setLoadingPrices] = useState(false);
 
-  // Watchlist action state
-  const [selectedWatchlistId, setSelectedWatchlistId] = useState('');
-  const [watchlistSuccess, setWatchlistSuccess] = useState(null);
+  // In-memory price cache to eliminate chart reload blink & enable instant navigation
+  const priceCacheRef = useRef(new Map());
+  const pendingRequestsRef = useRef(new Map());
 
-  // Set default target watchlist
-  useEffect(() => {
-    if (watchlists && watchlists.length > 0 && !selectedWatchlistId) {
-      setSelectedWatchlistId(watchlists[0].id);
+  const fetchStockPrices = useCallback(async (symbol) => {
+    if (!symbol) return [];
+    const sym = symbol.toUpperCase();
+    if (priceCacheRef.current.has(sym)) {
+      return priceCacheRef.current.get(sym);
     }
-  }, [watchlists, selectedWatchlistId]);
+    if (pendingRequestsRef.current.has(sym)) {
+      return pendingRequestsRef.current.get(sym);
+    }
+    const reqPromise = (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/stocks/${sym}/prices`);
+        if (res.ok) {
+          const prices = await res.json();
+          priceCacheRef.current.set(sym, prices);
+          return prices;
+        }
+      } catch (err) {
+        console.error(`Error loading prices for ${sym}:`, err);
+      } finally {
+        pendingRequestsRef.current.delete(sym);
+      }
+      return [];
+    })();
+    pendingRequestsRef.current.set(sym, reqPromise);
+    return reqPromise;
+  }, []);
+
+  const prefetchSymbols = useCallback((symbols) => {
+    if (!symbols || symbols.length === 0) return;
+    symbols.forEach(sym => {
+      if (sym && !priceCacheRef.current.has(sym.toUpperCase()) && !pendingRequestsRef.current.has(sym.toUpperCase())) {
+        fetchStockPrices(sym);
+      }
+    });
+  }, [fetchStockPrices]);
+
 
   // Quick Date Presets
   const applyDatePreset = (preset) => {
     setActiveDatePreset(preset);
     const today = new Date();
-    const end = new Date(today.getTime() - 25 * 24 * 60 * 60 * 1000); // 25 days ago buffer for forward window
-    let start = new Date(end);
+    const end = today.toISOString().split('T')[0];
+    let start;
 
-    if (preset === '6m') {
-      start.setMonth(start.getMonth() - 6);
+    if (preset === 'ytd') {
+      start = `${today.getFullYear()}-01-01`;
+    } else if (preset === '6m') {
+      const d = new Date(today);
+      d.setMonth(d.getMonth() - 6);
+      start = d.toISOString().split('T')[0];
     } else if (preset === '1y') {
-      start.setFullYear(start.getFullYear() - 1);
+      const d = new Date(today);
+      d.setFullYear(d.getFullYear() - 1);
+      start = d.toISOString().split('T')[0];
     } else if (preset === '2y') {
-      start.setFullYear(start.getFullYear() - 2);
+      const d = new Date(today);
+      d.setFullYear(d.getFullYear() - 2);
+      start = d.toISOString().split('T')[0];
     } else if (preset === 'all') {
-      start = new Date('2021-08-27');
+      start = '2021-08-27';
     }
 
-    setStartDate(start.toISOString().split('T')[0]);
-    setEndDate(end.toISOString().split('T')[0]);
+    setStartDate(start);
+    setEndDate(end);
   };
 
   // Run Scan API
@@ -223,8 +283,10 @@ export default function ModelBookTab({
       const candidatesList = data.winners && data.winners.length > 0 ? data.winners : (data.all_candidates || []);
       if (candidatesList.length > 0) {
         handleSelectCandidate(candidatesList[0]);
+        prefetchSymbols(candidatesList.slice(0, 10).map(c => c.symbol));
       } else {
         setSelectedCandidate(null);
+        setDisplayedChartCandidate(null);
         setStockPrices([]);
       }
     } catch (e) {
@@ -240,29 +302,6 @@ export default function ModelBookTab({
     handleRunScan(newId);
   };
 
-  // Run initial scan on mount
-  useEffect(() => {
-    handleRunScan();
-  }, []);
-
-  // Fetch prices when candidate is selected
-  const handleSelectCandidate = async (candidate) => {
-    if (!candidate) return;
-    setSelectedCandidate(candidate);
-    setLoadingPrices(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/stocks/${candidate.symbol}/prices`);
-      if (res.ok) {
-        const priceData = await res.json();
-        setStockPrices(priceData);
-      }
-    } catch (e) {
-      console.error(`Error loading prices for ${candidate.symbol}:`, e);
-    } finally {
-      setLoadingPrices(false);
-    }
-  };
-
   // Filter and sort candidates
   const displayedCandidates = useMemo(() => {
     if (!scanResult) return [];
@@ -275,10 +314,6 @@ export default function ModelBookTab({
       );
     }
 
-    if (selectedSector !== 'ALL') {
-      list = list.filter(c => c.sector === selectedSector);
-    }
-
     if (selectedRegime !== 'ALL') {
       list = list.filter(c => c.market_regime === selectedRegime);
     }
@@ -289,6 +324,9 @@ export default function ModelBookTab({
       if (sortField === 'date' || sortField === 'setup_date') {
         valA = a.setup_date || a.date || '';
         valB = b.setup_date || b.date || '';
+      } else if (sortField === 'holding_days') {
+        valA = a.holding_days != null ? Number(a.holding_days) : -1;
+        valB = b.holding_days != null ? Number(b.holding_days) : -1;
       } else if (sortField === 'entry_date') {
         valA = a.entry_date || '';
         valB = b.entry_date || '';
@@ -309,15 +347,54 @@ export default function ModelBookTab({
       if (numCmp !== 0) return numCmp;
       return (a.setup_date || a.date || '').localeCompare(b.setup_date || b.date || '');
     });
-  }, [scanResult, viewMode, searchTerm, selectedSector, selectedRegime, sortField, sortDirection]);
+  }, [scanResult, viewMode, searchTerm, selectedRegime, sortField, sortDirection]);
 
-  // Sector list for filter dropdown
-  const availableSectors = useMemo(() => {
-    if (!scanResult) return [];
-    const pool = scanResult.all_candidates || [];
-    const set = new Set(pool.map(c => c.sector).filter(Boolean));
-    return Array.from(set).sort();
-  }, [scanResult]);
+  const prefetchAdjacentCandidates = useCallback((currentCand) => {
+    if (!currentCand || displayedCandidates.length === 0) return;
+    const idx = displayedCandidates.findIndex(
+      c => c.symbol === currentCand.symbol && (c.setup_date || c.date) === (currentCand.setup_date || currentCand.date)
+    );
+    if (idx === -1) return;
+    const targets = [];
+    if (idx > 0) targets.push(displayedCandidates[idx - 1].symbol);
+    if (idx < displayedCandidates.length - 1) targets.push(displayedCandidates[idx + 1].symbol);
+    if (idx > 1) targets.push(displayedCandidates[idx - 2].symbol);
+    if (idx < displayedCandidates.length - 2) targets.push(displayedCandidates[idx + 2].symbol);
+    prefetchSymbols(targets);
+  }, [displayedCandidates, prefetchSymbols]);
+
+  // Fetch prices when candidate is selected
+  const handleSelectCandidate = async (candidate) => {
+    if (!candidate) return;
+    setSelectedCandidate(candidate);
+
+    const sym = candidate.symbol.toUpperCase();
+    const cached = priceCacheRef.current.get(sym);
+    if (cached && cached.length > 0) {
+      setStockPrices(cached);
+      setDisplayedChartCandidate(candidate);
+      setLoadingPrices(false);
+      prefetchAdjacentCandidates(candidate);
+      return;
+    }
+
+    setLoadingPrices(true);
+    try {
+      const prices = await fetchStockPrices(candidate.symbol);
+      setStockPrices(prices);
+      setDisplayedChartCandidate(candidate);
+    } catch (e) {
+      console.error(`Error loading prices for ${candidate.symbol}:`, e);
+    } finally {
+      setLoadingPrices(false);
+      prefetchAdjacentCandidates(candidate);
+    }
+  };
+
+  // Run initial scan on mount
+  useEffect(() => {
+    handleRunScan();
+  }, []);
 
   // Flipping through candidates (Next / Previous)
   const currentIndex = useMemo(() => {
@@ -339,22 +416,299 @@ export default function ModelBookTab({
     }
   };
 
+  // Saved Model Book API & state actions
+  const fetchSavedTrades = async () => {
+    setLoadingSavedTrades(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/model-book/saved`);
+      if (res.ok) {
+        const data = await res.json();
+        setSavedTrades(data || []);
+        prefetchSymbols((data || []).map(t => t.symbol));
+      }
+    } catch (e) {
+      console.error('Error fetching saved trades:', e);
+    } finally {
+      setLoadingSavedTrades(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSavedTrades();
+  }, []);
+
+  const isCandidateSaved = (cand) => {
+    if (!cand) return false;
+    const date = cand.setup_date || cand.date || cand.screen_date;
+    return savedTrades.some(
+      t => t.symbol.toUpperCase() === cand.symbol.toUpperCase() && t.setup_date === date
+    );
+  };
+
+  const getSavedTradeForCandidate = (cand) => {
+    if (!cand) return null;
+    const date = cand.setup_date || cand.date || cand.screen_date;
+    return savedTrades.find(
+      t => t.symbol.toUpperCase() === cand.symbol.toUpperCase() && t.setup_date === date
+    );
+  };
+
+  const handleToggleSaveCandidate = async (cand) => {
+    if (!cand) return;
+    const existing = getSavedTradeForCandidate(cand);
+    if (existing) {
+      if (window.confirm(`Remove ${cand.symbol} (${cand.setup_date || cand.date}) from saved Model Book?`)) {
+        await handleDeleteSavedTrade(existing.id, false);
+      }
+      return;
+    }
+
+    setSavingToModelBook(true);
+    const date = cand.setup_date || cand.date || cand.screen_date;
+    const payload = {
+      symbol: cand.symbol,
+      setup_date: date,
+      setup_type: setupType,
+      setup_name: SETUP_CANONICAL_NAMES[setupType] || activeSetup?.name || 'Setup',
+      market_regime: cand.market_regime,
+      notes: ''
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/api/model-book/saved`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setSavedTrades(prev => [saved, ...prev.filter(t => t.id !== saved.id)]);
+      }
+    } catch (e) {
+      console.error('Error saving model book trade:', e);
+    } finally {
+      setSavingToModelBook(false);
+    }
+  };
+
+  const handleDeleteSavedTrade = async (tradeId, confirm = true) => {
+    if (confirm && !window.confirm('Remove this trade from your saved Model Book?')) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/model-book/saved/${tradeId}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        setSavedTrades(prev => prev.filter(t => t.id !== tradeId));
+        if (selectedSavedTrade?.id === tradeId) {
+          setSelectedSavedTrade(null);
+          setDisplayedSavedTrade(null);
+          setSavedTradePrices([]);
+        }
+      }
+    } catch (e) {
+      console.error('Error deleting saved trade:', e);
+    }
+  };
+
+  // Filtered and sorted saved trades list
+  const filteredSavedTrades = useMemo(() => {
+    let list = [...savedTrades];
+    if (savedTradeFilterSetup !== 'ALL') {
+      list = list.filter(t => t.setup_type === savedTradeFilterSetup);
+    }
+    if (savedTradeSearch.trim() !== '') {
+      const q = savedTradeSearch.toLowerCase().trim();
+      list = list.filter(t =>
+        t.symbol.toLowerCase().includes(q) ||
+        (t.notes && t.notes.toLowerCase().includes(q)) ||
+        (t.setup_name && t.setup_name.toLowerCase().includes(q)) ||
+        (t.setup_date && t.setup_date.includes(q))
+      );
+    }
+    return list;
+  }, [savedTrades, savedTradeFilterSetup, savedTradeSearch]);
+
+  const prefetchAdjacentSavedTrades = useCallback((currentTrade) => {
+    if (!currentTrade || filteredSavedTrades.length === 0) return;
+    const idx = filteredSavedTrades.findIndex(t => t.id === currentTrade.id);
+    if (idx === -1) return;
+    const targets = [];
+    if (idx > 0) targets.push(filteredSavedTrades[idx - 1].symbol);
+    if (idx < filteredSavedTrades.length - 1) targets.push(filteredSavedTrades[idx + 1].symbol);
+    if (idx > 1) targets.push(filteredSavedTrades[idx - 2].symbol);
+    if (idx < filteredSavedTrades.length - 2) targets.push(filteredSavedTrades[idx + 2].symbol);
+    prefetchSymbols(targets);
+  }, [filteredSavedTrades, prefetchSymbols]);
+
+  const handleSelectSavedTrade = async (trade) => {
+    if (!trade) return;
+    setSelectedSavedTrade(trade);
+    setTraderNote(trade.notes || '');
+
+    const sym = trade.symbol.toUpperCase();
+    const cached = priceCacheRef.current.get(sym);
+    if (cached && cached.length > 0) {
+      setSavedTradePrices(cached);
+      setDisplayedSavedTrade(trade);
+      setLoadingSavedPrices(false);
+      prefetchAdjacentSavedTrades(trade);
+      return;
+    }
+
+    setLoadingSavedPrices(true);
+    try {
+      const prices = await fetchStockPrices(trade.symbol);
+      setSavedTradePrices(prices);
+      setDisplayedSavedTrade(trade);
+    } catch (e) {
+      console.error(`Error loading prices for saved trade ${trade.symbol}:`, e);
+    } finally {
+      setLoadingSavedPrices(false);
+      prefetchAdjacentSavedTrades(trade);
+    }
+  };
+
+  const handleSaveTraderNotes = async () => {
+    if (!selectedSavedTrade) return;
+    setIsSavingNote(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/model-book/saved/${selectedSavedTrade.id}/notes`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: traderNote })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setSavedTrades(prev => prev.map(t => t.id === updated.id ? updated : t));
+        setSelectedSavedTrade(updated);
+        setNoteSavedFeedback(true);
+        setTimeout(() => setNoteSavedFeedback(false), 2500);
+      }
+    } catch (e) {
+      console.error('Error updating trade notes:', e);
+    } finally {
+      setIsSavingNote(false);
+    }
+  };
+
+  // Available trading dates for currently selected saved stock
+  const availableSavedTradeDates = useMemo(() => {
+    if (!savedTradePrices || savedTradePrices.length === 0) return [];
+    return savedTradePrices.map(p => p.time || p.date).filter(Boolean);
+  }, [savedTradePrices]);
+
+  const handleUpdateTriggerDate = async (tradeId, newDate) => {
+    if (!tradeId || !newDate || !selectedSavedTrade) return;
+    if (selectedSavedTrade.setup_date === newDate) return;
+    setIsUpdatingDate(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/model-book/saved/${tradeId}/trigger-date`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ setup_date: newDate })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setSavedTrades(prev => prev.map(t => (t.id === tradeId || t.id === updated.id) ? updated : t));
+        setSelectedSavedTrade(updated);
+        setDisplayedSavedTrade(updated);
+        setDateUpdatedFeedback(true);
+        setTimeout(() => setDateUpdatedFeedback(false), 2500);
+      }
+    } catch (err) {
+      console.error('Error updating trigger date:', err);
+    } finally {
+      setIsUpdatingDate(false);
+    }
+  };
+
+  const handleShiftTriggerDate = (delta) => {
+    if (!selectedSavedTrade || !selectedSavedTrade.setup_date) return;
+    const currDate = selectedSavedTrade.setup_date;
+    const dates = availableSavedTradeDates;
+    if (dates.length > 0) {
+      let idx = dates.indexOf(currDate);
+      if (idx === -1) {
+        idx = dates.findIndex(d => d >= currDate);
+        if (idx === -1) idx = dates.length - 1;
+      }
+      const targetIdx = Math.max(0, Math.min(dates.length - 1, idx + delta));
+      if (targetIdx !== idx) {
+        handleUpdateTriggerDate(selectedSavedTrade.id, dates[targetIdx]);
+      }
+    } else {
+      const d = new Date(currDate + 'T00:00:00');
+      d.setDate(d.getDate() + delta);
+      handleUpdateTriggerDate(selectedSavedTrade.id, d.toISOString().split('T')[0]);
+    }
+  };
+
+  const handleUpdateSetupType = async (tradeId, newSetupType) => {
+    if (!tradeId || !newSetupType || !selectedSavedTrade) return;
+    if (selectedSavedTrade.setup_type === newSetupType) return;
+    const opt = setupOptions.find(s => s.id === newSetupType);
+    const newSetupName = opt ? (opt.name || opt.label) : (SETUP_CANONICAL_NAMES[newSetupType] || newSetupType);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/model-book/saved/${tradeId}/setup-type`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ setup_type: newSetupType, setup_name: newSetupName })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setSavedTrades(prev => prev.map(t => (t.id === tradeId || t.id === updated.id) ? updated : t));
+        setSelectedSavedTrade(updated);
+        setDisplayedSavedTrade(updated);
+      }
+    } catch (err) {
+      console.error('Error updating setup type:', err);
+    }
+  };
+
+  const currentSavedIndex = useMemo(() => {
+    if (!selectedSavedTrade || filteredSavedTrades.length === 0) return -1;
+    return filteredSavedTrades.findIndex(t => t.id === selectedSavedTrade.id);
+  }, [selectedSavedTrade, filteredSavedTrades]);
+
+  const handlePrevSavedTrade = () => {
+    if (currentSavedIndex > 0) {
+      handleSelectSavedTrade(filteredSavedTrades[currentSavedIndex - 1]);
+    }
+  };
+
+  const handleNextSavedTrade = () => {
+    if (currentSavedIndex >= 0 && currentSavedIndex < filteredSavedTrades.length - 1) {
+      handleSelectSavedTrade(filteredSavedTrades[currentSavedIndex + 1]);
+    }
+  };
+
   // Keyboard navigation (ArrowUp = prev, ArrowDown = next)
   useEffect(() => {
     const handleKeyDown = (e) => {
       // Don't trigger if user is typing in an input
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
-      if (e.key === 'ArrowDown' || e.key === 'j') {
-        e.preventDefault();
-        handleNextCandidate();
-      } else if (e.key === 'ArrowUp' || e.key === 'k') {
-        e.preventDefault();
-        handlePrevCandidate();
+      if (activeSubView === 'saved') {
+        if (e.key === 'ArrowDown' || e.key === 'j') {
+          e.preventDefault();
+          handleNextSavedTrade();
+        } else if (e.key === 'ArrowUp' || e.key === 'k') {
+          e.preventDefault();
+          handlePrevSavedTrade();
+        }
+      } else {
+        if (e.key === 'ArrowDown' || e.key === 'j') {
+          e.preventDefault();
+          handleNextCandidate();
+        } else if (e.key === 'ArrowUp' || e.key === 'k') {
+          e.preventDefault();
+          handlePrevCandidate();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex, displayedCandidates]);
+  }, [currentIndex, displayedCandidates, activeSubView, currentSavedIndex, filteredSavedTrades]);
 
   // Handle Sort Toggle
   const handleSort = (field) => {
@@ -382,7 +736,7 @@ export default function ModelBookTab({
       'Trade Return %',
       'Peak Gain %',
       'Max Drawdown %',
-      'Holding Days',
+      'Days',
       'Target Price',
       'Stop Price',
       'Market Regime',
@@ -425,24 +779,6 @@ export default function ModelBookTab({
     document.body.removeChild(link);
   };
 
-  // Add to Watchlist
-  const handleAddToWatchlist = async () => {
-    if (!selectedCandidate || !selectedWatchlistId) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: selectedCandidate.symbol })
-      });
-      if (res.ok) {
-        setWatchlistSuccess(`Added ${selectedCandidate.symbol} to watchlist!`);
-        fetchWatchlists();
-        setTimeout(() => setWatchlistSuccess(null), 3000);
-      }
-    } catch (e) {
-      console.error('Error adding to watchlist:', e);
-    }
-  };
 
   const summary = scanResult?.summary;
 
@@ -469,9 +805,6 @@ export default function ModelBookTab({
               Historical Winners Lab
             </span>
           </div>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', marginTop: '4px' }}>
-            Isolate true setup winners (≥ {targetGainPct}% run-ups) and study their pre-breakout characteristics. Volume expansion on Day 1 is skipped to capture early stealth breakouts.
-          </p>
         </div>
 
         {/* Global Action Buttons */}
@@ -526,8 +859,78 @@ export default function ModelBookTab({
         </div>
       </div>
 
-      {/* 2. Controls & Configuration Toolbar */}
-      <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '16px 20px' }}>
+      {/* Sub-view Switcher: Study & Scanner vs Saved Model Book */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '14px', gap: '12px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={() => setActiveSubView('study')}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '8px',
+              border: activeSubView === 'study' ? '1px solid var(--accent-color)' : '1px solid var(--border-color)',
+              backgroundColor: activeSubView === 'study' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.04)',
+              color: activeSubView === 'study' ? 'var(--accent-color)' : 'var(--text-secondary)',
+              fontWeight: '700',
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <span>🔬</span> Study & Scanner
+          </button>
+          <button
+            onClick={() => {
+              setActiveSubView('saved');
+              if (!selectedSavedTrade && savedTrades.length > 0) {
+                handleSelectSavedTrade(savedTrades[0]);
+              }
+            }}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '8px',
+              border: activeSubView === 'saved' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
+              backgroundColor: activeSubView === 'saved' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.04)',
+              color: activeSubView === 'saved' ? '#38bdf8' : 'var(--text-secondary)',
+              fontWeight: '700',
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <span>⭐️</span> My Saved Model Book
+            <span style={{
+              padding: '1px 7px',
+              borderRadius: '10px',
+              fontSize: '11px',
+              backgroundColor: activeSubView === 'saved' ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.1)',
+              color: activeSubView === 'saved' ? '#38bdf8' : 'var(--text-primary)',
+              fontWeight: '800'
+            }}>
+              {savedTrades.length}
+            </span>
+          </button>
+        </div>
+
+        {activeSubView === 'saved' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
+            <span>📁 Tracked in Git:</span>
+            <code style={{ backgroundColor: 'rgba(255, 255, 255, 0.06)', padding: '2px 8px', borderRadius: '4px', color: 'var(--text-primary)' }}>
+              data/saved_model_book.json
+            </code>
+          </div>
+        )}
+      </div>
+
+      {activeSubView === 'study' ? (
+        <>
+          {/* 2. Controls & Configuration Toolbar */}
+          <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '16px 20px' }}>
         {/* Setup Selection Pills */}
         <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
           <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', minWidth: '85px' }}>
@@ -783,7 +1186,7 @@ export default function ModelBookTab({
               Date Range:
             </span>
             <div style={{ display: 'flex', gap: '3px' }}>
-              {['6m', '1y', '2y', 'all'].map(p => (
+              {['ytd', '6m', '1y', '2y', 'all'].map(p => (
                 <button
                   key={p}
                   onClick={() => applyDatePreset(p)}
@@ -969,9 +1372,9 @@ export default function ModelBookTab({
       )}
 
       {/* 4. Split-Screen Layout: Master Table (Left) + Interactive Model Book Chart (Right) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(420px, 46%) 1fr', gap: '18px', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(310px, 28%) 1fr', gap: '16px', alignItems: 'stretch' }}>
         {/* Left Column: Candidates & Winners Table */}
-        <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {/* Table Header Controls */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
             {/* View Mode Pills: Winners vs All */}
@@ -1029,32 +1432,11 @@ export default function ModelBookTab({
                 <option value="CAUTION">🟡 Caution Tape</option>
                 <option value="BEARISH">🔴 Bearish Tape</option>
               </select>
-
-              {/* Sector filter */}
-              <select
-                value={selectedSector}
-                onChange={e => setSelectedSector(e.target.value)}
-                style={{
-                  padding: '4px 8px',
-                  backgroundColor: 'rgba(0,0,0,0.3)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  color: 'var(--text-primary)',
-                  fontSize: '12px',
-                  maxWidth: '130px',
-                  cursor: 'pointer'
-                }}
-              >
-                <option value="ALL">All Sectors</option>
-                {availableSectors.map(sec => (
-                  <option key={sec} value={sec}>{sec}</option>
-                ))}
-              </select>
             </div>
           </div>
 
-          {/* Search bar */}
-          <div>
+          {/* Search bar & sub-header */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <input
               type="text"
               placeholder="Search ticker or company name..."
@@ -1070,12 +1452,16 @@ export default function ModelBookTab({
                 fontSize: '12.5px'
               }}
             />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-muted)', padding: '0 2px' }}>
+              <span>Showing {displayedCandidates.length} setups</span>
+              <span>Use ↑ / ↓ arrow keys to flip</span>
+            </div>
           </div>
 
           {/* Table Container */}
-          <div style={{ overflowX: 'auto', maxHeight: '600px', overflowY: 'auto', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+          <div className="custom-scrollbar" style={{ height: '580px', maxHeight: '580px', overflowX: 'auto', overflowY: 'auto', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'rgba(0, 0, 0, 0.15)' }}>
             <table className="data-table compact-table" style={{ width: '100%', fontSize: '12px' }}>
-              <thead>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
                 <tr>
                   <th onClick={() => handleSort('symbol')} style={{ cursor: 'pointer' }}>
                     Ticker {sortField === 'symbol' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
@@ -1083,20 +1469,8 @@ export default function ModelBookTab({
                   <th onClick={() => handleSort('date')} style={{ cursor: 'pointer' }}>
                     Setup {sortField === 'date' || sortField === 'setup_date' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
                   </th>
-                  <th onClick={() => handleSort('entry_date')} style={{ cursor: 'pointer' }}>
-                    Entry {sortField === 'entry_date' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
-                  </th>
-                  <th onClick={() => handleSort('exit_date')} style={{ cursor: 'pointer' }}>
-                    Exit {sortField === 'exit_date' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
-                  </th>
                   <th onClick={() => handleSort('exit_reason')} style={{ cursor: 'pointer' }}>
                     Reason {sortField === 'exit_reason' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
-                  </th>
-                  <th onClick={() => handleSort('trade_return_pct')} style={{ cursor: 'pointer', textAlign: 'right' }}>
-                    Return % {sortField === 'trade_return_pct' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
-                  </th>
-                  <th onClick={() => handleSort('peak_gain_pct')} style={{ cursor: 'pointer', textAlign: 'right', color: '#34d399' }}>
-                    Peak % {sortField === 'peak_gain_pct' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
                   </th>
                   <th onClick={() => handleSort('market_regime')} style={{ cursor: 'pointer', textAlign: 'center' }}>
                     Tape {sortField === 'market_regime' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
@@ -1106,7 +1480,7 @@ export default function ModelBookTab({
               <tbody>
                 {displayedCandidates.length === 0 ? (
                   <tr>
-                    <td colSpan={8} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                    <td colSpan={4} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
                       {loading ? 'Analyzing historical setups and trade paths...' : 'No setups found matching criteria.'}
                     </td>
                   </tr>
@@ -1135,22 +1509,6 @@ export default function ModelBookTab({
                           </div>
                         </td>
                         <td style={{ color: 'var(--text-secondary)' }}>{candDate}</td>
-
-                        {/* Entry Date & Price */}
-                        <td>
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>${cand.entry_price ? cand.entry_price.toFixed(2) : '-'}</span>
-                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{cand.entry_date}</span>
-                          </div>
-                        </td>
-
-                        {/* Exit Date & Price */}
-                        <td>
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>${cand.exit_price ? cand.exit_price.toFixed(2) : '-'}</span>
-                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{cand.exit_date}</span>
-                          </div>
-                        </td>
 
                         {/* Exit Reason Badge */}
                         <td>
@@ -1182,16 +1540,6 @@ export default function ModelBookTab({
                           {!['TARGET', 'STOP_LOSS', 'EMA_10_EXIT', 'EMA_20_EXIT', 'TIME_EXPIRED'].includes(cand.exit_reason) && (
                             <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{cand.exit_reason || '-'}</span>
                           )}
-                        </td>
-
-                        {/* Trade Return % */}
-                        <td style={{ textAlign: 'right', fontWeight: '700', color: cand.trade_return_pct > 0 ? '#34d399' : (cand.trade_return_pct < 0 ? '#f87171' : 'var(--text-secondary)') }}>
-                          {cand.trade_return_pct >= 0 ? `+${cand.trade_return_pct}%` : `${cand.trade_return_pct}%`}
-                        </td>
-
-                        {/* Peak Gain % */}
-                        <td style={{ textAlign: 'right', fontWeight: '600', color: cand.peak_gain_pct >= targetGainPct ? '#34d399' : 'var(--text-secondary)' }}>
-                          +{cand.peak_gain_pct}%
                         </td>
 
                         {/* Market Tape Column */}
@@ -1254,11 +1602,6 @@ export default function ModelBookTab({
                 )}
               </tbody>
             </table>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-muted)', paddingTop: '4px' }}>
-            <span>Showing {displayedCandidates.length} setups</span>
-            <span>Use ↑ / ↓ arrow keys to flip charts</span>
           </div>
         </div>
 
@@ -1434,7 +1777,7 @@ export default function ModelBookTab({
                       Max DD: <strong style={{ color: selectedCandidate.max_drawdown_pct < -8 ? '#f87171' : 'var(--text-secondary)' }}>{selectedCandidate.max_drawdown_pct}%</strong>
                     </span>
                     <span>
-                      Held: <strong style={{ color: '#38bdf8' }}>{selectedCandidate.holding_days || '-'}d</strong>
+                      Held: <strong style={{ color: '#38bdf8' }}>{selectedCandidate.holding_days != null ? `${selectedCandidate.holding_days}d` : '-'}</strong>
                     </span>
                   </div>
                 </div>
@@ -1477,27 +1820,30 @@ export default function ModelBookTab({
                     </button>
                   </div>
 
-                  {/* Watchlist Add */}
-                  {watchlists && watchlists.length > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <button
-                        onClick={handleAddToWatchlist}
-                        style={{
-                          padding: '6px 10px',
-                          backgroundColor: 'rgba(250, 204, 21, 0.15)',
-                          border: '1px solid rgba(250, 204, 21, 0.3)',
-                          color: '#facc15',
-                          borderRadius: '4px',
-                          fontSize: '12px',
-                          fontWeight: '600',
-                          cursor: 'pointer'
-                        }}
-                        title="Save to Watchlist"
-                      >
-                        ⭐️ Watchlist
-                      </button>
-                    </div>
-                  )}
+
+                  {/* Save to Model Book Button (1-Click direct save) */}
+                  <button
+                    onClick={() => handleToggleSaveCandidate(selectedCandidate)}
+                    disabled={savingToModelBook}
+                    style={{
+                      padding: '6px 12px',
+                      backgroundColor: isCandidateSaved(selectedCandidate) ? 'rgba(52, 211, 153, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                      border: isCandidateSaved(selectedCandidate) ? '1px solid #34d399' : '1px solid var(--border-color)',
+                      color: isCandidateSaved(selectedCandidate) ? '#34d399' : 'var(--text-primary)',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      cursor: savingToModelBook ? 'wait' : 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      transition: 'all 0.15s ease'
+                    }}
+                    title={isCandidateSaved(selectedCandidate) ? "Saved in Model Book (Click to remove)" : "Save to Model Book (1-click save to git)"}
+                  >
+                    <span>{isCandidateSaved(selectedCandidate) ? '★' : '☆'}</span>
+                    {savingToModelBook ? 'Saving...' : (isCandidateSaved(selectedCandidate) ? 'Saved' : 'Save')}
+                  </button>
 
                   {/* Open Inspector Drawer if available */}
                   {onSelectStock && (
@@ -1545,121 +1891,524 @@ export default function ModelBookTab({
                 </div>
               </div>
 
-              {watchlistSuccess && (
-                <div style={{ padding: '6px 12px', backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#34d399', borderRadius: '4px', fontSize: '12px' }}>
-                  ✓ {watchlistSuccess}
-                </div>
-              )}
-
               {/* Candlestick Chart */}
-              <div style={{ width: '100%', height: '480px', minHeight: '480px', position: 'relative' }}>
+              <div style={{ width: '100%', height: '580px', minHeight: '580px', position: 'relative' }}>
+                {/* Sleek top loading indicator line (zero screen blackout) */}
                 {loadingPrices && (
                   <div style={{
                     position: 'absolute',
                     top: 0,
                     left: 0,
                     right: 0,
-                    bottom: 0,
-                    backgroundColor: 'rgba(22, 30, 47, 0.75)',
-                    backdropFilter: 'blur(3px)',
-                    zIndex: 20,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'var(--text-muted)'
+                    height: '3px',
+                    zIndex: 30,
+                    overflow: 'hidden',
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    borderRadius: '2px 2px 0 0'
                   }}>
-                    <span className="spin-icon" style={{ marginRight: '8px' }}>⟳</span> Loading price history for {selectedCandidate?.symbol}...
+                    <div className="screener-progress-indicator" />
                   </div>
                 )}
                 {stockPrices && stockPrices.length > 0 ? (
                   <CandlestickChart
                     ref={modelBookChartRef}
                     data={stockPrices}
-                    height={480}
-                    asOfDate={selectedCandidate?.setup_date || selectedCandidate?.date || selectedCandidate?.screen_date}
-                    symbol={selectedCandidate?.symbol}
+                    height={580}
+                    asOfDate={displayedChartCandidate?.setup_date || displayedChartCandidate?.date || displayedChartCandidate?.screen_date || selectedCandidate?.setup_date || selectedCandidate?.date}
+                    symbol={displayedChartCandidate?.symbol || selectedCandidate?.symbol}
                     setupName={SETUP_CANONICAL_NAMES[setupType] || 'Power Play'}
-                    companyName={selectedCandidate?.name}
+                    companyName={displayedChartCandidate?.name || selectedCandidate?.name}
                     showScreenshotButton={true}
                   />
-                ) : !loadingPrices ? (
-                  <div style={{ height: '480px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                ) : loadingPrices ? (
+                  <div style={{ height: '580px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                    <span className="spin-icon" style={{ marginRight: '8px' }}>⟳</span> Loading price history for {selectedCandidate?.symbol}...
+                  </div>
+                ) : (
+                  <div style={{ height: '580px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
                     No historical prices available for {selectedCandidate?.symbol}.
                   </div>
-                ) : null}
-              </div>
-
-              {/* Setup Characteristics Footprint */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(115px, 1fr))', gap: '10px', padding: '10px 14px', backgroundColor: 'rgba(0, 0, 0, 0.25)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                <div>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Prior Runup</span>
-                  <span style={{ fontSize: '13px', fontWeight: '700', color: '#34d399' }}>+{selectedCandidate.prior_runup_pct}%</span>
-                </div>
-                <div>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Base Depth</span>
-                  <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>{selectedCandidate.base_depth_pct}%</span>
-                </div>
-                <div>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Setup High / Pivot</span>
-                  <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
-                    ${selectedCandidate.setup_high ? selectedCandidate.setup_high.toFixed(2) : (selectedCandidate.pivot_price ? selectedCandidate.pivot_price.toFixed(2) : '-')}
-                  </span>
-                </div>
-                <div>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>ADR (20d)</span>
-                  <span style={{ fontSize: '13px', fontWeight: '700', color: selectedCandidate.adr_20d >= 5.0 ? '#fbbf24' : '#60a5fa' }}>
-                    {selectedCandidate.adr_20d !== null && selectedCandidate.adr_20d !== undefined ? `${selectedCandidate.adr_20d.toFixed(1)}%` : '-'}
-                  </span>
-                </div>
-                <div>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>RS Score</span>
-                  <span style={{ fontSize: '13px', fontWeight: '700', color: '#38bdf8' }}>{selectedCandidate.rs_score || '-'}</span>
-                </div>
-                <div>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Trade Return</span>
-                  <span style={{ fontSize: '13px', fontWeight: '700', color: selectedCandidate.trade_return_pct >= 0 ? '#34d399' : '#f87171' }}>
-                    {selectedCandidate.trade_return_pct >= 0 ? `+${selectedCandidate.trade_return_pct}%` : `${selectedCandidate.trade_return_pct}%`}
-                  </span>
-                </div>
-                <div>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Exit Reason</span>
-                  <span style={{
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    color: selectedCandidate.exit_reason === 'TARGET' ? '#34d399' : (selectedCandidate.exit_reason === 'STOP_LOSS' ? '#fb7185' : '#fbbf24')
-                  }}>
-                    {selectedCandidate.exit_reason || '-'}
-                  </span>
-                </div>
-                <div>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>Market Tape</span>
-                  <span style={{
-                    fontSize: '13px',
-                    fontWeight: '700',
-                    color: selectedCandidate.market_regime === 'BULLISH' ? '#34d399' : (selectedCandidate.market_regime === 'BEARISH' ? '#fb7185' : '#fbbf24')
-                  }}>
-                    {selectedCandidate.market_regime || 'UNKNOWN'}
-                  </span>
-                </div>
-                <div>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block' }}>QQQ MA Stack</span>
-                  <span
-                    style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'monospace' }}
-                    title={`QQQ Close on Trigger: $${selectedCandidate.market_index_close ?? '-'}`}
-                  >
-                    {selectedCandidate.market_stack || '-'}
-                  </span>
-                </div>
+                )}
               </div>
             </>
           ) : (
-            <div style={{ height: '520px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', gap: '10px' }}>
+            <div style={{ height: '580px', minHeight: '580px', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', gap: '10px' }}>
               <span style={{ fontSize: '40px' }}>📖</span>
               <p style={{ fontSize: '14px' }}>Select a winner candidate from the table to load its chart and study setup characteristics.</p>
             </div>
           )}
         </div>
       </div>
+    </>
+  ) : (
+    /* ================== MY SAVED MODEL BOOK SUB-VIEW ================== */
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* Saved Trades Filter Bar */}
+      <div className="glass-card" style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          {/* Search */}
+          <div style={{ position: 'relative' }}>
+            <input
+              type="text"
+              placeholder="Search symbol, notes, setup..."
+              value={savedTradeSearch}
+              onChange={e => setSavedTradeSearch(e.target.value)}
+              style={{
+                padding: '6px 10px 6px 28px',
+                backgroundColor: 'rgba(0,0,0,0.3)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                fontSize: '12.5px',
+                width: '240px'
+              }}
+            />
+            <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: 'var(--text-muted)' }}>
+              🔍
+            </span>
+            {savedTradeSearch && (
+              <button
+                onClick={() => setSavedTradeSearch('')}
+                style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '11px' }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Setup Filter */}
+          <select
+            value={savedTradeFilterSetup}
+            onChange={e => setSavedTradeFilterSetup(e.target.value)}
+            style={{
+              padding: '6px 10px',
+              backgroundColor: 'rgba(0,0,0,0.3)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              color: 'var(--text-primary)',
+              fontSize: '12.5px',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="ALL">All Setups ({savedTrades.length})</option>
+            {setupOptions.map(opt => {
+              const count = savedTrades.filter(t => t.setup_type === opt.id).length;
+              return (
+                <option key={opt.id} value={opt.id}>
+                  {opt.icon || '📌'} {opt.name} ({count})
+                </option>
+              );
+            })}
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            Showing <strong>{filteredSavedTrades.length}</strong> of <strong>{savedTrades.length}</strong> saved textbook setups
+          </span>
+        </div>
+      </div>
+
+      {/* Split View: Left List + Right Chart & Notes */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(310px, 28%) 1fr', gap: '16px', alignItems: 'stretch' }}>
+        {/* Left Column: Saved Trades List */}
+        <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
+              Saved Setups
+            </span>
+            <span style={{ fontSize: '11px', color: '#38bdf8', fontWeight: '600' }}>
+              {filteredSavedTrades.length} Entries
+            </span>
+          </div>
+
+          {/* Saved Trades Table */}
+          <div className="custom-scrollbar" style={{ height: '640px', maxHeight: '640px', overflowX: 'auto', overflowY: 'auto', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'rgba(0, 0, 0, 0.15)' }}>
+            <table className="data-table compact-table" style={{ width: '100%', fontSize: '12px' }}>
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  <th>Date</th>
+                  <th style={{ textAlign: 'center' }}>Tape</th>
+                  <th style={{ width: '28px' }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSavedTrades.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={{ textAlign: 'center', padding: '30px 15px', color: 'var(--text-muted)' }}>
+                      {loadingSavedTrades
+                        ? 'Loading saved trades...'
+                        : (savedTrades.length === 0
+                            ? 'No saved trades yet. Save golden setups from the Study & Scanner tab!'
+                            : 'No saved trades match the search/filter.')}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredSavedTrades.map(trade => {
+                    const isSelected = selectedSavedTrade && selectedSavedTrade.id === trade.id;
+
+                    return (
+                      <tr
+                        key={trade.id}
+                        onClick={() => handleSelectSavedTrade(trade)}
+                        style={{
+                          backgroundColor: isSelected ? 'rgba(56, 189, 248, 0.15)' : 'transparent',
+                          borderLeft: isSelected ? '3px solid #38bdf8' : '3px solid transparent',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>
+                              {trade.symbol}
+                            </span>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                              {trade.setup_name || trade.setup_type}
+                            </span>
+                            {trade.notes && (
+                              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontStyle: 'italic', maxWidth: '130px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: '2px' }} title={trade.notes}>
+                                📝 {trade.notes}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ color: 'var(--text-secondary)', fontSize: '11px', whiteSpace: 'nowrap' }}>
+                          {trade.setup_date}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          {trade.market_regime === 'BULLISH' && <span title="Bullish Tape">🟢</span>}
+                          {trade.market_regime === 'CAUTION' && <span title="Caution Tape">🟡</span>}
+                          {trade.market_regime === 'BEARISH' && <span title="Bearish Tape">🔴</span>}
+                          {!['BULLISH', 'CAUTION', 'BEARISH'].includes(trade.market_regime) && <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>-</span>}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteSavedTrade(trade.id);
+                            }}
+                            title="Delete from saved model book"
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: 'var(--text-muted)',
+                              cursor: 'pointer',
+                              fontSize: '13px',
+                              padding: '2px 4px'
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.color = '#fb7185'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
+                          >
+                            🗑️
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Right Column: Chart & Study Notes */}
+        <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', minHeight: '650px' }}>
+          {selectedSavedTrade ? (
+            <>
+              {/* Header Banner */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-primary)' }}>
+                      {selectedSavedTrade.symbol}
+                    </span>
+                    {/* Interactive Setup Type Selector */}
+                    <select
+                      value={selectedSavedTrade.setup_type}
+                      onChange={e => handleUpdateSetupType(selectedSavedTrade.id, e.target.value)}
+                      title="Click to reclassify setup type"
+                      style={{
+                        padding: '3px 10px',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(56, 189, 248, 0.4)',
+                        backgroundColor: 'rgba(56, 189, 248, 0.12)',
+                        color: '#38bdf8',
+                        fontSize: '11.5px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        outline: 'none'
+                      }}
+                    >
+                      {setupOptions.map(opt => (
+                        <option key={opt.id} value={opt.id} style={{ backgroundColor: '#181b22', color: 'var(--text-primary)' }}>
+                          {opt.icon || '📌'} {opt.name || opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    {/* Interactive Trigger Date Editor */}
+                    <div
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-color)'
+                      }}
+                      title="Adjust trigger date: click calendar to pick a date, or use ◀ / ▶ to shift 1 trading bar"
+                    >
+                      <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: '600' }}>
+                        Trigger:
+                      </span>
+                      <button
+                        onClick={() => handleShiftTriggerDate(-1)}
+                        disabled={isUpdatingDate}
+                        title="Shift trigger date 1 bar earlier (◀)"
+                        style={{
+                          background: 'rgba(255,255,255,0.06)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '3px',
+                          color: 'var(--text-primary)',
+                          cursor: 'pointer',
+                          padding: '1px 6px',
+                          fontSize: '11px',
+                          lineHeight: 1.2
+                        }}
+                      >
+                        ◀
+                      </button>
+                      <input
+                        type="date"
+                        value={selectedSavedTrade.setup_date || ''}
+                        onChange={e => handleUpdateTriggerDate(selectedSavedTrade.id, e.target.value)}
+                        disabled={isUpdatingDate}
+                        style={{
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          color: '#38bdf8',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                          outline: 'none',
+                          padding: '0 2px'
+                        }}
+                      />
+                      <button
+                        onClick={() => handleShiftTriggerDate(1)}
+                        disabled={isUpdatingDate}
+                        title="Shift trigger date 1 bar later (▶)"
+                        style={{
+                          background: 'rgba(255,255,255,0.06)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '3px',
+                          color: 'var(--text-primary)',
+                          cursor: 'pointer',
+                          padding: '1px 6px',
+                          fontSize: '11px',
+                          lineHeight: 1.2
+                        }}
+                      >
+                        ▶
+                      </button>
+                      {dateUpdatedFeedback && (
+                        <span style={{ color: '#34d399', fontSize: '11px', fontWeight: '700', marginLeft: '4px' }}>
+                          ✓ Date updated
+                        </span>
+                      )}
+                    </div>
+                    {selectedSavedTrade.market_regime && (
+                      <span
+                        className="pill"
+                        style={{
+                          backgroundColor: selectedSavedTrade.market_regime === 'BULLISH' ? 'rgba(16, 185, 129, 0.15)' : (selectedSavedTrade.market_regime === 'BEARISH' ? 'rgba(244, 63, 94, 0.15)' : 'rgba(245, 158, 11, 0.15)'),
+                          color: selectedSavedTrade.market_regime === 'BULLISH' ? '#34d399' : (selectedSavedTrade.market_regime === 'BEARISH' ? '#fb7185' : '#fbbf24'),
+                          border: selectedSavedTrade.market_regime === 'BULLISH' ? '1px solid rgba(16, 185, 129, 0.3)' : (selectedSavedTrade.market_regime === 'BEARISH' ? '1px solid rgba(244, 63, 94, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)'),
+                          fontSize: '11px',
+                          fontWeight: '600'
+                        }}
+                      >
+                        Tape: {selectedSavedTrade.market_regime}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Prev / Next Review Controls */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button
+                      onClick={handlePrevSavedTrade}
+                      disabled={currentSavedIndex <= 0}
+                      title="Previous Saved Trade (↑ Arrow or K)"
+                      style={{
+                        padding: '6px 10px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '4px',
+                        color: currentSavedIndex > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
+                        cursor: currentSavedIndex > 0 ? 'pointer' : 'not-allowed',
+                        fontSize: '12px'
+                      }}
+                    >
+                      ◀ Prev
+                    </button>
+                    <button
+                      onClick={handleNextSavedTrade}
+                      disabled={currentSavedIndex >= filteredSavedTrades.length - 1}
+                      title="Next Saved Trade (↓ Arrow or J)"
+                      style={{
+                        padding: '6px 10px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '4px',
+                        color: currentSavedIndex < filteredSavedTrades.length - 1 ? 'var(--text-primary)' : 'var(--text-muted)',
+                        cursor: currentSavedIndex < filteredSavedTrades.length - 1 ? 'pointer' : 'not-allowed',
+                        fontSize: '12px'
+                      }}
+                    >
+                      Next ▶
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteSavedTrade(selectedSavedTrade.id)}
+                    style={{
+                      padding: '6px 10px',
+                      backgroundColor: 'rgba(244, 63, 94, 0.1)',
+                      border: '1px solid rgba(244, 63, 94, 0.3)',
+                      color: '#fb7185',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      cursor: 'pointer'
+                    }}
+                    title="Remove from saved model book"
+                  >
+                    🗑️ Remove
+                  </button>
+                </div>
+              </div>
+
+              {/* Candlestick Chart */}
+              <div style={{ width: '100%', position: 'relative' }}>
+                {/* Sleek top loading indicator line (zero screen blackout) */}
+                {loadingSavedPrices && (
+                  <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: '3px',
+                    zIndex: 30,
+                    overflow: 'hidden',
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    borderRadius: '2px 2px 0 0'
+                  }}>
+                    <div className="screener-progress-indicator" />
+                  </div>
+                )}
+                {savedTradePrices && savedTradePrices.length > 0 ? (
+                  <CandlestickChart
+                    data={savedTradePrices}
+                    height={500}
+                    asOfDate={displayedSavedTrade?.setup_date || selectedSavedTrade.setup_date}
+                    symbol={displayedSavedTrade?.symbol || selectedSavedTrade.symbol}
+                    setupName={displayedSavedTrade?.setup_name || displayedSavedTrade?.setup_type || selectedSavedTrade.setup_name || selectedSavedTrade.setup_type}
+                    selectedStock={displayedSavedTrade || selectedSavedTrade}
+                    showScreenshotButton={true}
+                    showPriceLine={false}
+                  />
+                ) : loadingSavedPrices ? (
+                  <div style={{ height: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                    <span className="spin-icon" style={{ marginRight: '8px' }}>⟳</span> Loading prices for {selectedSavedTrade?.symbol}...
+                  </div>
+                ) : (
+                  <div style={{ height: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                    No historical prices available for {selectedSavedTrade?.symbol}.
+                  </div>
+                )}
+              </div>
+
+              {/* Trader Study Notes Editor */}
+              <div style={{
+                backgroundColor: 'rgba(0, 0, 0, 0.25)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                padding: '14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                      📝 Trader Study Notes
+                    </span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      (Committed to Git in data/saved_model_book.json)
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {noteSavedFeedback && (
+                      <span style={{ fontSize: '12px', color: '#34d399', fontWeight: '600' }}>
+                        ✓ Saved to git!
+                      </span>
+                    )}
+                    <button
+                      onClick={handleSaveTraderNotes}
+                      disabled={isSavingNote}
+                      style={{
+                        padding: '5px 12px',
+                        backgroundColor: 'var(--accent-color)',
+                        color: '#000',
+                        border: 'none',
+                        borderRadius: '4px',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: isSavingNote ? 'wait' : 'pointer'
+                      }}
+                    >
+                      {isSavingNote ? 'Saving...' : 'Save Notes'}
+                    </button>
+                  </div>
+                </div>
+                <textarea
+                  value={traderNote}
+                  onChange={e => setTraderNote(e.target.value)}
+                  placeholder="Write your observations about this setup: What made the base special? How did volume behave? How did it respect the 10/20 EMA? What was the earnings/catalyst driver?"
+                  rows={3}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)',
+                    fontSize: '13px',
+                    lineHeight: '1.5',
+                    resize: 'vertical',
+                    fontFamily: 'inherit'
+                  }}
+                />
+              </div>
+            </>
+          ) : (
+            <div style={{ height: '520px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', gap: '12px' }}>
+              <span style={{ fontSize: '48px' }}>⭐️</span>
+              <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>My Saved Model Book</h3>
+              <p style={{ margin: 0, fontSize: '13.5px', maxWidth: '450px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                {savedTrades.length === 0
+                  ? 'You have not saved any trades yet. Switch over to the "Study & Scanner" tab, find an exemplary setup, and click "☆ Save to Model Book" to add it here.'
+                  : 'Select a saved trade from the list on the left to review its textbook chart and notes.'}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )}
+
     </div>
   );
 }

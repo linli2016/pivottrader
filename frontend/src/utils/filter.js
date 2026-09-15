@@ -34,7 +34,8 @@ export function filterCandidates(candidates, filters = {}) {
   const requireMomentum = getF('require_momentum', 'enableQullamaggieMomentum', false);
   const requireParabolic = getF('require_parabolic', 'enableParabolicClimax', false);
   const requireIpoBase = getF('require_ipo_base', 'enableIpoBase', false);
-  const requireVcp = getF('require_vcp', 'enableVcpSetup', false);
+  const enableVcpPattern = getF('enable_vcp_pattern', 'require_vcp', false);
+  const requireLowCheat = getF('require_low_cheat', 'enableLowCheat', false);
 
   return candidates.filter(c => {
     // Exclude ETFs from screening candidates
@@ -131,14 +132,21 @@ export function filterCandidates(candidates, filters = {}) {
       if (c.ipo_base_depth !== null && c.ipo_base_depth > maxIpoDepth) return false;
     }
 
-    // VCP
-    if (requireVcp) {
+    // VCP Contraction Waves
+    if (enableVcpPattern) {
       if (!c.vcp_is_setup) return false;
-      const enableVcpEps = getF('enable_vcp_eps_growth', 'enableVcpEpsGrowth', false);
-      if (enableVcpEps) {
-        const minEpsGrowth = getF('min_eps_growth_qoq', 'minEpsGrowthFilter', 20.0);
-        if (c.eps_qoq_growth !== null && c.eps_qoq_growth !== undefined && c.eps_qoq_growth < minEpsGrowth) return false;
-      }
+    }
+
+    // VCP High EPS Growth
+    const enableVcpEps = getF('enable_vcp_eps_growth', 'enableVcpEpsGrowth', false);
+    if (enableVcpEps) {
+      const minEpsGrowth = getF('min_eps_growth_qoq', 'minEpsGrowthFilter', 20.0);
+      if (c.eps_qoq_growth !== null && c.eps_qoq_growth !== undefined && c.eps_qoq_growth < minEpsGrowth) return false;
+    }
+
+    // Low Cheat
+    if (requireLowCheat) {
+      if (!c.low_cheat_is_setup) return false;
     }
 
     return true;

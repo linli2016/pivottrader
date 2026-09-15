@@ -237,7 +237,7 @@ function compositeChartScreenshot(rawChartCanvas, {
   const scaleY = outHeight / cHeight;
   const scale = outWidth / (cWidth || 700) || 1;
   const padX = 14 * scale;
-  const padY = 10 * scale;
+  const padY = 0;
 
   // 2. Draw user drawings (straight lines in white color, 1 pixel thin, and text annotations)
   if (drawings && drawings.length > 0 && timeScale && series) {
@@ -324,6 +324,9 @@ function compositeChartScreenshot(rawChartCanvas, {
         idx = idx + 1;
       }
       if (idx === undefined && curData.length > 0) {
+        const firstBar = curData[0];
+        const firstDateStr = typeof firstBar?.time === 'string' ? firstBar.time : (firstBar?.time?.year ? `${firstBar.time.year}-${String(firstBar.time.month).padStart(2, '0')}-${String(firstBar.time.day).padStart(2, '0')}` : null);
+        if (firstDateStr && targetDate < firstDateStr) continue;
         const found = curData.findIndex((b) => {
           const bDate = typeof b.time === 'string' ? b.time : `${b.time.year}-${String(b.time.month).padStart(2, '0')}-${String(b.time.day).padStart(2, '0')}`;
           return bDate >= targetDate;
@@ -436,6 +439,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   showScreenshotButton = false,
   onScreenshotSaved = null,
   earnings = null,
+  showPriceLine = true,
 }, ref) {
   const rootContainerRef = useRef(null);
   const chartContainerRef = useRef();
@@ -449,6 +453,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   const asOfIdxRef = useRef(-1);
   const isUserPannedRef = useRef(false);
   const userPanCheckTimeoutRef = useRef(null);
+  const prevSymbolRef = useRef(null);
+  const prevDataRef = useRef(null);
 
   const [savingScreenshot, setSavingScreenshot] = useState(false);
   const [screenshotSuccess, setScreenshotSuccess] = useState(false);
@@ -628,9 +634,16 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     if (!chartRef.current || !dataLookupRef.current?.timeMap || !item?.date) return null;
     const timeScale = chartRef.current.timeScale();
     const curData = dataLookupRef.current.data || [];
+    if (curData.length === 0) return null;
     const timeMap = dataLookupRef.current.timeMap;
 
     const targetDate = item.date;
+
+    // If earnings occurred before the earliest bar in data, do not display
+    const firstBar = curData[0];
+    const firstDateStr = typeof firstBar?.time === 'string' ? firstBar.time : (firstBar?.time?.year ? `${firstBar.time.year}-${String(firstBar.time.month).padStart(2, '0')}-${String(firstBar.time.day).padStart(2, '0')}` : null);
+    if (firstDateStr && targetDate < firstDateStr) return null;
+
     let idx = timeMap.get(targetDate);
 
     // If report was After Market Close (amc), the market reaction occurred on the next trading session
@@ -1050,6 +1063,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         borderVisible: false,
         wickUpColor: '#10b981',
         wickDownColor: '#ef4444',
+        priceLineVisible: showPriceLine,
+        lastValueVisible: showPriceLine,
       });
 
       const ema10Series = chart.addSeries(LineSeries, {
@@ -1172,39 +1187,45 @@ const CandlestickChart = forwardRef(function CandlestickChart({
 
     // Populate or update series data whenever data prop is available
     if (data && data.length > 0 && seriesRef.current) {
-      // Reset measure state and active drawing when stock or data changes
-      setMeasureState(null);
-      setIsMeasureModeActive(false);
-      setLineDraft(null);
-      setTextInputState(null);
-      setSelectedDrawingId(null);
-      setActiveTool('none');
+      const isDataOrSymbolChanged = prevSymbolRef.current !== symbol || prevDataRef.current !== data;
+      prevSymbolRef.current = symbol;
+      prevDataRef.current = data;
 
-      const {
-        candlestickSeries,
-        volumeSeries,
-        volumeMa50Series,
-        ema10Series,
-        ema20Series,
-        sma50Series,
-        sma150Series,
-        sma220Series,
-      } = seriesRef.current;
+      if (isDataOrSymbolChanged) {
+        // Reset measure state and active drawing when stock or data changes
+        setMeasureState(null);
+        setIsMeasureModeActive(false);
+        setLineDraft(null);
+        setTextInputState(null);
+        setSelectedDrawingId(null);
+        setActiveTool('none');
 
-      const volumeData = data.map(d => ({
-        time: d.time,
-        value: d.volume || 0,
-        color: (d.close >= d.open) ? 'rgba(16, 185, 129, 0.5)' : 'rgba(239, 68, 68, 0.5)',
-      }));
+        const {
+          candlestickSeries,
+          volumeSeries,
+          volumeMa50Series,
+          ema10Series,
+          ema20Series,
+          sma50Series,
+          sma150Series,
+          sma220Series,
+        } = seriesRef.current;
 
-      volumeSeries.setData(volumeData);
-      volumeMa50Series.setData(calculateSMA(data, 50, 'volume'));
-      candlestickSeries.setData(data);
-      ema10Series.setData(calculateEMA(data, 10));
-      ema20Series.setData(calculateEMA(data, 20));
-      sma50Series.setData(calculateSMA(data, 50));
-      sma150Series.setData(calculateSMA(data, 150));
-      sma220Series.setData(calculateSMA(data, 220));
+        const volumeData = data.map(d => ({
+          time: d.time,
+          value: d.volume || 0,
+          color: (d.close >= d.open) ? 'rgba(16, 185, 129, 0.5)' : 'rgba(239, 68, 68, 0.5)',
+        }));
+
+        volumeSeries.setData(volumeData);
+        volumeMa50Series.setData(calculateSMA(data, 50, 'volume'));
+        candlestickSeries.setData(data);
+        ema10Series.setData(calculateEMA(data, 10));
+        ema20Series.setData(calculateEMA(data, 20));
+        sma50Series.setData(calculateSMA(data, 50));
+        sma150Series.setData(calculateSMA(data, 150));
+        sma220Series.setData(calculateSMA(data, 220));
+      }
 
       // Resolve and apply As-of Date vertical line
       const asOfIdx = resolveAsOfIndex(data, asOfDate);
@@ -1276,17 +1297,10 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       };
 
       applyTargetRange(targetWidth);
-      requestAnimationFrame(() => applyTargetRange());
-      const t1 = setTimeout(() => applyTargetRange(), 50);
-      const t2 = setTimeout(() => {
-        applyTargetRange();
-        userPanCheckTimeoutRef.current = setTimeout(() => {}, 0);
-      }, 200);
-
-      return () => {
-        clearTimeout(t1);
-        clearTimeout(t2);
-      };
+      if (currentContainerWidth <= 0) {
+        const rafId = requestAnimationFrame(() => applyTargetRange());
+        return () => cancelAnimationFrame(rafId);
+      }
     } else {
       renderLegend(null, null, symbol);
     }
@@ -1344,6 +1358,16 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       }
     };
   }, [height]);
+
+  // Synchronize price line and last value label visibility if prop changes dynamically
+  useEffect(() => {
+    if (seriesRef.current?.candlestickSeries) {
+      seriesRef.current.candlestickSeries.applyOptions({
+        priceLineVisible: showPriceLine,
+        lastValueVisible: showPriceLine,
+      });
+    }
+  }, [showPriceLine]);
 
   // Coordinate resolver & mouse event handlers for Drawing Tools and Measurement Tool
   const getPointFromEvent = (e) => {
@@ -1755,7 +1779,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         ref={legendRef}
         style={{
           position: 'absolute',
-          top: '8px',
+          top: 0,
           left: '12px',
           zIndex: 5,
           pointerEvents: 'none',
@@ -1766,7 +1790,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           borderRadius: '6px',
           padding: '4px 10px',
           boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
-          maxWidth: 'calc(100% - 150px)',
+          maxWidth: 'calc(100% - 280px)',
         }}
       />
 
@@ -1774,8 +1798,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       <div
         style={{
           position: 'absolute',
-          top: '8px',
-          right: '12px',
+          top: 0,
+          right: '75px',
           zIndex: 10,
           display: 'flex',
           alignItems: 'center',
@@ -1783,7 +1807,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           background: 'rgba(15, 23, 42, 0.82)',
           padding: '3px 5px',
           borderRadius: '8px',
-          border: '1px solid rgba(255, 255, 255, 0.15)',
+          border: 'none',
           backdropFilter: 'blur(6px)',
           WebkitBackdropFilter: 'blur(6px)',
           boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',

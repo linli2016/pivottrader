@@ -93,6 +93,8 @@ class ModelBookService:
                 effective_filters["min_breakout_runup"] = min_runup_pct
             elif setup_type == "episodic_pivot":
                 effective_filters["min_ep_gap"] = min_runup_pct
+            elif setup_type == "low_cheat":
+                effective_filters["min_base_depth"] = min_runup_pct
         if max_base_depth is not None:
             if setup_type == "power_play":
                 effective_filters["max_pp_drawdown"] = max_base_depth
@@ -100,6 +102,8 @@ class ModelBookService:
                 effective_filters["max_pivot_spread"] = max_base_depth
             elif setup_type == "ipo_base":
                 effective_filters["max_ipo_depth"] = max_base_depth
+            elif setup_type == "low_cheat":
+                effective_filters["max_base_depth"] = max_base_depth
 
         with self.get_read_only_conn() as conn:
             # 1. Resolve date bounds
@@ -119,10 +123,10 @@ class ModelBookService:
             if not start_date:
                 try:
                     end_dt = datetime.strptime(end_date_str, "%Y-%m-%d").date()
-                    calc_start = end_dt - timedelta(days=365)
+                    calc_start = end_dt.replace(month=1, day=1)
                     start_date_str = max(db_min_date, calc_start).strftime("%Y-%m-%d")
                 except Exception:
-                    start_date_str = "2025-01-01"
+                    start_date_str = f"{datetime.now().year}-01-01"
             else:
                 start_date_str = str(start_date).strip()
 
@@ -757,6 +761,75 @@ class ModelBookService:
             FROM candidates
             WHERE calc_runup >= {min_runup}
               AND (dist_ema10_pct IS NULL OR dist_ema10_pct >= {min_ema_dist})
+            ORDER BY symbol, date ASC;
+            """
+            return query, base_params
+
+        elif setup_type == "low_cheat":
+            min_base_depth = float(effective_filters.get("min_base_depth", 12.0))
+            max_base_depth = float(effective_filters.get("max_base_depth", 45.0))
+            max_base_position = float(effective_filters.get("max_base_position", 50.0))
+
+            query = f"""
+            WITH numbered AS (
+                SELECT 
+                    d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
+                    d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
+                    d.adr_20d, d.rs_score, d.rs_rank, d.ipo_days_count,
+                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
+                    s.name, s.sector, s.industry, s.asset_type,
+                    ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date) as rn,
+                    LEAD(d.date, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_date,
+                    LEAD(d.open, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_open,
+                    LEAD(d.high, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_high,
+                    LEAD(d.low, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_low,
+                    LEAD(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_close
+                FROM daily_bars d
+                LEFT JOIN symbols s ON d.symbol = s.symbol
+                WHERE d.date >= CAST(? AS DATE)
+                  AND (s.asset_type IS NULL OR UPPER(s.asset_type) NOT LIKE '%ETF%')
+                  AND (s.industry IS NULL OR UPPER(s.industry) NOT LIKE '%ETF%')
+                  AND d.symbol NOT IN ('SPY', 'QQQ', 'IWM', 'XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC')
+            ),
+            base_stats AS (
+                SELECT *,
+                    -- Base peak: swing high between 8 and 65 days prior
+                    MAX(high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 65 PRECEDING AND 8 PRECEDING) as base_peak_high,
+                    -- Base trough: lowest low between peak and recent 2 bars
+                    MIN(low) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 50 PRECEDING AND 2 PRECEDING) as base_trough_low,
+                    -- Cheat pivot: local swing resistance formed off the low
+                    MAX(high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 15 PRECEDING AND 1 PRECEDING) as cheat_pivot_high,
+                    -- Lowest volume ratio around the trough
+                    MIN(volume / NULLIF(vol_50d_ma, 0)) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 35 PRECEDING AND 2 PRECEDING) as min_trough_vol_ratio
+                FROM numbered
+            ),
+            candidates AS (
+                SELECT *,
+                    (base_peak_high - base_trough_low) / NULLIF(base_peak_high, 0) * 100 as base_depth_pct,
+                    (cheat_pivot_high - base_trough_low) / NULLIF(base_peak_high - base_trough_low, 0) * 100 as base_position_pct,
+                    (volume / NULLIF(vol_50d_ma, 0)) as trigger_vol_ratio
+                FROM base_stats
+                WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE)
+                  AND close >= ?
+                  AND vol_50d_ma >= ?
+                  AND dollar_vol_50d_ma >= ?
+                  {stage2_sql}
+                  {rs_sql}
+            )
+            SELECT 
+                symbol, date, open, high, low, close, volume,
+                name, sector, industry,
+                base_position_pct as runup_pct, base_depth_pct,
+                rs_score, adr_20d, cheat_pivot_high as pivot_price,
+                next_date, next_open, next_high, next_low, next_close
+            FROM candidates
+            WHERE base_depth_pct >= {min_base_depth}
+              AND base_depth_pct <= {max_base_depth}
+              AND base_position_pct <= {max_base_position}
+              AND (close >= cheat_pivot_high * 0.995 OR high >= cheat_pivot_high)
+              AND trigger_vol_ratio >= 1.0
+              AND close >= open
+              AND (min_trough_vol_ratio IS NULL OR min_trough_vol_ratio <= 0.85)
             ORDER BY symbol, date ASC;
             """
             return query, base_params

@@ -6,6 +6,7 @@ from application.engine.setups import (
     detect_parabolic_extension,
     detect_power_play,
     detect_breakout,
+    detect_low_cheat,
 )
 
 class MomentumEngine:
@@ -65,6 +66,38 @@ class MomentumEngine:
             min_consolidation_days=min_consolidation_days,
             max_consolidation_days=max_consolidation_days,
             enable_ema_surfing=enable_ema_surfing,
+            **kwargs
+        )
+
+    def detect_low_cheat(
+        self,
+        opens: List[float],
+        highs: List[float],
+        lows: List[float],
+        closes: List[float],
+        volumes: List[float],
+        dates: List[Any],
+        vol_50d_ma: float = None,
+        sma_50: float = None,
+        sma_150: float = None,
+        sma_200: float = None,
+        ipo_days: int = None,
+        enforce_stage2: bool = True,
+        **kwargs
+    ) -> dict:
+        return detect_low_cheat(
+            opens,
+            highs,
+            lows,
+            closes,
+            volumes,
+            dates,
+            vol_50d_ma=vol_50d_ma,
+            sma_50=sma_50,
+            sma_150=sma_150,
+            sma_200=sma_200,
+            ipo_days=ipo_days,
+            enforce_stage2=enforce_stage2,
             **kwargs
         )
 
@@ -386,6 +419,7 @@ class MomentumEngine:
                     v_res = {"vcp_is_setup": False, "vcp_troughs": None, "vcp_depths": None}
                     ep_res = {"ep_is_setup": False, "ep_gap_pct": None, "ep_rel_vol": None}
                     para_res = {"parabolic_short_is_setup": False, "parabolic_long_is_setup": False, "parabolic_runup_pct": None, "dist_ema10_pct": None, "parabolic_up_days": None}
+                    lc_res = {"low_cheat_is_setup": False, "low_cheat_pivot_price": None, "low_cheat_stop_loss": None, "low_cheat_risk_pct": None, "low_cheat_base_depth": None}
                     
                     ema_10_val = None
                     ema_20_val = None
@@ -423,12 +457,30 @@ class MomentumEngine:
                             para_res = para_detected
                         pp_detected = self.detect_power_play(highs, lows, closes, dates)
                         breakout_detected = self.detect_breakout(highs, lows, closes, dates, ema_10_val=ema_10_val, ema_20_val=ema_20_val)
+                        lc_detected = self.detect_low_cheat(
+                            opens, highs, lows, closes, volumes, dates,
+                            vol_50d_ma=row[3],
+                            sma_50=row[11],
+                            sma_150=row[12],
+                            sma_200=row[13],
+                            ipo_days=row[14],
+                            enforce_stage2=True
+                        )
+                        if lc_detected and lc_detected.get("low_cheat_is_setup"):
+                            lc_res = {
+                                "low_cheat_is_setup": True,
+                                "low_cheat_pivot_price": lc_detected.get("low_cheat_pivot_price"),
+                                "low_cheat_stop_loss": lc_detected.get("low_cheat_stop_loss"),
+                                "low_cheat_risk_pct": lc_detected.get("low_cheat_risk_pct"),
+                                "low_cheat_base_depth": lc_detected.get("base_depth_pct"),
+                            }
                             
                     results_with_setups.append(list(row) + [
                         v_res["vcp_is_setup"], v_res["vcp_troughs"], v_res["vcp_depths"],
                         ema_10_val, ema_20_val, dist_ema10_pct, dist_ema20_pct,
                         ep_res["ep_is_setup"], ep_res["ep_gap_pct"], ep_res["ep_rel_vol"],
-                        para_res["parabolic_short_is_setup"], para_res["parabolic_long_is_setup"], para_res["parabolic_runup_pct"], para_res.get("parabolic_up_days")
+                        para_res["parabolic_short_is_setup"], para_res["parabolic_long_is_setup"], para_res["parabolic_runup_pct"], para_res.get("parabolic_up_days"),
+                        lc_res["low_cheat_is_setup"], lc_res["low_cheat_pivot_price"], lc_res["low_cheat_stop_loss"], lc_res["low_cheat_risk_pct"], lc_res["low_cheat_base_depth"]
                     ])
 
                 # Store in a temporary table to execute bulk update
@@ -439,7 +491,8 @@ class MomentumEngine:
                     "vcp_is_setup", "vcp_troughs", "vcp_depths",
                     "ema_10", "ema_20", "dist_ema10_pct", "dist_ema20_pct",
                     "ep_is_setup", "ep_gap_pct", "ep_rel_vol",
-                    "parabolic_short_is_setup", "parabolic_long_is_setup", "parabolic_runup_pct", "parabolic_up_days"
+                    "parabolic_short_is_setup", "parabolic_long_is_setup", "parabolic_runup_pct", "parabolic_up_days",
+                    "low_cheat_is_setup", "low_cheat_pivot_price", "low_cheat_stop_loss", "low_cheat_risk_pct", "low_cheat_base_depth"
                 ])
                 conn.execute("CREATE OR REPLACE TEMP TABLE temp_updates AS SELECT * FROM temp_df")
                 
@@ -467,7 +520,12 @@ class MomentumEngine:
                         parabolic_short_is_setup = src.parabolic_short_is_setup,
                         parabolic_long_is_setup = src.parabolic_long_is_setup,
                         parabolic_runup_pct = src.parabolic_runup_pct,
-                        parabolic_up_days = src.parabolic_up_days
+                        parabolic_up_days = src.parabolic_up_days,
+                        low_cheat_is_setup = src.low_cheat_is_setup,
+                        low_cheat_pivot_price = src.low_cheat_pivot_price,
+                        low_cheat_stop_loss = src.low_cheat_stop_loss,
+                        low_cheat_risk_pct = src.low_cheat_risk_pct,
+                        low_cheat_base_depth = src.low_cheat_base_depth
                     FROM temp_updates src
                     WHERE daily_bars.symbol = src.symbol AND daily_bars.date = src.date
                 """)

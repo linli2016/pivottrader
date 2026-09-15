@@ -1,6 +1,7 @@
 import React from 'react';
 import CandlestickChart from './CandlestickChart';
 import VcpFootprintCard from './VcpFootprintCard';
+import LowCheatFootprintCard from './LowCheatFootprintCard';
 
 export default function StockDetailDrawer({
   selectedStock,
@@ -241,7 +242,14 @@ export default function StockDetailDrawer({
         </div>
 
         {/* Minervini VCP Footprint Card */}
-        <VcpFootprintCard vcpFootprint={stockDetail?.vcp_footprint} />
+        {stockDetail?.vcp_footprint?.vcp_is_setup && (
+          <VcpFootprintCard vcpFootprint={stockDetail?.vcp_footprint} />
+        )}
+
+        {/* Minervini Low Cheat Footprint Card */}
+        {stockDetail?.low_cheat_footprint?.low_cheat_is_setup && (
+          <LowCheatFootprintCard lowCheatFootprint={stockDetail?.low_cheat_footprint} />
+        )}
 
 
         {/* MarketSurge Style Annual Financials & key stats */}

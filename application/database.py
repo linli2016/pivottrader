@@ -137,6 +137,11 @@ class DatabaseManager:
                     pivot_vol_ratio DOUBLE,
                     ti_65 DOUBLE,
                     dollar_vol_50d_ma DOUBLE,
+                    low_cheat_is_setup BOOLEAN,
+                    low_cheat_pivot_price DOUBLE,
+                    low_cheat_stop_loss DOUBLE,
+                    low_cheat_risk_pct DOUBLE,
+                    low_cheat_base_depth DOUBLE,
                     PRIMARY KEY (symbol, date)
                 );
             """)
@@ -187,6 +192,11 @@ class DatabaseManager:
                 ("pivot_vol_ratio", "DOUBLE"),
                 ("ti_65", "DOUBLE"),
                 ("dollar_vol_50d_ma", "DOUBLE"),
+                ("low_cheat_is_setup", "BOOLEAN"),
+                ("low_cheat_pivot_price", "DOUBLE"),
+                ("low_cheat_stop_loss", "DOUBLE"),
+                ("low_cheat_risk_pct", "DOUBLE"),
+                ("low_cheat_base_depth", "DOUBLE"),
             ]
             for col_name, col_type in new_cols:
                 try:

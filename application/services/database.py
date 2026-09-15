@@ -130,6 +130,7 @@ class DatabaseService:
 
             # Check if this target date has pre-computed setup metrics in daily_bars
             has_precomputed_setups = False
+            has_precomputed_low_cheat = False
             try:
                 check_row = conn.execute(
                     "SELECT 1 FROM daily_bars WHERE date = CAST(? AS DATE) AND pp_runup_pct IS NOT NULL LIMIT 1",
@@ -137,8 +138,16 @@ class DatabaseService:
                 ).fetchone()
                 if check_row:
                     has_precomputed_setups = True
+
+                check_lc = conn.execute(
+                    "SELECT 1 FROM daily_bars WHERE date = CAST(? AS DATE) AND low_cheat_is_setup IS NOT NULL LIMIT 1",
+                    [actual_date_str]
+                ).fetchone()
+                if check_lc:
+                    has_precomputed_low_cheat = True
             except Exception:
                 has_precomputed_setups = False
+                has_precomputed_low_cheat = False
 
             # Price & Volume filters
             min_price = f.get("min_price")
@@ -207,7 +216,8 @@ class DatabaseService:
             require_momentum = bool(f.get("require_momentum", False))
             require_parabolic = bool(f.get("require_parabolic", False))
             require_ipo_base = bool(f.get("require_ipo_base", False))
-            require_vcp = bool(f.get("require_vcp", False))
+            enable_vcp_pattern = bool(f.get("enable_vcp_pattern", False) or f.get("require_vcp", False))
+            require_low_cheat = bool(f.get("require_low_cheat", False))
 
             # Power Play Overlay
             if require_power_play:
@@ -242,17 +252,16 @@ class DatabaseService:
                 where_clauses.append("db.ipo_base_depth IS NOT NULL AND db.ipo_base_depth <= ?")
                 params.append(float(max_ipo_depth))
 
-            # Minervini VCP Setup Overlay
-            if require_vcp:
-                where_clauses.append("db.close IS NOT NULL AND db.sma_50 IS NOT NULL AND db.sma_150 IS NOT NULL AND db.sma_200 IS NOT NULL")
-                where_clauses.append("db.close > db.sma_50 AND db.sma_50 > db.sma_150 AND db.sma_150 > db.sma_200")
-                where_clauses.append("(db.dist_from_52w_high IS NULL OR db.dist_from_52w_high <= 15.0)")
-                if has_precomputed_setups and f.get("enable_vcp_pattern", True):
+            # VCP Pattern Detection (Contraction Waves)
+            if enable_vcp_pattern:
+                if has_precomputed_setups:
                     where_clauses.append("COALESCE(db.vcp_is_setup, false) = true")
-                if f.get("enable_vcp_eps_growth", False):
-                    min_eps_growth = f.get("min_eps_growth_qoq", 20.0)
-                    where_clauses.append("f.eps_qoq_growth IS NOT NULL AND f.eps_qoq_growth >= ?")
-                    params.append(float(min_eps_growth))
+
+            # VCP High EPS Growth Filter
+            if f.get("enable_vcp_eps_growth", False):
+                min_eps_growth = f.get("min_eps_growth_qoq", 20.0)
+                where_clauses.append("f.eps_qoq_growth IS NOT NULL AND f.eps_qoq_growth >= ?")
+                params.append(float(min_eps_growth))
 
             # Episodic Pivot Overlay
             if require_episodic_pivot:
@@ -262,6 +271,11 @@ class DatabaseService:
                 params.append(float(min_ep_gap))
                 where_clauses.append("db.rel_vol_50d IS NOT NULL AND db.rel_vol_50d >= ?")
                 params.append(float(min_ep_rel_vol))
+
+            # Minervini Low Cheat Overlay
+            if require_low_cheat:
+                if has_precomputed_low_cheat:
+                    where_clauses.append("COALESCE(db.low_cheat_is_setup, false) = true")
 
             # Parabolic Climax Overlay
             if require_parabolic:
@@ -382,7 +396,12 @@ class DatabaseService:
                     db.ret_3m,
                     db.ret_6m,
                     s.next_earnings_date,
-                    s.asset_type
+                    s.asset_type,
+                    db.low_cheat_is_setup,
+                    db.low_cheat_pivot_price,
+                    db.low_cheat_stop_loss,
+                    db.low_cheat_risk_pct,
+                    db.low_cheat_base_depth
                 FROM daily_bars db
                 LEFT JOIN latest_fundamentals f ON db.symbol = f.symbol AND f.rn = 1
                 JOIN symbols s ON db.symbol = s.symbol
@@ -494,7 +513,12 @@ class DatabaseService:
                     "ret_3m": row[54],
                     "ret_6m": row[55],
                     "next_earnings_date": row[56],
-                    "screen_date": actual_date_str
+                    "screen_date": actual_date_str,
+                    "low_cheat_is_setup": bool(row[58]) if len(row) > 58 and row[58] is not None else False,
+                    "low_cheat_pivot_price": row[59] if len(row) > 59 else None,
+                    "low_cheat_stop_loss": row[60] if len(row) > 60 else None,
+                    "low_cheat_risk_pct": row[61] if len(row) > 61 else None,
+                    "low_cheat_base_depth": row[62] if len(row) > 62 else None
                 })
 
             if not candidates:
@@ -507,12 +531,14 @@ class DatabaseService:
             # 3. Candidates list is small (<= 200) and a pattern is active.
             needs_dynamic_history = bool(
                 require_breakout or (
+                    require_low_cheat and not has_precomputed_low_cheat
+                ) or (
                     not has_precomputed_setups and (
-                        require_power_play or require_parabolic or require_vcp or require_episodic_pivot
+                        require_power_play or require_parabolic or enable_vcp_pattern or require_episodic_pivot
                     )
                 ) or (
                     candidates and len(candidates) <= 200 and (
-                        require_power_play or require_parabolic or require_vcp or require_episodic_pivot
+                        require_power_play or require_parabolic or enable_vcp_pattern or require_episodic_pivot or require_low_cheat
                     )
                 )
             )
@@ -524,6 +550,7 @@ class DatabaseService:
                     from application.engine.setups.vcp import detect_vcp
                     from application.engine.setups.parabolic_extension import detect_parabolic_extension
                     from application.engine.setups.episodic_pivot import detect_episodic_pivot
+                    from application.engine.setups.low_cheat import detect_low_cheat
 
                     cand_symbols = [c["symbol"] for c in candidates]
                     symbols_str = ", ".join(f"'{s}'" for s in cand_symbols)
@@ -634,6 +661,39 @@ class DatabaseService:
                                     c["ep_is_setup"] = ep_res.get("ep_is_setup", True)
                                     c["ep_gap_pct"] = ep_res.get("ep_gap_pct")
                                     c["ep_rel_vol"] = ep_res.get("ep_rel_vol")
+
+                            # Minervini Low Cheat Evaluation
+                            if require_low_cheat:
+                                min_base_depth = float(f.get("min_base_depth", 12.0))
+                                max_base_depth = float(f.get("max_base_depth", 45.0))
+                                max_base_position = float(f.get("max_base_position", 50.0))
+                                req_exhaustion = bool(f.get("require_exhaustion_or_shakeout", True))
+
+                                lc_res = detect_low_cheat(
+                                    op_list, h_list, l_list, cl_list, vol_list, dt_list,
+                                    vol_50d_ma=c.get("vol_50d_ma"),
+                                    sma_50=c.get("sma_50"),
+                                    sma_150=c.get("sma_150"),
+                                    sma_200=c.get("sma_200"),
+                                    ipo_days=c.get("ipo_days_count"),
+                                    min_base_depth=min_base_depth,
+                                    max_base_depth=max_base_depth,
+                                    max_base_position=max_base_position,
+                                    require_exhaustion_or_shakeout=req_exhaustion,
+                                    enforce_stage2=bool(f.get("enforce_stage2", True))
+                                )
+                                if lc_res:
+                                    c["low_cheat_is_setup"] = lc_res.get("low_cheat_is_setup", False)
+                                    c["low_cheat_is_trigger"] = lc_res.get("low_cheat_is_trigger", False)
+                                    c["low_cheat_pivot_price"] = lc_res.get("low_cheat_pivot_price")
+                                    c["low_cheat_stop_loss"] = lc_res.get("low_cheat_stop_loss")
+                                    c["low_cheat_risk_pct"] = lc_res.get("low_cheat_risk_pct")
+                                    c["low_cheat_base_depth"] = lc_res.get("base_depth_pct")
+                                    c["low_cheat_base_position"] = lc_res.get("base_position_pct")
+                                    c["low_cheat_exhaustion_type"] = lc_res.get("exhaustion_type")
+                                    c["low_cheat_trigger_vol_ratio"] = lc_res.get("trigger_vol_ratio")
+                                    c["low_cheat_reward_risk_ratio"] = lc_res.get("reward_risk_ratio")
+                                    c["low_cheat_stage2_qualified"] = lc_res.get("stage2_qualified", False)
                 except Exception as e:
                     print(f"Error calculating dynamic setups for candidates on {actual_date_str}: {e}")
 
@@ -655,6 +715,11 @@ class DatabaseService:
                 c.setdefault("parabolic_short_is_setup", False)
                 c.setdefault("parabolic_long_is_setup", False)
                 c.setdefault("ep_is_setup", False)
+                c.setdefault("low_cheat_is_setup", False)
+                c.setdefault("low_cheat_is_trigger", False)
+                c.setdefault("low_cheat_pivot_price", 0.0)
+                c.setdefault("low_cheat_stop_loss", 0.0)
+                c.setdefault("low_cheat_risk_pct", 0.0)
 
             # If not precomputed on this date, apply in-memory setup filtering based on dynamically calculated values
             if not has_precomputed_setups:
@@ -673,7 +738,7 @@ class DatabaseService:
                         and (not enable_pp_vol or not c.get("volume") or not c.get("vol_50d_ma") or ((c["volume"] / c["vol_50d_ma"]) <= max_pp_vol))
                     ]
 
-                if require_vcp and f.get("enable_vcp_pattern", True):
+                if enable_vcp_pattern:
                     candidates = [c for c in candidates if c.get("vcp_is_setup")]
 
                 if require_parabolic:
@@ -698,6 +763,10 @@ class DatabaseService:
                             c.get("parabolic_runup_pct") is not None and c["parabolic_runup_pct"] <= -30.0
                         )))
                     ]
+
+            # If low cheat was not precomputed on this date, filter by dynamically computed low_cheat_is_setup
+            if require_low_cheat and not has_precomputed_low_cheat:
+                candidates = [c for c in candidates if c.get("low_cheat_is_setup")]
 
             # Filter candidates by breakout if enabled
             if require_breakout:
@@ -907,22 +976,41 @@ class DatabaseService:
             dollar_vol_50d_ma = latest_bar[4] if latest_bar else None
             vol_50d_ma = latest_bar[5] if latest_bar else None
 
-            # Calculate Minervini VCP Footprint
+            # Calculate Minervini Setups (VCP & Low Cheat)
             from application.engine.setups.vcp import detect_vcp
-            bars_for_vcp = conn.execute("""
-                SELECT date, high, low, close
+            from application.engine.setups.low_cheat import detect_low_cheat
+
+            bars_for_setups = conn.execute("""
+                SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, ipo_days_count
                 FROM daily_bars
                 WHERE symbol = ?
                 ORDER BY date ASC
             """, [symbol]).fetchall()
 
             vcp_footprint = None
-            if bars_for_vcp and len(bars_for_vcp) >= 15:
-                dates = [b[0] for b in bars_for_vcp]
-                highs = [float(b[1]) for b in bars_for_vcp]
-                lows = [float(b[2]) for b in bars_for_vcp]
-                closes = [float(b[3]) for b in bars_for_vcp]
+            low_cheat_footprint = None
+            if bars_for_setups and len(bars_for_setups) >= 15:
+                dates = [b[0] for b in bars_for_setups]
+                opens = [float(b[1]) for b in bars_for_setups]
+                highs = [float(b[2]) for b in bars_for_setups]
+                lows = [float(b[3]) for b in bars_for_setups]
+                closes = [float(b[4]) for b in bars_for_setups]
+                volumes = [float(b[5]) for b in bars_for_setups]
+                latest_sma50 = float(bars_for_setups[-1][6]) if bars_for_setups[-1][6] is not None else None
+                latest_sma150 = float(bars_for_setups[-1][7]) if bars_for_setups[-1][7] is not None else None
+                latest_sma200 = float(bars_for_setups[-1][8]) if bars_for_setups[-1][8] is not None else None
+                latest_ipo_days = int(bars_for_setups[-1][9]) if bars_for_setups[-1][9] is not None else None
+
                 vcp_footprint = detect_vcp(highs, lows, dates, closes=closes, window=3)
+                low_cheat_footprint = detect_low_cheat(
+                    opens, highs, lows, closes, volumes, dates,
+                    vol_50d_ma=vol_50d_ma,
+                    sma_50=latest_sma50,
+                    sma_150=latest_sma150,
+                    sma_200=latest_sma200,
+                    ipo_days=latest_ipo_days,
+                    enforce_stage2=True
+                )
                  
             return {
                 "metadata": meta_dict,
@@ -935,6 +1023,7 @@ class DatabaseService:
                 "dollar_vol_50d_ma": dollar_vol_50d_ma,
                 "vol_50d_ma": vol_50d_ma,
                 "vcp_footprint": vcp_footprint,
+                "low_cheat_footprint": low_cheat_footprint,
                 "next_earnings_date": meta_dict.get("next_earnings_date")
             }
 
@@ -1032,6 +1121,25 @@ class DatabaseService:
                             "surprise_pct": nr["surprise_pct"],
                             "time_of_day": nr["time_of_day"]
                         } for nr in new_records]
+
+                # Fallback to ticker.calendar for upcoming earnings date if not present
+                try:
+                    cal = getattr(ticker, "calendar", None)
+                    if cal is not None:
+                        cal_ed = cal.get("Earnings Date") if isinstance(cal, dict) else (cal.loc["Earnings Date"] if hasattr(cal, "loc") and "Earnings Date" in cal.index else None)
+                        if cal_ed is not None:
+                            first_d = cal_ed[0] if isinstance(cal_ed, (list, tuple)) and len(cal_ed) > 0 else cal_ed
+                            cal_d_str = first_d.strftime("%Y-%m-%d") if hasattr(first_d, "strftime") else str(first_d)[:10]
+                            if cal_d_str and len(cal_d_str) == 10 and not any(r["date"] == cal_d_str for r in records):
+                                records.append({
+                                    "date": cal_d_str,
+                                    "eps_estimate": None,
+                                    "eps_actual": None,
+                                    "surprise_pct": None,
+                                    "time_of_day": None
+                                })
+                except Exception:
+                    pass
             except Exception as e:
                 logger.warning(f"Could not fetch live earnings dates for {symbol}: {e}")
 

@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks, Response
 from pydantic import BaseModel, Field, AliasChoices, ConfigDict
 from typing import Optional, Dict, Any
 
-from application.services import config_service, db_service, sync_service, chart_service, model_book_service, setup_service
+from application.services import config_service, db_service, sync_service, chart_service, model_book_service, setup_service, saved_trades_service
 
 logger = logging.getLogger("pivottrader.api")
 router = APIRouter()
@@ -68,6 +68,28 @@ class CandidateFilterSchema(BaseModel):
     filters: Dict[str, Any] = Field(default_factory=dict)
     sort_by: Optional[str] = None
     sort_order: Optional[str] = None
+
+class SavedTradeCreateSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: Optional[str] = None
+    symbol: str
+    setup_date: str
+    setup_type: str = "general"
+    setup_name: Optional[str] = None
+    market_regime: Optional[str] = None
+    notes: Optional[str] = ""
+    tags: Optional[list] = None
+
+class SavedTradeNotesSchema(BaseModel):
+    notes: str
+
+class SavedTradeTriggerDateSchema(BaseModel):
+    setup_date: str
+
+class SavedTradeSetupTypeSchema(BaseModel):
+    setup_type: str
+    setup_name: Optional[str] = None
 
 
 # ----------------- Endpoints -----------------
@@ -368,6 +390,90 @@ def scan_model_book_endpoint(payload: ModelBookScanSchema):
         return data
     except Exception as e:
         logger.error(f"Error in scan_model_book_endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ----------------- Saved Model Book Trades Endpoints -----------------
+
+@router.get("/api/model-book/saved")
+def get_saved_model_book_trades():
+    """Retrieve all saved model book trades."""
+    try:
+        return saved_trades_service.load_saved_trades()
+    except Exception as e:
+        logger.error(f"Error in get_saved_model_book_trades: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/model-book/saved")
+def save_model_book_trade(payload: SavedTradeCreateSchema):
+    """Save or update a model book trade."""
+    try:
+        res = saved_trades_service.save_trade(payload.model_dump())
+        return res
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error in save_model_book_trade: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/api/model-book/saved/{trade_id}")
+def delete_saved_model_book_trade(trade_id: str):
+    """Delete a saved model book trade by ID."""
+    try:
+        deleted = saved_trades_service.delete_saved_trade(trade_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Trade not found")
+        return {"status": "success", "id": trade_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in delete_saved_model_book_trade: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/api/model-book/saved/{trade_id}/notes")
+def update_saved_trade_notes_endpoint(trade_id: str, payload: SavedTradeNotesSchema):
+    """Update trader notes for a saved trade."""
+    try:
+        updated = saved_trades_service.update_notes(trade_id, payload.notes)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Trade not found")
+        return updated
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in update_saved_trade_notes_endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/api/model-book/saved/{trade_id}/trigger-date")
+def update_saved_trade_trigger_date_endpoint(trade_id: str, payload: SavedTradeTriggerDateSchema):
+    """Update trigger date for a saved trade."""
+    try:
+        updated = saved_trades_service.update_trigger_date(trade_id, payload.setup_date)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Trade not found")
+        return updated
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in update_saved_trade_trigger_date_endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/api/model-book/saved/{trade_id}/setup-type")
+def update_saved_trade_setup_type_endpoint(trade_id: str, payload: SavedTradeSetupTypeSchema):
+    """Update setup type and name for a saved trade."""
+    try:
+        updated = saved_trades_service.update_setup_type(trade_id, payload.setup_type, payload.setup_name)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Trade not found")
+        return updated
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in update_saved_trade_setup_type_endpoint: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

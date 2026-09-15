@@ -122,6 +122,7 @@ const SETUP_COLORS = {
   parabolic: '#ef4444',
   ipo_base: '#06b6d4',
   vcp: '#10b981',
+  low_cheat: '#f97316',
 };
 
 export default function CandidatesTab({
@@ -176,6 +177,7 @@ export default function CandidatesTab({
     if (currentCandidate?.ep_is_setup) return 'Episodic Pivot';
     if (currentCandidate?.parabolic_short_is_setup || currentCandidate?.parabolic_long_is_setup) return 'Parabolic';
     if (currentCandidate?.vcp_is_setup) return 'VCP';
+    if (currentCandidate?.low_cheat_is_setup) return 'Low Cheat';
     if (currentCandidate?.ipo_days_count !== undefined && currentCandidate?.ipo_days_count <= 350) return 'IPO Base';
     return 'General';
   }, [currentSetup, currentCandidate]);
@@ -788,6 +790,28 @@ export default function CandidatesTab({
                       🌀 {currentCandidate.vcp_depths.split(',').map(d => Math.round(parseFloat(d))).join('/')} {currentCandidate.vcp_troughs}T
                     </span>
                   ) : null}
+
+                  {/* Minervini Low Cheat Badge */}
+                  {(currentCandidate?.low_cheat_is_setup || browseDetail?.low_cheat_footprint?.low_cheat_is_setup) && (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        background: 'rgba(249, 115, 22, 0.18)',
+                        color: '#f97316',
+                        border: '1px solid rgba(249, 115, 22, 0.35)',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                      title="Minervini Low Cheat: Early Base Reversal Pivot"
+                    >
+                      🏹 Low Cheat {currentCandidate?.low_cheat_pivot_price ? `$${currentCandidate.low_cheat_pivot_price}` : (browseDetail?.low_cheat_footprint?.low_cheat_pivot_price ? `$${browseDetail.low_cheat_footprint.low_cheat_pivot_price}` : '')}
+                      {currentCandidate?.low_cheat_risk_pct ? ` (Risk ${currentCandidate.low_cheat_risk_pct}%)` : (browseDetail?.low_cheat_footprint?.low_cheat_risk_pct ? ` (Risk ${browseDetail.low_cheat_footprint.low_cheat_risk_pct}%)` : '')}
+                    </span>
+                  )}
 
                   {/* IPO Base Badge */}
                   {currentCandidate?.ipo_days_count !== null && currentCandidate?.ipo_days_count !== undefined && currentCandidate?.ipo_days_count <= 350 && (

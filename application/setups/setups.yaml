@@ -37,15 +37,15 @@ setups:
       min_dollar_vol: 3000000.0  # Overrides base_setup (10M -> 3M)
       min_pp_runup: 100.0
       max_pp_drawdown: 25.0
-      min_pp_days_since_peak: 8
+      min_pp_days_since_peak: 10
     visible_filters:
       - min_pp_runup
       - max_pp_drawdown
       - min_pp_days_since_peak
 
   breakout:
-    id: "breakout"
-    name: "QM Breakout"
+    id: "breakouts"
+    name: "QM Breakouts"
     icon: "🎯"
     display_order: 2
     description: "High-momentum consolidation surfing rising 10/20 EMAs ready to break out."
@@ -54,7 +54,7 @@ setups:
       enable_adr: true
       min_adr_20d: 4.0
       min_breakout_runup: 30.0
-      min_breakout_days: 8
+      min_breakout_days: 10
       max_breakout_days: 45
       enable_ema_surfing: false
       require_pivot_tightness: true
@@ -156,12 +156,11 @@ setups:
 
   vcp:
     id: "vcp"
-    name: "Minervini VCP"
+    name: "VCP"
     icon: "📐"
     display_order: 7
     description: "Volatility Contraction Pattern with drying volume along Stage 2 uptrend."
     filters:
-      require_vcp: true
       enforce_stage2: true       # Overrides base_setup (false -> true)
       enable_vcp_pattern: true
       enable_vcp_eps_growth: false
@@ -175,7 +174,29 @@ setups:
       - enable_vcp_pattern
       - enable_vcp_eps_growth
       - min_eps_growth_qoq
+      - enable_adr
+      - min_adr_20d
       - require_pivot_tightness
       - max_pivot_spread
       - max_pivot_clustering
       - max_pivot_vol_ratio
+
+  low_cheat:
+    id: "low_cheat"
+    name: "Low Cheat"
+    icon: "🏹"
+    display_order: 8
+    description: "Early entry in the lower 1/3 to 1/2 of a base on volume exhaustion and character change."
+    filters:
+      require_low_cheat: true
+      enforce_stage2: true       # Overrides base_setup (false -> true)
+      min_base_depth: 12.0
+      max_base_depth: 45.0
+      max_base_position: 50.0
+      require_exhaustion_or_shakeout: true
+    visible_filters:
+      - enforce_stage2
+      - min_base_depth
+      - max_base_depth
+      - max_base_position
+      - require_exhaustion_or_shakeout

@@ -427,19 +427,12 @@ filters:
     description: "Maximum depth of the first base consolidation."
 
   # VCP & Fundamentals Criteria
-  require_vcp:
-    name: "Minervini VCP Pattern"
-    type: "boolean"
-    default: false
-    category: "pattern"
-    description: "Enforces Volatility Contraction Pattern detection."
-
   enable_vcp_pattern:
     name: "Require Contraction Waves"
     type: "boolean"
     default: true
     category: "pattern"
-    description: "Enforces 2 to 4 progressive volatility contractions."
+    description: "Enforces 2 to 4 progressive volatility contractions (VCP fingerprint)."
 
   enable_vcp_eps_growth:
     name: "Require High EPS Growth"
@@ -458,4 +451,52 @@ filters:
     default: 20.0
     category: "fundamental"
     description: "Minimum Year-over-Year quarterly EPS growth percentage."
+
+  # Minervini Low Cheat Criteria
+  require_low_cheat:
+    name: "Minervini Low Cheat"
+    type: "boolean"
+    default: false
+    category: "pattern"
+    description: "Enforces early entry detection in the lower half of a developing base upon exhaustion/shakeout."
+
+  min_base_depth:
+    name: "Min Base Depth %"
+    type: "number"
+    min: 8.0
+    max: 50.0
+    step: 1.0
+    unit: "%"
+    default: 12.0
+    category: "pattern"
+    description: "Minimum correction depth from recent base peak to trough."
+
+  max_base_depth:
+    name: "Max Base Depth %"
+    type: "number"
+    min: 15.0
+    max: 60.0
+    step: 1.0
+    unit: "%"
+    default: 45.0
+    category: "pattern"
+    description: "Maximum allowable correction depth from base peak to trough."
+
+  max_base_position:
+    name: "Max Base Position %"
+    type: "number"
+    min: 20.0
+    max: 70.0
+    step: 5.0
+    unit: "%"
+    default: 50.0
+    category: "pattern"
+    description: "Upper bound of pivot price within the base height ((Pivot - Trough) / (Peak - Trough) * 100)."
+
+  require_exhaustion_or_shakeout:
+    name: "Require Dry-up or Shakeout"
+    type: "boolean"
+    default: true
+    category: "pattern"
+    description: "Requires volume dry-up (< 0.7x 50MA) or an undercut-and-rally bar around the base low."
 
