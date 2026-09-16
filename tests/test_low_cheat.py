@@ -125,7 +125,7 @@ class TestMinerviniLowCheat(unittest.TestCase):
         candidates = db_service.get_candidates(
             target_date="latest",
             filters={
-                "require_low_cheat": True,
+                "enable_low_cheat": True,
                 "enforce_stage2": True,
                 "min_price": 5.0,
                 "min_volume_sma_50": 100000,
@@ -138,6 +138,22 @@ class TestMinerviniLowCheat(unittest.TestCase):
             self.assertTrue(cand.get("low_cheat_is_setup"))
             self.assertIsNotNone(cand.get("low_cheat_pivot_price"))
             self.assertIsNotNone(cand.get("low_cheat_stop_loss"))
+
+    def test_database_screening_legacy_require_low_cheat(self):
+        candidates = db_service.get_candidates(
+            target_date="latest",
+            filters={
+                "require_low_cheat": True,
+                "enforce_stage2": True,
+                "min_price": 5.0,
+                "min_volume_sma_50": 100000,
+                "min_dollar_vol": 3000000.0
+            }
+        )
+        self.assertIsInstance(candidates, list)
+        if candidates:
+            cand = candidates[0]
+            self.assertTrue(cand.get("low_cheat_is_setup"))
 
 
 if __name__ == "__main__":

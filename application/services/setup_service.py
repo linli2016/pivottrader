@@ -109,6 +109,18 @@ class SetupService:
                 elif base_visible_filters:
                     s_val["visible_filters"] = list(base_visible_filters)
 
+                # Normalize sub_setups if defined
+                sub_setups_raw = s_val.get("sub_setups")
+                if isinstance(sub_setups_raw, list):
+                    s_val["sub_setups"] = sub_setups_raw
+                elif isinstance(sub_setups_raw, dict):
+                    normalized_subs = []
+                    for sub_k, sub_v in sub_setups_raw.items():
+                        if isinstance(sub_v, dict):
+                            sub_v.setdefault("id", sub_k)
+                            normalized_subs.append(sub_v)
+                    s_val["sub_setups"] = normalized_subs
+
                 setups_list.append(s_val)
 
         setups_list.sort(key=lambda s: s.get("display_order", 99))

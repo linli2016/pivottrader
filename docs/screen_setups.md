@@ -12,12 +12,12 @@ PivotTrader supports multiple setup overlays designed to identify superperforman
 | :--- | :--- | :--- |
 | **Stage 2 Trend Baseline** | Institutional mark-up phase | Price > SMA50 > SMA150 > SMA200, SMA200 trending up |
 | **Volatility Contraction Pattern (VCP)** | Supply drying up via contracting swings | Sequential wave contractions (D₁ > D₂ > D₃), final contraction $\le 10\%$, RS Rank $\ge 70$ |
-| **Power Play (High Tight Flag)** | High-velocity momentum expansion | $\ge 100\%$ run-up within 8 weeks, drawdown $\le 25\%$, consolidation $\ge 12$ days |
+| **Power Play (High Tight Flag)** | High-velocity momentum expansion | $\ge 100\%$ run-up within 8 weeks, drawdown $\le 25\%$, consolidation 10–30 days (2–6 weeks) |
 | **IPO Base** | Primary base in young public companies | Listing age 10–350 days, distance from ATH $\le 25\%$, base depth $\le 35\%$ |
 | **New Leaders (Market Low Turn)** | Market correction turnover & leadership | 52-week high list / proximity ($\le 25\%$), strong surge off market lows ($\ge 20\%$), least corrected |
 | **Qullamaggie Breakout** | Momentum consolidation surfing 10/20 EMA | Top 1%–2% 1M/3M/6M gainers, +30-100%+ prior leg, tight EMA 10/20 surf, stop LOD $\le 1$ ATR |
 | **Episodic Pivot (EP)** | Fundamental catalyst news gap-up | Gap $\ge +8.0\%$, RelVol $\ge 2.5\text{x}$ 50d volume, prior 60-day base breakout |
-| **Parabolic (Short & Long)** | Mean-reversion after vertical expansion | +40%+ move in 3–10d, extended $\ge 18\%$ above 10 EMA (or -30% drop below 10 EMA) |
+| **Parabolic Short** | Mean-reversion after vertical expansion | +40%+ move in 3–10d, extended $\ge 18\%$ above 10 EMA, $\ge 3$ consecutive up days |
 
 ## Global Baseline Universe & Liquidity Filters
 
@@ -65,7 +65,7 @@ The Power Play is the most explosive setup in momentum investing. It occurs when
 ### Quantitative Criteria
 1. **Explosive Price Expansion**: Price moves up $\ge 100\%$ within a 40-day (8-week) window, usually from relative dormancy.
 2. **Shallow High-Level Drawdown**: Correction from 30-day peak high does NOT exceed $25\%$ (ideally $10\text{--}20\%$).
-3. **Consolidation Duration**: At least 12 trading days elapsed since peak high to establish proper flag handle.
+3. **Consolidation Duration**: Between 10 and 30 trading days (2 to 6 weeks) elapsed since peak high to establish proper flag handle.
 4. **Volume Contraction**: Volume drops significantly below 50-day average volume during consolidation ($\le 0.5\text{--}0.6\text{x}$ SMA).
 5. **Moving Average Waiver**: Stage 150-day / 200-day SMA requirements are waived due to short-term velocity.
 
@@ -112,8 +112,8 @@ Historical market analysis proves that **over 96% of superperformance stocks eme
 - **Rationale**: Leading stocks move in stair steps (+30% to +100%+ move over 1–3 months, orderly pullback/consolidation surfing the 10/20 EMA, then a range expansion breakout).
 - **Quantitative Criteria**:
   1. **Top Momentum Performance**: Top 1%–2% price performance leaders over 1-month (`ret_1m`), 3-month, and 6-month timeframes.
-  2. **Prior Expansion Leg**: $+30\text{--}100\%+$ gain within prior 40 trading days.
-  3. **Orderly EMA Surfing Consolidation**: Price pullback $\le 25\%$ depth, holding above rising 10 EMA or 20 EMA.
+  2. **Prior Expansion Leg**: $+30\%+$ gain within prior 12-week (60 trading days) window.
+  3. **Orderly Consolidation Base**: Consolidation duration 10 to 40 trading days (2 weeks to 2 months), with base pullback depth $\le 30\%$ from peak, surfing rising 10 EMA or 20 EMA and displaying pivot tightness.
   4. **Risk Management Rule**: Entry on Opening Range High (ORH), stop at Low of Day (LOD) bounded $\le 1$ ATR/ADR of stock.
   5. **Trailing Exit Rule**: Sell 1/3 to 1/2 after 3–5 days, trail remaining position with a daily close below the 10-day EMA.
 
@@ -125,13 +125,13 @@ Historical market analysis proves that **over 96% of superperformance stocks eme
   3. **Base Context**: Consolidating base prior to gap event.
   4. **Fundamental Filter**: QoQ EPS / Revenue growth $\ge 20\%$ or fundamental catalyst tag.
 
-### 6.3 Parabolic Extension Setups (Short & Long)
+### 6.3 Parabolic Short Setup
 - **Rationale**: Extreme vertical advances (+40% to +200%+ in 3 to 10 days) leave stocks severely extended far above short-term moving averages. When momentum exhausts (first red day / breaking previous day low), mean-reversion pullbacks offer high R/R short setups.
 - **Quantitative Criteria**:
   1. **Fast Runup Velocity**: Price gain $\ge +40.0\%$ over 3 to 10 trading days (`parabolic_runup_pct`).
   2. **Consecutive Up Days**: Price has closed higher for $\ge 3$ to $5+$ days in a row (`parabolic_up_days`).
   3. **EMA Extension**: Distance above 10-day EMA $\ge +18.0\%$ (`dist_ema10_pct`).
-  4. **Parabolic Long (Oversold Bounce)**: Fast drop $\le -30.0\%$ over 3–10 days with distance below 10 EMA $\le -18.0\%$.
+  4. **Short Execution**: Enter on break below previous day low (LOD) or first red day distribution volume; stop loss at high of day.
 
 ---
 

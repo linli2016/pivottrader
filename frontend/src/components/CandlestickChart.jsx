@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
-import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers, CrosshairMode } from 'lightweight-charts';
+import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers, CrosshairMode, PriceScaleMode } from 'lightweight-charts';
 
 // Helper to calculate Simple Moving Average (SMA)
 function calculateSMA(data, period, key = 'close') {
@@ -470,6 +470,40 @@ const CandlestickChart = forwardRef(function CandlestickChart({
 
   const showEarningsRef = useRef(showEarnings);
   showEarningsRef.current = showEarnings;
+
+  // Price Scale Mode: Arithmetic / Linear (PriceScaleMode.Normal = 0, default) vs Logarithmic (PriceScaleMode.Logarithmic = 1)
+  const [isLogScale, setIsLogScale] = useState(() => {
+    try {
+      return localStorage.getItem('pt_chart_scale_mode') === 'log';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleScaleMode = () => {
+    setIsLogScale((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('pt_chart_scale_mode', next ? 'log' : 'linear');
+      } catch {}
+      if (chartRef.current) {
+        chartRef.current.priceScale('right').applyOptions({
+          mode: next ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
+        });
+        setRangeUpdateTick((t) => t + 1);
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (chartRef.current) {
+      chartRef.current.priceScale('right').applyOptions({
+        mode: isLogScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
+      });
+      setRangeUpdateTick((t) => t + 1);
+    }
+  }, [isLogScale]);
 
   // Fetch earnings data for symbol if not explicitly provided
   useEffect(() => {
@@ -997,6 +1031,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     saveScreenshot: handleSaveScreenshot,
     getChart: () => chartRef.current,
     getDrawings: () => drawingsBySymbolRef.current[symbol || 'DEFAULT'] || [],
+    toggleScaleMode,
+    isLogScale: () => isLogScale,
   }));
 
   useEffect(() => {
@@ -1024,9 +1060,9 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         height: height,
       });
 
-      // Configure main price scale with logarithmic scale (mode: 1) and bottom margin for volume
+      // Configure main price scale with arithmetic (linear) scale (mode: 0) by default and bottom margin for volume
       chart.priceScale('right').applyOptions({
-        mode: 1, // Logarithmic price scale
+        mode: isLogScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
         scaleMargins: {
           top: 0.1,
           bottom: 0.25,
@@ -1942,6 +1978,31 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           }}
         >
           E
+        </button>
+
+        {/* Price Scale Mode Toggle (Arithmetic / Linear vs Logarithmic) */}
+        <button
+          type="button"
+          onClick={toggleScaleMode}
+          title={isLogScale ? "Price Scale: Logarithmic (Click to switch to Linear / Arithmetic)" : "Price Scale: Arithmetic / Linear (Click to switch to Logarithmic)"}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '0 6px',
+            height: '26px',
+            background: !isLogScale ? 'rgba(59, 130, 246, 0.25)' : 'rgba(168, 85, 247, 0.25)',
+            border: !isLogScale ? '1px solid #3b82f6' : '1px solid #a855f7',
+            color: !isLogScale ? '#60a5fa' : '#c084fc',
+            borderRadius: '5px',
+            fontSize: '10px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            letterSpacing: '0.5px',
+          }}
+        >
+          {isLogScale ? 'L' : 'A'}
         </button>
 
         {/* Undo and Clear buttons if drawings exist for current symbol */}

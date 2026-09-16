@@ -415,7 +415,7 @@ class ModelBookService:
         rs_sql = ""
         rs_params = []
         if enable_rs:
-            rs_sql = "AND rs_score IS NOT NULL AND rs_score >= ?"
+            rs_sql = "AND rs_rank IS NOT NULL AND rs_rank >= ?"
             rs_params = [min_rs]
 
         base_params = [buffer_start_str, start_date_str, end_date_str, min_price, min_volume_50d, min_dollar_vol] + rs_params
@@ -424,8 +424,8 @@ class ModelBookService:
         if setup_type == "power_play":
             runup_thresh = float(effective_filters.get("min_pp_runup", 100.0))
             depth_thresh = float(effective_filters.get("max_pp_drawdown", 25.0))
-            min_pp_days = int(effective_filters.get("min_pp_days_since_peak", 5))
-            max_pp_days = int(effective_filters.get("max_pp_days_since_peak", 35))
+            min_pp_days = int(effective_filters.get("min_pp_days_since_peak", 10))
+            max_pp_days = int(effective_filters.get("max_pp_days_since_peak", 30))
 
             query = f"""
             WITH numbered AS (
@@ -450,10 +450,10 @@ class ModelBookService:
             ),
             peaks AS (
                 SELECT *,
-                    MAX(high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 35 PRECEDING AND 1 PRECEDING) as base_peak_high,
-                    ARG_MAX(rn, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 35 PRECEDING AND 1 PRECEDING) as base_peak_rn,
+                    MAX(high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 30 PRECEDING AND 1 PRECEDING) as base_peak_high,
+                    ARG_MAX(rn, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 30 PRECEDING AND 1 PRECEDING) as base_peak_rn,
                     MIN(low) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 75 PRECEDING AND 1 PRECEDING) as runup_min_low,
-                    MIN(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 35 PRECEDING AND 1 PRECEDING) as base_min_close
+                    MIN(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 30 PRECEDING AND 1 PRECEDING) as base_min_close
                 FROM numbered
             ),
             candidates AS (
@@ -485,13 +485,26 @@ class ModelBookService:
             """
             return query, base_params
 
-        elif setup_type == "breakout":
+        elif setup_type in ("breakout", "breakouts"):
             runup_thresh = float(effective_filters.get("min_breakout_runup", 30.0))
-            min_days = int(effective_filters.get("min_breakout_days", 8))
-            max_days = int(effective_filters.get("max_breakout_days", 45))
-            depth_thresh = float(effective_filters.get("max_breakout_drawdown", 35.0))
+            runup_weeks = float(effective_filters.get("runup_window_weeks", 12.0))
+            runup_window_days = max(20, int(runup_weeks * 5))
+            min_days = int(effective_filters.get("min_breakout_days", 10))
+            max_days = int(effective_filters.get("max_breakout_days", 40))
+            depth_thresh = float(effective_filters.get("max_breakout_drawdown", 30.0))
+            if bool(effective_filters.get("enable_htf_mode", False)):
+                runup_thresh = max(runup_thresh, 100.0)
+                depth_thresh = min(depth_thresh, 25.0)
+                min_days = max(min_days, 10)
+                max_days = min(max_days, 30)
+                runup_window_days = min(runup_window_days, 40)
             min_adr = float(effective_filters.get("min_adr_20d", 4.0)) if effective_filters.get("enable_adr", True) else None
             adr_sql = f"AND adr_20d >= {min_adr}" if min_adr is not None else ""
+            tightness_sql = ""
+            if bool(effective_filters.get("require_pivot_tightness", False)):
+                max_spread = float(effective_filters.get("max_pivot_spread", 8.0))
+                max_cluster = float(effective_filters.get("max_pivot_clustering", 3.0))
+                tightness_sql = f"AND (pivot_spread_pct IS NULL OR pivot_spread_pct <= {max_spread}) AND (pivot_close_clustering_pct IS NULL OR pivot_close_clustering_pct <= {max_cluster})"
 
             query = f"""
             WITH numbered AS (
@@ -500,6 +513,7 @@ class ModelBookService:
                     d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
                     d.adr_20d, d.rs_score, d.rs_rank,
                     d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
+                    d.pivot_spread_pct, d.pivot_close_clustering_pct,
                     s.name, s.sector, s.industry, s.asset_type,
                     ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date) as rn,
                     LEAD(d.date, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_date,
@@ -516,10 +530,10 @@ class ModelBookService:
             ),
             peaks AS (
                 SELECT *,
-                    MAX(high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 45 PRECEDING AND 1 PRECEDING) as base_peak_high,
-                    ARG_MAX(rn, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 45 PRECEDING AND 1 PRECEDING) as base_peak_rn,
-                    MIN(low) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 75 PRECEDING AND 1 PRECEDING) as runup_min_low,
-                    MIN(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 45 PRECEDING AND 1 PRECEDING) as base_min_close
+                    MAX(high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN {max_days} PRECEDING AND 1 PRECEDING) as base_peak_high,
+                    ARG_MAX(rn, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN {max_days} PRECEDING AND 1 PRECEDING) as base_peak_rn,
+                    MIN(low) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN {runup_window_days} PRECEDING AND 1 PRECEDING) as runup_min_low,
+                    MIN(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN {max_days} PRECEDING AND 1 PRECEDING) as base_min_close
                 FROM numbered
             ),
             candidates AS (
@@ -533,6 +547,7 @@ class ModelBookService:
                   AND vol_50d_ma >= ?
                   AND dollar_vol_50d_ma >= ?
                   {adr_sql}
+                  {tightness_sql}
                   {stage2_sql}
                   {rs_sql}
             )
@@ -561,7 +576,7 @@ class ModelBookService:
                 SELECT 
                     d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
                     d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
-                    d.adr_20d, d.rel_vol_50d, d.gap_pct, d.rs_score,
+                    d.adr_20d, d.rel_vol_50d, d.gap_pct, d.rs_score, d.rs_rank,
                     d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
                     s.name, s.sector, s.industry,
                     LAG(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as prev_close,
@@ -613,7 +628,7 @@ class ModelBookService:
                 SELECT 
                     d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
                     d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
-                    d.adr_20d, d.rs_score, d.ipo_days_count,
+                    d.adr_20d, d.rs_score, d.rs_rank, d.ipo_days_count,
                     d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
                     s.name, s.sector, s.industry,
                     ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date) as ipo_days_calc,
@@ -670,7 +685,7 @@ class ModelBookService:
                 SELECT 
                     d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
                     d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
-                    d.adr_20d, d.rs_score, d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
+                    d.adr_20d, d.rs_score, d.rs_rank, d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
                     s.name, s.sector, s.industry,
                     MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as high_52w,
                     MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 10 PRECEDING AND 1 PRECEDING) as high_10d,
@@ -725,7 +740,7 @@ class ModelBookService:
                 SELECT 
                     d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
                     d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
-                    d.adr_20d, d.rs_score, d.dist_ema10_pct, d.parabolic_runup_pct,
+                    d.adr_20d, d.rs_score, d.rs_rank, d.dist_ema10_pct, d.parabolic_runup_pct,
                     d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
                     s.name, s.sector, s.industry,
                     MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 10 PRECEDING AND 1 PRECEDING) as min_low_10d,
@@ -747,8 +762,8 @@ class ModelBookService:
                 FROM numbered
                 WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE)
                   AND close >= ?
-                  AND vol_50d_ma >= ?
-                  AND dollar_vol_50d_ma >= ?
+                  AND COALESCE(vol_50d_ma, 0) >= ?
+                  AND COALESCE(dollar_vol_50d_ma, 0) >= ?
                   {stage2_sql}
                   {rs_sql}
             )
@@ -836,7 +851,35 @@ class ModelBookService:
 
         else:
             # Default / QM Momentum
-            min_adr = float(effective_filters.get("min_adr_20d", 4.0)) if effective_filters.get("enable_adr", True) else 4.0
+            min_adr = float(effective_filters.get("min_adr_20d", 4.0)) if effective_filters.get("enable_adr", False) else None
+            adr_sql = f"AND adr_20d >= {min_adr}" if min_adr is not None else ""
+            qm_subview = str(effective_filters.get("qm_subview", "all")).lower()
+            if qm_subview == '1m':
+                sub_sql = "AND ret_1m IS NOT NULL AND ret_1m > 0"
+            elif qm_subview == '3m':
+                sub_sql = "AND ret_3m IS NOT NULL AND ret_3m > 0"
+            elif qm_subview == '6m':
+                sub_sql = "AND ret_6m IS NOT NULL AND ret_6m > 0"
+            elif qm_subview in ('gainers', 'all_gainers'):
+                sub_sql = "AND ((ret_1m IS NOT NULL AND ret_1m > 0) OR (ret_3m IS NOT NULL AND ret_3m > 0) OR (ret_6m IS NOT NULL AND ret_6m > 0))"
+            elif qm_subview == 'stage2':
+                sub_sql = """AND (sma_50 IS NOT NULL AND sma_150 IS NOT NULL AND sma_200 IS NOT NULL 
+                                  AND close > sma_50 AND sma_50 > sma_150 AND sma_150 > sma_200 
+                                  AND (sma_200_20d_ago IS NULL OR sma_200 > sma_200_20d_ago) 
+                                  AND (dist_from_52w_high IS NULL OR dist_from_52w_high <= 25.0) 
+                                  AND (surge_off_low_pct IS NULL OR surge_off_low_pct >= 30.0))"""
+            elif qm_subview == 'all':
+                sub_sql = """AND (
+                                  ((ret_1m IS NOT NULL AND ret_1m > 0) OR (ret_3m IS NOT NULL AND ret_3m > 0) OR (ret_6m IS NOT NULL AND ret_6m > 0))
+                                  OR
+                                  (sma_50 IS NOT NULL AND sma_150 IS NOT NULL AND sma_200 IS NOT NULL 
+                                   AND close > sma_50 AND sma_50 > sma_150 AND sma_150 > sma_200 
+                                   AND (sma_200_20d_ago IS NULL OR sma_200 > sma_200_20d_ago) 
+                                   AND (dist_from_52w_high IS NULL OR dist_from_52w_high <= 25.0) 
+                                   AND (surge_off_low_pct IS NULL OR surge_off_low_pct >= 30.0))
+                              )"""
+            else:
+                sub_sql = ""
 
             query = f"""
             WITH numbered AS (
@@ -844,7 +887,8 @@ class ModelBookService:
                     d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
                     d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
                     d.adr_20d, d.rs_score, d.rs_rank,
-                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
+                    d.sma_50, d.sma_150, d.sma_200, d.sma_200_20d_ago, d.dist_from_52w_high, d.surge_off_low_pct,
+                    d.ret_1m, d.ret_3m, d.ret_6m,
                     s.name, s.sector, s.industry,
                     MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) as max_high_20d,
                     MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) as min_low_20d,
@@ -868,9 +912,10 @@ class ModelBookService:
                   AND close >= ?
                   AND vol_50d_ma >= ?
                   AND dollar_vol_50d_ma >= ?
-                  AND (rs_rank IS NOT NULL AND rs_rank >= 80)
-                  AND adr_20d >= {min_adr}
                   {stage2_sql}
+                  {rs_sql}
+                  {adr_sql}
+                  {sub_sql}
             )
             SELECT 
                 symbol, date, open, high, low, close, volume,

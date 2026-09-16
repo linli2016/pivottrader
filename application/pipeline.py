@@ -322,7 +322,9 @@ def main():
             print("\n[Step 3/5] Computing fast intraday momentum & Episodic Pivot metrics...")
             ep_count = mom_engine.update_intraday_metrics(target_date=target_date)
             print(f"⚡ Live metrics and Episodic Pivots updated ({ep_count} candidates gapping >= 8.0%).")
-            print("\n[Sync Process] Live quotes and Episodic Pivot datasets successfully synchronized and updated.")
+            # Also compute full momentum and setup metrics so breakouts, VCP, and power play are indexed
+            mom_engine.calculate_and_store_momentum_metrics()
+            print("\n[Sync Process] Live quotes, setups, and momentum datasets successfully synchronized and updated.")
             return
 
         print("\n[Step 3/5] Computing momentum scores & percentile ranks...")

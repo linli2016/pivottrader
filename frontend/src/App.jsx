@@ -90,7 +90,7 @@ function App() {
 
   // Centralized setups configuration and filter states
   const [setupsConfig, setSetupsConfig] = useState({ setups: [], filters: {} });
-  const [activeSetupKey, setActiveSetupKey] = useState('power_play');
+  const [activeSetupKey, setActiveSetupKey] = useState('breakouts');
   const [activeFilters, setActiveFilters] = useState({});
 
   // Full inspector state
@@ -123,7 +123,7 @@ function App() {
       if (res.ok) {
         const data = await res.json();
         setSetupsConfig(data);
-        const defaultSetup = (data.setups || []).find(s => s.id === 'power_play') || (data.setups || [])[0];
+        const defaultSetup = (data.setups || []).find(s => s.id === 'breakouts' || s.id === 'breakout') || (data.setups || [])[0];
         if (defaultSetup) {
           setActiveSetupKey(defaultSetup.id);
           setActiveFilters({ ...(defaultSetup.filters || {}) });
@@ -145,10 +145,17 @@ function App() {
   };
 
   const handleFilterChange = (filterKey, value) => {
-    setActiveFilters(prev => ({
-      ...prev,
-      [filterKey]: value
-    }));
+    if (typeof filterKey === 'object' && filterKey !== null) {
+      setActiveFilters(prev => ({
+        ...prev,
+        ...filterKey
+      }));
+    } else {
+      setActiveFilters(prev => ({
+        ...prev,
+        [filterKey]: value
+      }));
+    }
   };
 
   const handleResetFilters = () => {

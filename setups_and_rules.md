@@ -80,7 +80,7 @@ This method can also be traded by anticipating the breakout but I don’t find i
 - For that we look at : - Context of the earnings. Is this a first major earnings acceleration. - What caused this acceleration. Is it one time or likely to persist. - Does this earnings trend represent a structural change in the industry or the position of this company. - Is this surprise reflected in current price level.
 - If a earnings EP happens on low float stock it is ideal situation. 
 
-### 4. Parabolic (Short / Long)
+### 4. Parabolic Short
   - A stock up 50-100%+ in a few days or weeks (if larger cap) or 300-1000%+ (if smaller cap).
   - The stock should be up 3-5+ days in a row. Many times you have examples where a stock trends higher for weeks or months and then starts speeding up, some just explode from nowhere.
   - **Reversal Trigger:** First high-volume red day or breakdown below previous day's low.
@@ -126,3 +126,7 @@ This method can also be traded by anticipating the breakout but I don’t find i
 - [ ] Is my risk defined before placing the order?
 - [ ] Did I record the trade entry rationale in my journal?
 
+
+---
+## References
+- Mastering the Minervini Low Cheat Entry   [view](https://thesetupfactory.substack.com/p/mastering-the-minervini-low-cheat)

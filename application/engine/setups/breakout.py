@@ -18,17 +18,22 @@ def detect_breakout(
     ema_20_val: float = None,
     enable_runup: bool = True,
     min_runup_pct: float = 30.0,
+    runup_window_weeks: float = 12.0,
     enable_days: bool = True,
-    min_consolidation_days: int = 8,
-    max_consolidation_days: int = 45,
+    min_consolidation_days: int = 10,
+    max_consolidation_days: int = 40,
+    max_drawdown_pct: float = 30.0,
     enable_ema_surfing: bool = False,
+    enable_htf_mode: bool = False,
+    breakout_subview: str = "standard",
     **kwargs
 ) -> dict:
     """
-    Detects Qullamaggie / High Tight Flag Breakout pattern:
-    1. Big move higher in the past 1-3 months (customizable run-up, default >= 30%).
-    2. Orderly consolidation phase (customizable window, default 8 to 45 trading days).
-    3. Optional EMA 10/20 surfing rule.
+    Detects Qullamaggie / High Tight Flag (Power Play) Breakout pattern:
+    1. Big move higher in the past 1-3 months (customizable run-up, default >= 30% in <= 12 weeks, or >= 100% in HTF mode).
+    2. Orderly consolidation phase (customizable window, default 10 to 40 trading days = 2 weeks to 2 months).
+    3. Base drawdown limit (default <= 30%, or <= 25% for HTF).
+    4. Optional EMA 10/20 surfing rule (default False).
     """
     if "min_1m_ret" in kwargs and kwargs["min_1m_ret"] is not None:
         min_runup_pct = kwargs["min_1m_ret"]
@@ -38,8 +43,10 @@ def detect_breakout(
         return {
             "breakout_is_setup": False,
             "breakout_runup_pct": 0.0,
+            "breakout_drawdown_pct": 0.0,
             "breakout_consolidation_days": 0,
             "breakout_peak_high": 0.0,
+            "is_htf": False,
             "ema_surfing": False,
             "ema_10": ema_10_val,
             "ema_20": ema_20_val
@@ -60,20 +67,35 @@ def detect_breakout(
     peak_idx = (n - 1) - len(recent_highs) + recent_highs.index(peak_high)
     consolidation_days = (n - 1) - peak_idx
 
-    # 2. Prior big move higher in the past 1-3 months leading up to peak high
-    start_runup_idx = max(0, peak_idx - 40)
+    # 2. Prior big move higher leading up to peak high within the specified time window (in weeks)
+    runup_bars = max(5, int(float(runup_window_weeks) * 5))
+    start_runup_idx = max(0, peak_idx - runup_bars)
     low_before_peak = min(lows[start_runup_idx : peak_idx + 1])
     prior_runup_pct = ((peak_high - low_before_peak) / low_before_peak) * 100.0 if low_before_peak > 0 else 0.0
 
-    # Also check 1-month and 3-month close-to-close returns
-    close_1m_ago = closes[-21] if n >= 21 else closes[0]
-    ret_1m = ((current_close - close_1m_ago) / close_1m_ago) * 100.0 if close_1m_ago > 0 else 0.0
-    close_3m_ago = closes[-65] if n >= 65 else closes[0]
-    ret_3m = ((current_close - close_3m_ago) / close_3m_ago) * 100.0 if close_3m_ago > 0 else 0.0
+    # Also check close-to-close returns over the same window
+    close_window_ago = closes[-runup_bars] if n >= runup_bars else closes[0]
+    ret_window = ((current_close - close_window_ago) / close_window_ago) * 100.0 if close_window_ago > 0 else 0.0
 
-    runup_pct = max(prior_runup_pct, ret_1m, ret_3m)
+    runup_pct = max(prior_runup_pct, ret_window)
 
-    # 3. EMA Surfing check: close price staying near or above 10 EMA / 20 EMA
+    # 2b. Base Pullback Drawdown: from peak high to lowest close during consolidation
+    base_closes = closes[peak_idx:] if peak_idx < n else [current_close]
+    min_close_in_base = min(base_closes) if base_closes else peak_high
+    drawdown_pct = ((peak_high - min_close_in_base) / peak_high) * 100.0 if peak_high > 0 else 0.0
+
+    # High Tight Flag (HTF) / Power Play qualification check (>= 100% in <= 8 weeks, <= 25% drawdown, 10-30 days base)
+    is_htf = bool(prior_runup_pct >= 100.0 and drawdown_pct <= 25.0 and 10 <= consolidation_days <= 30 and runup_window_weeks <= 8.5)
+
+    is_htf_active = bool(enable_htf_mode or breakout_subview == "htf")
+    if is_htf_active:
+        min_runup_pct = max(float(min_runup_pct), 100.0)
+        runup_window_weeks = min(float(runup_window_weeks), 8.0)
+        max_drawdown_pct = min(float(max_drawdown_pct if max_drawdown_pct is not None else 25.0), 25.0)
+        min_consolidation_days = max(int(min_consolidation_days), 10)
+        max_consolidation_days = min(int(max_consolidation_days), 30)
+
+    # 3. EMA Surfing check: optional (only active when enable_ema_surfing is True)
     if not enable_ema_surfing:
         ema_surfing = True
     elif ema_10_val and ema_10_val > 0 and current_close >= ema_10_val * 0.96:
@@ -88,18 +110,23 @@ def detect_breakout(
     # 4. Setup qualification check against customizable thresholds
     is_runup_ok = (not enable_runup) or (runup_pct >= float(min_runup_pct))
     is_days_ok = (not enable_days) or (int(min_consolidation_days) <= consolidation_days <= int(max_consolidation_days))
+    is_drawdown_ok = (max_drawdown_pct is None) or (drawdown_pct <= float(max_drawdown_pct))
 
     is_setup = (
         is_runup_ok and
         is_days_ok and
+        is_drawdown_ok and
         ema_surfing
     )
 
     return {
         "breakout_is_setup": is_setup,
         "breakout_runup_pct": round(runup_pct, 2),
+        "breakout_drawdown_pct": round(drawdown_pct, 2),
         "breakout_consolidation_days": consolidation_days,
         "breakout_peak_high": round(peak_high, 2),
+        "is_htf": is_htf,
+        "runup_window_weeks": float(runup_window_weeks),
         "ema_surfing": ema_surfing,
         "ema_10": ema_10_val,
         "ema_20": ema_20_val

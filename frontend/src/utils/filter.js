@@ -24,7 +24,7 @@ export function filterCandidates(candidates, filters = {}) {
 
   const enforceStage2 = getF('enforce_stage2', 'enforceStage2', false);
   const enableRs = getF('enable_rs', 'enableRs', false);
-  const minRs = getF('min_rs_rank', 'minRsFilter', 70);
+  const minRs = getF('min_rs_percentile', 'min_rs_rank', 70);
   const enableTi65 = getF('enable_ti65', 'enableTi65', false);
   const minTi65 = getF('min_ti_65', 'minTi65Filter', 1.05);
 
@@ -35,7 +35,7 @@ export function filterCandidates(candidates, filters = {}) {
   const requireParabolic = getF('require_parabolic', 'enableParabolicClimax', false);
   const requireIpoBase = getF('require_ipo_base', 'enableIpoBase', false);
   const enableVcpPattern = getF('enable_vcp_pattern', 'require_vcp', false);
-  const requireLowCheat = getF('require_low_cheat', 'enableLowCheat', false);
+  const enableLowCheat = getF('enable_low_cheat', 'enableLowCheat', false) || getF('require_low_cheat', 'requireLowCheat', false);
 
   return candidates.filter(c => {
     // Exclude ETFs from screening candidates
@@ -88,11 +88,15 @@ export function filterCandidates(candidates, filters = {}) {
       if (c.pp_drawdown_pct !== null && c.pp_drawdown_pct !== undefined && c.pp_drawdown_pct > maxPpDrawdown) return false;
     }
 
-    // QM Breakout
+    // Breakouts & HTF
     if (requireBreakout) {
       if (!c.breakout_is_setup) return false;
+      const enableHtf = getF('enable_htf_mode', 'enableHtfMode', false) || getF('breakout_subview', 'breakoutSubview', 'standard') === 'htf';
+      if (enableHtf && !c.is_htf && !c.pp_is_setup) return false;
       const minBreakoutRunup = getF('min_breakout_runup', 'minBreakoutRunupFilter', 30.0);
       if (c.breakout_runup_pct !== null && c.breakout_runup_pct !== undefined && c.breakout_runup_pct < minBreakoutRunup) return false;
+      const maxBreakoutDrawdown = getF('max_breakout_drawdown', 'maxBreakoutDrawdownFilter', null);
+      if (maxBreakoutDrawdown !== null && c.breakout_drawdown_pct !== null && c.breakout_drawdown_pct !== undefined && c.breakout_drawdown_pct > maxBreakoutDrawdown) return false;
     }
 
     // Episodic Pivot
@@ -104,21 +108,27 @@ export function filterCandidates(candidates, filters = {}) {
       if (c.rel_vol_50d !== null && c.rel_vol_50d !== undefined && c.rel_vol_50d < minEpRelVol) return false;
     }
 
-    // Momentum
+    // Momentum / My Universe
     if (requireMomentum) {
       const qmSubview = getF('qm_subview', 'qmSubview', 'all');
-      if (qmSubview === '1m' && (!c.qm_timeframes || !c.qm_timeframes.includes('1M'))) return false;
-      if (qmSubview === '3m' && (!c.qm_timeframes || !c.qm_timeframes.includes('3M'))) return false;
-      if (qmSubview === '6m' && (!c.qm_timeframes || !c.qm_timeframes.includes('6M'))) return false;
+      if (qmSubview === 'stage2') {
+        if (!c.is_stage2) return false;
+      } else if (qmSubview === 'gainers' || qmSubview === 'all_gainers') {
+        if (!c.qm_timeframes || c.qm_timeframes.length === 0) return false;
+      } else if (qmSubview === '1m') {
+        if (!c.qm_timeframes || !c.qm_timeframes.includes('1M')) return false;
+      } else if (qmSubview === '3m') {
+        if (!c.qm_timeframes || !c.qm_timeframes.includes('3M')) return false;
+      } else if (qmSubview === '6m') {
+        if (!c.qm_timeframes || !c.qm_timeframes.includes('6M')) return false;
+      } else if (qmSubview === 'all') {
+        if (!c.is_stage2 && (!c.qm_timeframes || c.qm_timeframes.length === 0)) return false;
+      }
     }
 
-    // Parabolic
+    // Parabolic Short
     if (requireParabolic) {
-      const isShort = getF('enable_parabolic_short', 'enableParabolicShort', true);
-      const isLong = getF('enable_parabolic_long', 'enableParabolicLong', true);
-      const isShortMatch = isShort && c.parabolic_short_is_setup;
-      const isLongMatch = isLong && c.parabolic_long_is_setup;
-      if (!isShortMatch && !isLongMatch) return false;
+      if (!c.parabolic_short_is_setup) return false;
     }
 
     // IPO Base
@@ -145,8 +155,17 @@ export function filterCandidates(candidates, filters = {}) {
     }
 
     // Low Cheat
-    if (requireLowCheat) {
+    if (enableLowCheat) {
       if (!c.low_cheat_is_setup) return false;
+      const minBaseDepth = getF('min_base_depth', 'minBaseDepth', 12.0);
+      const maxBaseDepth = getF('max_base_depth', 'maxBaseDepth', 45.0);
+      const maxBasePos = getF('max_base_position', 'maxBasePosition', 50.0);
+      if (c.low_cheat_base_depth !== null && c.low_cheat_base_depth !== undefined) {
+        if (c.low_cheat_base_depth < minBaseDepth || c.low_cheat_base_depth > maxBaseDepth) return false;
+      }
+      if (c.low_cheat_base_position !== null && c.low_cheat_base_position !== undefined) {
+        if (c.low_cheat_base_position > maxBasePos) return false;
+      }
     }
 
     return true;

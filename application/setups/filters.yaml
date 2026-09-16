@@ -29,7 +29,7 @@ filters:
   min_volume_sma_50:
     name: "Min 50d Vol MA"
     type: "number"
-    min: 50000
+    min: 0
     max: 2000000
     step: 50000
     unit: "shares"
@@ -40,7 +40,7 @@ filters:
   min_dollar_vol:
     name: "Min 50d Dollar Vol"
     type: "number"
-    min: 500000
+    min: 0.0
     max: 50000000
     step: 500000
     unit: "$"
@@ -50,7 +50,7 @@ filters:
 
   # Trend & Technical Filters
   enforce_stage2:
-    name: "Stage 2 Trend Template"
+    name: "Stage 2"
     type: "boolean"
     default: false
     category: "trend"
@@ -195,7 +195,7 @@ filters:
     max: 40
     step: 1
     unit: "days"
-    default: 5
+    default: 10
     category: "pattern"
     description: "Minimum number of consolidation days since peak high."
 
@@ -234,7 +234,18 @@ filters:
     unit: "%"
     default: 30.0
     category: "pattern"
-    description: "Minimum prior run-up before entering consolidation."
+    description: "Minimum prior run-up percentage before entering consolidation."
+
+  runup_window_weeks:
+    name: "Prior Runup Time Window"
+    type: "number"
+    min: 2.0
+    max: 20.0
+    step: 1.0
+    unit: "weeks"
+    default: 12.0
+    category: "pattern"
+    description: "Maximum lookback window in weeks (1 week = 5 trading days) leading up to the peak to measure the prior runup."
 
   min_breakout_days:
     name: "Min Consolidation Days"
@@ -243,7 +254,7 @@ filters:
     max: 30
     step: 1
     unit: "days"
-    default: 8
+    default: 10
     category: "pattern"
     description: "Minimum days spent in the consolidation base."
 
@@ -254,16 +265,46 @@ filters:
     max: 90
     step: 1
     unit: "days"
-    default: 45
+    default: 40
     category: "pattern"
-    description: "Maximum allowable days in consolidation base."
+    description: "Maximum allowable days in consolidation base (default 40 trading days = 2 months)."
+
+  breakout_subview:
+    name: "Breakout Mode"
+    type: "select"
+    options:
+      - value: "standard"
+        label: "QM Breakouts (30%+ Move)"
+      - value: "htf"
+        label: "Power Play / HTF (100%+ Move, <=25% Base)"
+    default: "htf"
+    category: "pattern"
+    description: "Switch between QM Breakouts and High Tight Flags (Power Plays)."
+
+  enable_htf_mode:
+    name: "Power Play Mode (Legacy)"
+    type: "boolean"
+    default: false
+    category: "pattern"
+    description: "Restricts to explosive 100%+ runups consolidating in shallow <= 25% flags (Power Plays)."
+
+  max_breakout_drawdown:
+    name: "Max Base Drawdown %"
+    type: "number"
+    min: 10.0
+    max: 50.0
+    step: 1.0
+    unit: "%"
+    default: 30.0
+    category: "pattern"
+    description: "Maximum allowable pullback from the consolidation peak."
 
   enable_ema_surfing:
     name: "Must Surf 10/20 EMA"
     type: "boolean"
     default: false
     category: "pattern"
-    description: "Requires price to respect and surf the rising 10 or 20 EMA."
+    description: "Requires price to respect and surf the rising 10 or 20 EMA (optional)."
 
   # Episodic Pivot (EP) Criteria
   require_episodic_pivot:
@@ -304,20 +345,24 @@ filters:
     description: "Enforces Qullamaggie top 1-2% momentum universe filter."
 
   qm_subview:
-    name: "Momentum Timeframe"
+    name: "Universe View"
     type: "select"
     options:
       - value: "all"
-        label: "All Leaders (Combined 1M/3M/6M)"
+        label: "All (Stage 2 + Gainers)"
+      - value: "stage2"
+        label: "Stage 2"
+      - value: "gainers"
+        label: "All Gainers (1M/3M/6M)"
       - value: "1m"
-        label: "1-Month Gainers"
+        label: "1M Gainers"
       - value: "3m"
-        label: "3-Month Gainers"
+        label: "3M Gainers"
       - value: "6m"
-        label: "6-Month Gainers"
+        label: "6M Gainers"
     default: "all"
     category: "pattern"
-    description: "Select which momentum horizon to filter on."
+    description: "Select which universe subview to filter on (All, Stage 2, All Gainers, 1M, 3M, 6M)."
 
   qm_top_n:
     name: "Top N Leaders Per Scan"
@@ -326,17 +371,17 @@ filters:
     max: 200
     step: 25
     unit: ""
-    default: 75
+    default: 100
     category: "pattern"
     description: "Number of top gainers extracted from each momentum timeframe."
 
-  # Parabolic Climax Criteria
+  # Parabolic Short Criteria
   require_parabolic:
-    name: "Parabolic Climax Pattern"
+    name: "Parabolic Short Pattern"
     type: "boolean"
     default: false
     category: "pattern"
-    description: "Enforces Parabolic overextension (short) or capitulation (long)."
+    description: "Enforces Parabolic overextension for mean-reversion short setups."
 
   enable_parabolic_short:
     name: "Short Climax (Overbought)"
@@ -348,12 +393,12 @@ filters:
   enable_parabolic_long:
     name: "Long Climax (Oversold)"
     type: "boolean"
-    default: true
+    default: false
     category: "pattern"
-    description: "Long reversal setups on extreme capitulation drop."
+    description: "Deprecated (long side removed)."
 
   min_parabolic_runup:
-    name: "Min Climax Move %"
+    name: "Min Parabolic Runup %"
     type: "number"
     min: 20.0
     max: 200.0
@@ -361,7 +406,7 @@ filters:
     unit: "%"
     default: 40.0
     category: "pattern"
-    description: "Minimum fast move percentage."
+    description: "Minimum fast upward move percentage over 3–10 days."
 
   min_parabolic_ema_dist:
     name: "Min 10 EMA Stretch %"
@@ -372,10 +417,10 @@ filters:
     unit: "%"
     default: 18.0
     category: "pattern"
-    description: "Minimum distance price must be extended away from 10 EMA."
+    description: "Minimum distance price must be extended above 10 EMA."
 
   min_parabolic_up_days:
-    name: "Min Consecutive Days"
+    name: "Min Consecutive Up Days"
     type: "number"
     min: 2
     max: 10
@@ -383,7 +428,7 @@ filters:
     unit: "days"
     default: 3
     category: "pattern"
-    description: "Minimum consecutive trending days in the move direction."
+    description: "Minimum consecutive up days before exhaustion."
 
   # IPO Base Criteria
   require_ipo_base:
@@ -453,8 +498,15 @@ filters:
     description: "Minimum Year-over-Year quarterly EPS growth percentage."
 
   # Minervini Low Cheat Criteria
+  enable_low_cheat:
+    name: "Low Cheat Entry"
+    type: "boolean"
+    default: false
+    category: "pattern"
+    description: "Enforces early entry detection in the lower half of a developing base upon exhaustion/shakeout."
+
   require_low_cheat:
-    name: "Minervini Low Cheat"
+    name: "Minervini Low Cheat (Legacy)"
     type: "boolean"
     default: false
     category: "pattern"

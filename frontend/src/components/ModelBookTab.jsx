@@ -5,10 +5,11 @@ const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:80
 
 const SETUP_CANONICAL_NAMES = {
   power_play: 'Power Play',
-  breakout: 'QM Breakout',
+  breakout: 'Breakouts & HTF',
+  breakouts: 'Breakouts & HTF',
   episodic_pivot: 'Episodic Pivot',
-  momentum: 'QM Momentum',
-  parabolic: 'Parabolic',
+  momentum: 'My Universe',
+  parabolic: 'Parabolic Short',
   ipo_base: 'IPO Base',
   vcp: 'Minervini VCP',
   low_cheat: 'Minervini Low Cheat'
@@ -21,7 +22,8 @@ export default function ModelBookTab({
   setupsConfig = { setups: [], filters: {} }
 }) {
   // Screening Parameters
-  const [setupType, setSetupType] = useState('power_play');
+  const [setupType, setSetupType] = useState('breakouts');
+  const [activeFilters, setActiveFilters] = useState({});
   const modelBookChartRef = useRef(null);
   const [targetGainPct, setTargetGainPct] = useState(16.0);
   const [customGain, setCustomGain] = useState('');
@@ -37,29 +39,102 @@ export default function ModelBookTab({
       return setupsConfig.setups;
     }
     return [
-      { id: 'power_play', name: 'Power Play', icon: '🚀', description: 'Explosive 100%+ surge in < 8 weeks followed by tight 3-6 week consolidation.' },
-      { id: 'breakout', name: 'QM Breakout', icon: '🎯', description: 'High-momentum consolidation surfing rising 10/20 EMAs ready to break out.' },
+      { id: 'breakouts', name: 'Breakouts & HTF', icon: '🎯', description: 'Consolidations and High Tight Flags (Power Plays) ready to break out along rising moving averages.' },
       { id: 'episodic_pivot', name: 'Episodic Pivot', icon: '⚡', description: 'Massive gap-up (10%+) on heavy relative volume driven by catalyst or earnings.' },
-      { id: 'momentum', name: 'QM Momentum', icon: '🏆', description: 'Top 1-2% strongest momentum leaders over 1M, 3M, and 6M timeframes.' },
-      { id: 'parabolic', name: 'Parabolic', icon: '🌋', description: 'Overextended momentum climaxes or capitulation exhaustion.' },
+      { id: 'momentum', name: 'My Universe', icon: '🌌', description: 'Filters out a broad universe of stocks for further screening across Stage 2 and Momentum Gainers.' },
+      { id: 'parabolic', name: 'Parabolic Short', icon: '🌋', description: 'Overextended momentum climaxes for mean-reversion short setups.' },
       { id: 'ipo_base', name: 'IPO Base', icon: '🌱', description: 'Early institutional accumulation in newly public companies (< 350 days).' },
-      { id: 'vcp', name: 'Minervini VCP', icon: '📐', description: 'Volatility Contraction Pattern with drying volume along Stage 2 uptrend.' },
-      { id: 'low_cheat', name: 'Minervini Low Cheat', icon: '🏹', description: 'Early entry in the lower 1/3 to 1/2 of a base on volume exhaustion and character change.' }
+      { id: 'vcp', name: 'Minervini VCP', icon: '📐', description: 'Volatility Contraction Pattern with drying volume along Stage 2 uptrend.' }
     ];
   }, [setupsConfig]);
 
   const activeSetup = useMemo(() => {
     return setupOptions.find(s => s.id === setupType) || setupOptions[0];
   }, [setupOptions, setupType]);
+
+  // Sync initial filters when activeSetup changes or on first load
+  useEffect(() => {
+    if (activeSetup?.filters) {
+      setActiveFilters(prev => {
+        if (!prev || Object.keys(prev).length === 0) {
+          return { ...activeSetup.filters };
+        }
+        return prev;
+      });
+    }
+  }, [activeSetup]);
+
+  const isSubActive = useCallback((sub) => {
+    if (!sub || !sub.filters) return false;
+    const filterKeys = Object.keys(sub.filters);
+    if (filterKeys.length === 0) return false;
+
+    if (sub.filters.breakout_subview) {
+      const current = activeFilters.breakout_subview !== undefined ? activeFilters.breakout_subview : activeSetup?.filters?.breakout_subview;
+      if (current === sub.id) return true;
+    }
+    if (sub.filters.qm_subview) {
+      const current = activeFilters.qm_subview !== undefined ? activeFilters.qm_subview : activeSetup?.filters?.qm_subview;
+      if (current === sub.id) return true;
+    }
+
+    return filterKeys.every(k => {
+      const currentVal = activeFilters[k] !== undefined ? activeFilters[k] : activeSetup?.filters?.[k];
+      return currentVal === sub.filters[k];
+    });
+  }, [activeFilters, activeSetup]);
+
+  const activeSubSetup = useMemo(() => {
+    if (!activeSetup?.sub_setups || activeSetup.sub_setups.length === 0) return null;
+    return activeSetup.sub_setups.find(s => isSubActive(s)) || activeSetup.sub_setups[0];
+  }, [activeSetup, isSubActive]);
+
+  const currentSetupDisplayName = activeSubSetup?.name || SETUP_CANONICAL_NAMES[setupType] || activeSetup?.name || 'Setup';
   
+  const currentYear = useMemo(() => new Date().getFullYear(), []);
+
+  // Year-by-Year & Quick Date Presets
+  const datePresets = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    // Generate recent 5 full calendar years (e.g. 2025, 2024, 2023, 2022, 2021)
+    const yearPresets = Array.from({ length: 5 }, (_, i) => {
+      const yr = currentYear - 1 - i;
+      return {
+        id: `year_${yr}`,
+        label: `${yr}`,
+        title: `Full Calendar Year ${yr} (${yr}-01-01 to ${yr}-12-31)`,
+        start: `${yr}-01-01`,
+        end: `${yr}-12-31`
+      };
+    });
+
+    return [
+      {
+        id: 'ytd',
+        label: 'YTD',
+        title: `Year to Date (${currentYear}-01-01 to Present)`,
+        start: `${currentYear}-01-01`,
+        end: todayStr
+      },
+      ...yearPresets,
+      {
+        id: 'all',
+        label: 'ALL',
+        title: `All Available History (${currentYear - 5} to Present)`,
+        start: `${currentYear - 5}-01-01`,
+        end: todayStr
+      }
+    ];
+  }, [currentYear]);
+
   // Date Range (default: current year)
   const defaultDates = useMemo(() => {
     const today = new Date();
-    const currentYear = today.getFullYear();
     const start = `${currentYear}-01-01`;
     const end = today.toISOString().split('T')[0];
     return { start, end };
-  }, []);
+  }, [currentYear]);
 
   const [startDate, setStartDate] = useState(defaultDates.start);
   const [endDate, setEndDate] = useState(defaultDates.end);
@@ -93,7 +168,7 @@ export default function ModelBookTab({
 
   // Active criteria chips preview
   const activeFilterChips = useMemo(() => {
-    const filters = scanResult?.summary?.filters || activeSetup?.filters || {};
+    const filters = scanResult?.summary?.filters || (Object.keys(activeFilters).length > 0 ? activeFilters : activeSetup?.filters) || {};
     const chips = [];
 
     // Baseline Liquidity
@@ -102,11 +177,11 @@ export default function ModelBookTab({
     }
     if (filters.min_volume_sma_50 !== undefined) {
       const k = Math.round(Number(filters.min_volume_sma_50) / 1000);
-      chips.push({ text: `50d Vol: ≥${k}K`, highlight: false });
+      chips.push({ text: k === 0 ? '50d Vol: Min (0)' : `50d Vol: ≥${k}K`, highlight: false });
     }
     if (filters.min_dollar_vol !== undefined) {
       const m = Math.round(Number(filters.min_dollar_vol) / 1000000);
-      chips.push({ text: `$ Vol: ≥$${m}M`, highlight: true });
+      chips.push({ text: m === 0 ? '$ Vol: Min ($0)' : `$ Vol: ≥$${m}M`, highlight: true });
     }
 
     // Trend & Template
@@ -118,39 +193,78 @@ export default function ModelBookTab({
     }
 
     // Setup Specifics
-    if (filters.min_pp_runup !== undefined) {
-      chips.push({ text: `Runup: ≥${filters.min_pp_runup}%`, highlight: true });
+    if (setupType === 'breakouts' || setupType === 'breakout') {
+      const isHTF = Boolean(filters.enable_htf_mode || filters.breakout_subview === 'htf');
+      chips.push({ text: `Mode: ${isHTF ? 'Power Play / HTF' : 'QM Breakouts'}`, highlight: true });
+      chips.push({ text: `Runup: ≥${filters.min_breakout_runup || (isHTF ? 100 : 30)}% (${filters.runup_window_weeks || (isHTF ? 8 : 12)}w)`, highlight: true });
+      chips.push({ text: `Base Depth: ≤${filters.max_breakout_drawdown || (isHTF ? 25 : 30)}%`, highlight: true });
+      chips.push({ text: `Consolidation: ${filters.min_breakout_days || 10}–${filters.max_breakout_days || (isHTF ? 30 : 40)}d`, highlight: false });
+      if (filters.require_pivot_tightness) {
+        chips.push({ text: 'Pivot Tightness', highlight: false });
+      }
+    } else if (setupType === 'momentum') {
+      const viewMap = {
+        'all': 'All Views',
+        'stage2': 'Stage 2',
+        'gainers': 'All Gainers',
+        '1m': '1M Gainers',
+        '3m': '3M Gainers',
+        '6m': '6M Gainers'
+      };
+      const subLabel = viewMap[filters.qm_subview] || filters.qm_subview || 'All Views';
+      chips.push({ text: `View: ${subLabel}`, highlight: true });
+      if (filters.qm_top_n) {
+        chips.push({ text: `Top ${filters.qm_top_n}`, highlight: false });
+      }
+    } else {
+      if (filters.min_pp_runup !== undefined) {
+        chips.push({ text: `Runup: ≥${filters.min_pp_runup}%`, highlight: true });
+      }
+      if (filters.max_pp_drawdown !== undefined) {
+        chips.push({ text: `Base Depth: ≤${filters.max_pp_drawdown}%`, highlight: true });
+      }
+      if (filters.min_pp_days_since_peak !== undefined) {
+        chips.push({ text: `Consolidation: ≥${filters.min_pp_days_since_peak}d`, highlight: false });
+      }
+      if (filters.min_breakout_runup !== undefined) {
+        chips.push({ text: `Runup: ≥${filters.min_breakout_runup}%`, highlight: true });
+      }
+      if (filters.min_ep_gap !== undefined) {
+        chips.push({ text: `Gap: ≥${filters.min_ep_gap}%`, highlight: true });
+      }
+      if (filters.min_ep_rel_vol !== undefined) {
+        chips.push({ text: `Rel Vol: ≥${filters.min_ep_rel_vol}x`, highlight: true });
+      }
+      if (filters.max_ipo_age !== undefined) {
+        chips.push({ text: `IPO Age: ≤${filters.max_ipo_age}d`, highlight: true });
+      }
+      if (filters.max_ipo_dist !== undefined) {
+        chips.push({ text: `From ATH: ≤${filters.max_ipo_dist}%`, highlight: false });
+      }
+      if (filters.max_ipo_depth !== undefined) {
+        chips.push({ text: `Base Depth: ≤${filters.max_ipo_depth}%`, highlight: false });
+      }
+      if (filters.min_parabolic_runup !== undefined) {
+        chips.push({ text: `Runup: ≥${filters.min_parabolic_runup}% (3–10d)`, highlight: true });
+      }
+      if (filters.min_parabolic_ema_dist !== undefined) {
+        chips.push({ text: `10 EMA Stretch: ≥${filters.min_parabolic_ema_dist}%`, highlight: true });
+      }
+      if (filters.min_parabolic_up_days !== undefined) {
+        chips.push({ text: `Up Days: ≥${filters.min_parabolic_up_days}d`, highlight: false });
+      }
     }
-    if (filters.max_pp_drawdown !== undefined) {
-      chips.push({ text: `Base Depth: ≤${filters.max_pp_drawdown}%`, highlight: true });
-    }
-    if (filters.min_pp_days_since_peak !== undefined) {
-      chips.push({ text: `Consolidation: ≥${filters.min_pp_days_since_peak}d`, highlight: false });
-    }
-    if (filters.min_breakout_runup !== undefined) {
-      chips.push({ text: `Runup: ≥${filters.min_breakout_runup}%`, highlight: true });
-    }
+
     if (filters.enable_adr && filters.min_adr_20d !== undefined) {
       chips.push({ text: `ADR: ≥${filters.min_adr_20d}%`, highlight: false });
     }
-    if (filters.min_ep_gap !== undefined) {
-      chips.push({ text: `Gap: ≥${filters.min_ep_gap}%`, highlight: true });
-    }
-    if (filters.min_ep_rel_vol !== undefined) {
-      chips.push({ text: `Rel Vol: ≥${filters.min_ep_rel_vol}x`, highlight: true });
-    }
-    if (filters.max_ipo_age !== undefined) {
-      chips.push({ text: `IPO Age: ≤${filters.max_ipo_age}d`, highlight: true });
-    }
-    if (filters.max_ipo_dist !== undefined) {
-      chips.push({ text: `From ATH: ≤${filters.max_ipo_dist}%`, highlight: false });
-    }
-    if (filters.max_ipo_depth !== undefined) {
-      chips.push({ text: `Base Depth: ≤${filters.max_ipo_depth}%`, highlight: false });
-    }
 
     // Trade Execution & Exit Criteria
-    chips.push({ text: `Entry: Buy-Stop (High > Setup High)`, highlight: true });
+    if (setupType === 'parabolic') {
+      chips.push({ text: `Entry: Short Breakdown`, highlight: true });
+    } else {
+      chips.push({ text: `Entry: Buy-Stop (High > Setup High)`, highlight: true });
+    }
     if (stopLossPct !== null && stopLossPct !== '') {
       chips.push({ text: `Stop Loss: -${stopLossPct}%`, highlight: true });
     }
@@ -159,14 +273,35 @@ export default function ModelBookTab({
     }
 
     return chips;
-  }, [scanResult, activeSetup, stopLossPct, emaExitType]);
+  }, [scanResult, activeSetup, activeFilters, setupType, stopLossPct, emaExitType]);
 
   // Table & View Filters
   const [viewMode, setViewMode] = useState('winners'); // 'winners' | 'all'
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRegime, setSelectedRegime] = useState('ALL'); // 'ALL' | 'BULLISH' | 'CAUTION' | 'BEARISH'
+  const [selectedSector, setSelectedSector] = useState('ALL');
   const [sortField, setSortField] = useState('date');
   const [sortDirection, setSortDirection] = useState('asc');
+
+  // Sector Breakdown and Filtering
+  const sectorCounts = useMemo(() => {
+    if (!scanResult) return [];
+    const pool = viewMode === 'winners' ? (scanResult.winners || []) : (scanResult.all_candidates || []);
+    const counts = {};
+    pool.forEach(c => {
+      const s = c.sector && c.sector.trim() !== '' ? c.sector.trim() : 'Unclassified';
+      counts[s] = (counts[s] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .map(([sector, count]) => ({ sector, count }))
+      .sort((a, b) => b.count - a.count || a.sector.localeCompare(b.sector));
+  }, [scanResult, viewMode]);
+
+  useEffect(() => {
+    if (selectedSector !== 'ALL' && !sectorCounts.some(sc => sc.sector === selectedSector)) {
+      setSelectedSector('ALL');
+    }
+  }, [sectorCounts, selectedSector]);
 
   // Chart Viewer State
   const [selectedCandidate, setSelectedCandidate] = useState(null);
@@ -217,52 +352,37 @@ export default function ModelBookTab({
 
 
   // Quick Date Presets
-  const applyDatePreset = (preset) => {
-    setActiveDatePreset(preset);
-    const today = new Date();
-    const end = today.toISOString().split('T')[0];
-    let start;
-
-    if (preset === 'ytd') {
-      start = `${today.getFullYear()}-01-01`;
-    } else if (preset === '6m') {
-      const d = new Date(today);
-      d.setMonth(d.getMonth() - 6);
-      start = d.toISOString().split('T')[0];
-    } else if (preset === '1y') {
-      const d = new Date(today);
-      d.setFullYear(d.getFullYear() - 1);
-      start = d.toISOString().split('T')[0];
-    } else if (preset === '2y') {
-      const d = new Date(today);
-      d.setFullYear(d.getFullYear() - 2);
-      start = d.toISOString().split('T')[0];
-    } else if (preset === 'all') {
-      start = '2021-08-27';
-    }
-
+  const applyDatePreset = (presetId) => {
+    setActiveDatePreset(presetId);
+    const targetPreset = datePresets.find(p => p.id === presetId);
+    if (!targetPreset) return;
+    const { start, end } = targetPreset;
     setStartDate(start);
     setEndDate(end);
+    handleRunScan(setupType, activeFilters, { start, end });
   };
 
   // Run Scan API
-  const handleRunScan = async (setupToRun = null) => {
+  const handleRunScan = async (setupToRun = null, filtersToRun = null, dateRangeToRun = null) => {
     const targetSetup = typeof setupToRun === 'string' && setupToRun.trim() !== '' ? setupToRun : setupType;
+    const activeSetupObj = (setupOptions || []).find(s => s.id === targetSetup);
+    const targetFilters = filtersToRun || (Object.keys(activeFilters).length > 0 ? activeFilters : (activeSetupObj?.filters || {}));
+    const targetStart = dateRangeToRun?.start || startDate;
+    const targetEnd = dateRangeToRun?.end || endDate;
     setLoading(true);
     setError(null);
     try {
-      const activeSetupObj = (setupOptions || []).find(s => s.id === targetSetup);
       const payload = {
         setup_type: targetSetup,
         target_gain_pct: parseFloat(targetGainPct) || 20.0,
         stop_loss_pct: stopLossPct !== null && stopLossPct !== '' ? parseFloat(stopLossPct) : null,
         ema_exit_type: emaExitType || 'ema_10',
-        start_date: startDate,
-        end_date: endDate,
+        start_date: targetStart,
+        end_date: targetEnd,
         forward_days: parseInt(forwardDays, 10) || 20,
         max_drawdown_limit: stopLossPct !== null && stopLossPct !== '' ? parseFloat(stopLossPct) : null,
         episode_window_days: 15,
-        filters: activeSetupObj?.filters || {}
+        filters: targetFilters
       };
 
       const res = await fetch(`${API_BASE}/api/model-book/scan`, {
@@ -299,7 +419,20 @@ export default function ModelBookTab({
 
   const handleSelectSetup = (newId) => {
     setSetupType(newId);
-    handleRunScan(newId);
+    const newSetup = setupOptions.find(s => s.id === newId);
+    const defaultFilters = newSetup?.filters ? { ...newSetup.filters } : {};
+    setActiveFilters(defaultFilters);
+    handleRunScan(newId, defaultFilters, { start: startDate, end: endDate });
+  };
+
+  const handleSelectSubSetup = (sub) => {
+    if (!sub || !sub.filters) return;
+    const merged = {
+      ...activeFilters,
+      ...sub.filters
+    };
+    setActiveFilters(merged);
+    handleRunScan(setupType, merged, { start: startDate, end: endDate });
   };
 
   // Filter and sort candidates
@@ -316,6 +449,13 @@ export default function ModelBookTab({
 
     if (selectedRegime !== 'ALL') {
       list = list.filter(c => c.market_regime === selectedRegime);
+    }
+
+    if (selectedSector !== 'ALL') {
+      list = list.filter(c => {
+        const s = c.sector && c.sector.trim() !== '' ? c.sector.trim() : 'Unclassified';
+        return s === selectedSector;
+      });
     }
 
     return [...list].sort((a, b) => {
@@ -347,7 +487,7 @@ export default function ModelBookTab({
       if (numCmp !== 0) return numCmp;
       return (a.setup_date || a.date || '').localeCompare(b.setup_date || b.date || '');
     });
-  }, [scanResult, viewMode, searchTerm, selectedRegime, sortField, sortDirection]);
+  }, [scanResult, viewMode, searchTerm, selectedRegime, selectedSector, sortField, sortDirection]);
 
   const prefetchAdjacentCandidates = useCallback((currentCand) => {
     if (!currentCand || displayedCandidates.length === 0) return;
@@ -469,7 +609,7 @@ export default function ModelBookTab({
       symbol: cand.symbol,
       setup_date: date,
       setup_type: setupType,
-      setup_name: SETUP_CANONICAL_NAMES[setupType] || activeSetup?.name || 'Setup',
+      setup_name: currentSetupDisplayName,
       market_regime: cand.market_regime,
       notes: ''
     };
@@ -962,6 +1102,61 @@ export default function ModelBookTab({
           ))}
         </div>
 
+        {/* Dynamic Sub-Bar for Setups defining sub_setups (e.g., Breakouts, Momentum) */}
+        {activeSetup?.sub_setups && activeSetup.sub_setups.length > 0 && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            flexWrap: 'wrap',
+            padding: '8px 14px',
+            background: setupType === 'momentum' ? 'rgba(168, 85, 247, 0.08)' : 'rgba(56, 189, 248, 0.08)',
+            border: setupType === 'momentum' ? '1px solid rgba(168, 85, 247, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)',
+            borderRadius: '8px'
+          }}>
+            <span style={{
+              fontSize: '12px',
+              fontWeight: '700',
+              color: setupType === 'momentum' ? '#c084fc' : '#38bdf8',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}>
+              {activeSetup.sub_title || `${activeSetup.name} Mode:`}
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {activeSetup.sub_setups.map(sub => {
+                const isActive = isSubActive(sub);
+                const activeThemeColor = setupType === 'momentum' ? '#a855f7' : '#38bdf8';
+                const activeBg = setupType === 'momentum' ? 'rgba(168, 85, 247, 0.3)' : 'rgba(56, 189, 248, 0.3)';
+
+                return (
+                  <button
+                    key={sub.id}
+                    type="button"
+                    onClick={() => handleSelectSubSetup(sub)}
+                    style={{
+                      padding: '4px 12px',
+                      fontSize: '11.5px',
+                      fontWeight: isActive ? '700' : '500',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      backgroundColor: isActive ? activeBg : 'rgba(255, 255, 255, 0.04)',
+                      color: isActive ? '#fff' : 'var(--text-secondary)',
+                      border: isActive ? `1px solid ${activeThemeColor}` : '1px solid var(--border-color)',
+                      boxShadow: isActive ? `0 0 10px ${activeBg}` : 'none'
+                    }}
+                    title={sub.description || sub.label || sub.name}
+                  >
+                    {sub.label || sub.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Active Setup Criteria Preview */}
         {activeFilterChips && activeFilterChips.length > 0 && (
           <div style={{
@@ -1185,60 +1380,64 @@ export default function ModelBookTab({
             <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
               Date Range:
             </span>
-            <div style={{ display: 'flex', gap: '3px' }}>
-              {['ytd', '6m', '1y', '2y', 'all'].map(p => (
+            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+              {datePresets.map(p => (
                 <button
-                  key={p}
-                  onClick={() => applyDatePreset(p)}
+                  key={p.id}
+                  onClick={() => applyDatePreset(p.id)}
+                  title={p.title}
                   style={{
-                    padding: '3px 8px',
-                    borderRadius: '4px',
-                    border: activeDatePreset === p ? '1px solid var(--accent-color)' : '1px solid var(--border-color)',
-                    backgroundColor: activeDatePreset === p ? 'var(--accent-light)' : 'transparent',
-                    color: activeDatePreset === p ? 'var(--accent-color)' : 'var(--text-secondary)',
+                    padding: '4px 9px',
+                    borderRadius: '5px',
+                    border: activeDatePreset === p.id ? '1px solid var(--accent-color)' : '1px solid var(--border-color)',
+                    backgroundColor: activeDatePreset === p.id ? 'var(--accent-light)' : 'rgba(255, 255, 255, 0.03)',
+                    color: activeDatePreset === p.id ? 'var(--accent-color)' : 'var(--text-secondary)',
                     fontSize: '11px',
-                    fontWeight: '600',
-                    cursor: 'pointer'
+                    fontWeight: activeDatePreset === p.id ? '700' : '500',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
                   }}
                 >
-                  {p.toUpperCase()}
+                  {p.label}
                 </button>
               ))}
             </div>
 
-            <input
-              type="date"
-              value={startDate}
-              onChange={e => {
-                setStartDate(e.target.value);
-                setActiveDatePreset('custom');
-              }}
-              style={{
-                padding: '3px 6px',
-                backgroundColor: 'rgba(0,0,0,0.3)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text-primary)',
-                fontSize: '11.5px'
-              }}
-            />
-            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>to</span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={e => {
-                setEndDate(e.target.value);
-                setActiveDatePreset('custom');
-              }}
-              style={{
-                padding: '3px 6px',
-                backgroundColor: 'rgba(0,0,0,0.3)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text-primary)',
-                fontSize: '11.5px'
-              }}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <input
+                type="date"
+                value={startDate}
+                onChange={e => {
+                  setStartDate(e.target.value);
+                  setActiveDatePreset('custom');
+                }}
+                style={{
+                  padding: '3px 6px',
+                  backgroundColor: 'rgba(0,0,0,0.3)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  color: 'var(--text-primary)',
+                  fontSize: '11.5px'
+                }}
+              />
+              <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>to</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={e => {
+                  setEndDate(e.target.value);
+                  setActiveDatePreset('custom');
+                }}
+                style={{
+                  padding: '3px 6px',
+                  backgroundColor: 'rgba(0,0,0,0.3)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  color: 'var(--text-primary)',
+                  fontSize: '11.5px'
+                }}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -1265,7 +1464,7 @@ export default function ModelBookTab({
               </span>
             </div>
             <span className="stat-subtext" style={{ color: 'var(--text-muted)' }}>
-              Setups detected: {summary.total_setups} • Deduplicated
+              Period: {summary.date_range?.start || startDate} to {summary.date_range?.end || endDate} • {summary.total_setups} Setups
             </span>
           </div>
 
@@ -1412,6 +1611,35 @@ export default function ModelBookTab({
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {/* Sector filter */}
+              <select
+                value={selectedSector}
+                onChange={e => {
+                  setSelectedSector(e.target.value);
+                  setSelectedCandidate(null);
+                }}
+                style={{
+                  padding: '4px 8px',
+                  backgroundColor: 'rgba(0,0,0,0.3)',
+                  border: selectedSector !== 'ALL' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  color: selectedSector !== 'ALL' ? '#38bdf8' : 'var(--text-primary)',
+                  fontSize: '12px',
+                  fontWeight: selectedSector !== 'ALL' ? '600' : '400',
+                  cursor: 'pointer'
+                }}
+                title="Filter candidates by sector"
+              >
+                <option value="ALL">
+                  All Sectors ({viewMode === 'winners' ? (scanResult?.winners?.length || 0) : (scanResult?.all_candidates?.length || 0)})
+                </option>
+                {sectorCounts.map(({ sector, count }) => (
+                  <option key={sector} value={sector}>
+                    {sector} ({count})
+                  </option>
+                ))}
+              </select>
+
               {/* Market Tape filter */}
               <select
                 value={selectedRegime}
@@ -1469,9 +1697,6 @@ export default function ModelBookTab({
                   <th onClick={() => handleSort('date')} style={{ cursor: 'pointer' }}>
                     Setup {sortField === 'date' || sortField === 'setup_date' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
                   </th>
-                  <th onClick={() => handleSort('exit_reason')} style={{ cursor: 'pointer' }}>
-                    Reason {sortField === 'exit_reason' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
-                  </th>
                   <th onClick={() => handleSort('market_regime')} style={{ cursor: 'pointer', textAlign: 'center' }}>
                     Tape {sortField === 'market_regime' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
                   </th>
@@ -1480,7 +1705,7 @@ export default function ModelBookTab({
               <tbody>
                 {displayedCandidates.length === 0 ? (
                   <tr>
-                    <td colSpan={4} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                    <td colSpan={3} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
                       {loading ? 'Analyzing historical setups and trade paths...' : 'No setups found matching criteria.'}
                     </td>
                   </tr>
@@ -1509,38 +1734,6 @@ export default function ModelBookTab({
                           </div>
                         </td>
                         <td style={{ color: 'var(--text-secondary)' }}>{candDate}</td>
-
-                        {/* Exit Reason Badge */}
-                        <td>
-                          {cand.exit_reason === 'TARGET' && (
-                            <span className="pill" style={{ background: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.35)', fontSize: '10px', padding: '1px 6px', fontWeight: 700 }}>
-                              🎯 Target
-                            </span>
-                          )}
-                          {cand.exit_reason === 'STOP_LOSS' && (
-                            <span className="pill" style={{ background: 'rgba(244, 63, 94, 0.18)', color: '#fb7185', border: '1px solid rgba(244, 63, 94, 0.35)', fontSize: '10px', padding: '1px 6px', fontWeight: 700 }}>
-                              🛑 Stop
-                            </span>
-                          )}
-                          {cand.exit_reason === 'EMA_10_EXIT' && (
-                            <span className="pill" style={{ background: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.35)', fontSize: '10px', padding: '1px 6px', fontWeight: 700 }}>
-                              📉 EMA10
-                            </span>
-                          )}
-                          {cand.exit_reason === 'EMA_20_EXIT' && (
-                            <span className="pill" style={{ background: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.35)', fontSize: '10px', padding: '1px 6px', fontWeight: 700 }}>
-                              📉 EMA20
-                            </span>
-                          )}
-                          {cand.exit_reason === 'TIME_EXPIRED' && (
-                            <span className="pill" style={{ background: 'rgba(148, 163, 184, 0.18)', color: '#94a3b8', border: '1px solid rgba(148, 163, 184, 0.35)', fontSize: '10px', padding: '1px 6px', fontWeight: 700 }}>
-                              ⏱️ Expired
-                            </span>
-                          )}
-                          {!['TARGET', 'STOP_LOSS', 'EMA_10_EXIT', 'EMA_20_EXIT', 'TIME_EXPIRED'].includes(cand.exit_reason) && (
-                            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{cand.exit_reason || '-'}</span>
-                          )}
-                        </td>
 
                         {/* Market Tape Column */}
                         <td style={{ textAlign: 'center' }}>
@@ -1868,7 +2061,7 @@ export default function ModelBookTab({
                   <button
                     onClick={() => modelBookChartRef.current?.saveScreenshot()}
                     disabled={!selectedCandidate || loadingPrices || !stockPrices || stockPrices.length === 0}
-                    title={`Take chart screenshot and store in ./charts/${SETUP_CANONICAL_NAMES[setupType] || 'Power Play'}/${(selectedCandidate?.date || selectedCandidate?.screen_date || 'date')}_${selectedCandidate?.symbol || 'STOCK'}.png`}
+                    title={`Take chart screenshot and store in ./charts/${currentSetupDisplayName}/${(selectedCandidate?.date || selectedCandidate?.screen_date || 'date')}_${selectedCandidate?.symbol || 'STOCK'}.png`}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -1916,7 +2109,7 @@ export default function ModelBookTab({
                     height={580}
                     asOfDate={displayedChartCandidate?.setup_date || displayedChartCandidate?.date || displayedChartCandidate?.screen_date || selectedCandidate?.setup_date || selectedCandidate?.date}
                     symbol={displayedChartCandidate?.symbol || selectedCandidate?.symbol}
-                    setupName={SETUP_CANONICAL_NAMES[setupType] || 'Power Play'}
+                    setupName={currentSetupDisplayName}
                     companyName={displayedChartCandidate?.name || selectedCandidate?.name}
                     showScreenshotButton={true}
                   />

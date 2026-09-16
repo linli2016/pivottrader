@@ -151,22 +151,22 @@ class DatabaseService:
 
             # Price & Volume filters
             min_price = f.get("min_price")
-            if min_price is not None:
+            if min_price is not None and float(min_price) > 0:
                 where_clauses.append("db.close >= ?")
                 params.append(float(min_price))
 
             min_vol = f.get("min_volume_sma_50")
-            if min_vol is not None:
+            if min_vol is not None and float(min_vol) > 0:
                 where_clauses.append("db.vol_50d_ma >= ?")
                 params.append(float(min_vol))
 
             min_dollar_vol = f.get("min_dollar_vol", f.get("min_dollar_volume_50d"))
-            if min_dollar_vol is not None:
+            if min_dollar_vol is not None and float(min_dollar_vol) > 0:
                 where_clauses.append("COALESCE(db.dollar_vol_50d_ma, db.close * db.vol_50d_ma) >= ?")
                 params.append(float(min_dollar_vol))
 
             # Stage 2 Trend Template
-            if f.get("enforce_stage2"):
+            if f.get("enforce_stage2") and not bool(f.get("require_momentum", False)):
                 where_clauses.append(
                     "db.sma_50 IS NOT NULL AND db.sma_150 IS NOT NULL AND db.sma_200 IS NOT NULL "
                     "AND db.close > db.sma_50 AND db.sma_50 > db.sma_150 AND db.sma_150 > db.sma_200 "
@@ -194,7 +194,8 @@ class DatabaseService:
                 params.append(float(min_adr))
 
             # Pivot Tightness & Volume Dry-Up (VDU) Filter
-            if f.get("require_pivot_tightness"):
+            require_pivot_tightness = bool(f.get("require_pivot_tightness", False))
+            if require_pivot_tightness and has_precomputed_setups:
                 max_pivot_spread = f.get("max_pivot_spread", 8.0)
                 max_pivot_clustering = f.get("max_pivot_clustering", 3.0)
                 max_pivot_vol_ratio = f.get("max_pivot_vol_ratio", 0.8)
@@ -217,13 +218,14 @@ class DatabaseService:
             require_parabolic = bool(f.get("require_parabolic", False))
             require_ipo_base = bool(f.get("require_ipo_base", False))
             enable_vcp_pattern = bool(f.get("enable_vcp_pattern", False) or f.get("require_vcp", False))
-            require_low_cheat = bool(f.get("require_low_cheat", False))
+            enable_low_cheat = bool(f.get("enable_low_cheat", False) or f.get("require_low_cheat", False))
+            require_low_cheat = enable_low_cheat
 
             # Power Play Overlay
             if require_power_play:
                 min_pp_runup = float(f.get("min_pp_runup", 100.0))
                 max_pp_drawdown = float(f.get("max_pp_drawdown", 25.0))
-                min_pp_days = int(f.get("min_pp_days_since_peak", 5))
+                min_pp_days = int(f.get("min_pp_days_since_peak", 10))
                 enable_pp_vol = f.get("enable_pp_vol_ratio", False)
                 max_pp_vol = float(f.get("max_pp_vol_ratio", 0.5))
 
@@ -273,52 +275,33 @@ class DatabaseService:
                 params.append(float(min_ep_rel_vol))
 
             # Minervini Low Cheat Overlay
-            if require_low_cheat:
+            if enable_low_cheat:
                 if has_precomputed_low_cheat:
                     where_clauses.append("COALESCE(db.low_cheat_is_setup, false) = true")
+                    min_base_depth = f.get("min_base_depth")
+                    max_base_depth = f.get("max_base_depth")
+                    if min_base_depth is not None:
+                        where_clauses.append("db.low_cheat_base_depth IS NOT NULL AND db.low_cheat_base_depth >= ?")
+                        params.append(float(min_base_depth))
+                    if max_base_depth is not None:
+                        where_clauses.append("db.low_cheat_base_depth IS NOT NULL AND db.low_cheat_base_depth <= ?")
+                        params.append(float(max_base_depth))
 
-            # Parabolic Climax Overlay
+            # Parabolic Short Overlay
             if require_parabolic:
-                enable_short = f.get("enable_parabolic_short", True)
-                enable_long = f.get("enable_parabolic_long", True)
-                if not enable_short and not enable_long:
-                    enable_short = True
-                    enable_long = True
-
                 min_runup = float(f.get("min_parabolic_runup", 40.0))
                 min_ema_dist = float(f.get("min_parabolic_ema_dist", 18.0))
                 min_up_days = int(f.get("min_parabolic_up_days", 3))
 
                 if has_precomputed_setups:
-                    short_parts = []
-                    long_parts = []
-
-                    if enable_short:
-                        short_parts.append("""(
-                            COALESCE(db.parabolic_short_is_setup, false) = true OR (
-                                db.parabolic_runup_pct IS NOT NULL AND db.parabolic_runup_pct >= ? AND
-                                db.dist_ema10_pct IS NOT NULL AND db.dist_ema10_pct >= ? AND
-                                db.parabolic_up_days IS NOT NULL AND db.parabolic_up_days >= ?
-                            )
-                        )""")
-                        params.extend([min_runup, min_ema_dist, min_up_days])
-
-                    if enable_long:
-                        long_parts.append("""(
-                            COALESCE(db.parabolic_long_is_setup, false) = true OR (
-                                db.dist_ema10_pct IS NOT NULL AND db.dist_ema10_pct <= -18.0 AND
-                                db.parabolic_runup_pct IS NOT NULL AND db.parabolic_runup_pct <= -30.0
-                            )
-                        )""")
-
-                    para_conditions = []
-                    if short_parts:
-                        para_conditions.extend(short_parts)
-                    if long_parts:
-                        para_conditions.extend(long_parts)
-
-                    if para_conditions:
-                        where_clauses.append(f"({' OR '.join(para_conditions)})")
+                    where_clauses.append("""(
+                        COALESCE(db.parabolic_short_is_setup, false) = true OR (
+                            db.parabolic_runup_pct IS NOT NULL AND db.parabolic_runup_pct >= ? AND
+                            db.dist_ema10_pct IS NOT NULL AND db.dist_ema10_pct >= ? AND
+                            db.parabolic_up_days IS NOT NULL AND db.parabolic_up_days >= ?
+                        )
+                    )""")
+                    params.extend([min_runup, min_ema_dist, min_up_days])
 
             where_str = "\n                  AND ".join(where_clauses)
 
@@ -401,7 +384,15 @@ class DatabaseService:
                     db.low_cheat_pivot_price,
                     db.low_cheat_stop_loss,
                     db.low_cheat_risk_pct,
-                    db.low_cheat_base_depth
+                    db.low_cheat_base_depth,
+                    db.sma_200_20d_ago,
+                    (
+                        db.sma_50 IS NOT NULL AND db.sma_150 IS NOT NULL AND db.sma_200 IS NOT NULL 
+                        AND db.close > db.sma_50 AND db.sma_50 > db.sma_150 AND db.sma_150 > db.sma_200 
+                        AND (db.sma_200_20d_ago IS NULL OR db.sma_200 > db.sma_200_20d_ago) 
+                        AND (db.dist_from_52w_high IS NULL OR db.dist_from_52w_high <= 25.0) 
+                        AND (db.surge_off_low_pct IS NULL OR db.surge_off_low_pct >= 30.0)
+                    ) as is_stage2
                 FROM daily_bars db
                 LEFT JOIN latest_fundamentals f ON db.symbol = f.symbol AND f.rn = 1
                 JOIN symbols s ON db.symbol = s.symbol
@@ -518,7 +509,9 @@ class DatabaseService:
                     "low_cheat_pivot_price": row[59] if len(row) > 59 else None,
                     "low_cheat_stop_loss": row[60] if len(row) > 60 else None,
                     "low_cheat_risk_pct": row[61] if len(row) > 61 else None,
-                    "low_cheat_base_depth": row[62] if len(row) > 62 else None
+                    "low_cheat_base_depth": row[62] if len(row) > 62 else None,
+                    "sma_200_20d_ago": row[63] if len(row) > 63 else None,
+                    "is_stage2": bool(row[64]) if len(row) > 64 and row[64] is not None else False
                 })
 
             if not candidates:
@@ -572,9 +565,13 @@ class DatabaseService:
 
                     # Breakout filter parameters
                     min_breakout_runup = float(f.get("min_breakout_runup", 30.0))
-                    min_breakout_days = int(f.get("min_breakout_days", 8))
-                    max_breakout_days = int(f.get("max_breakout_days", 45))
+                    runup_window_weeks = float(f.get("runup_window_weeks", 12.0))
+                    min_breakout_days = int(f.get("min_breakout_days", 10))
+                    max_breakout_days = int(f.get("max_breakout_days", 40))
+                    max_breakout_drawdown = float(f.get("max_breakout_drawdown", 30.0)) if f.get("max_breakout_drawdown") is not None else None
                     enable_ema_surfing = bool(f.get("enable_ema_surfing", False))
+                    breakout_subview = str(f.get("breakout_subview", "htf"))
+                    enable_htf_mode = bool(f.get("enable_htf_mode", True) if f.get("breakout_subview") is None else (f.get("enable_htf_mode", False) or breakout_subview == "htf"))
 
                     for c in candidates:
                         symbol = c["symbol"]
@@ -609,6 +606,19 @@ class DatabaseService:
                                     if c.get("close"):
                                         c["dist_ema20_pct"] = round(((c["close"] - ema_20_val) / ema_20_val) * 100.0, 2)
 
+                            # Calculate 3-day pivot spread and close clustering dynamically if not present
+                            if len(bars) >= 3:
+                                if c.get("pivot_spread_pct") is None and cl_list[-1] > 0:
+                                    peak_h3 = max(h_list[-3:])
+                                    low_l3 = min(l_list[-3:])
+                                    c["pivot_spread_pct"] = round((peak_h3 - low_l3) / cl_list[-1] * 100.0, 2)
+                                if c.get("pivot_close_clustering_pct") is None and cl_list[-1] > 0:
+                                    peak_c3 = max(cl_list[-3:])
+                                    low_c3 = min(cl_list[-3:])
+                                    c["pivot_close_clustering_pct"] = round((peak_c3 - low_c3) / cl_list[-1] * 100.0, 2)
+                                if c.get("pivot_vol_ratio") is None and c.get("vol_50d_ma") and c["vol_50d_ma"] > 0:
+                                    c["pivot_vol_ratio"] = round(vol_list[-1] / c["vol_50d_ma"], 2)
+
                             # Breakout Evaluation
                             if require_breakout:
                                 b_res = detect_breakout(
@@ -617,15 +627,21 @@ class DatabaseService:
                                     ema_20_val=c.get("ema_20"),
                                     enable_runup=True,
                                     min_runup_pct=min_breakout_runup,
+                                    runup_window_weeks=runup_window_weeks,
                                     enable_days=True,
                                     min_consolidation_days=min_breakout_days,
                                     max_consolidation_days=max_breakout_days,
-                                    enable_ema_surfing=enable_ema_surfing
+                                    max_drawdown_pct=max_breakout_drawdown,
+                                    enable_ema_surfing=enable_ema_surfing,
+                                    enable_htf_mode=enable_htf_mode,
+                                    breakout_subview=breakout_subview
                                 )
                                 c["breakout_is_setup"] = b_res.get("breakout_is_setup", False)
                                 c["breakout_runup_pct"] = b_res.get("breakout_runup_pct", 0.0)
+                                c["breakout_drawdown_pct"] = b_res.get("breakout_drawdown_pct", 0.0)
                                 c["breakout_consolidation_days"] = b_res.get("breakout_consolidation_days", 0)
                                 c["breakout_peak_high"] = b_res.get("breakout_peak_high", 0.0)
+                                c["is_htf"] = b_res.get("is_htf", False)
                                 c["ema_surfing"] = b_res.get("ema_surfing", False)
 
                             # Power Play Evaluation
@@ -699,7 +715,7 @@ class DatabaseService:
 
             # Ensure default boolean and metrics for all candidates
             for c in candidates:
-                c.setdefault("pp_is_setup", bool((c.get("pp_runup_pct") or 0) >= 100.0 and (c.get("pp_drawdown_pct") or 100) <= 25.0 and (c.get("pp_days_since_peak") or 0) >= 5))
+                c.setdefault("pp_is_setup", bool((c.get("pp_runup_pct") or 0) >= 100.0 and (c.get("pp_drawdown_pct") or 100) <= 25.0 and (c.get("pp_days_since_peak") or 0) >= 10))
                 c.setdefault("pp_is_trigger", False)
                 c.setdefault("pp_pivot_price", 0.0)
                 c.setdefault("pp_runup_pct", 0.0)
@@ -707,9 +723,11 @@ class DatabaseService:
                 c.setdefault("pp_days_since_peak", 0)
                 c.setdefault("breakout_is_setup", False)
                 c.setdefault("breakout_runup_pct", 0.0)
+                c.setdefault("breakout_drawdown_pct", 0.0)
                 c.setdefault("breakout_consolidation_days", 0)
                 c.setdefault("breakout_pivot_dist_pct", 0.0)
                 c.setdefault("breakout_peak_high", 0.0)
+                c.setdefault("is_htf", False)
                 c.setdefault("ema_surfing", False)
                 c.setdefault("vcp_is_setup", False)
                 c.setdefault("parabolic_short_is_setup", False)
@@ -726,7 +744,7 @@ class DatabaseService:
                 if require_power_play:
                     min_pp_runup = float(f.get("min_pp_runup", 100.0))
                     max_pp_drawdown = float(f.get("max_pp_drawdown", 25.0))
-                    min_pp_days = int(f.get("min_pp_days_since_peak", 5))
+                    min_pp_days = int(f.get("min_pp_days_since_peak", 10))
                     enable_pp_vol = f.get("enable_pp_vol_ratio", False)
                     max_pp_vol = float(f.get("max_pp_vol_ratio", 0.5))
 
@@ -745,23 +763,14 @@ class DatabaseService:
                     min_runup = float(f.get("min_parabolic_runup", 40.0))
                     min_ema_dist = float(f.get("min_parabolic_ema_dist", 18.0))
                     min_up_days = int(f.get("min_parabolic_up_days", 3))
-                    enable_short = f.get("enable_parabolic_short", True)
-                    enable_long = f.get("enable_parabolic_long", True)
-                    if not enable_short and not enable_long:
-                        enable_short = True
-                        enable_long = True
 
                     candidates = [
                         c for c in candidates
-                        if (enable_short and (c.get("parabolic_short_is_setup") or (
+                        if (c.get("parabolic_short_is_setup") or (
                             c.get("parabolic_runup_pct") is not None and c["parabolic_runup_pct"] >= min_runup and
                             c.get("dist_ema10_pct") is not None and c["dist_ema10_pct"] >= min_ema_dist and
                             c.get("parabolic_up_days") is not None and c["parabolic_up_days"] >= min_up_days
-                        )))
-                        or (enable_long and (c.get("parabolic_long_is_setup") or (
-                            c.get("dist_ema10_pct") is not None and c["dist_ema10_pct"] <= -18.0 and
-                            c.get("parabolic_runup_pct") is not None and c["parabolic_runup_pct"] <= -30.0
-                        )))
+                        ))
                     ]
 
             # If low cheat was not precomputed on this date, filter by dynamically computed low_cheat_is_setup
@@ -772,9 +781,21 @@ class DatabaseService:
             if require_breakout:
                 candidates = [c for c in candidates if c.get("breakout_is_setup")]
 
-            # 3c. Qullamaggie Momentum 3-Timeframe Deduplicated Screening
+            # If pivot tightness was not precomputed on this date, apply in-memory filter
+            if require_pivot_tightness and not has_precomputed_setups:
+                max_pivot_spread = float(f.get("max_pivot_spread", 8.0))
+                max_pivot_clustering = float(f.get("max_pivot_clustering", 3.0))
+                max_pivot_vol_ratio = float(f.get("max_pivot_vol_ratio", 0.8))
+                candidates = [
+                    c for c in candidates
+                    if (c.get("pivot_spread_pct") is not None and c["pivot_spread_pct"] <= max_pivot_spread)
+                    and (c.get("pivot_close_clustering_pct") is not None and c["pivot_close_clustering_pct"] <= max_pivot_clustering)
+                    and (c.get("pivot_vol_ratio") is None or c["pivot_vol_ratio"] <= max_pivot_vol_ratio)
+                ]
+
+            # 3c. Qullamaggie Momentum / My Universe Screening
             if require_momentum:
-                qm_top_n = int(f.get("qm_top_n", 75))
+                qm_top_n = int(f.get("qm_top_n", 100))
                 qm_subview = str(f.get("qm_subview", "all")).lower()
 
                 # Scan 1: 1-Month Gainers
@@ -795,10 +816,10 @@ class DatabaseService:
                 top_6m = c_6m[:qm_top_n]
                 top_6m_map = {c["symbol"]: (rank, c) for rank, c in enumerate(top_6m, 1)}
 
-                # Deduplicate and combine into unified focus list
-                merged = {}
-                all_syms = set(top_1m_map.keys()) | set(top_3m_map.keys()) | set(top_6m_map.keys())
-                for sym in all_syms:
+                # Deduplicate and combine gainers into unified focus list
+                merged_gainers = {}
+                all_gainers_syms = set(top_1m_map.keys()) | set(top_3m_map.keys()) | set(top_6m_map.keys())
+                for sym in all_gainers_syms:
                     c = (top_1m_map.get(sym) or top_3m_map.get(sym) or top_6m_map.get(sym))[1]
                     timeframes = []
                     ranks = {}
@@ -821,20 +842,36 @@ class DatabaseService:
                     c["qm_timeframes"] = timeframes
                     c["qm_ranks"] = ranks
                     c["ma_aligned"] = ma_aligned
-                    merged[sym] = c
+                    merged_gainers[sym] = c
+
+                # Stage 2: all stocks in stage template + match base filter conditions (not capped by qm_top_n)
+                stage2_candidates = [c for c in candidates if c.get("is_stage2")]
+                stage2_map = {}
+                for c in stage2_candidates:
+                    sym = c["symbol"]
+                    if sym in merged_gainers:
+                        stage2_map[sym] = merged_gainers[sym]
+                    else:
+                        ema_10 = c.get("ema_10")
+                        ema_20 = c.get("ema_20")
+                        sma_50 = c.get("sma_50")
+                        close = c.get("close")
+                        c["ma_aligned"] = bool(ema_10 and ema_20 and sma_50 and close and close > ema_10 and ema_10 > ema_20 and ema_20 > sma_50)
+                        c["qm_timeframes"] = []
+                        c["qm_ranks"] = {}
+                        stage2_map[sym] = c
 
                 if qm_subview == '1m':
-                    candidates = [merged[sym] for sym in top_1m_map.keys() if sym in merged]
+                    candidates = [merged_gainers[sym] for sym in top_1m_map.keys() if sym in merged_gainers]
                     candidates.sort(key=lambda x: x.get("ret_1m") or 0, reverse=True)
                 elif qm_subview == '3m':
-                    candidates = [merged[sym] for sym in top_3m_map.keys() if sym in merged]
+                    candidates = [merged_gainers[sym] for sym in top_3m_map.keys() if sym in merged_gainers]
                     candidates.sort(key=lambda x: x.get("ret_3m") or 0, reverse=True)
                 elif qm_subview == '6m':
-                    candidates = [merged[sym] for sym in top_6m_map.keys() if sym in merged]
+                    candidates = [merged_gainers[sym] for sym in top_6m_map.keys() if sym in merged_gainers]
                     candidates.sort(key=lambda x: x.get("ret_6m") or 0, reverse=True)
-                else:
-                    # 'all' Combined deduped: sorted by multi-timeframe overlap count desc, then max gain desc
-                    candidates = list(merged.values())
+                elif qm_subview in ('gainers', 'all_gainers'):
+                    candidates = list(merged_gainers.values())
                     candidates.sort(
                         key=lambda x: (
                             len(x.get("qm_timeframes", [])),
@@ -842,6 +879,25 @@ class DatabaseService:
                         ),
                         reverse=True
                     )
+                elif qm_subview == 'stage2':
+                    candidates = list(stage2_map.values())
+                    candidates.sort(key=lambda x: x.get("rs_rank") or 0, reverse=True)
+                else:
+                    # 'all': Union of Stage 2 candidates and All Gainers (1M/3M/6M)
+                    combined_map = dict(stage2_map)
+                    combined_map.update(merged_gainers)
+                    candidates = list(combined_map.values())
+                    candidates.sort(
+                        key=lambda x: (
+                            (1 if x.get("is_stage2") else 0) + len(x.get("qm_timeframes", [])),
+                            x.get("rs_rank") or 0
+                        ),
+                        reverse=True
+                    )
+
+                # If enforce_stage2 is explicitly toggled by user in filters (and not already stage2 view)
+                if f.get("enforce_stage2") and qm_subview != 'stage2':
+                    candidates = [c for c in candidates if c.get("is_stage2")]
             else:
                 for c in candidates:
                     ema_10 = c.get("ema_10")

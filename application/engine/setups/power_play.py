@@ -7,14 +7,14 @@ def detect_power_play(
     dates: List[Any],
     min_runup_pct: float = 100.0,
     max_drawdown_pct: float = 25.0,
-    min_consolidation_days: int = 5,
-    max_consolidation_days: int = 35,
+    min_consolidation_days: int = 10,
+    max_consolidation_days: int = 30,
     **kwargs
 ) -> dict:
     """
     Detects Qullamaggie / Minervini Power Play (High Tight Flag) pattern:
     1. Explosive price move of >= 100% (or min_runup_pct) in the prior 40 trading days.
-    2. Orderly tight consolidation correcting <= 25% (or max_drawdown_pct) over 1 to 7 weeks (5 to 35 trading days).
+    2. Orderly tight consolidation correcting <= 25% (or max_drawdown_pct) over 2 to 6 weeks (10 to 30 trading days).
     3. Identifies both stocks consolidating in base (waiting for breakout) and stocks breaking out today (trigger day).
     """
     n = len(highs)

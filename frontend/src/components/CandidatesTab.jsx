@@ -117,6 +117,7 @@ function FilterControl({ filterKey, filterDef, value, onChange }) {
 const SETUP_COLORS = {
   power_play: '#38bdf8',
   breakout: '#f59e0b',
+  breakouts: '#f59e0b',
   episodic_pivot: '#ec4899',
   momentum: '#a855f7',
   parabolic: '#ef4444',
@@ -136,7 +137,7 @@ export default function CandidatesTab({
   selectedDate = 'latest',
   setSelectedDate = () => { },
   setupsConfig = { setups: [], filters: {} },
-  activeSetupKey = 'power_play',
+  activeSetupKey = 'breakouts',
   onSelectSetup = () => { },
   activeFilters = {},
   onFilterChange = () => { },
@@ -151,6 +152,90 @@ export default function CandidatesTab({
     ? latestDbDate
     : new Date(Date.now() + 86400000 * 7).toLocaleDateString('en-CA');
 
+  const curDateStr = (selectedDate && selectedDate !== 'latest') ? selectedDate : latestDbDate;
+
+  // Helper to check if a date YYYY-MM-DD falls on Saturday (6) or Sunday (0)
+  const isWeekend = React.useCallback((dateStr) => {
+    if (!dateStr) return false;
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    const day = dt.getDay();
+    return day === 0 || day === 6;
+  }, []);
+
+  // Helper to step to previous weekday (skips Saturday and Sunday)
+  const getPrevWeekday = React.useCallback((dateStr) => {
+    if (!dateStr) return null;
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    const dayOfWeek = dt.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+    // Mon -> Fri (sub 3), Sun -> Fri (sub 2), Sat -> Fri (sub 1), others sub 1
+    const daysBack = dayOfWeek === 1 ? 3 : dayOfWeek === 0 ? 2 : dayOfWeek === 6 ? 1 : 1;
+    dt.setDate(dt.getDate() - daysBack);
+    const year = dt.getFullYear();
+    const month = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }, []);
+
+  // Helper to step to next weekday (skips Saturday and Sunday)
+  const getNextWeekday = React.useCallback((dateStr) => {
+    if (!dateStr) return null;
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    const dayOfWeek = dt.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+    // Fri -> Mon (add 3), Sat -> Mon (add 2), Sun -> Mon (add 1), others add 1
+    const daysForward = dayOfWeek === 5 ? 3 : dayOfWeek === 6 ? 2 : dayOfWeek === 0 ? 1 : 1;
+    dt.setDate(dt.getDate() + daysForward);
+    const year = dt.getFullYear();
+    const month = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }, []);
+
+  const prevDate = React.useMemo(() => {
+    if (!curDateStr) return null;
+
+    // 1. Try to find the closest preceding trading date from DB that is not a weekend
+    if (tradingDates && tradingDates.length > 0) {
+      const prevTrading = tradingDates.find(d => d < curDateStr && !isWeekend(d));
+      if (prevTrading) return prevTrading;
+    }
+
+    // 2. Fallback: previous weekday (skips Saturday and Sunday)
+    return getPrevWeekday(curDateStr);
+  }, [curDateStr, tradingDates, isWeekend, getPrevWeekday]);
+
+  const nextDate = React.useMemo(() => {
+    if (!curDateStr) return null;
+
+    // 1. Try to find the closest next trading date from DB that is not a weekend
+    if (tradingDates && tradingDates.length > 0) {
+      const newerTrading = tradingDates.filter(d => d > curDateStr && !isWeekend(d));
+      if (newerTrading.length > 0) {
+        return newerTrading[newerTrading.length - 1];
+      }
+    }
+
+    // 2. Fallback: next weekday (skips Saturday and Sunday)
+    return getNextWeekday(curDateStr);
+  }, [curDateStr, tradingDates, isWeekend, getNextWeekday]);
+
+  const canGoPrev = Boolean(prevDate);
+  const canGoNext = Boolean(nextDate && (!maxSelectableDate || nextDate <= maxSelectableDate));
+
+  const handlePrevDay = () => {
+    if (canGoPrev && prevDate) {
+      setSelectedDate(prevDate);
+    }
+  };
+
+  const handleNextDay = () => {
+    if (canGoNext && nextDate) {
+      setSelectedDate(nextDate);
+    }
+  };
+
   // Stock Browse Mode (Chart Flip) states
   const [browseIndex, setBrowseIndex] = React.useState(0);
   const [browsePrices, setBrowsePrices] = React.useState([]);
@@ -158,13 +243,50 @@ export default function CandidatesTab({
   const [targetWatchlistId, setTargetWatchlistId] = React.useState(null);
   const [loadingBrowsePrices, setLoadingBrowsePrices] = React.useState(false);
   const [showFiltersSection, setShowFiltersSection] = React.useState(false);
+  const [selectedSector, setSelectedSector] = React.useState('ALL');
 
   const selectedItemRef = React.useRef(null);
   const chartComponentRef = React.useRef(null);
 
   const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
-  const currentCandidate = filteredCandidates[browseIndex] || null;
+  // Sector Breakdown and Filtering
+  const sectorCounts = React.useMemo(() => {
+    const counts = {};
+    (filteredCandidates || []).forEach(c => {
+      const s = c.sector && c.sector.trim() !== '' ? c.sector.trim() : 'Unclassified';
+      counts[s] = (counts[s] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .map(([sector, count]) => ({ sector, count }))
+      .sort((a, b) => b.count - a.count || a.sector.localeCompare(b.sector));
+  }, [filteredCandidates]);
+
+  const displayedCandidates = React.useMemo(() => {
+    if (!selectedSector || selectedSector === 'ALL') {
+      return filteredCandidates;
+    }
+    return filteredCandidates.filter(c => {
+      const s = c.sector && c.sector.trim() !== '' ? c.sector.trim() : 'Unclassified';
+      return s === selectedSector;
+    });
+  }, [filteredCandidates, selectedSector]);
+
+  // Reset selected sector if no longer present in candidates list
+  React.useEffect(() => {
+    if (selectedSector !== 'ALL' && !sectorCounts.some(sc => sc.sector === selectedSector)) {
+      setSelectedSector('ALL');
+    }
+  }, [sectorCounts, selectedSector]);
+
+  // Keep browseIndex within bounds when list changes
+  React.useEffect(() => {
+    if (browseIndex >= displayedCandidates.length && displayedCandidates.length > 0) {
+      setBrowseIndex(0);
+    }
+  }, [displayedCandidates.length, browseIndex]);
+
+  const currentCandidate = displayedCandidates[browseIndex] || null;
 
   const currentSetup = React.useMemo(() => {
     return (setupsConfig?.setups || []).find(s => s.id === activeSetupKey) || null;
@@ -175,7 +297,7 @@ export default function CandidatesTab({
     if (currentCandidate?.pp_is_setup) return 'Power Play';
     if (currentCandidate?.breakout_is_setup) return 'QM Breakout';
     if (currentCandidate?.ep_is_setup) return 'Episodic Pivot';
-    if (currentCandidate?.parabolic_short_is_setup || currentCandidate?.parabolic_long_is_setup) return 'Parabolic';
+    if (currentCandidate?.parabolic_short_is_setup) return 'Parabolic Short';
     if (currentCandidate?.vcp_is_setup) return 'VCP';
     if (currentCandidate?.low_cheat_is_setup) return 'Low Cheat';
     if (currentCandidate?.ipo_days_count !== undefined && currentCandidate?.ipo_days_count <= 350) return 'IPO Base';
@@ -230,7 +352,7 @@ export default function CandidatesTab({
         inline: 'nearest'
       });
     }
-  }, [browseIndex, filteredCandidates.length]);
+  }, [browseIndex, displayedCandidates.length]);
 
   React.useEffect(() => {
     if (watchlists && watchlists.length > 0 && !targetWatchlistId) {
@@ -281,7 +403,7 @@ export default function CandidatesTab({
 
   // Keyboard Arrow Navigation Listener for Browse Mode (Up/Down or Left/Right)
   React.useEffect(() => {
-    if (filteredCandidates.length === 0) return;
+    if (displayedCandidates.length === 0) return;
     const handleKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
       if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
@@ -289,12 +411,12 @@ export default function CandidatesTab({
         setBrowseIndex((prev) => Math.max(prev - 1, 0));
       } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
         e.preventDefault();
-        setBrowseIndex((prev) => Math.min(prev + 1, filteredCandidates.length - 1));
+        setBrowseIndex((prev) => Math.min(prev + 1, displayedCandidates.length - 1));
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [filteredCandidates.length]);
+  }, [displayedCandidates.length]);
 
   const [activeWatchlistSymbols, setActiveWatchlistSymbols] = React.useState(new Set());
 
@@ -353,11 +475,11 @@ export default function CandidatesTab({
   };
 
   const handleExportTradingView = () => {
-    if (filteredCandidates.length === 0) {
+    if (displayedCandidates.length === 0) {
       alert("No candidates to export!");
       return;
     }
-    const content = filteredCandidates.map(c => {
+    const content = displayedCandidates.map(c => {
       const exchange = c.exchange ? `${c.exchange}:` : '';
       return `${exchange}${c.symbol}`;
     }).join('\n');
@@ -411,26 +533,85 @@ export default function CandidatesTab({
 
           {/* Right Action Controls: Standalone Date Picker & Rules/Sliders Toggle */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            {/* HTML5 Graphical Date Picker Input */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {/* Date Navigation & Picker */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={handlePrevDay}
+                disabled={!canGoPrev}
+                title={prevDate ? `Previous Day (${prevDate})` : 'No earlier trading date'}
+                aria-label="Previous Day"
+                style={{
+                  width: '28px',
+                  height: '28px',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'rgba(30, 41, 59, 0.9)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '6px',
+                  color: canGoPrev ? '#f8fafc' : 'rgba(255, 255, 255, 0.3)',
+                  cursor: canGoPrev ? 'pointer' : 'not-allowed',
+                  opacity: canGoPrev ? 1 : 0.45,
+                  flexShrink: 0,
+                  lineHeight: 1
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 18 9 12 15 6" />
+                </svg>
+              </button>
+
               <input
                 type="date"
-                value={selectedDate || latestDbDate}
+                value={curDateStr}
                 onChange={(e) => setSelectedDate(e.target.value)}
                 max={maxSelectableDate}
+                title="Select As-of Date"
                 style={{
                   background: 'rgba(30, 41, 59, 0.9)',
                   color: '#f8fafc',
                   border: '1px solid rgba(255, 255, 255, 0.2)',
                   borderRadius: '6px',
-                  padding: '5px 10px',
+                  padding: '5px 8px',
+                  height: '28px',
                   fontSize: '12px',
                   fontWeight: '600',
                   cursor: 'pointer',
                   outline: 'none',
-                  colorScheme: 'dark'
+                  colorScheme: 'dark',
+                  boxSizing: 'border-box'
                 }}
               />
+
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={handleNextDay}
+                disabled={!canGoNext}
+                title={nextDate ? `Next Day (${nextDate})` : 'No later trading date'}
+                aria-label="Next Day"
+                style={{
+                  width: '28px',
+                  height: '28px',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'rgba(30, 41, 59, 0.9)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '6px',
+                  color: canGoNext ? '#f8fafc' : 'rgba(255, 255, 255, 0.3)',
+                  cursor: canGoNext ? 'pointer' : 'not-allowed',
+                  opacity: canGoNext ? 1 : 0.45,
+                  flexShrink: 0,
+                  lineHeight: 1
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </button>
             </div>
 
             <button
@@ -475,8 +656,8 @@ export default function CandidatesTab({
           </div>
         </div>
 
-        {/* Momentum Sub-Bar (Subviews & Top N Selector) */}
-        {activeSetupKey === 'momentum' && showFiltersSection && (
+        {/* Dynamic Sub-Bar for Any Setup defining sub_setups (e.g., Breakouts, Momentum) */}
+        {currentSetup?.sub_setups && currentSetup.sub_setups.length > 0 && (
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -484,65 +665,85 @@ export default function CandidatesTab({
             gap: '12px',
             flexWrap: 'wrap',
             padding: '10px 14px',
-            background: 'rgba(168, 85, 247, 0.08)',
-            border: '1px solid rgba(168, 85, 247, 0.25)',
+            background: activeSetupKey === 'momentum' ? 'rgba(168, 85, 247, 0.08)' : 'rgba(56, 189, 248, 0.08)',
+            border: activeSetupKey === 'momentum' ? '1px solid rgba(168, 85, 247, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)',
             borderRadius: '8px',
             marginTop: '2px'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '12px', fontWeight: '700', color: '#c084fc', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                🔍 Momentum View:
+              <span style={{
+                fontSize: '12px',
+                fontWeight: '700',
+                color: activeSetupKey === 'momentum' ? '#c084fc' : '#38bdf8',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                {currentSetup.sub_title || `${currentSetup.name} Mode:`}
               </span>
-              {[
-                { id: 'all', label: `🎯 All Combined (~${activeFilters.qm_top_n || 75} Each, Deduped)` },
-                { id: '1m', label: `⚡ 1-Month Gainers (Top ${activeFilters.qm_top_n || 75})` },
-                { id: '3m', label: `🚀 3-Month Gainers (Top ${activeFilters.qm_top_n || 75})` },
-                { id: '6m', label: `🌊 6-Month Gainers (Top ${activeFilters.qm_top_n || 75})` }
-              ].map(tab => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => onFilterChange('qm_subview', tab.id)}
-                  style={{
-                    padding: '4px 12px',
-                    fontSize: '11.5px',
-                    fontWeight: (activeFilters.qm_subview || 'all') === tab.id ? '700' : '500',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    border: (activeFilters.qm_subview || 'all') === tab.id ? '1px solid #a855f7' : '1px solid rgba(255, 255, 255, 0.1)',
-                    background: (activeFilters.qm_subview || 'all') === tab.id ? 'rgba(168, 85, 247, 0.3)' : 'rgba(15, 23, 42, 0.4)',
-                    color: (activeFilters.qm_subview || 'all') === tab.id ? '#ffffff' : 'var(--text-secondary)'
-                  }}
-                >
-                  {tab.label}
-                </button>
-              ))}
+              {currentSetup.sub_setups.map(sub => {
+                const subFilterKeys = Object.keys(sub.filters || {});
+                const isActive = subFilterKeys.length > 0
+                  ? (activeFilters.breakout_subview === sub.id) ||
+                    (activeFilters.qm_subview === sub.id) ||
+                    subFilterKeys.every(k => activeFilters[k] === sub.filters[k])
+                  : false;
+
+                const activeThemeColor = activeSetupKey === 'momentum' ? '#a855f7' : '#38bdf8';
+                const activeBg = activeSetupKey === 'momentum' ? 'rgba(168, 85, 247, 0.3)' : 'rgba(56, 189, 248, 0.3)';
+
+                return (
+                  <button
+                    key={sub.id}
+                    type="button"
+                    onClick={() => {
+                      if (sub.filters) {
+                        onFilterChange(sub.filters);
+                      }
+                    }}
+                    style={{
+                      padding: '4px 12px',
+                      fontSize: '11.5px',
+                      fontWeight: isActive ? '700' : '500',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      border: isActive ? `1px solid ${activeThemeColor}` : '1px solid rgba(255, 255, 255, 0.1)',
+                      background: isActive ? activeBg : 'rgba(15, 23, 42, 0.4)',
+                      color: isActive ? '#ffffff' : 'var(--text-secondary)'
+                    }}
+                  >
+                    {sub.label || sub.name}
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Top N limit selector */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: '600' }}>Top per scan:</span>
-              {[50, 75, 100].map(n => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => onFilterChange('qm_top_n', n)}
-                  style={{
-                    padding: '3px 9px',
-                    fontSize: '11px',
-                    fontWeight: (activeFilters.qm_top_n || 75) === n ? '700' : '500',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    border: (activeFilters.qm_top_n || 75) === n ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.1)',
-                    background: (activeFilters.qm_top_n || 75) === n ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
-                    color: (activeFilters.qm_top_n || 75) === n ? '#38bdf8' : 'var(--text-secondary)'
-                  }}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
+            {/* Top N limit selector for Momentum / My Universe (applied to Gainers) */}
+            {activeSetupKey === 'momentum' && activeFilters.qm_subview !== 'stage2' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: '600' }} title="Number of top gainers extracted from each momentum timeframe">Top per scan:</span>
+                {[50, 75, 100, 125, 150].map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => onFilterChange('qm_top_n', n)}
+                    style={{
+                      padding: '3px 9px',
+                      fontSize: '11px',
+                      fontWeight: (activeFilters.qm_top_n || 100) === n ? '700' : '500',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      border: (activeFilters.qm_top_n || 100) === n ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.1)',
+                      background: (activeFilters.qm_top_n || 100) === n ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
+                      color: (activeFilters.qm_top_n || 100) === n ? '#38bdf8' : 'var(--text-secondary)'
+                    }}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -552,6 +753,7 @@ export default function CandidatesTab({
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
               {(currentSetup?.visible_filters || Object.keys(setupsConfig?.filters || {})).map(fKey => {
                 if (activeSetupKey === 'momentum' && (fKey === 'qm_subview' || fKey === 'qm_top_n')) return null;
+                if (activeSetupKey === 'breakouts' && (fKey === 'breakout_subview' || fKey === 'enable_htf_mode')) return null;
                 const fDef = setupsConfig?.filters?.[fKey];
                 if (!fDef) return null;
                 return (
@@ -573,6 +775,13 @@ export default function CandidatesTab({
       {filteredCandidates.length === 0 ? (
         <div className="glass-card" style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-secondary)', marginTop: '20px' }}>
           {loadingCandidates ? 'Loading candidates...' : 'No candidate stocks match your current active filters.'}
+        </div>
+      ) : displayedCandidates.length === 0 ? (
+        <div className="glass-card" style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-secondary)', marginTop: '20px' }}>
+          <p>No candidates found in sector <strong>"{selectedSector}"</strong>.</p>
+          <button className="btn btn-secondary btn-sm" onClick={() => setSelectedSector('ALL')} style={{ marginTop: '10px' }}>
+            Show All Sectors ({filteredCandidates.length})
+          </button>
         </div>
       ) : (
         <div className="browse-split-container">
@@ -751,114 +960,11 @@ export default function CandidatesTab({
                       Earning: {loadingBrowsePrices ? 'Checking...' : 'Unscheduled'}
                     </span>
                   )}
-
-                  {/* Minervini VCP Footprint Badge */}
-                  {browseDetail?.vcp_footprint?.footprint_str ? (
-                    <span
-                      className="pill pill-primary"
-                      style={{
-                        fontSize: '11px',
-                        padding: '3px 8px',
-                        background: 'rgba(56, 189, 248, 0.18)',
-                        color: '#38bdf8',
-                        border: '1px solid rgba(56, 189, 248, 0.35)',
-                        fontWeight: 700,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}
-                      title="Minervini Volatility Contraction Pattern (VCP) Footprint: Base Weeks, Contraction Depths %, and Troughs Count"
-                    >
-                      🌀 {browseDetail.vcp_footprint.footprint_str}
-                    </span>
-                  ) : currentCandidate?.vcp_depths && currentCandidate?.vcp_troughs ? (
-                    <span
-                      className="pill pill-primary"
-                      style={{
-                        fontSize: '11px',
-                        padding: '3px 8px',
-                        background: 'rgba(56, 189, 248, 0.18)',
-                        color: '#38bdf8',
-                        border: '1px solid rgba(56, 189, 248, 0.35)',
-                        fontWeight: 700,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}
-                      title="Minervini Volatility Contraction Pattern (VCP) Footprint"
-                    >
-                      🌀 {currentCandidate.vcp_depths.split(',').map(d => Math.round(parseFloat(d))).join('/')} {currentCandidate.vcp_troughs}T
-                    </span>
-                  ) : null}
-
-                  {/* Minervini Low Cheat Badge */}
-                  {(currentCandidate?.low_cheat_is_setup || browseDetail?.low_cheat_footprint?.low_cheat_is_setup) && (
-                    <span
-                      className="pill"
-                      style={{
-                        fontSize: '11px',
-                        padding: '3px 8px',
-                        background: 'rgba(249, 115, 22, 0.18)',
-                        color: '#f97316',
-                        border: '1px solid rgba(249, 115, 22, 0.35)',
-                        fontWeight: 700,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}
-                      title="Minervini Low Cheat: Early Base Reversal Pivot"
-                    >
-                      🏹 Low Cheat {currentCandidate?.low_cheat_pivot_price ? `$${currentCandidate.low_cheat_pivot_price}` : (browseDetail?.low_cheat_footprint?.low_cheat_pivot_price ? `$${browseDetail.low_cheat_footprint.low_cheat_pivot_price}` : '')}
-                      {currentCandidate?.low_cheat_risk_pct ? ` (Risk ${currentCandidate.low_cheat_risk_pct}%)` : (browseDetail?.low_cheat_footprint?.low_cheat_risk_pct ? ` (Risk ${browseDetail.low_cheat_footprint.low_cheat_risk_pct}%)` : '')}
-                    </span>
-                  )}
-
-                  {/* IPO Base Badge */}
-                  {currentCandidate?.ipo_days_count !== null && currentCandidate?.ipo_days_count !== undefined && currentCandidate?.ipo_days_count <= 350 && (
-                    <span
-                      className="pill"
-                      style={{
-                        fontSize: '11px',
-                        padding: '3px 8px',
-                        background: 'rgba(6, 182, 212, 0.18)',
-                        color: '#06b6d4',
-                        border: '1px solid rgba(6, 182, 212, 0.35)',
-                        fontWeight: 700,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}
-                      title={`IPO Base: ${currentCandidate.ipo_days_count} trading days since IPO${currentCandidate.ipo_base_depth !== null && currentCandidate.ipo_base_depth !== undefined ? ` • Base Depth: ${Math.round(currentCandidate.ipo_base_depth)}%` : ''}`}
-                    >
-                      🌱 IPO {currentCandidate.ipo_days_count}d{currentCandidate.ipo_base_depth !== null && currentCandidate.ipo_base_depth !== undefined ? ` (${Math.round(currentCandidate.ipo_base_depth)}%)` : ''}
-                    </span>
-                  )}
-
-                  {/* Power Play Badge */}
-                  {currentCandidate?.pp_is_setup && (
-                    <span
-                      className="pill"
-                      style={{
-                        fontSize: '11px',
-                        padding: '3px 8px',
-                        background: currentCandidate?.pp_is_trigger ? 'rgba(239, 68, 68, 0.22)' : 'rgba(245, 158, 11, 0.18)',
-                        color: currentCandidate?.pp_is_trigger ? '#f87171' : '#fbbf24',
-                        border: currentCandidate?.pp_is_trigger ? '1px solid rgba(239, 68, 68, 0.45)' : '1px solid rgba(245, 158, 11, 0.35)',
-                        fontWeight: 700,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}
-                      title={`Power Play (High Tight Flag): ${currentCandidate?.pp_runup_pct}% prior runup, ${currentCandidate?.pp_drawdown_pct}% base pullback over ${currentCandidate?.pp_days_since_peak}d${currentCandidate?.pp_is_trigger ? ' • BREAKOUT TRIGGER TODAY!' : ' • In Base'}`}
-                    >
-                      {currentCandidate?.pp_is_trigger ? '🚀 PP Breakout' : `🚀 PP Base ${currentCandidate?.pp_days_since_peak}d`} (+{Math.round(currentCandidate?.pp_runup_pct || 0)}%)
-                    </span>
-                  )}
                 </div>
 
                 {/* Stock Position Count on Far Bottom Right */}
                 <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap', marginLeft: 'auto' }}>
-                  Stock {browseIndex + 1} of {filteredCandidates.length}
+                  Stock {browseIndex + 1} of {displayedCandidates.length}
                 </span>
               </div>
             </div>
@@ -880,14 +986,14 @@ export default function CandidatesTab({
 
           {/* Candidate List Ribbon (Right Column) */}
           <div className="glass-card browse-side-col">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexShrink: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexShrink: 0 }}>
               <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent-color)', textTransform: 'uppercase', margin: 0 }}>
-                Filtered Candidates ({filteredCandidates.length})
+                Candidates ({displayedCandidates.length}{selectedSector !== 'ALL' ? ` / ${filteredCandidates.length}` : ''})
               </h4>
               <button
                 className="btn btn-secondary btn-sm"
                 onClick={handleExportTradingView}
-                disabled={filteredCandidates.length === 0}
+                disabled={displayedCandidates.length === 0}
                 title="Export to TradingView watchlist (.txt)"
                 style={{
                   display: 'inline-flex',
@@ -897,8 +1003,8 @@ export default function CandidatesTab({
                   height: '26px',
                   padding: 0,
                   borderRadius: '6px',
-                  cursor: filteredCandidates.length > 0 ? 'pointer' : 'not-allowed',
-                  opacity: filteredCandidates.length > 0 ? 1 : 0.4,
+                  cursor: displayedCandidates.length > 0 ? 'pointer' : 'not-allowed',
+                  opacity: displayedCandidates.length > 0 ? 1 : 0.4,
                   flexShrink: 0
                 }}
               >
@@ -909,6 +1015,38 @@ export default function CandidatesTab({
                 </svg>
               </button>
             </div>
+
+            {/* Sector Filter Dropdown */}
+            <div style={{ marginBottom: '8px', flexShrink: 0 }}>
+              <select
+                value={selectedSector}
+                onChange={(e) => {
+                  setSelectedSector(e.target.value);
+                  setBrowseIndex(0);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '5px 8px',
+                  background: 'rgba(30, 41, 59, 0.85)',
+                  color: selectedSector !== 'ALL' ? '#38bdf8' : 'var(--text-primary)',
+                  border: selectedSector !== 'ALL' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  fontSize: '11.5px',
+                  fontWeight: selectedSector !== 'ALL' ? '600' : '400',
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+                title="Filter candidates by sector"
+              >
+                <option value="ALL">All Sectors ({filteredCandidates.length})</option>
+                {sectorCounts.map(({ sector, count }) => (
+                  <option key={sector} value={sector}>
+                    {sector} ({count})
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div
               style={{
                 flex: 1,
@@ -920,7 +1058,7 @@ export default function CandidatesTab({
                 paddingRight: '2px'
               }}
             >
-              {filteredCandidates.map((c, idx) => {
+              {displayedCandidates.map((c, idx) => {
                 const isSelected = idx === browseIndex;
                 const isItemSaved = activeWatchlistSymbols.has(c.symbol.toUpperCase());
                 return (
