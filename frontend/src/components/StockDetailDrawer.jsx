@@ -56,6 +56,34 @@ export default function StockDetailDrawer({
     }
   }, [earningsDateStr]);
 
+  const isEtf = React.useMemo(() => {
+    return stockDetail?.metadata?.asset_type === 'ETF' || selectedStock?.asset_type === 'ETF';
+  }, [stockDetail, selectedStock]);
+
+  const instInfo = React.useMemo(() => {
+    if (isEtf) return null;
+    const summary = stockDetail?.sponsorship_summary;
+    const latestFund = stockDetail?.fundamentals?.[0];
+    const holdersCount = summary?.holders_count ?? latestFund?.inst_holders_count ?? selectedStock?.inst_holders_count;
+    const qoqChange = summary?.holders_qoq_change ?? latestFund?.inst_holders_qoq_change ?? selectedStock?.inst_holders_qoq_change;
+    const growthPct = summary?.holders_growth_pct ?? (
+      holdersCount && qoqChange !== null && qoqChange !== undefined && (holdersCount - qoqChange > 0)
+        ? ((qoqChange * 100) / (holdersCount - qoqChange))
+        : null
+    );
+    const streak = summary?.sponsorship_streak ?? latestFund?.sponsorship_streak ?? selectedStock?.sponsorship_streak ?? 0;
+    const ownershipPct = summary?.ownership_pct ?? latestFund?.inst_ownership_pct ?? selectedStock?.inst_ownership_pct;
+
+    if (holdersCount === null || holdersCount === undefined) return null;
+    return {
+      holdersCount,
+      qoqChange,
+      growthPct,
+      streak,
+      ownershipPct
+    };
+  }, [stockDetail, selectedStock, isEtf]);
+
   const currentIndex = React.useMemo(() => {
     if (!activeStockList || activeStockList.length === 0 || !selectedStock) return -1;
     return activeStockList.findIndex(
@@ -175,6 +203,39 @@ export default function StockDetailDrawer({
                 >
                   📅 E: {loadingFinancials ? 'Checking...' : 'Unscheduled'}
                 </span>
+              )}
+              {!isEtf && (
+                instInfo ? (
+                  <span
+                    className="pill"
+                    style={{
+                      fontSize: '12px',
+                      padding: '4px 10px',
+                      fontWeight: '700',
+                      background: instInfo.streak >= 2 ? 'rgba(34, 197, 94, 0.2)' : 'rgba(56, 189, 248, 0.18)',
+                      color: instInfo.streak >= 2 ? '#22c55e' : '#38bdf8',
+                      border: `1px solid ${instInfo.streak >= 2 ? 'rgba(34, 197, 94, 0.4)' : 'rgba(56, 189, 248, 0.3)'}`
+                    }}
+                    title={`Institutional Sponsorship: ${instInfo.holdersCount.toLocaleString()} funds${instInfo.qoqChange !== null && instInfo.qoqChange !== undefined ? ` (${instInfo.qoqChange >= 0 ? '+' : ''}${instInfo.qoqChange} funds QoQ)` : ''}${instInfo.streak >= 1 ? `, Streak: ${instInfo.streak}Q` : ''}`}
+                  >
+                    🏛️ Inst: {instInfo.holdersCount.toLocaleString()} {instInfo.qoqChange !== null && instInfo.qoqChange !== undefined ? `(${instInfo.qoqChange >= 0 ? '+' : ''}${instInfo.qoqChange.toLocaleString()} QoQ${instInfo.growthPct !== null ? ` | ${instInfo.growthPct >= 0 ? '+' : ''}${instInfo.growthPct.toFixed(1)}%` : ''})` : ''}
+                  </span>
+                ) : (
+                  <span
+                    className="pill"
+                    style={{
+                      fontSize: '12px',
+                      padding: '4px 10px',
+                      fontWeight: '500',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      color: 'var(--text-muted)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)'
+                    }}
+                    title="Institutional Sponsorship not synced for this stock yet. Check 'Sync Institutional Sponsorship' on Dashboard."
+                  >
+                    🏛️ Inst: Unsynced
+                  </span>
+                )
               )}
             </div>
           </div>
@@ -355,6 +416,53 @@ export default function StockDetailDrawer({
                     {earningsBadgeInfo ? earningsBadgeInfo.fullDisplay : (loadingFinancials ? 'Checking...' : 'N/A')}
                   </strong>
                 </div>
+                {!isEtf && (
+                  instInfo ? (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '6px' }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>Institutional Funds:</span>
+                        <strong style={{ color: '#38bdf8' }}>
+                          {instInfo.holdersCount.toLocaleString()} funds
+                        </strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '6px' }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>Sponsorship QoQ Growth:</span>
+                        <strong style={{
+                          color: instInfo.qoqChange !== null && instInfo.qoqChange !== undefined
+                            ? (instInfo.qoqChange >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)')
+                            : 'var(--text-secondary)'
+                        }}>
+                          {instInfo.qoqChange !== null && instInfo.qoqChange !== undefined
+                            ? `${instInfo.qoqChange >= 0 ? '+' : ''}${instInfo.qoqChange.toLocaleString()} funds ${instInfo.growthPct !== null ? `(${instInfo.growthPct >= 0 ? '+' : ''}${instInfo.growthPct.toFixed(1)}%)` : ''}`
+                            : 'Baseline (1st Quarter Tracked)'}
+                        </strong>
+                      </div>
+                      {instInfo.streak >= 1 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '6px' }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>Sponsorship Streak:</span>
+                          <strong style={{ color: instInfo.streak >= 2 ? '#22c55e' : '#60a5fa' }}>
+                            🔥 {instInfo.streak} Quarters Increasing
+                          </strong>
+                        </div>
+                      )}
+                      {instInfo.ownershipPct !== null && instInfo.ownershipPct !== undefined && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '6px' }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>Float Held by Institutions:</span>
+                          <strong style={{ color: 'var(--text-primary)' }}>
+                            {instInfo.ownershipPct.toFixed(1)}%
+                          </strong>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '6px' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Institutional Funds:</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
+                        Not Synced (Run sync on Dashboard)
+                      </span>
+                    </div>
+                  )
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Asset Name:</span>
                   <strong style={{ color: 'var(--text-primary)', textAlign: 'right', maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

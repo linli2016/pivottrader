@@ -1,0 +1,134 @@
+themes:
+  - name: "Crypto & Blockchain"
+    description: "Cryptocurrency miners, exchanges, and Bitcoin treasury infrastructure"
+    symbols:
+      - "MSTR"
+      - "COIN"
+      - "MARA"
+      - "RIOT"
+      - "CLSK"
+      - "CIFR"
+      - "HUT"
+      - "CORZ"
+      - "WULF"
+      - "IREN"
+
+  - name: "AI & Data Center Infrastructure"
+    description: "AI accelerators, optical networking, server hardware, and power suppliers"
+    symbols:
+      - "NVDA"
+      - "AVGO"
+      - "SMCI"
+      - "ANET"
+      - "VST"
+      - "CEG"
+      - "DELL"
+      - "MRVL"
+      - "ALAB"
+
+  - name: "Nuclear & Uranium Power"
+    description: "Nuclear reactors, uranium miners, small modular reactors (SMR), and clean baseload power"
+    symbols:
+      - "CCJ"
+      - "OKLO"
+      - "SMR"
+      - "BWXT"
+      - "TLN"
+      - "CEG"
+      - "VST"
+
+  - name: "GLP-1 & Obesity"
+    description: "Weight loss therapies, GLP-1 agonists, and metabolic biopharma"
+    symbols:
+      - "LLY"
+      - "NVO"
+      - "VKTX"
+      - "ALT"
+
+  - name: "Cybersecurity"
+    description: "Cloud security, zero-trust network access, and endpoint protection"
+    symbols:
+      - "CRWD"
+      - "PANW"
+      - "FTNT"
+      - "NET"
+      - "ZS"
+
+  - name: "Quantum Computing"
+    description: "Quantum hardware processors, quantum algorithms, and photonic computing"
+    symbols:
+      - "IONQ"
+      - "RGTI"
+      - "QBTS"
+      - "QUBT"
+
+  - name: "Defense Tech & Drones"
+    description: "Unmanned aerial vehicles, defense intelligence, tactical systems, and aerospace defense"
+    symbols:
+      - "PLTR"
+      - "KTOS"
+      - "AVAV"
+      - "RKLB"
+      - "LMT"
+      - "NOC"
+      - "LHX"
+      - "AXON"
+
+  - name: "Gold & Silver Miners"
+    description: "Precious metals exploration, gold and silver producers, and royalty streaming"
+    symbols:
+      - "AEM"
+      - "KGC"
+      - "PAAS"
+      - "AG"
+      - "HMY"
+      - "AU"
+      - "WPM"
+
+  - name: "Semiconductor Equipment"
+    description: "Lithography, wafer fabrication, etching, metrology, and chip test equipment"
+    symbols:
+      - "ASML"
+      - "AMAT"
+      - "LRCX"
+      - "KLAC"
+      - "AMKR"
+      - "TER"
+
+  - name: "Neobanks & Modern Fintech"
+    description: "Digital banking, consumer credit, alternative lending, and digital brokerages"
+    symbols:
+      - "SOFI"
+      - "AFRM"
+      - "UPST"
+      - "HOOD"
+      - "NU"
+      - "PYPL"
+
+  - name: "Space & Satellite"
+    description: "Commercial space launch, orbital satellite communications, and space technology"
+    symbols:
+      - "RKLB"
+      - "LUNR"
+      - "BKSY"
+      - "RDW"
+      - "PL"
+
+  - name: "Solar & Clean Energy"
+    description: "Solar inverters, photovoltaic systems, and clean energy storage"
+    symbols:
+      - "FSLR"
+      - "ENPH"
+      - "SEDG"
+      - "RUN"
+      - "NXT"
+
+  - name: "Homebuilders & Housing"
+    description: "Residential home construction, building materials, and housing infrastructure"
+    symbols:
+      - "TOL"
+      - "LEN"
+      - "DHI"
+      - "PHM"
+      - "KBH"
+      - "BLDR"

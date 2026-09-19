@@ -505,6 +505,27 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     }
   }, [isLogScale]);
 
+  // Relative Strength (RS) Line & Blue Dot Toggle State
+  const [showRsLine, setShowRsLine] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pt_chart_show_rs_line');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleRsLine = () => {
+    setShowRsLine((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('pt_chart_show_rs_line', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+
   // Fetch earnings data for symbol if not explicitly provided
   useEffect(() => {
     if (earnings && Array.isArray(earnings)) {
@@ -926,6 +947,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     const changeColor = isUp ? '#34d399' : '#f87171';
     const changeSign = isUp ? '+' : '';
     const volFormatted = formatVolume(volume);
+    const hasRs = bar.rs_line !== undefined && bar.rs_line !== null;
+    const isBlueDot = Boolean(bar.is_rs_blue_dot);
 
     legendRef.current.innerHTML = `
       <div style="display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.2;">
@@ -936,9 +959,12 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">C</span><span style="color: ${ohlcColor}; font-weight: 600;">${close.toFixed(2)}</span></span>
         <span style="color: ${changeColor}; font-weight: 700;">${changeSign}${change.toFixed(2)} (${changeSign}${changePct.toFixed(2)}%)</span>
         <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">Vol</span><span style="color: #38bdf8; font-weight: 600;">${volFormatted}</span></span>
+        ${hasRs ? `<span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">RS</span><span style="color: #38bdf8; font-weight: 600;">${Number(bar.rs_line).toFixed(2)}</span></span>` : ''}
+        ${isBlueDot ? `<span style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 1px 6px; border-radius: 4px; font-size: 10.5px; font-weight: 700;">🔵 RS Blue Dot</span>` : ''}
       </div>
     `;
   };
+
 
   const handleSaveScreenshot = async (overrideParams = {}) => {
     if (!chartRef.current || !data || data.length === 0 || savingScreenshot) return;
@@ -1143,6 +1169,26 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         crosshairMarkerVisible: false,
       });
 
+      // RS Line (Stock / SPY Relative Strength Line) - subtle, faded background guide
+      const rsLineSeries = chart.addSeries(LineSeries, {
+        color: 'rgba(56, 189, 248, 0.4)',
+        lineWidth: 1,
+        priceScaleId: 'rs_line',
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+        title: '',
+      });
+
+      chart.priceScale('rs_line').applyOptions({
+        scaleMargins: {
+          top: 0.25,
+          bottom: 0.25,
+        },
+        visible: false,
+      });
+
+
       // Attach Markers Plugin and Vertical Line Primitive
       const markersPlugin = createSeriesMarkers(candlestickSeries, []);
       markersPluginRef.current = markersPlugin;
@@ -1161,7 +1207,9 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         sma50Series,
         sma150Series,
         sma220Series,
+        rsLineSeries,
       };
+
 
       // Subscribe to Crosshair Movement for Interactive OHLC + Volume Legend
       chart.subscribeCrosshairMove((param) => {
@@ -1245,6 +1293,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           sma50Series,
           sma150Series,
           sma220Series,
+          rsLineSeries,
         } = seriesRef.current;
 
         const volumeData = data.map(d => ({
@@ -1261,6 +1310,17 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         sma50Series.setData(calculateSMA(data, 50));
         sma150Series.setData(calculateSMA(data, 150));
         sma220Series.setData(calculateSMA(data, 220));
+
+        if (rsLineSeries) {
+          const rsData = data
+            .filter((d) => d.rs_line !== undefined && d.rs_line !== null)
+            .map((d) => ({
+              time: d.time,
+              value: d.rs_line,
+            }));
+          rsLineSeries.setData(showRsLine ? rsData : []);
+          rsLineSeries.applyOptions({ visible: showRsLine });
+        }
       }
 
       // Resolve and apply As-of Date vertical line
@@ -1271,8 +1331,26 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       if (userPanCheckTimeoutRef.current) clearTimeout(userPanCheckTimeoutRef.current);
 
       if (markersPluginRef.current) {
-        markersPluginRef.current.setMarkers([]);
+        if (showRsLine) {
+          const blueDotMarkers = [];
+          data.forEach((d) => {
+            if (d.is_rs_blue_dot) {
+              blueDotMarkers.push({
+                time: d.time,
+                position: 'aboveBar',
+                color: '#38bdf8',
+                shape: 'circle',
+                size: 0.6,
+              });
+            }
+          });
+          markersPluginRef.current.setMarkers(blueDotMarkers);
+
+        } else {
+          markersPluginRef.current.setMarkers([]);
+        }
       }
+
       if (resolvedTime && verticalLineRef.current) {
         verticalLineRef.current.updateTime(resolvedTime);
       } else {
@@ -1340,10 +1418,49 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     } else {
       renderLegend(null, null, symbol);
     }
-  }, [data, height, asOfDate, symbol, setupName]);
+  }, [data, height, asOfDate, symbol, setupName, showRsLine]);
+
+  // Handle immediate toggle of RS Line and Blue Dot markers
+  useEffect(() => {
+    if (!seriesRef.current?.rsLineSeries || !dataLookupRef.current?.data) return;
+    const currentData = dataLookupRef.current.data;
+    if (showRsLine) {
+      const rsData = currentData
+        .filter((d) => d.rs_line !== undefined && d.rs_line !== null)
+        .map((d) => ({
+          time: d.time,
+          value: d.rs_line,
+        }));
+      seriesRef.current.rsLineSeries.setData(rsData);
+      seriesRef.current.rsLineSeries.applyOptions({ visible: true });
+      if (markersPluginRef.current) {
+        const blueDotMarkers = [];
+        currentData.forEach((d) => {
+          if (d.is_rs_blue_dot) {
+            blueDotMarkers.push({
+              time: d.time,
+              position: 'aboveBar',
+              color: '#38bdf8',
+              shape: 'circle',
+              size: 0.6,
+            });
+          }
+        });
+        markersPluginRef.current.setMarkers(blueDotMarkers);
+
+      }
+    } else {
+      seriesRef.current.rsLineSeries.setData([]);
+      seriesRef.current.rsLineSeries.applyOptions({ visible: false });
+      if (markersPluginRef.current) {
+        markersPluginRef.current.setMarkers([]);
+      }
+    }
+  }, [showRsLine]);
 
   // Clean up chart instance on component unmount & handle container resize
   useEffect(() => {
+
     const container = chartContainerRef.current;
     if (!container) return;
 
@@ -1980,7 +2097,33 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           E
         </button>
 
+        {/* RS Line & Blue Dot Toggle Button */}
+        <button
+          type="button"
+          onClick={toggleRsLine}
+          title={showRsLine ? 'Hide Relative Strength Line & Blue Dots (vs SPY)' : 'Show Relative Strength Line & Blue Dots (vs SPY)'}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '0 6px',
+            height: '26px',
+            background: showRsLine ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.05)',
+            border: showRsLine ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.15)',
+            color: showRsLine ? '#38bdf8' : 'var(--text-secondary)',
+            borderRadius: '5px',
+            fontSize: '10px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            letterSpacing: '0.5px',
+          }}
+        >
+          RS
+        </button>
+
         {/* Price Scale Mode Toggle (Arithmetic / Linear vs Logarithmic) */}
+
         <button
           type="button"
           onClick={toggleScaleMode}

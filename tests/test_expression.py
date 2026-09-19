@@ -35,6 +35,25 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertIn("pp_runup_pct", res["sql"])
         self.assertIn("pp_drawdown_pct", res["sql"])
 
+    def test_52w_high_days_expressions(self):
+        # Test primary name DAYS_52W_HIGH and aliases DAYS_SINCE_52W_HIGH, HIGH_52W_DAYS
+        expr1 = "DAYS_52W_HIGH <= 20 AND DIST_52W_HIGH <= 10.0"
+        res1 = ScanExpressionEngine.validate(expr1)
+        self.assertTrue(res1["valid"])
+        self.assertIn("b.days_since_52w_high <= 20", res1["sql"])
+        self.assertIn("b.dist_from_52w_high <= 10.0", res1["sql"])
+
+        expr2 = "DAYS_SINCE_52W_HIGH >= 5 AND DAYS_SINCE_52W_HIGH <= 30"
+        res2 = ScanExpressionEngine.validate(expr2)
+        self.assertTrue(res2["valid"])
+        self.assertIn("b.days_since_52w_high >= 5", res2["sql"])
+        self.assertIn("b.days_since_52w_high <= 30", res2["sql"])
+
+        expr3 = "HIGH_52W_DAYS == 0"
+        res3 = ScanExpressionEngine.validate(expr3)
+        self.assertTrue(res3["valid"])
+        self.assertIn("b.days_since_52w_high = 0", res3["sql"])
+
     def test_single_equal_operator(self):
         expr = "C = 50.0 AND V >= 10000"
         res = ScanExpressionEngine.validate(expr)

@@ -16,6 +16,10 @@ export default function DashboardTab({
   setSyncPrices,
   syncFundamentals,
   setSyncFundamentals,
+  syncSponsorship,
+  setSyncSponsorship,
+  syncSponsorshipUniverse = 'all',
+  setSyncSponsorshipUniverse,
   syncPremarket,
   setSyncPremarket,
   syncHistoryYears = 5,
@@ -62,6 +66,7 @@ export default function DashboardTab({
                   if (checked) {
                     setSyncPrices(false);
                     setSyncFundamentals(false);
+                    if (setSyncSponsorship) setSyncSponsorship(false);
                   } else {
                     setSyncPrices(true);
                   }
@@ -84,8 +89,42 @@ export default function DashboardTab({
                 disabled={syncStatus.status === 'running' || syncPremarket}
                 style={{ cursor: syncPremarket ? 'not-allowed' : 'pointer', accentColor: 'var(--accent-color)' }}
               />
-              Sync Fundamentals
+              Sync Fundamentals (EPS)
             </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: syncPremarket ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '500', color: syncPremarket ? 'var(--text-muted)' : '#60a5fa', opacity: syncPremarket ? 0.5 : 1 }} title="Sync institutional sponsorship fund counts and consecutive growth streaks (Free: Yahoo / SEC 13F)">
+                <input
+                  type="checkbox"
+                  checked={syncSponsorship}
+                  onChange={(e) => setSyncSponsorship && setSyncSponsorship(e.target.checked)}
+                  disabled={syncStatus.status === 'running' || syncPremarket}
+                  style={{ cursor: syncPremarket ? 'not-allowed' : 'pointer', accentColor: '#3b82f6' }}
+                />
+                🏛️ Sync Institutional Sponsorship
+              </label>
+              {syncSponsorship && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '24px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                  <span>Scope:</span>
+                  <select
+                    value={syncSponsorshipUniverse || 'all'}
+                    onChange={(e) => setSyncSponsorshipUniverse && setSyncSponsorshipUniverse(e.target.value)}
+                    disabled={syncStatus.status === 'running' || syncPremarket}
+                    style={{
+                      background: 'var(--bg-card)',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '4px',
+                      padding: '2px 6px',
+                      fontSize: '11px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="all">All Active Stocks (~4,800)</option>
+                    <option value="candidates">Top Momentum Leaders (~900)</option>
+                  </select>
+                </div>
+              )}
+            </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '1px solid var(--border-color)', paddingLeft: '16px', opacity: syncPremarket ? 0.5 : 1 }}>
@@ -127,7 +166,7 @@ export default function DashboardTab({
           <button
             className="btn btn-primary"
             onClick={handleTriggerSync}
-            disabled={syncStatus.status === 'running' || (!syncPrices && !syncFundamentals && !syncPremarket)}
+            disabled={syncStatus.status === 'running' || (!syncPrices && !syncFundamentals && !syncPremarket && !syncSponsorship)}
             style={syncPremarket ? { background: '#ec4899', borderColor: '#db2777' } : {}}
           >
             {syncStatus.status === 'running'
@@ -199,7 +238,7 @@ export default function DashboardTab({
             </button>
           </div>
 
-          {/* Step 2: Sector Compare */}
+          {/* Step 2: Group Radar */}
           <div
             onClick={() => setActiveTab && setActiveTab('sector-compare')}
             style={{
@@ -222,14 +261,14 @@ export default function DashboardTab({
                 <span style={{ fontSize: '22px' }}>🌐</span>
               </div>
               <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#ffffff', margin: '0 0 4px 0' }}>
-                Sector Compare
+                Group Radar
               </h3>
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
-                Identify leading sectors, industry groups, and top sector rotation ETFs.
+                Identify institutional momentum across sectors, 170+ industries, and thematic clusters.
               </p>
             </div>
             <button className="btn btn-secondary btn-sm" style={{ marginTop: '16px', width: '100%', fontSize: '12px', justifyContent: 'center' }}>
-              2. Sector Compare →
+              2. Group Radar →
             </button>
           </div>
 

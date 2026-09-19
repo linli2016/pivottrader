@@ -814,3 +814,143 @@ class YFinanceProvider(AbstractDataProvider):
     def fetch_premarket_bars(self, symbols: List[str]) -> pd.DataFrame:
         """Maintains backwards-compatibility by delegating to fetch_premarket_or_intraday_bars."""
         return self.fetch_premarket_or_intraday_bars(symbols)
+
+    def fetch_institutional_sponsorship(self, symbols: List[str]) -> pd.DataFrame:
+        """
+        Fetches current institutional holder count and float ownership percentage
+        from Yahoo Finance quoteSummary / majorHoldersBreakdown using multi-threading.
+        Returns a DataFrame ready for upsert_institutional_sponsorship.
+        """
+        if not symbols:
+            return pd.DataFrame()
+
+        import datetime
+        import time
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from yfinance.data import YfData
+
+        def _fetch_single_inst(symbol: str) -> Optional[Dict[str, Any]]:
+            for attempt in range(2):
+                try:
+                    ticker = yf.Ticker(symbol)
+                    holders_count = None
+                    ownership_pct = None
+
+                    # 1. Single lightweight call to major_holders
+                    try:
+                        major_df = ticker.major_holders
+                        if major_df is not None and not major_df.empty:
+                            for idx_val in major_df.index:
+                                str_idx = str(idx_val).lower()
+                                val = major_df.loc[idx_val].values[0]
+                                if any(k in str_idx for k in ["institutionscount", "institutions count", "number of institutions"]):
+                                    try:
+                                        holders_count = int(float(val))
+                                    except Exception:
+                                        pass
+                                elif any(k in str_idx for k in ["institutionsfloatpercentheld", "institutions float", "float held by institutions"]):
+                                    try:
+                                        ownership_pct = float(val) * 100.0 if float(val) <= 1.0 else float(val)
+                                    except Exception:
+                                        pass
+                                elif "institutionspercentheld" in str_idx and ownership_pct is None:
+                                    try:
+                                        ownership_pct = float(val) * 100.0 if float(val) <= 1.0 else float(val)
+                                    except Exception:
+                                        pass
+                    except Exception as me:
+                        err_str = str(me).lower()
+                        if "401" in err_str or "crumb" in err_str or "unauthorized" in err_str:
+                            try:
+                                yf_data = YfData()
+                                with yf_data._cookie_lock:
+                                    yf_data._crumb = None
+                                    yf_data._cookie = None
+                            except Exception:
+                                pass
+                            time.sleep(1.0)
+                            continue
+
+                    # 2. Only fallback to ticker.info if holders_count was not found in major_holders
+                    if holders_count is None:
+                        try:
+                            info = ticker.info
+                            if info:
+                                h_c = info.get("institutionsCount")
+                                if h_c is not None:
+                                    holders_count = int(h_c)
+                                if ownership_pct is None:
+                                    h_pct = info.get("heldPercentInstitutions")
+                                    if h_pct is not None:
+                                        ownership_pct = float(h_pct) * 100.0 if float(h_pct) <= 1.0 else float(h_pct)
+                        except Exception as ie:
+                            err_str = str(ie).lower()
+                            if "401" in err_str or "crumb" in err_str or "unauthorized" in err_str:
+                                try:
+                                    yf_data = YfData()
+                                    with yf_data._cookie_lock:
+                                        yf_data._crumb = None
+                                        yf_data._cookie = None
+                                except Exception:
+                                    pass
+                                time.sleep(1.0)
+                                continue
+
+                    if holders_count is None:
+                        return None
+
+                    today = datetime.date.today()
+                    m = today.month
+                    y = today.year
+                    curr_q = (m - 1) // 3 + 1
+                    report_q = curr_q - 1 if curr_q > 1 else 4
+                    report_y = y if curr_q > 1 else y - 1
+                    q_end_dates = {1: (3, 31), 2: (6, 30), 3: (9, 30), 4: (12, 31)}
+                    rm, rd = q_end_dates[report_q]
+                    rep_date = datetime.date(report_y, rm, rd)
+                    fiscal_q = f"{report_y}-Q{report_q}"
+
+                    return {
+                        "symbol": symbol.upper(),
+                        "report_date": rep_date,
+                        "fiscal_quarter": fiscal_q,
+                        "holders_count": max(0, holders_count),
+                        "ownership_pct": round(ownership_pct, 2) if ownership_pct is not None else None,
+                        "source": "yfinance"
+                    }
+                except Exception:
+                    pass
+            return None
+
+        all_records = []
+        total = len(symbols)
+        completed = 0
+
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            future_to_sym = {executor.submit(_fetch_single_inst, sym): sym for sym in symbols}
+            for future in as_completed(future_to_sym):
+                sym = future_to_sym[future]
+                completed += 1
+                try:
+                    res = future.result()
+                    if res:
+                        all_records.append(res)
+                except Exception:
+                    pass
+
+                pct = (completed / total) * 100
+                if sys.stdout.isatty():
+                    sys.stdout.write(f"\r[YFINANCE] Syncing institutional sponsorship: {completed}/{total} ({pct:.1f}%) | Last: {sym:<5}")
+                    sys.stdout.flush()
+                else:
+                    if completed % 25 == 0 or completed == total:
+                        print(f"[YFINANCE] Syncing institutional sponsorship: {completed}/{total} ({pct:.1f}%) | Last: {sym:<5}", flush=True)
+
+        if sys.stdout.isatty():
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+
+        if all_records:
+            df = pd.DataFrame(all_records)
+            return df
+        return pd.DataFrame()

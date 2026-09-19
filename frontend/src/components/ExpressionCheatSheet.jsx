@@ -40,6 +40,7 @@ const CHEAT_SHEET_CATEGORIES = [
       { sym: 'TI65', label: 'TI65', desc: 'Stockbee Trend Intensity (C / 65 SMA)' },
       { sym: 'IS_52W_HIGH', label: '52w High', desc: 'At or near 52-week high' },
       { sym: 'DIST_52W_HIGH', label: 'Dist 52wH %', desc: 'Distance below 52w high' },
+      { sym: 'DAYS_52W_HIGH', label: 'Days 52wH', desc: 'Trading days elapsed since 52w high' },
       { sym: 'SURGE_OFF_LOW', label: 'Surge Low %', desc: '% surge off 52w low' },
       { sym: 'RET_1M', label: '1M Return %', desc: '1-month percentage gain' },
       { sym: 'RET_3M', label: '3M Return %', desc: '3-month percentage gain' },
@@ -79,6 +80,20 @@ const CHEAT_SHEET_CATEGORIES = [
       { sym: 'UP_DAYS', label: 'Up Days', desc: 'Consecutive green days' },
       { sym: 'VCP', label: 'VCP', desc: 'Volatility Contraction Pattern' },
       { sym: 'IPO_BASE', label: 'IPO Base', desc: 'First base in recent IPO' },
+    ]
+  },
+  {
+    id: 'fundamentals',
+    title: 'Fundamentals & Sponsorship (CAN SLIM)',
+    color: '#38bdf8',
+    variables: [
+      { sym: 'INST_STREAK', label: 'Inst Streak', desc: 'Consecutive quarters of increasing funds (e.g. >= 2)' },
+      { sym: 'INST_HOLDERS', label: 'Inst Funds', desc: 'Total institutional holder fund count' },
+      { sym: 'INST_QOQ_CHANGE', label: 'Inst Net QoQ', desc: 'Net new institutional funds added this quarter' },
+      { sym: 'INST_OWN_PCT', label: 'Inst Float %', desc: 'Institutional float ownership %' },
+      { sym: 'EPS_GROWTH_QOQ', label: 'EPS QoQ %', desc: 'Quarterly EPS growth YoY %' },
+      { sym: 'EPS_DILUTED', label: 'Diluted EPS', desc: 'Latest quarterly diluted EPS' },
+      { sym: 'REVENUE', label: 'Revenue', desc: 'Latest quarterly total revenue' },
     ]
   },
   {

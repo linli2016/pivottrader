@@ -2,14 +2,23 @@ import json
 import logging
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Response
 from pydantic import BaseModel, Field, AliasChoices, ConfigDict
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from application.services import config_service, db_service, sync_service, chart_service, model_book_service, setup_service, saved_trades_service
+from application.services.theme_service import ThemeService
+from application.services.group_radar_service import GroupRadarService
 
 logger = logging.getLogger("pivottrader.api")
 router = APIRouter()
 
+theme_service = ThemeService()
+group_radar_service = GroupRadarService(theme_service=theme_service)
+
 # ----------------- Models -----------------
+class ThemeCreateUpdateSchema(BaseModel):
+    name: str
+    description: str = ""
+    symbols: List[str]
 class ConfigUpdateSchema(BaseModel):
     min_price: float
     min_volume_sma_50: int
@@ -25,6 +34,9 @@ class SQLQuerySchema(BaseModel):
 class SyncTriggerSchema(BaseModel):
     skip_prices: bool = False
     skip_fundamentals: bool = False
+    sync_sponsorship: bool = False
+    sponsorship_source: Optional[str] = "yfinance"
+    sponsorship_universe: Optional[str] = "all"
     include_premarket: bool = False
     include_extended: Optional[bool] = None
     history_years: Optional[int] = None
@@ -242,6 +254,9 @@ def trigger_sync_run(background_tasks: BackgroundTasks, payload: SyncTriggerSche
         background_tasks,
         skip_prices=payload.skip_prices,
         skip_fundamentals=payload.skip_fundamentals,
+        sync_sponsorship=payload.sync_sponsorship,
+        sponsorship_source=payload.sponsorship_source or "yfinance",
+        sponsorship_universe=payload.sponsorship_universe or "all",
         include_premarket=is_ext,
         include_extended=is_ext,
         history_years=payload.history_years,
@@ -283,6 +298,72 @@ def get_sector_stocks(sector_name: str):
         return db_service.get_sector_stocks(sector_name)
     except Exception as e:
         logger.error(f"Error in get_sector_stocks({sector_name}): {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- Group Radar & Themes Endpoints -----------------
+
+@router.get("/api/groups/strength")
+def get_group_strength(type: str = "industries", date: Optional[str] = None, sector: Optional[str] = None):
+    """Retrieve multi-horizon strength, RS rank, 52w high distance, and RVol for sectors, industries, or themes."""
+    try:
+        return group_radar_service.get_group_strength(group_type=type, date=date, sector=sector)
+    except Exception as e:
+        logger.error(f"Error in get_group_strength: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/groups/constituents")
+def get_group_constituents(type: str, name: str, date: Optional[str] = None):
+    """Retrieve constituent stocks and technical setups for a specific sector, industry, or theme."""
+    try:
+        return group_radar_service.get_group_constituents(group_type=type, group_name=name, date=date)
+    except Exception as e:
+        logger.error(f"Error in get_group_constituents: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/groups/rrg")
+def get_groups_rrg(type: str = "sectors", date: Optional[str] = None, trail: int = 5, sector: Optional[str] = None):
+    """Retrieve Relative Rotation Graph (RRG) coordinates and multi-day trails for sectors, industries, or themes."""
+    try:
+        return group_radar_service.get_rrg_data(group_type=type, date=date, trail_bars=trail, sector=sector)
+    except Exception as e:
+        logger.error(f"Error in get_groups_rrg: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/themes")
+def get_themes():
+    """Retrieve all configured themes."""
+    try:
+        return theme_service.load_themes()
+    except Exception as e:
+        logger.error(f"Error in get_themes: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/themes")
+def create_or_update_theme(payload: ThemeCreateUpdateSchema):
+    """Create or update a custom theme."""
+    try:
+        return theme_service.create_or_update_theme(
+            name=payload.name,
+            description=payload.description,
+            symbols=payload.symbols
+        )
+    except Exception as e:
+        logger.error(f"Error in create_or_update_theme: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/api/themes/{name}")
+def delete_theme(name: str):
+    """Delete a theme by name."""
+    try:
+        success = theme_service.delete_theme(name)
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Theme '{name}' not found")
+        return {"status": "success", "message": f"Theme '{name}' deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in delete_theme: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 # ----------------- Watchlist Endpoints -----------------

@@ -57,7 +57,7 @@ export default function ModelBookTab({
     if (activeSetup?.sub_setups?.length > 0) {
       setSelectedSubSetupId(prev => {
         if (!prev || !activeSetup.sub_setups.some(s => s.id === prev)) {
-          return activeSetup.sub_setups[0].id;
+          return activeSetup.default_sub_id || activeSetup.sub_setups[0].id;
         }
         return prev;
       });
@@ -68,7 +68,7 @@ export default function ModelBookTab({
 
   const isSubActive = useCallback((sub) => {
     if (!sub) return false;
-    const defaultSubId = activeSetup?.sub_setups?.[0]?.id;
+    const defaultSubId = activeSetup?.default_sub_id || activeSetup?.sub_setups?.[0]?.id;
     const currentSubId = selectedSubSetupId || defaultSubId;
     return sub.id === currentSubId;
   }, [selectedSubSetupId, activeSetup]);
@@ -361,7 +361,7 @@ export default function ModelBookTab({
     const activeSetupObj = (setupOptions || []).find(s => s.id === targetSetup);
     const targetSubSetupId = subSetupIdToRun !== null && subSetupIdToRun !== undefined
       ? subSetupIdToRun
-      : (selectedSubSetupId || activeSetupObj?.sub_setups?.[0]?.id || null);
+      : (selectedSubSetupId || activeSetupObj?.default_sub_id || activeSetupObj?.sub_setups?.[0]?.id || null);
     const targetStart = dateRangeToRun?.start || startDate;
     const targetEnd = dateRangeToRun?.end || endDate;
     setLoading(true);
@@ -415,7 +415,7 @@ export default function ModelBookTab({
   const handleSelectSetup = (newId) => {
     setSetupType(newId);
     const newSetup = setupOptions.find(s => s.id === newId);
-    const defaultSub = newSetup?.sub_setups?.[0]?.id || null;
+    const defaultSub = newSetup?.default_sub_id || newSetup?.sub_setups?.[0]?.id || null;
     setSelectedSubSetupId(defaultSub);
     handleRunScan(newId, defaultSub, { start: startDate, end: endDate });
   };

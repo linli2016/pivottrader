@@ -66,6 +66,8 @@ function App() {
   // Database ingestion flags & logs tracking
   const [syncPrices, setSyncPrices] = useState(true);
   const [syncFundamentals, setSyncFundamentals] = useState(false);
+  const [syncSponsorship, setSyncSponsorship] = useState(false);
+  const [syncSponsorshipUniverse, setSyncSponsorshipUniverse] = useState('all');
   const [syncPremarket, setSyncPremarket] = useState(false);
   const [syncHistoryYears, setSyncHistoryYears] = useState(5);
   const [syncForceFull, setSyncForceFull] = useState(false);
@@ -271,6 +273,8 @@ function App() {
         body: JSON.stringify({
           skip_prices: !syncPrices && !syncPremarket,
           skip_fundamentals: !syncFundamentals,
+          sync_sponsorship: syncSponsorship,
+          sponsorship_universe: syncSponsorshipUniverse,
           include_premarket: syncPremarket,
           include_extended: syncPremarket,
           history_years: parseInt(syncHistoryYears, 10),
@@ -474,15 +478,15 @@ function App() {
                 </div>
               </li>
 
-              {/* 2. Sector Compare */}
+              {/* 2. Group Radar */}
               <li
                 className={`nav-item ${activeTab === 'sector-compare' ? 'active' : ''}`}
                 onClick={() => setActiveTab('sector-compare')}
-                title="2. Sector Compare (RS Rotation)"
+                title="2. Group Radar (Sectors • Industries • Themes)"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">🌐</span>
-                  <span className="nav-label">2. Sector Compare</span>
+                  <span className="nav-label">2. Group Radar</span>
                 </div>
               </li>
 
@@ -600,6 +604,10 @@ function App() {
             setSyncPrices={setSyncPrices}
             syncFundamentals={syncFundamentals}
             setSyncFundamentals={setSyncFundamentals}
+            syncSponsorship={syncSponsorship}
+            setSyncSponsorship={setSyncSponsorship}
+            syncSponsorshipUniverse={syncSponsorshipUniverse}
+            setSyncSponsorshipUniverse={setSyncSponsorshipUniverse}
             syncPremarket={syncPremarket}
             setSyncPremarket={setSyncPremarket}
             syncHistoryYears={syncHistoryYears}
@@ -618,7 +626,7 @@ function App() {
         )}
 
         {activeTab === 'sector-compare' && (
-          <SectorCompareTab onSelectStock={handleSelectStock} />
+          <SectorCompareTab onSelectStock={handleSelectStock} tradingDates={tradingDates} />
         )}
 
         {activeTab === 'watchlists' && (

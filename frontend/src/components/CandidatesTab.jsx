@@ -257,7 +257,18 @@ export default function CandidatesTab({
     return 'General';
   }, [currentSetup, currentCandidate, activeSetupKey, activeExpression]);
 
+  const currentHasBlueDot = React.useMemo(() => {
+    if (currentCandidate?.is_rs_blue_dot) return true;
+    if (currentCandidate?.setups && currentCandidate.setups.includes('RS Blue Dot')) return true;
+    if (browsePrices && browsePrices.length > 0) {
+      const recent = browsePrices.slice(-5);
+      return recent.some(b => b.is_rs_blue_dot);
+    }
+    return false;
+  }, [currentCandidate, browsePrices]);
+
   const browseEarningsBadge = React.useMemo(() => {
+
     const dt = currentCandidate?.next_earnings_date || browseDetail?.next_earnings_date || browseDetail?.metadata?.next_earnings_date;
     if (!dt) return null;
     try {
@@ -943,6 +954,27 @@ export default function CandidatesTab({
                     RS: {currentCandidate?.rs_rank ?? 'N/A'}
                   </span>
 
+                  {currentHasBlueDot && (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        background: 'rgba(56, 189, 248, 0.25)',
+                        color: '#38bdf8',
+                        border: '1px solid rgba(56, 189, 248, 0.45)',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                      title="RS Blue Dot: Relative Strength vs SPY hit a new 52-week high before price breakout (institutional accumulation)"
+                    >
+                      🔵 RS Blue Dot
+                    </span>
+                  )}
+
+
                   {currentCandidate?.adr_20d !== null && currentCandidate?.adr_20d !== undefined ? (
                     <span className="pill" style={{ fontSize: '11px', padding: '3px 8px', background: currentCandidate.adr_20d >= 5.0 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(59, 130, 246, 0.18)', color: currentCandidate.adr_20d >= 5.0 ? '#f59e0b' : '#60a5fa', border: currentCandidate.adr_20d >= 5.0 ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 700 }}>
                       ADR%: {currentCandidate.adr_20d.toFixed(2)}%
@@ -968,6 +1000,55 @@ export default function CandidatesTab({
                     >
                       TI65: {currentCandidate.ti_65.toFixed(2)}
                     </span>
+                  )}
+
+                  {!((currentCandidate?.asset_type === 'ETF') || (currentCandidate?.asset_type && currentCandidate.asset_type.toUpperCase().includes('ETF'))) && (
+                    currentCandidate?.inst_holders_count !== null && currentCandidate?.inst_holders_count !== undefined ? (
+                      <span
+                        className="pill"
+                        style={{
+                          fontSize: '11px',
+                          padding: '3px 8px',
+                          background: (currentCandidate.sponsorship_streak >= 2 || (currentCandidate.inst_holders_qoq_change > 0)) ? 'rgba(34, 197, 94, 0.2)' : 'rgba(56, 189, 248, 0.18)',
+                          color: (currentCandidate.sponsorship_streak >= 2 || (currentCandidate.inst_holders_qoq_change > 0)) ? '#22c55e' : '#38bdf8',
+                          border: (currentCandidate.sponsorship_streak >= 2 || (currentCandidate.inst_holders_qoq_change > 0)) ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(56, 189, 248, 0.3)',
+                          fontWeight: 700
+                        }}
+                        title={`Institutional Sponsorship: ${currentCandidate.inst_holders_count.toLocaleString()} funds${currentCandidate.inst_holders_qoq_change !== null && currentCandidate.inst_holders_qoq_change !== undefined ? ` (${currentCandidate.inst_holders_qoq_change >= 0 ? '+' : ''}${currentCandidate.inst_holders_qoq_change} QoQ)` : ''}${currentCandidate.sponsorship_streak >= 1 ? `, Streak: ${currentCandidate.sponsorship_streak}Q` : ''}`}
+                      >
+                        🏛️ Inst: {currentCandidate.inst_holders_count.toLocaleString()} {currentCandidate.inst_holders_qoq_change !== null && currentCandidate.inst_holders_qoq_change !== undefined ? `(${currentCandidate.inst_holders_qoq_change >= 0 ? '+' : ''}${currentCandidate.inst_holders_qoq_change} QoQ)` : ''}{currentCandidate.sponsorship_streak >= 2 ? ` 🔥 +${currentCandidate.sponsorship_streak}Q` : ''}
+                      </span>
+                    ) : currentCandidate?.sponsorship_streak >= 1 ? (
+                      <span
+                        className="pill"
+                        style={{
+                          fontSize: '11px',
+                          padding: '3px 8px',
+                          background: currentCandidate.sponsorship_streak >= 2 ? 'rgba(34, 197, 94, 0.2)' : 'rgba(59, 130, 246, 0.18)',
+                          color: currentCandidate.sponsorship_streak >= 2 ? '#22c55e' : '#60a5fa',
+                          border: currentCandidate.sponsorship_streak >= 2 ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(59, 130, 246, 0.3)',
+                          fontWeight: 700
+                        }}
+                        title={`Institutional Sponsorship: ${currentCandidate.sponsorship_streak} consecutive quarters increasing fund count`}
+                      >
+                        🏛️ {currentCandidate.sponsorship_streak >= 2 ? '🔥 ' : ''}+{currentCandidate.sponsorship_streak}Q Inst
+                      </span>
+                    ) : (
+                      <span
+                        className="pill"
+                        style={{
+                          fontSize: '11px',
+                          padding: '3px 8px',
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          color: 'var(--text-muted)',
+                          border: '1px solid rgba(255, 255, 255, 0.08)',
+                          fontWeight: 500
+                        }}
+                        title="Institutional Sponsorship not synced for this stock yet. Check 'Sync Institutional Sponsorship' on Dashboard."
+                      >
+                        🏛️ Inst: Unsynced
+                      </span>
+                    )
                   )}
 
                   {currentCandidate?.ret_1m !== null && currentCandidate?.ret_1m !== undefined && (
@@ -1192,6 +1273,38 @@ export default function CandidatesTab({
                           title={`Trend Intensity: ${c.ti_65.toFixed(2)}`}
                         >
                           TI {c.ti_65.toFixed(2)}
+                        </span>
+                      )}
+                      {c.sponsorship_streak >= 2 && (
+                        <span
+                          className="pill"
+                          style={{
+                            fontSize: '10px',
+                            padding: '1px 5px',
+                            fontWeight: 700,
+                            background: 'rgba(34, 197, 94, 0.2)',
+                            color: '#22c55e',
+                            border: '1px solid rgba(34, 197, 94, 0.4)'
+                          }}
+                          title={`Institutional Sponsorship: ${c.sponsorship_streak} consecutive quarters increasing fund count`}
+                        >
+                          +{c.sponsorship_streak}Q
+                        </span>
+                      )}
+                      {(c.is_rs_blue_dot || c.setups?.includes('RS Blue Dot')) && (
+                        <span
+                          className="pill"
+                          style={{
+                            fontSize: '10px',
+                            padding: '1px 4px',
+                            fontWeight: 700,
+                            background: 'rgba(56, 189, 248, 0.25)',
+                            color: '#38bdf8',
+                            border: '1px solid rgba(56, 189, 248, 0.4)'
+                          }}
+                          title="RS Blue Dot setup"
+                        >
+                          🔵
                         </span>
                       )}
                       <span className="pill pill-success" style={{ fontSize: '10px', padding: '1px 6px', fontWeight: 600 }}>

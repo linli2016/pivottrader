@@ -50,6 +50,29 @@ export default function InspectorTab({
     }
   }, [inspectorDetail?.next_earnings_date, inspectorDetail?.metadata?.next_earnings_date]);
 
+  const isEtf = React.useMemo(() => {
+    const at = inspectorDetail?.metadata?.asset_type;
+    return at === 'ETF' || (at && at.toUpperCase().includes('ETF'));
+  }, [inspectorDetail?.metadata?.asset_type]);
+
+  const instSummary = React.useMemo(() => {
+    if (isEtf) return null;
+    const s = inspectorDetail?.sponsorship_summary;
+    const f = inspectorDetail?.fundamentals?.[0];
+    const holdersCount = s?.holders_count ?? f?.inst_holders_count;
+    const qoqChange = s?.holders_qoq_change ?? f?.inst_holders_qoq_change;
+    const growthPct = s?.holders_growth_pct ?? (
+      holdersCount && qoqChange !== null && qoqChange !== undefined && (holdersCount - qoqChange > 0)
+        ? ((qoqChange * 100) / (holdersCount - qoqChange))
+        : null
+    );
+    const streak = s?.sponsorship_streak ?? f?.sponsorship_streak ?? 0;
+    const ownershipPct = s?.ownership_pct ?? f?.inst_ownership_pct;
+
+    if (holdersCount === null || holdersCount === undefined) return null;
+    return { holdersCount, qoqChange, growthPct, streak, ownershipPct };
+  }, [inspectorDetail, isEtf]);
+
   return (
     <div>
       <div className="header-section">
@@ -164,6 +187,39 @@ export default function InspectorTab({
 
               <span className="pill pill-secondary">Exchange: {inspectorDetail.metadata.exchange}</span>
               <span className="pill pill-secondary">Asset: {inspectorDetail.metadata.asset_type}</span>
+              {!isEtf && (
+                instSummary ? (
+                  <span
+                    className="pill"
+                    style={{
+                      fontSize: '12px',
+                      padding: '4px 10px',
+                      fontWeight: '700',
+                      background: instSummary.streak >= 2 ? 'rgba(34, 197, 94, 0.2)' : 'rgba(56, 189, 248, 0.18)',
+                      color: instSummary.streak >= 2 ? '#22c55e' : '#38bdf8',
+                      border: `1px solid ${instSummary.streak >= 2 ? 'rgba(34, 197, 94, 0.4)' : 'rgba(56, 189, 248, 0.3)'}`
+                    }}
+                    title={`Institutional Sponsorship: ${instSummary.holdersCount.toLocaleString()} funds${instSummary.qoqChange !== null && instSummary.qoqChange !== undefined ? ` (${instSummary.qoqChange >= 0 ? '+' : ''}${instSummary.qoqChange.toLocaleString()} QoQ)` : ''}${instSummary.streak >= 1 ? `, Streak: ${instSummary.streak}Q` : ''}`}
+                  >
+                    🏛️ Inst: {instSummary.holdersCount.toLocaleString()} {instSummary.qoqChange !== null && instSummary.qoqChange !== undefined ? `(${instSummary.qoqChange >= 0 ? '+' : ''}${instSummary.qoqChange.toLocaleString()} QoQ${instSummary.growthPct !== null ? ` | ${instSummary.growthPct >= 0 ? '+' : ''}${instSummary.growthPct.toFixed(1)}%` : ''})` : ''}
+                  </span>
+                ) : (
+                  <span
+                    className="pill"
+                    style={{
+                      fontSize: '12px',
+                      padding: '4px 10px',
+                      fontWeight: '500',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      color: 'var(--text-muted)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)'
+                    }}
+                    title="Institutional Sponsorship not synced yet. Run 'Sync Institutional Sponsorship' on Dashboard."
+                  >
+                    🏛️ Inst: Unsynced
+                  </span>
+                )
+              )}
             </div>
           </div>
 
@@ -223,6 +279,93 @@ export default function InspectorTab({
                 </table>
               </div>
             </div>
+
+            {/* Institutional Sponsorship & Fund Growth (CAN SLIM "I") */}
+            {!isEtf && (
+              <div className="glass-card" style={{ padding: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <h3 style={{ fontSize: '16px', fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span>🏛️ Institutional Sponsorship & Fund Growth (CAN SLIM "I")</span>
+                    </h3>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      Tracks institutional fund backing and consecutive quarters of increasing fund accumulation.
+                    </p>
+                  </div>
+                  {inspectorDetail.sponsorship_summary && (
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      {(() => {
+                        const streak = inspectorDetail.fundamentals?.[0]?.sponsorship_streak || 0;
+                        if (streak >= 2) {
+                          return (
+                            <span style={{ background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.3)', borderRadius: '12px', padding: '4px 10px', fontSize: '12px', fontWeight: 600 }}>
+                              🔥 {streak} Quarters Consecutive Growth
+                            </span>
+                          );
+                        } else if (streak === 1) {
+                          return (
+                            <span style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '12px', padding: '4px 10px', fontSize: '12px', fontWeight: 600 }}>
+                              📈 1 Quarter Inflow
+                            </span>
+                          );
+                        }
+                        return (
+                          <span style={{ background: 'rgba(156, 163, 175, 0.15)', color: '#9ca3af', border: '1px solid rgba(156, 163, 175, 0.3)', borderRadius: '12px', padding: '4px 10px', fontSize: '12px', fontWeight: 500 }}>
+                            No Growth Streak
+                          </span>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+
+                <div className="table-container" style={{ margin: 0 }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Fiscal Quarter</th>
+                        <th>Report Date</th>
+                        <th>Total Institutional Funds</th>
+                        <th>Net QoQ Fund Change</th>
+                        <th>QoQ Growth %</th>
+                        <th>Float Ownership %</th>
+                        <th>Source</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(inspectorDetail.sponsorship_history || []).map((s, i) => (
+                        <tr key={i}>
+                          <td style={{ fontWeight: 'bold' }}>{s.fiscal_quarter}</td>
+                          <td>{s.report_date || 'N/A'}</td>
+                          <td style={{ fontWeight: 600 }}>
+                            {s.holders_count ? s.holders_count.toLocaleString() : 'N/A'}
+                          </td>
+                          <td style={{ color: s.holders_qoq_change !== null && s.holders_qoq_change !== undefined ? (s.holders_qoq_change >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)') : 'var(--text-secondary)', fontWeight: 600 }}>
+                            {s.holders_qoq_change !== null && s.holders_qoq_change !== undefined ? `${s.holders_qoq_change >= 0 ? '+' : ''}${s.holders_qoq_change.toLocaleString()}` : 'Baseline (1st Qtr)'}
+                          </td>
+                          <td style={{ color: s.holders_growth_pct !== null && s.holders_growth_pct !== undefined ? (s.holders_growth_pct >= 0 ? 'var(--accent-success)' : 'var(--accent-danger)') : 'var(--text-secondary)' }}>
+                            {s.holders_growth_pct !== null && s.holders_growth_pct !== undefined ? `${s.holders_growth_pct >= 0 ? '+' : ''}${s.holders_growth_pct.toFixed(1)}%` : '—'}
+                          </td>
+                          <td>
+                            {s.ownership_pct !== null && s.ownership_pct !== undefined ? `${s.ownership_pct.toFixed(1)}%` : 'N/A'}
+                          </td>
+                          <td style={{ fontSize: '12px', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                            {s.source || 'yfinance'}
+                          </td>
+                        </tr>
+                      ))}
+                      {(!inspectorDetail.sponsorship_history || inspectorDetail.sponsorship_history.length === 0) && (
+                        <tr>
+                          <td colSpan="7" style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '20px' }}>
+                            No institutional sponsorship records cached for this stock. Click <strong>Sync Institutional Sponsorship</strong> on the Dashboard to fetch.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

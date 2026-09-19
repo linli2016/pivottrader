@@ -324,6 +324,27 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "trend",
         "description": "Percentage distance below 52-week high"
     },
+    "DAYS_52W_HIGH": {
+        "sql": "b.days_since_52w_high",
+        "type": "numeric",
+        "label": "Days Since 52w High",
+        "category": "trend",
+        "description": "Trading days elapsed since 52-week high"
+    },
+    "DAYS_SINCE_52W_HIGH": {
+        "sql": "b.days_since_52w_high",
+        "type": "numeric",
+        "label": "Days Since 52w High",
+        "category": "trend",
+        "description": "Trading days elapsed since 52-week high"
+    },
+    "HIGH_52W_DAYS": {
+        "sql": "b.days_since_52w_high",
+        "type": "numeric",
+        "label": "Days Since 52w High",
+        "category": "trend",
+        "description": "Trading days elapsed since 52-week high"
+    },
     "SURGE_OFF_LOW": {
         "sql": "b.surge_off_low_pct",
         "type": "numeric",
@@ -581,6 +602,35 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "label": "Total Revenue",
         "category": "fundamental",
         "description": "Quarterly total revenue"
+    },
+    # ---------------- Institutional Sponsorship (CAN SLIM "I") ----------------
+    "INST_HOLDERS": {
+        "sql": "f.inst_holders_count",
+        "type": "numeric",
+        "label": "Institutional Holders Count",
+        "category": "fundamental",
+        "description": "Total number of institutional funds holding the stock in the latest quarter"
+    },
+    "INST_STREAK": {
+        "sql": "f.sponsorship_streak",
+        "type": "numeric",
+        "label": "Sponsorship Streak Quarters",
+        "category": "fundamental",
+        "description": "Consecutive quarters of increasing institutional fund count (e.g. 2, 3, or 4)"
+    },
+    "INST_QOQ_CHANGE": {
+        "sql": "f.inst_holders_qoq_change",
+        "type": "numeric",
+        "label": "Inst Holders QoQ Change",
+        "category": "fundamental",
+        "description": "Net new institutional funds added in the most recent quarter"
+    },
+    "INST_OWN_PCT": {
+        "sql": "f.inst_ownership_pct",
+        "type": "numeric",
+        "label": "Institutional Ownership %",
+        "category": "fundamental",
+        "description": "Percentage of float held by institutions"
     }
 }
 

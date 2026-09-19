@@ -21,6 +21,9 @@ def main():
     parser.add_argument("--history-years", type=int, help="Number of historical years of daily price bars to fetch (e.g., 2, 5, 10)")
     parser.add_argument("--skip-prices", action="store_true", help="Skip historical daily bars price synchronization")
     parser.add_argument("--skip-fundamentals", action="store_true", help="Skip quarterly fundamental statements synchronization")
+    parser.add_argument("--sync-sponsorship", action="store_true", help="Synchronize quarterly institutional sponsorship fund counts & streaks")
+    parser.add_argument("--sponsorship-source", choices=["yfinance", "sec_13f", "all"], default="yfinance", help="Data source for institutional sponsorship (default: yfinance)")
+    parser.add_argument("--sponsorship-universe", choices=["all", "candidates"], default="all", help="Target universe for institutional sponsorship (default: all)")
     parser.add_argument("--include-premarket", "--include-extended", "--include-prepost", "--include-live", dest="include_premarket", action="store_true", help="Fetch real-time live market quotes (pre-market, intraday, and post-market)")
     args = parser.parse_args()
 
@@ -373,13 +376,15 @@ def main():
         print(f"Identified {len(momentum_candidates)} tickers satisfying Minervini's base Relative Strength Template.")
         
         if not momentum_candidates:
-            print("No candidates passed the relative strength momentum scans. Terminating run.")
-            return
+            if not getattr(args, "sync_sponsorship", False):
+                print("No candidates passed the relative strength momentum scans. Terminating run.")
+                return
+            momentum_candidates = []
 
         # 7. Targeted Fundamental Acceleration Screening
         if args.skip_fundamentals or args.include_premarket:
             print("\n[Step 4/5] Skipping quarterly fundamental statements synchronization as requested (--skip-fundamentals / pre-market mode).")
-        else:
+        elif momentum_candidates:
             print("\n[Step 4/5] Fetching and evaluating quarterly fundamental statement changes...")
             cand_symbols = [c["symbol"] for c in momentum_candidates]
             
@@ -392,6 +397,94 @@ def main():
                 db.upsert_quarterly_fundamentals(fundamentals_df)
             else:
                 print("Warning: No fundamental statements could be retrieved.")
+
+        # 8. Institutional Sponsorship Synchronization
+        if getattr(args, "sync_sponsorship", False):
+            print("\n[Step 5/5] Synchronizing institutional sponsorship (fund counts & float ownership)...")
+            sponsorship_source = getattr(args, "sponsorship_source", "yfinance") or "yfinance"
+            
+            sponsorship_univ = getattr(args, "sponsorship_universe", "all") or "all"
+            
+            # Determine target symbols
+            if getattr(args, "symbols", None):
+                target_syms = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
+            elif sponsorship_univ == "candidates" and momentum_candidates:
+                target_syms = [c["symbol"] for c in momentum_candidates]
+            else:
+                # Target full active universe, prioritizing candidates and watchlist stocks first
+                active_syms = set(db.get_active_symbols(exclude_etfs=True))
+                cand_syms = [c["symbol"] for c in (momentum_candidates or []) if c["symbol"] in active_syms]
+                
+                wl_syms = []
+                try:
+                    with db.get_connection() as conn:
+                        wl_syms = [r[0] for r in conn.execute("SELECT DISTINCT symbol FROM watchlist_items").fetchall() if r[0] in active_syms]
+                except Exception:
+                    pass
+                
+                ordered_syms = []
+                seen = set()
+                for s in cand_syms + wl_syms:
+                    if s not in seen:
+                        seen.add(s)
+                        ordered_syms.append(s)
+                for s in sorted(active_syms):
+                    if s not in seen:
+                        seen.add(s)
+                        ordered_syms.append(s)
+                target_syms = ordered_syms
+
+            # Exclude ETFs (ETFs do not have institutional 13F major holders data)
+            with db.get_connection() as conn:
+                etf_symbols = set(r[0] for r in conn.execute(
+                    "SELECT symbol FROM symbols WHERE asset_type = 'ETF'"
+                ).fetchall())
+            if etf_symbols:
+                target_syms = [s for s in target_syms if s not in etf_symbols]
+
+            # If not forcing full refetch, skip symbols already synced in DuckDB
+            if not getattr(args, "force_full", False):
+                with db.get_connection() as conn:
+                    already_synced = set(r[0] for r in conn.execute(
+                        "SELECT DISTINCT symbol FROM institutional_sponsorship WHERE holders_count IS NOT NULL"
+                    ).fetchall())
+                unprocessed = [s for s in target_syms if s not in already_synced]
+                if len(already_synced) > 0 and len(unprocessed) < len(target_syms):
+                    print(f"Note: {len(target_syms) - len(unprocessed)} symbols already cached in DuckDB. Fetching remaining {len(unprocessed)} symbols (use --force-full to force re-fetch all)...")
+                    target_syms = unprocessed
+
+            print(f"Targeting {len(target_syms)} symbols for institutional sponsorship ({sponsorship_source}, universe: {sponsorship_univ})...")
+            
+            if sponsorship_source in ("yfinance", "all"):
+                batch_size = 250
+                total_upserted = 0
+                for b_idx in range(0, len(target_syms), batch_size):
+                    batch = target_syms[b_idx:b_idx + batch_size]
+                    b_num = (b_idx // batch_size) + 1
+                    b_total = (len(target_syms) + batch_size - 1) // batch_size
+                    print(f"\n[Sponsorship Batch {b_num}/{b_total}] Fetching {len(batch)} symbols ({batch[0]}..{batch[-1]})...")
+                    inst_df = price_provider.fetch_institutional_sponsorship(batch)
+                    if not inst_df.empty:
+                        db.upsert_institutional_sponsorship(inst_df)
+                        total_upserted += len(inst_df)
+                        print(f"Upserted {len(inst_df)} sponsorship records in batch {b_num} (total: {total_upserted}).")
+                    else:
+                        print(f"Batch {b_num}: No records found.")
+
+            if sponsorship_source in ("sec_13f", "all"):
+                try:
+                    from application.providers.sec_13f_prov import SEC13FProvider
+                    sec_prov = SEC13FProvider()
+                    print(f"[SEC-13F] Checking SEC EDGAR 13F submissions...")
+                    # Fetch quarterly filings for targeted symbols
+                    for sym in target_syms[:25]:
+                        sec_recs = sec_prov.fetch_historical_quarters_for_symbol(sym, num_quarters=4)
+                except Exception as e:
+                    print(f"[SEC-13F] Warning: SEC 13F sync encountered: {e}")
+
+            print("\nRecalculating quarterly sponsorship streaks and QoQ growth...")
+            db.recalculate_sponsorship_metrics()
+            print("Institutional sponsorship synchronization completed.")
 
         print("\n[Sync Process] All datasets successfully synchronized and updated.")
 

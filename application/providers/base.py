@@ -59,3 +59,11 @@ class AbstractDataProvider(ABC):
         Returns market session status dict: 'CLOSED', 'PRE_OPEN_NO_DATA', 'PRE_MARKET', 'REGULAR', 'POST_MARKET'.
         """
         return {"state": "REGULAR", "reason": "Default session status"}
+
+    def fetch_institutional_sponsorship(self, symbols: List[str]) -> pd.DataFrame:
+        """
+        Fetch institutional ownership metrics (holders count, float ownership %).
+        Should return a DataFrame containing:
+        'symbol', 'report_date', 'fiscal_quarter', 'holders_count', 'ownership_pct', 'source'
+        """
+        return pd.DataFrame()

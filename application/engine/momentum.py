@@ -121,7 +121,8 @@ class MomentumEngine:
                     db.high,
                     db.low,
                     db.volume,
-                    LAG(db.close, 1) OVER (PARTITION BY db.symbol ORDER BY db.date) as prev_close
+                    LAG(db.close, 1) OVER (PARTITION BY db.symbol ORDER BY db.date) as prev_close,
+                    ROW_NUMBER() OVER (PARTITION BY db.symbol ORDER BY db.date) as row_idx
                 FROM daily_bars db
             ),
             price_lags_base AS (
@@ -134,6 +135,7 @@ class MomentumEngine:
                     high,
                     low,
                     volume,
+                    row_idx,
                     prev_close,
                     AVG(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as sma_7,
                     AVG(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 64 PRECEDING AND CURRENT ROW) as sma_65,
@@ -141,6 +143,7 @@ class MomentumEngine:
                     AVG(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 149 PRECEDING AND CURRENT ROW) as sma_150,
                     AVG(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 199 PRECEDING AND CURRENT ROW) as sma_200,
                     MAX(high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 251 PRECEDING AND CURRENT ROW) as high_52w,
+                    ARG_MAX(row_idx, {'high': high, 'idx': row_idx}) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 251 PRECEDING AND CURRENT ROW) as peak_52w_row_idx,
                     MIN(low) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 251 PRECEDING AND CURRENT ROW) as low_52w,
                     MAX(high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) as peak_high_3d,
                     MIN(low) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) as lowest_low_3d,
@@ -176,6 +179,7 @@ class MomentumEngine:
                     LAG(sma_200, 20) OVER (PARTITION BY symbol ORDER BY date) as sma_200_20d_ago,
                     ROUND(sma_7 / NULLIF(sma_65, 0), 4) as ti_65,
                     high_52w,
+                    (row_idx - peak_52w_row_idx) as days_since_52w_high,
                     low_52w,
                     (high_52w - close) / NULLIF(high_52w, 0) * 100 as dist_from_52w_high,
                     (close - low_52w) / NULLIF(low_52w, 0) * 100 as dist_from_52w_low,
@@ -205,6 +209,7 @@ class MomentumEngine:
                     sma_200_20d_ago,
                     ti_65,
                     high_52w,
+                    days_since_52w_high,
                     low_52w,
                     dist_from_52w_high,
                     dist_from_52w_low,
@@ -235,6 +240,7 @@ class MomentumEngine:
                     sma_200_20d_ago,
                     ti_65,
                     high_52w,
+                    days_since_52w_high,
                     low_52w,
                     dist_from_52w_high,
                     dist_from_52w_low,
@@ -258,6 +264,8 @@ class MomentumEngine:
                 sma_200_20d_ago = src.sma_200_20d_ago,
                 ti_65 = src.ti_65,
                 high_52w = src.high_52w,
+                days_since_52w_high = src.days_since_52w_high,
+                is_52w_high = (src.days_since_52w_high = 0),
                 low_52w = src.low_52w,
                 dist_from_52w_high = src.dist_from_52w_high,
                 dist_from_52w_low = src.dist_from_52w_low,
@@ -617,6 +625,7 @@ class MomentumEngine:
                     b.atr_20d,
                     b.adr_20d,
                     b.high_52w,
+                    b.days_since_52w_high,
                     b.low_52w,
                     b.rs_rank,
                     b.rs_score,
@@ -639,6 +648,11 @@ class MomentumEngine:
                     p.atr_20d,
                     p.adr_20d,
                     GREATEST(COALESCE(p.high_52w, curr.high), curr.high) AS high_52w,
+                    CASE 
+                        WHEN curr.high >= COALESCE(p.high_52w, curr.high) THEN 0 
+                        ELSE COALESCE(p.days_since_52w_high, 0) + 1 
+                    END AS days_since_52w_high,
+                    (curr.high >= COALESCE(p.high_52w, curr.high)) AS is_52w_high,
                     LEAST(COALESCE(p.low_52w, curr.low), curr.low) AS low_52w,
                     ROUND(((curr.close - GREATEST(COALESCE(p.high_52w, curr.high), curr.high)) / GREATEST(COALESCE(p.high_52w, curr.high), curr.high)) * 100, 2) AS dist_from_52w_high,
                     ROUND(((curr.open - p.prev_close) / NULLIF(p.prev_close, 0)) * 100, 2) AS gap_pct,
@@ -666,6 +680,8 @@ class MomentumEngine:
                 atr_20d = c.atr_20d,
                 adr_20d = c.adr_20d,
                 high_52w = c.high_52w,
+                days_since_52w_high = c.days_since_52w_high,
+                is_52w_high = c.is_52w_high,
                 low_52w = c.low_52w,
                 dist_from_52w_high = c.dist_from_52w_high,
                 gap_pct = c.gap_pct,

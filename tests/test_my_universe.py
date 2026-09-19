@@ -23,8 +23,11 @@ class TestMyUniverse(unittest.TestCase):
         self.assertEqual(sub_ids, expected_subs, f"Sub-setups should match {expected_subs}")
 
         # Test expression configuration
-        self.assertIn("RET_1M", momentum_setup["expression"])
-        self.assertIn("STAGE2", momentum_setup["expression"])
+        self.assertEqual(momentum_setup.get("default_sub_id"), "leaders")
+        self.assertIn("RS_RANK >= 90", momentum_setup["expression"])
+        all_sub = next(s for s in momentum_setup["sub_setups"] if s["id"] == "all")
+        self.assertIn("RET_1M", all_sub["expression"])
+        self.assertIn("STAGE2", all_sub["expression"])
 
     def test_subviews_and_top_n(self):
         """Test subview filtering and verification that Top per scan applies to Gainers and not Stage 2."""

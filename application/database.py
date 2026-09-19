@@ -114,6 +114,7 @@ class DatabaseManager:
                     ipo_base_depth DOUBLE,
                     pp_days_since_peak INTEGER,
                     high_52w DOUBLE,
+                    days_since_52w_high INTEGER,
                     low_52w DOUBLE,
                     dist_from_52w_high DOUBLE,
                     dist_from_52w_low DOUBLE,
@@ -171,6 +172,7 @@ class DatabaseManager:
                 ("ipo_drawdown_from_high", "DOUBLE"),
                 ("ipo_base_depth", "DOUBLE"),
                 ("high_52w", "DOUBLE"),
+                ("days_since_52w_high", "INTEGER"),
                 ("low_52w", "DOUBLE"),
                 ("dist_from_52w_high", "DOUBLE"),
                 ("dist_from_52w_low", "DOUBLE"),
@@ -225,9 +227,25 @@ class DatabaseManager:
                     eps_diluted DOUBLE,
                     eps_qoq_growth DOUBLE,
                     total_revenue DOUBLE,
+                    inst_holders_count INTEGER,
+                    inst_holders_qoq_change INTEGER,
+                    inst_ownership_pct DOUBLE,
+                    sponsorship_streak INTEGER,
                     PRIMARY KEY (symbol, fiscal_quarter)
                 );
             """)
+
+            # Migration for quarterly_fundamentals institutional columns
+            for col_name, col_type in [
+                ("inst_holders_count", "INTEGER"),
+                ("inst_holders_qoq_change", "INTEGER"),
+                ("inst_ownership_pct", "DOUBLE"),
+                ("sponsorship_streak", "INTEGER")
+            ]:
+                try:
+                    conn.execute(f"ALTER TABLE quarterly_fundamentals ADD COLUMN {col_name} {col_type};")
+                except Exception:
+                    pass
 
             # 4. Earnings Calendar Table (Historical actuals and upcoming earnings dates)
             conn.execute("""
@@ -242,6 +260,23 @@ class DatabaseManager:
                 );
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_earnings_calendar_sym ON earnings_calendar(symbol);")
+
+            # 5. Institutional Sponsorship Historical Table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS institutional_sponsorship (
+                    symbol VARCHAR NOT NULL,
+                    report_date DATE NOT NULL,
+                    fiscal_quarter VARCHAR NOT NULL,
+                    holders_count INTEGER NOT NULL,
+                    holders_qoq_change INTEGER,
+                    holders_growth_pct DOUBLE,
+                    ownership_pct DOUBLE,
+                    source VARCHAR DEFAULT 'yfinance',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (symbol, fiscal_quarter)
+                );
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_inst_sponsorship_sym ON institutional_sponsorship(symbol);")
 
     def upsert_symbols(self, symbols_data: List[Dict[str, Any]]) -> None:
         """Inserts or updates records in the symbols table."""
@@ -322,10 +357,14 @@ class DatabaseManager:
             conn.execute("DROP TABLE to_deactivate")
             return count
 
-    def get_active_symbols(self) -> List[str]:
+    def get_active_symbols(self, exclude_etfs: bool = False) -> List[str]:
         """Returns a list of all active stock symbols stored in the database."""
         with self.get_connection() as conn:
-            res = conn.execute("SELECT symbol FROM symbols WHERE active = TRUE ORDER BY symbol").fetchall()
+            query = "SELECT symbol FROM symbols WHERE active = TRUE"
+            if exclude_etfs:
+                query += " AND (asset_type IS NULL OR asset_type != 'ETF')"
+            query += " ORDER BY symbol"
+            res = conn.execute(query).fetchall()
             return [r[0] for r in res]
 
     def get_symbols_missing_ipo_date(self) -> List[str]:
@@ -448,6 +487,204 @@ class DatabaseManager:
                 SELECT symbol, CAST(earnings_date AS DATE), CAST(eps_estimate AS DOUBLE), CAST(eps_actual AS DOUBLE), CAST(surprise_pct AS DOUBLE), CAST(time_of_day AS VARCHAR)
                 FROM temp_earnings_calendar
             """)
+
+    def upsert_institutional_sponsorship(self, df: pd.DataFrame) -> None:
+        """Inserts or replaces records in institutional_sponsorship."""
+        if df.empty:
+            return
+        columns = ["symbol", "report_date", "fiscal_quarter", "holders_count", "ownership_pct", "source"]
+        for col in columns:
+            if col not in df.columns:
+                if col == "ownership_pct":
+                    df[col] = None
+                elif col == "source":
+                    df[col] = "yfinance"
+                else:
+                    raise ValueError(f"Required column '{col}' missing from institutional DataFrame")
+
+        df["report_date"] = pd.to_datetime(df["report_date"]).dt.date
+        inst_df = df[columns].copy()
+
+        with self.get_connection() as conn:
+            conn.execute("CREATE OR REPLACE TEMP TABLE temp_inst AS SELECT * FROM inst_df")
+            conn.execute("""
+                INSERT OR REPLACE INTO institutional_sponsorship (symbol, report_date, fiscal_quarter, holders_count, ownership_pct, source, created_at)
+                SELECT 
+                    symbol, 
+                    report_date, 
+                    fiscal_quarter, 
+                    CAST(holders_count AS INTEGER), 
+                    CAST(ownership_pct AS DOUBLE), 
+                    CAST(source AS VARCHAR), 
+                    CURRENT_TIMESTAMP
+                FROM temp_inst
+            """)
+            conn.execute("DROP TABLE temp_inst")
+
+    def recalculate_sponsorship_metrics(self) -> None:
+        """
+        Recalculates QoQ change, growth rate, and consecutive quarters growth streak
+        for institutional sponsorship records and syncs the latest metrics into quarterly_fundamentals.
+        """
+        with self.get_connection() as conn:
+            # 1. Update holders_qoq_change and holders_growth_pct in institutional_sponsorship
+            conn.execute("""
+                WITH ranked AS (
+                    SELECT 
+                        symbol,
+                        fiscal_quarter,
+                        holders_count,
+                        LAG(holders_count, 1) OVER (PARTITION BY symbol ORDER BY fiscal_quarter) AS prev_1
+                    FROM institutional_sponsorship
+                )
+                UPDATE institutional_sponsorship
+                SET 
+                    holders_qoq_change = ranked.holders_count - ranked.prev_1,
+                    holders_growth_pct = CASE 
+                        WHEN ranked.prev_1 IS NOT NULL AND ranked.prev_1 > 0 
+                        THEN ((ranked.holders_count - ranked.prev_1) * 100.0 / ranked.prev_1) 
+                        ELSE NULL 
+                    END
+                FROM ranked
+                WHERE institutional_sponsorship.symbol = ranked.symbol 
+                  AND institutional_sponsorship.fiscal_quarter = ranked.fiscal_quarter;
+            """)
+
+            # 2. Compute streaks and propagate to quarterly_fundamentals
+            conn.execute("""
+                WITH streak_calc AS (
+                    SELECT 
+                        symbol,
+                        fiscal_quarter,
+                        report_date,
+                        holders_count,
+                        holders_qoq_change,
+                        ownership_pct,
+                        CASE 
+                            WHEN holders_count > prev_1 AND prev_1 > prev_2 AND prev_2 > prev_3 AND prev_3 > prev_4 THEN 4
+                            WHEN holders_count > prev_1 AND prev_1 > prev_2 AND prev_2 > prev_3 THEN 3
+                            WHEN holders_count > prev_1 AND prev_1 > prev_2 THEN 2
+                            WHEN holders_count > prev_1 THEN 1
+                            ELSE 0
+                        END AS streak
+                    FROM (
+                        SELECT 
+                            symbol,
+                            fiscal_quarter,
+                            report_date,
+                            holders_count,
+                            holders_qoq_change,
+                            ownership_pct,
+                            LAG(holders_count, 1) OVER (PARTITION BY symbol ORDER BY fiscal_quarter) AS prev_1,
+                            LAG(holders_count, 2) OVER (PARTITION BY symbol ORDER BY fiscal_quarter) AS prev_2,
+                            LAG(holders_count, 3) OVER (PARTITION BY symbol ORDER BY fiscal_quarter) AS prev_3,
+                            LAG(holders_count, 4) OVER (PARTITION BY symbol ORDER BY fiscal_quarter) AS prev_4
+                        FROM institutional_sponsorship
+                    )
+                )
+                UPDATE quarterly_fundamentals
+                SET 
+                    inst_holders_count = s.holders_count,
+                    inst_holders_qoq_change = s.holders_qoq_change,
+                    inst_ownership_pct = s.ownership_pct,
+                    sponsorship_streak = s.streak
+                FROM streak_calc s
+                WHERE quarterly_fundamentals.symbol = s.symbol 
+                  AND quarterly_fundamentals.fiscal_quarter = s.fiscal_quarter;
+            """)
+
+            # 3. For any symbols in institutional_sponsorship without a quarterly_fundamentals row for that quarter, insert a stub
+            conn.execute("""
+                WITH streak_calc AS (
+                    SELECT 
+                        symbol,
+                        fiscal_quarter,
+                        report_date,
+                        holders_count,
+                        holders_qoq_change,
+                        ownership_pct,
+                        CASE 
+                            WHEN holders_count > prev_1 AND prev_1 > prev_2 AND prev_2 > prev_3 AND prev_3 > prev_4 THEN 4
+                            WHEN holders_count > prev_1 AND prev_1 > prev_2 AND prev_2 > prev_3 THEN 3
+                            WHEN holders_count > prev_1 AND prev_1 > prev_2 THEN 2
+                            WHEN holders_count > prev_1 THEN 1
+                            ELSE 0
+                        END AS streak
+                    FROM (
+                        SELECT 
+                            symbol,
+                            fiscal_quarter,
+                            report_date,
+                            holders_count,
+                            holders_qoq_change,
+                            ownership_pct,
+                            LAG(holders_count, 1) OVER (PARTITION BY symbol ORDER BY fiscal_quarter) AS prev_1,
+                            LAG(holders_count, 2) OVER (PARTITION BY symbol ORDER BY fiscal_quarter) AS prev_2,
+                            LAG(holders_count, 3) OVER (PARTITION BY symbol ORDER BY fiscal_quarter) AS prev_3,
+                            LAG(holders_count, 4) OVER (PARTITION BY symbol ORDER BY fiscal_quarter) AS prev_4
+                        FROM institutional_sponsorship
+                    )
+                )
+                INSERT INTO quarterly_fundamentals (symbol, report_date, fiscal_quarter, inst_holders_count, inst_holders_qoq_change, inst_ownership_pct, sponsorship_streak)
+                SELECT s.symbol, s.report_date, s.fiscal_quarter, s.holders_count, s.holders_qoq_change, s.ownership_pct, s.streak
+                FROM streak_calc s
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM quarterly_fundamentals qf 
+                    WHERE qf.symbol = s.symbol AND qf.fiscal_quarter = s.fiscal_quarter
+                );
+            """)
+
+    def get_symbol_sponsorship_history(self, symbol: str) -> List[Dict[str, Any]]:
+        """Returns the historical quarterly institutional sponsorship records for a symbol."""
+        with self.get_connection() as conn:
+            rows = conn.execute("""
+                SELECT 
+                    i.fiscal_quarter,
+                    i.report_date,
+                    i.holders_count,
+                    i.holders_qoq_change,
+                    i.holders_growth_pct,
+                    i.ownership_pct,
+                    i.source,
+                    qf.sponsorship_streak
+                FROM institutional_sponsorship i
+                LEFT JOIN quarterly_fundamentals qf 
+                    ON i.symbol = qf.symbol AND i.fiscal_quarter = qf.fiscal_quarter
+                WHERE i.symbol = ?
+                ORDER BY i.fiscal_quarter DESC
+            """, [symbol.upper()]).fetchall()
+
+            if not rows:
+                rows = conn.execute("""
+                    SELECT 
+                        fiscal_quarter,
+                        report_date,
+                        inst_holders_count,
+                        inst_holders_qoq_change,
+                        CASE WHEN inst_holders_count - inst_holders_qoq_change > 0 
+                             THEN (inst_holders_qoq_change * 100.0 / (inst_holders_count - inst_holders_qoq_change))
+                             ELSE NULL END as growth_pct,
+                        inst_ownership_pct,
+                        'fundamentals' as source,
+                        sponsorship_streak
+                    FROM quarterly_fundamentals
+                    WHERE symbol = ? AND inst_holders_count IS NOT NULL
+                    ORDER BY fiscal_quarter DESC
+                """, [symbol.upper()]).fetchall()
+
+            return [
+                {
+                    "fiscal_quarter": r[0],
+                    "report_date": r[1].strftime("%Y-%m-%d") if r[1] else None,
+                    "holders_count": r[2],
+                    "holders_qoq_change": r[3],
+                    "holders_growth_pct": round(r[4], 2) if r[4] is not None else None,
+                    "ownership_pct": r[5],
+                    "source": r[6],
+                    "sponsorship_streak": r[7] if len(r) > 7 and r[7] is not None else 0
+                }
+                for r in rows
+            ]
 
     def get_last_bar_dates(self) -> Dict[str, str]:
         """Returns a dict mapping symbol to their last recorded daily bar date."""

@@ -407,6 +407,10 @@ class DatabaseService:
                         eps_diluted,
                         eps_qoq_growth,
                         total_revenue,
+                        inst_holders_count,
+                        inst_holders_qoq_change,
+                        inst_ownership_pct,
+                        sponsorship_streak,
                         ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY fiscal_quarter DESC) as rn
                     FROM quarterly_fundamentals
                     WHERE report_date <= (SELECT val FROM target_date_const)
@@ -485,7 +489,12 @@ class DatabaseService:
                     ) as is_stage2,
                     db.ema_50,
                     db.dist_ema50_pct,
-                    s.active
+                    s.active,
+                    f.inst_holders_count,
+                    f.inst_holders_qoq_change,
+                    f.inst_ownership_pct,
+                    f.sponsorship_streak,
+                    db.days_since_52w_high
                 FROM {from_table}
                 LEFT JOIN latest_fundamentals f ON db.symbol = f.symbol AND f.rn = 1
                 JOIN symbols s ON db.symbol = s.symbol
@@ -609,7 +618,12 @@ class DatabaseService:
                     "is_stage2": bool(row[64]) if len(row) > 64 and row[64] is not None else False,
                     "ema_50": row[65] if len(row) > 65 else None,
                     "dist_ema50_pct": row[66] if len(row) > 66 else None,
-                    "active": bool(row[67]) if len(row) > 67 and row[67] is not None else True
+                    "active": bool(row[67]) if len(row) > 67 and row[67] is not None else True,
+                    "inst_holders_count": row[68] if len(row) > 68 else None,
+                    "inst_holders_qoq_change": row[69] if len(row) > 69 else None,
+                    "inst_ownership_pct": row[70] if len(row) > 70 else None,
+                    "sponsorship_streak": int(row[71]) if len(row) > 71 and row[71] is not None else 0,
+                    "days_since_52w_high": int(row[72]) if len(row) > 72 and row[72] is not None else None
                 })
 
             if not candidates:
@@ -1236,7 +1250,8 @@ class DatabaseService:
             
             # Fundamentals
             funds = conn.execute("""
-                SELECT report_date, fiscal_quarter, eps_diluted, eps_qoq_growth, total_revenue
+                SELECT report_date, fiscal_quarter, eps_diluted, eps_qoq_growth, total_revenue,
+                       inst_holders_count, inst_holders_qoq_change, inst_ownership_pct, sponsorship_streak
                 FROM quarterly_fundamentals 
                 WHERE symbol = ?
                 ORDER BY fiscal_quarter DESC
@@ -1249,9 +1264,64 @@ class DatabaseService:
                     "fiscal_quarter": row[1],
                     "eps_diluted": row[2],
                     "eps_qoq_growth": row[3],
-                    "total_revenue": row[4]
+                    "total_revenue": row[4],
+                    "inst_holders_count": row[5] if len(row) > 5 else None,
+                    "inst_holders_qoq_change": row[6] if len(row) > 6 else None,
+                    "inst_ownership_pct": row[7] if len(row) > 7 else None,
+                    "sponsorship_streak": row[8] if len(row) > 8 else None
                 })
-                
+
+            # Institutional Sponsorship History
+            s_rows = conn.execute("""
+                SELECT 
+                    i.fiscal_quarter,
+                    i.report_date,
+                    i.holders_count,
+                    i.holders_qoq_change,
+                    i.holders_growth_pct,
+                    i.ownership_pct,
+                    i.source,
+                    qf.sponsorship_streak
+                FROM institutional_sponsorship i
+                LEFT JOIN quarterly_fundamentals qf 
+                    ON i.symbol = qf.symbol AND i.fiscal_quarter = qf.fiscal_quarter
+                WHERE i.symbol = ?
+                ORDER BY i.fiscal_quarter DESC
+            """, [symbol]).fetchall()
+
+            if not s_rows:
+                s_rows = conn.execute("""
+                    SELECT 
+                        fiscal_quarter,
+                        report_date,
+                        inst_holders_count,
+                        inst_holders_qoq_change,
+                        CASE WHEN inst_holders_count - inst_holders_qoq_change > 0 
+                             THEN (inst_holders_qoq_change * 100.0 / (inst_holders_count - inst_holders_qoq_change))
+                             ELSE NULL END as growth_pct,
+                        inst_ownership_pct,
+                        'fundamentals' as source,
+                        sponsorship_streak
+                    FROM quarterly_fundamentals
+                    WHERE symbol = ? AND inst_holders_count IS NOT NULL
+                    ORDER BY fiscal_quarter DESC
+                """, [symbol]).fetchall()
+
+            sponsorship_history = [
+                {
+                    "fiscal_quarter": r[0],
+                    "report_date": r[1].strftime("%Y-%m-%d") if r[1] else None,
+                    "holders_count": r[2],
+                    "holders_qoq_change": r[3],
+                    "holders_growth_pct": round(r[4], 2) if r[4] is not None else None,
+                    "ownership_pct": r[5],
+                    "source": r[6],
+                    "sponsorship_streak": r[7] if len(r) > 7 and r[7] is not None else 0
+                }
+                for r in s_rows
+            ]
+            latest_sponsorship = sponsorship_history[0] if sponsorship_history else None
+            
             # Get latest RS, ATR, TI65, and Volume metrics
             latest_bar = conn.execute("""
                 SELECT rs_score, rs_rank, atr_20d, ti_65, COALESCE(dollar_vol_50d_ma, close * vol_50d_ma) as dollar_vol_50d_ma, vol_50d_ma
@@ -1319,6 +1389,8 @@ class DatabaseService:
             return {
                 "metadata": meta_dict,
                 "fundamentals": fund_list,
+                "sponsorship_history": sponsorship_history,
+                "sponsorship_summary": latest_sponsorship,
                 "rs_score": rs_score,
                 "rs_rank": rs_rank,
                 "adr_20d": atr_20d,
@@ -1337,9 +1409,36 @@ class DatabaseService:
         symbol = symbol.upper()
         with self.get_read_only_conn() as conn:
             bars = conn.execute("""
-                SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65
-                FROM daily_bars
-                WHERE symbol = ?
+                WITH spy_bars AS (
+                    SELECT date, close as spy_close
+                    FROM daily_bars
+                    WHERE symbol = 'SPY'
+                ),
+                sym_bars AS (
+                    SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65
+                    FROM daily_bars
+                    WHERE symbol = ?
+                ),
+                combined AS (
+                    SELECT 
+                        s.*,
+                        ROUND((s.close / NULLIF(b.spy_close, 0)) * 100.0, 4) as rs_line
+                    FROM sym_bars s
+                    LEFT JOIN spy_bars b ON s.date = b.date
+                    ORDER BY s.date ASC
+                ),
+                with_rolling AS (
+                    SELECT 
+                        *,
+                        MAX(rs_line) OVER (ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_rs_52w_high,
+                        MAX(close) OVER (ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_close_52w_high
+                    FROM combined
+                )
+                SELECT 
+                    date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65,
+                    rs_line,
+                    COALESCE(rs_line >= prev_rs_52w_high AND close < COALESCE(prev_close_52w_high, close), false) as is_rs_blue_dot
+                FROM with_rolling
                 ORDER BY date ASC
             """, [symbol]).fetchall()
             
@@ -1360,7 +1459,9 @@ class DatabaseService:
                     "sma_150": row[7],
                     "sma_200": row[8],
                     "rs_rank": row[9],
-                    "ti_65": row[10]
+                    "ti_65": row[10],
+                    "rs_line": row[11],
+                    "is_rs_blue_dot": bool(row[12]) if row[12] is not None else False
                 })
             return bars_list
 
