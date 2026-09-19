@@ -61,11 +61,16 @@ class ModelBookScanSchema(BaseModel):
     min_runup_pct: Optional[float] = None
     max_base_depth: Optional[float] = None
     episode_window_days: int = 15
+    sub_setup_id: Optional[str] = None
     filters: Optional[Dict[str, Any]] = None
+
+class ExpressionValidateSchema(BaseModel):
+    expression: str
 
 class CandidateFilterSchema(BaseModel):
     date: Optional[str] = None
     filters: Dict[str, Any] = Field(default_factory=dict)
+    expression: Optional[str] = None
     sort_by: Optional[str] = None
     sort_order: Optional[str] = None
 
@@ -103,6 +108,24 @@ def get_setups():
         logger.error(f"Error in get_setups: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/api/setups/validate-expression")
+def validate_expression_endpoint(payload: ExpressionValidateSchema):
+    """Validate a TC2000 PCF scan expression and return syntax status and compiled SQL."""
+    try:
+        return setup_service.validate_expression(payload.expression)
+    except Exception as e:
+        logger.error(f"Error validating expression: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/setups/variables")
+def get_setup_variables_endpoint():
+    """Retrieve categorized dictionary of supported scan expression variables for UI cheat-sheet."""
+    try:
+        return setup_service.get_expression_variables()
+    except Exception as e:
+        logger.error(f"Error in get_setup_variables: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/api/summary")
 def get_summary():
     """Retrieve metadata counts and database status."""
@@ -128,6 +151,7 @@ def post_candidates(payload: CandidateFilterSchema):
         data = db_service.get_candidates(
             target_date=payload.date,
             filters=payload.filters,
+            expression=payload.expression,
             sort_by=payload.sort_by,
             sort_order=payload.sort_order
         )
@@ -385,6 +409,7 @@ def scan_model_book_endpoint(payload: ModelBookScanSchema):
             min_runup_pct=payload.min_runup_pct,
             max_base_depth=payload.max_base_depth,
             episode_window_days=payload.episode_window_days,
+            sub_setup_id=payload.sub_setup_id,
             filters=payload.filters
         )
         return data

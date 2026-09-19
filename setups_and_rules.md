@@ -27,6 +27,8 @@
    - **Yellow Light:** Distribution days accumulating, market below 21 EMA. Cut size to 50%.
    - **Red Light:** S&P 500 below 50 SMA and 200 SMA. Cash is king — no new breakout trades.
 
+7. The definition of a Pocket Pivot is the current up day’s volume must be larger than any of the down volume days in the prior 10 days.
+
 ---
 
 ## 🎯 My Setups
@@ -85,13 +87,25 @@ This method can also be traded by anticipating the breakout but I don’t find i
   - The stock should be up 3-5+ days in a row. Many times you have examples where a stock trends higher for weeks or months and then starts speeding up, some just explode from nowhere.
   - **Reversal Trigger:** First high-volume red day or breakdown below previous day's low.
 
-### 5. Volatility Contraction Pattern (VCP)
-* **Objective:** Buy low-risk pivot entry points as supply dries up across contraction cycles (Mark Minervini setup).
-* **Criteria:**
-  - 2 to 4 successive price contractions (e.g. $25\% \rightarrow 12\% \rightarrow 6\%$).
-  - Each trough is shallower than the previous one.
-  - Volume dries up dramatically on the final contraction (Pivot Area).
-  - **Trigger:** Breakout through the pivot line with volume expansion.
+### 5. Minervini Base Setups (Low Cheat, Cheat / 3-C, Cup and Handle)
+* **Objective:** Buy asymmetric, low-risk pivot entry points as supply dries up across base development in confirmed Stage 2 uptrends (Mark Minervini SEPA® methodology).
+* **Minervini Base Progression Sub-Views:**
+  1. **Low Cheat (Lower Base Reversal):**
+     - **Location:** Occurs in the **lower 1/3 to 1/2 of the base** ($\le 50\%$ base position height).
+     - **Trough Exhaustion:** Selling pressure exhausts at the trough via Volume Dry-Up (VDU $< 0.75\times$ 50MA) or an undercut-and-rally shakeout.
+     - **Pivot Trigger:** Character change candle breaking above the low pivot resistance on above-average volume.
+     - **Risk/Reward:** Asymmetric early entry with stop-loss at trigger/pivot low and target at prior base peak.
+  2. **Cheat / 3-C (Cup Completion Cheat):**
+     - **Location:** Occurs in the **mid-to-upper portion of the base** ($40\%$ to $80\%$ base position height) on the right side of the cup.
+     - **The Plateau:** After rounding off the low, the stock rallies up the right side and pauses, forming a tight plateau/shelf with volume contraction before reaching the prior peak.
+     - **Pivot Trigger:** Range expansion and volume surge through the pause shelf pivot high.
+     - **Advantage:** "Cheats" the classic cup breakout by establishing a lower cost basis before the crowd enters at new highs.
+  3. **Cup and Handle (Classic VCP Breakout):**
+     - **Location:** Upper portion of the base near 52-week highs (within $15\% - 20\%$ of highs, $\ge 75\%$ base position).
+     - **Contraction Cycles:** 2 to 4 progressive volatility contractions (e.g. $25\% \rightarrow 12\% \rightarrow 6\%$) with each trough shallower than the last.
+     - **The Handle:** Final contraction tightens ($\le 12\%$ pullback, ideally $\le 8\%$) with dramatic volume dry-up.
+     - **Pivot Trigger:** Breakout through the handle pivot / cup lip on heavy volume.
+
 
 ### 6. IPO Base
 * **Objective:** Catch early institutional accumulation in high-growth newly public companies.
@@ -107,6 +121,7 @@ This method can also be traded by anticipating the breakout but I don’t find i
   - **Price:** $\ge \$2.00$ (eliminates micro-penny stocks).
   - **Liquidity:** 50-day SMA Volume $\ge 100,000$ shares.
   - **Volatility (ADR%):** 20-day Average Daily Range (ADR%) $\ge 4.0\%$ (ensures sufficient daily range for swing trading).
+  - **Min Consolidation Days:** $\ge 10$ days spent in base consolidation (default 10 days).
 * **Scanning Timeframes:**
   - **1-Month Gainers (~21 Trading Days):** Identifies sudden velocity runners, fresh themes, and leading movers.
   - **3-Month Gainers (~63 Trading Days):** Captures quarterly trend continuation and established intermediate leaders.
@@ -115,6 +130,19 @@ This method can also be traded by anticipating the breakout but I don’t find i
   - The top ~75 (50–100) gainers from each of the 3 scans are extracted and deduplicated into a unified watch universe (~100–200 tickers).
   - Stocks appearing in multiple timeframes (e.g. `[1M, 3M, 6M]`) represent the highest-conviction true market leaders.
   - Prioritize candidates displaying **Moving Average Alignment** ($10\text{ EMA} > 20\text{ EMA} > 50\text{ SMA}$ and $\text{Price} > 10\text{ EMA}$) and tight base consolidations.
+
+* **Universe Sub-Views:**
+  - **All:** Comprehensive union of Minervini Stage 2 uptrend stocks and Qullamaggie 1M/3M/6M momentum gainers.
+  - **Stage 2:** Full Minervini Stage 2 Trend Template ($Close > 50\text{ SMA} > 150\text{ SMA} > 200\text{ SMA}$, 200 SMA rising, within $25\%$ of 52w high, $\ge 30\%$ off 52w low).
+  - **Leaders (Fast Momentum Leaders):** Elite high-beta momentum screen targeting active market leaders:
+    1. **Stock Price:** $\ge \$10.00$ (filters out lower-priced speculative issues)
+    2. **Average Daily Range (ADR% 20d):** $\ge 4.0\%$
+    3. **RS Rating / Rank:** $\ge 90$ (Top 10% relative strength)
+    4. **Price > 50-day SMA:** Intermediate trend support
+    5. **Fast Trend Alignment:** $10\text{ EMA} > 20\text{ EMA}$
+    6. **Deep Advance Off Low:** $\ge 70.0\%$ above 52-week low
+    7. **Consolidation Days:** $\ge 10$ days spent in base consolidation (default 10 days).
+  - **All Gainers / 1M / 3M / 6M:** Top $N$ gainers across individual and combined momentum performance timeframes.
 
 ---
 
@@ -129,4 +157,8 @@ This method can also be traded by anticipating the breakout but I don’t find i
 
 ---
 ## References
+- 3 TIMELESS setups that have made me TENS OF MILLIONS! [view](https://qullamaggie.com/my-3-timeless-setups-that-have-made-me-tens-of-millions/)
 - Mastering the Minervini Low Cheat Entry   [view](https://thesetupfactory.substack.com/p/mastering-the-minervini-low-cheat)
+- What is a valid Breakout? [view](
+ https://thesetupfactory.substack.com/p/what-is-a-valid-breakout)
+- A System Behind a +40% Week —  Six Years of Trading Experience Compressed Into One Article [view](https://x.com/MichaelZTrading/article/2100596335162380479)

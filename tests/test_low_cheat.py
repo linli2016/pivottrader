@@ -1,5 +1,5 @@
 import unittest
-from application.engine.setups.low_cheat import detect_low_cheat
+from application.engine.setups.low_cheat import detect_low_cheat, detect_cheat
 from application.services.config import config_service
 from application.services.model_book_service import ModelBookService
 from application.services.database import db_service
@@ -46,13 +46,12 @@ class TestMinerviniLowCheat(unittest.TestCase):
 
     def test_reject_when_pivot_is_too_high_in_base(self):
         # Peak $100, Trough $70 (height = 30), Pivot at $90 -> Position = 20/30 = 66.7% (> 50%)
-        highs = [90.0, 95.0, 100.0] + [90.0, 80.0, 72.0] + [78.0, 85.0, 90.0, 88.0, 91.0]
-        lows =  [88.0, 92.0, 97.0]  + [82.0, 73.0, 70.0] + [73.0, 77.0, 84.0, 86.0, 88.0]
-        closes = [89.0, 94.0, 99.0] + [85.0, 74.0, 71.0] + [77.0, 84.0, 89.0, 87.0, 90.5]
-        opens =  [88.5, 93.0, 98.0] + [89.0, 79.0, 72.0] + [74.0, 78.0, 85.0, 89.0, 88.5]
-        volumes = [1000] * len(highs)
-        volumes[5] = 200  # dryup at trough
-        volumes[-1] = 2000 # trigger volume
+        base_prefix = [88.0] * 12
+        highs = base_prefix + [90.0, 95.0, 100.0] + [90.0, 80.0, 72.0] + [78.0, 85.0, 90.0, 88.0, 91.0]
+        lows =  base_prefix + [88.0, 92.0, 97.0]  + [82.0, 73.0, 70.0] + [73.0, 77.0, 84.0, 86.0, 88.0]
+        closes = base_prefix + [89.0, 94.0, 99.0] + [85.0, 74.0, 71.0] + [77.0, 84.0, 89.0, 87.0, 90.5]
+        opens =  base_prefix + [88.5, 93.0, 98.0] + [89.0, 79.0, 72.0] + [74.0, 78.0, 85.0, 89.0, 88.5]
+        volumes = [1000] * 12 + [1000] * 3 + [1000, 1000, 200] + [1000, 1000, 1000, 1000, 2000]
         dates = [f"2026-05-{i+1:02d}" for i in range(len(highs))]
 
         res = detect_low_cheat(
@@ -63,11 +62,41 @@ class TestMinerviniLowCheat(unittest.TestCase):
             volumes=volumes,
             dates=dates,
             vol_50d_ma=1000.0,
-            max_base_position=50.0
+            max_base_position=50.0,
+            enforce_stage2=False
         )
 
-        # Should NOT qualify as a Low Cheat because pivot is in upper base
+        # Should NOT qualify as a Low Cheat because pivot is in upper base (66.7% > 50%)
         self.assertFalse(res["low_cheat_is_setup"])
+
+    def test_detect_cheat_in_mid_to_upper_base(self):
+        # Peak $100, Trough $70 (height = 30), Pivot at $90 -> Position = 20/30 = 66.7% (40-80% Cheat range)
+        base_prefix = [88.0] * 12
+        highs = base_prefix + [90.0, 95.0, 100.0] + [90.0, 80.0, 72.0] + [78.0, 85.0, 90.0, 88.0, 91.0]
+        lows =  base_prefix + [88.0, 92.0, 97.0]  + [82.0, 73.0, 70.0] + [73.0, 77.0, 84.0, 86.0, 88.0]
+        closes = base_prefix + [89.0, 94.0, 99.0] + [85.0, 74.0, 71.0] + [77.0, 84.0, 89.0, 87.0, 90.5]
+        opens =  base_prefix + [88.5, 93.0, 98.0] + [89.0, 79.0, 72.0] + [74.0, 78.0, 85.0, 89.0, 88.5]
+        volumes = [1000] * 12 + [1000] * 3 + [1000, 1000, 200] + [1000, 1000, 1000, 1000, 2000]
+        dates = [f"2026-05-{i+1:02d}" for i in range(len(highs))]
+
+        res = detect_cheat(
+            opens=opens,
+            highs=highs,
+            lows=lows,
+            closes=closes,
+            volumes=volumes,
+            dates=dates,
+            vol_50d_ma=1000.0,
+            min_base_position=40.0,
+            max_base_position=80.0,
+            require_exhaustion_or_shakeout=False,
+            enforce_stage2=False
+        )
+
+        self.assertTrue(res["cheat_is_setup"])
+        self.assertTrue(res["cheat_is_trigger"])
+        self.assertEqual(res["cheat_type"], "cheat")
+        self.assertAlmostEqual(res["base_position_pct"], 66.7, places=1)
 
     def test_stage2_trend_filtering(self):
         base_prefix = [88.0] * 12
@@ -154,6 +183,60 @@ class TestMinerviniLowCheat(unittest.TestCase):
         if candidates:
             cand = candidates[0]
             self.assertTrue(cand.get("low_cheat_is_setup"))
+
+    def test_minervini_subviews_database_screening(self):
+        dt = db_service.get_available_trading_dates()[0]
+        
+        # 1. Low Cheat subview
+        c_lc = db_service.get_candidates(
+            target_date=dt,
+            filters={
+                'enforce_stage2': True,
+                'enable_low_cheat': True,
+                'vcp_subview': 'low_cheat',
+                'min_base_position': 0.0,
+                'max_base_position': 50.0
+            }
+        )
+        self.assertIsInstance(c_lc, list)
+        self.assertGreater(len(c_lc), 0)
+        for c in c_lc:
+            self.assertTrue(c.get("low_cheat_is_setup"))
+            if c.get("low_cheat_base_position") is not None:
+                self.assertLessEqual(c["low_cheat_base_position"], 50.0)
+
+        # 2. Cheat (3-C) subview
+        c_ch = db_service.get_candidates(
+            target_date=dt,
+            filters={
+                'enforce_stage2': True,
+                'enable_cheat': True,
+                'vcp_subview': 'cheat',
+                'min_base_position': 40.0,
+                'max_base_position': 80.0
+            }
+        )
+        self.assertIsInstance(c_ch, list)
+        self.assertGreater(len(c_ch), 0)
+        for c in c_ch:
+            self.assertTrue(c.get("cheat_is_setup"))
+            if c.get("cheat_base_position") is not None:
+                self.assertGreaterEqual(c["cheat_base_position"], 40.0)
+                self.assertLessEqual(c["cheat_base_position"], 80.0)
+
+        # 3. Cup and Handle subview
+        c_vcp = db_service.get_candidates(
+            target_date=dt,
+            filters={
+                'enforce_stage2': True,
+                'enable_vcp_pattern': True,
+                'vcp_subview': 'cup_and_handle'
+            }
+        )
+        self.assertIsInstance(c_vcp, list)
+        self.assertGreater(len(c_vcp), 0)
+        for c in c_vcp:
+            self.assertTrue(c.get("vcp_is_setup"))
 
 
 if __name__ == "__main__":

@@ -423,8 +423,10 @@ class MomentumEngine:
                     
                     ema_10_val = None
                     ema_20_val = None
+                    ema_50_val = None
                     dist_ema10_pct = None
                     dist_ema20_pct = None
+                    dist_ema50_pct = None
 
                     if len(history) >= 20:
                         opens = [h[0] for h in history]
@@ -434,17 +436,21 @@ class MomentumEngine:
                         volumes = [h[4] for h in history]
                         dates = [h[5] for h in history]
 
-                        # Calculate EMA 10 & EMA 20
+                        # Calculate EMA 10, EMA 20 & EMA 50
                         closes_series = pd.Series(closes)
                         ema_10_series = closes_series.ewm(span=10, adjust=False).mean()
                         ema_20_series = closes_series.ewm(span=20, adjust=False).mean()
+                        ema_50_series = closes_series.ewm(span=50, adjust=False).mean()
                         
                         ema_10_val = round(float(ema_10_series.iloc[-1]), 2)
                         ema_20_val = round(float(ema_20_series.iloc[-1]), 2)
+                        ema_50_val = round(float(ema_50_series.iloc[-1]), 2) if len(history) >= 50 else None
                         if ema_10_val > 0:
                             dist_ema10_pct = round(((closes[-1] - ema_10_val) / ema_10_val) * 100.0, 2)
                         if ema_20_val > 0:
                             dist_ema20_pct = round(((closes[-1] - ema_20_val) / ema_20_val) * 100.0, 2)
+                        if ema_50_val and ema_50_val > 0:
+                            dist_ema50_pct = round(((closes[-1] - ema_50_val) / ema_50_val) * 100.0, 2)
 
                         v_detected = self.detect_vcp(highs, lows, dates, closes=closes, window=3)
                         if v_detected:
@@ -477,7 +483,7 @@ class MomentumEngine:
                             
                     results_with_setups.append(list(row) + [
                         v_res["vcp_is_setup"], v_res["vcp_troughs"], v_res["vcp_depths"],
-                        ema_10_val, ema_20_val, dist_ema10_pct, dist_ema20_pct,
+                        ema_10_val, ema_20_val, ema_50_val, dist_ema10_pct, dist_ema20_pct, dist_ema50_pct,
                         ep_res["ep_is_setup"], ep_res["ep_gap_pct"], ep_res["ep_rel_vol"],
                         para_res["parabolic_short_is_setup"], para_res["parabolic_long_is_setup"], para_res["parabolic_runup_pct"], para_res.get("parabolic_up_days"),
                         lc_res["low_cheat_is_setup"], lc_res["low_cheat_pivot_price"], lc_res["low_cheat_stop_loss"], lc_res["low_cheat_risk_pct"], lc_res["low_cheat_base_depth"]
@@ -489,7 +495,7 @@ class MomentumEngine:
                     "atr_20d", "pp_runup_pct", "pp_drawdown_pct", "pp_days_since_peak", "sma_50", "sma_150", "sma_200",
                     "ipo_days_count", "ipo_all_time_high", "ipo_drawdown_from_high", "ipo_base_depth", "ret_1m", "gap_pct", "rel_vol_50d",
                     "vcp_is_setup", "vcp_troughs", "vcp_depths",
-                    "ema_10", "ema_20", "dist_ema10_pct", "dist_ema20_pct",
+                    "ema_10", "ema_20", "ema_50", "dist_ema10_pct", "dist_ema20_pct", "dist_ema50_pct",
                     "ep_is_setup", "ep_gap_pct", "ep_rel_vol",
                     "parabolic_short_is_setup", "parabolic_long_is_setup", "parabolic_runup_pct", "parabolic_up_days",
                     "low_cheat_is_setup", "low_cheat_pivot_price", "low_cheat_stop_loss", "low_cheat_risk_pct", "low_cheat_base_depth"
@@ -512,8 +518,10 @@ class MomentumEngine:
                         ipo_base_depth = src.ipo_base_depth,
                         ema_10 = src.ema_10,
                         ema_20 = src.ema_20,
+                        ema_50 = src.ema_50,
                         dist_ema10_pct = src.dist_ema10_pct,
                         dist_ema20_pct = src.dist_ema20_pct,
+                        dist_ema50_pct = src.dist_ema50_pct,
                         ep_is_setup = src.ep_is_setup,
                         ep_gap_pct = src.ep_gap_pct,
                         ep_rel_vol = src.ep_rel_vol,

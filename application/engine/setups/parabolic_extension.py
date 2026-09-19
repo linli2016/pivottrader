@@ -8,20 +8,24 @@ def detect_parabolic_extension(
     ema_10_val: float,
     min_runup_pct: float = 40.0,
     min_dist_ema10_pct: float = 18.0,
-    min_up_days: int = 3
+    min_up_days: int = 3,
+    window_days: int = 10,
+    **kwargs
 ) -> dict:
     """
     Detects Parabolic Short setup:
-    1. Fast 3 to 10 day gain >= +40% (customizable, default 40%).
+    1. Fast 3 to 30 day gain >= +40% (customizable lookback window, default 10 days).
     2. Distance above 10-day EMA >= +18% (customizable, default 18%).
     3. Stock up >= 3 consecutive days in a row (close > prev_close, default 3).
     """
+    w_days = int(kwargs.get("parabolic_window_days", window_days))
+    w_days = max(3, w_days)
     n = len(closes)
-    if n < 10 or not ema_10_val or ema_10_val <= 0:
+    if n < w_days or not ema_10_val or ema_10_val <= 0:
         return None
 
-    window_highs = highs[-10:]
-    window_lows = lows[-10:]
+    window_highs = highs[-w_days:]
+    window_lows = lows[-w_days:]
     current_close = closes[-1]
 
     max_h = max(window_highs)
@@ -46,6 +50,7 @@ def detect_parabolic_extension(
             "parabolic_long_is_setup": False,
             "parabolic_runup_pct": round(runup_pct, 2),
             "dist_ema10_pct": round(dist_ema10_pct, 2),
-            "parabolic_up_days": consecutive_up_days
+            "parabolic_up_days": consecutive_up_days,
+            "parabolic_window_days": w_days
         }
     return None

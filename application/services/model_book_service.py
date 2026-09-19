@@ -18,6 +18,162 @@ def compute_ema_series(prices: List[float], span: int) -> List[float]:
         ema.append(p * k + ema[-1] * (1.0 - k))
     return ema
 
+BASE_SIMULATION_DEFAULTS: Dict[str, Any] = {
+    "min_price": 5.0,
+    "min_volume_sma_50": 100000,
+    "min_dollar_vol": 10000000.0,
+    "enforce_stage2": False,
+    "enable_rs": False,
+    "min_rs_percentile": 70.0,
+}
+
+SUB_SETUP_SIMULATION_DEFAULTS: Dict[str, Dict[str, Any]] = {
+    # Breakout subviews
+    "htf": {
+        "breakout_subview": "htf",
+        "min_breakout_runup": 100.0,
+        "runup_window_weeks": 8.0,
+        "max_breakout_drawdown": 25.0,
+        "min_breakout_days": 10,
+        "max_breakout_days": 30,
+        "enable_htf_mode": True,
+    },
+    "standard": {
+        "breakout_subview": "standard",
+        "min_breakout_runup": 30.0,
+        "runup_window_weeks": 12.0,
+        "max_breakout_drawdown": 30.0,
+        "min_breakout_days": 10,
+        "max_breakout_days": 40,
+        "enable_htf_mode": False,
+        "require_pivot_tightness": True,
+        "max_pivot_spread": 8.0,
+        "max_pivot_clustering": 3.0,
+        "enable_adr": True,
+        "min_adr_20d": 4.0,
+    },
+    # VCP subviews
+    "low_cheat": {
+        "vcp_subview": "low_cheat",
+        "enforce_stage2": True,
+        "min_base_position": 0.0,
+        "max_base_position": 50.0,
+        "min_base_depth": 12.0,
+        "max_base_depth": 45.0,
+    },
+    "cheat": {
+        "vcp_subview": "cheat",
+        "enforce_stage2": True,
+        "min_base_position": 40.0,
+        "max_base_position": 80.0,
+        "min_base_depth": 12.0,
+        "max_base_depth": 45.0,
+    },
+    "cup_and_handle": {
+        "vcp_subview": "cup_and_handle",
+        "enforce_stage2": True,
+        "min_base_depth": 12.0,
+        "max_base_depth": 45.0,
+    },
+    # Momentum subviews
+    "all": {
+        "qm_subview": "all",
+    },
+    "stage2": {
+        "qm_subview": "stage2",
+    },
+    "leaders": {
+        "qm_subview": "leaders",
+        "min_price": 10.0,
+        "min_rs_percentile": 90.0,
+        "min_breakout_days": 5,
+    },
+    "gainers": {
+        "qm_subview": "gainers",
+    },
+    "1m": {
+        "qm_subview": "1m",
+    },
+    "3m": {
+        "qm_subview": "3m",
+    },
+    "6m": {
+        "qm_subview": "6m",
+    },
+}
+
+SETUP_SIMULATION_DEFAULTS: Dict[str, Dict[str, Any]] = {
+    "breakout": {
+        "min_dollar_vol": 3000000.0,
+        "breakout_subview": "htf",
+        "enable_htf_mode": True,
+        "min_breakout_runup": 100.0,
+        "runup_window_weeks": 8.0,
+        "max_breakout_drawdown": 25.0,
+        "min_breakout_days": 10,
+        "max_breakout_days": 30,
+    },
+    "breakouts": {
+        "min_dollar_vol": 3000000.0,
+        "breakout_subview": "htf",
+        "enable_htf_mode": True,
+        "min_breakout_runup": 100.0,
+        "runup_window_weeks": 8.0,
+        "max_breakout_drawdown": 25.0,
+        "min_breakout_days": 10,
+        "max_breakout_days": 30,
+    },
+    "power_play": {
+        "min_dollar_vol": 3000000.0,
+        "min_pp_runup": 100.0,
+        "max_pp_drawdown": 25.0,
+        "min_pp_days_since_peak": 10,
+        "max_pp_days_since_peak": 30,
+    },
+    "episodic_pivot": {
+        "min_dollar_vol": 5000000.0,
+        "min_ep_gap": 10.0,
+        "min_ep_rel_vol": 2.5,
+    },
+    "parabolic": {
+        "min_price": 1.0,
+        "min_volume_sma_50": 0,
+        "min_dollar_vol": 0.0,
+        "min_parabolic_runup": 60.0,
+        "parabolic_window_days": 10,
+        "min_parabolic_ema_dist": 18.0,
+        "min_parabolic_up_days": 3,
+    },
+    "ipo_base": {
+        "min_dollar_vol": 5000000.0,
+        "max_ipo_age": 350,
+        "max_ipo_dist": 25.0,
+        "max_ipo_depth": 35.0,
+    },
+    "vcp": {
+        "enforce_stage2": True,
+        "vcp_subview": "low_cheat",
+        "min_base_position": 0.0,
+        "max_base_position": 50.0,
+        "min_base_depth": 12.0,
+        "max_base_depth": 45.0,
+    },
+    "low_cheat": {
+        "enforce_stage2": True,
+        "min_base_position": 0.0,
+        "max_base_position": 50.0,
+        "min_base_depth": 12.0,
+        "max_base_depth": 45.0,
+    },
+    "momentum": {
+        "enable_rs": True,
+        "min_rs_percentile": 70.0,
+        "min_breakout_days": 10,
+        "qm_subview": "all",
+        "qm_top_n": 75,
+    },
+}
+
 
 class ModelBookService:
     def __init__(self, config_svc):
@@ -56,11 +212,12 @@ class ModelBookService:
         min_runup_pct: Optional[float] = None,
         max_base_depth: Optional[float] = None,
         episode_window_days: int = 15,
+        sub_setup_id: Optional[str] = None,
         filters: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         True backtesting engine for stock setups:
-        1. Screens for setup bars matching the exact screen criteria from setups.yaml.
+        1. Screens for setup bars matching the exact screen criteria.
         2. Deduplicates consecutive setup days: only the first setup day in an episode is tested.
         3. Simulates next-day breakout entry: enters at max(open_{T+1}, high_T) if high_{T+1} > high_T.
         4. Evaluates forward multi-path trade exit:
@@ -73,11 +230,26 @@ class ModelBookService:
         if stop_loss_pct is None and max_drawdown_limit is not None:
             stop_loss_pct = float(max_drawdown_limit)
 
-        # 0. Resolve setup configuration from setup_service
-        setup_def = setup_service.get_setup_by_id(setup_type)
-        configured_filters = dict(setup_def.get("filters", {}))
+        # 0. Build effective simulation parameters:
+        # Base universal defaults -> Setup defaults -> Sub-setup defaults -> Passed filters overrides
+        effective_filters = dict(BASE_SIMULATION_DEFAULTS)
+        if setup_type in SETUP_SIMULATION_DEFAULTS:
+            effective_filters.update(SETUP_SIMULATION_DEFAULTS[setup_type])
 
-        effective_filters = dict(configured_filters)
+        # If sub_setup_id is provided, apply sub-setup defaults
+        target_sub_id = sub_setup_id
+        # Also check filters for legacy subview tags if sub_setup_id is not passed
+        if not target_sub_id and filters and isinstance(filters, dict):
+            target_sub_id = filters.get("breakout_subview") or filters.get("qm_subview") or filters.get("vcp_subview")
+
+        if target_sub_id and target_sub_id in SUB_SETUP_SIMULATION_DEFAULTS:
+            effective_filters.update(SUB_SETUP_SIMULATION_DEFAULTS[target_sub_id])
+
+        # Also support legacy setup_def.get("filters", {}) if any setup still defines them
+        setup_def = setup_service.get_setup_by_id(setup_type)
+        if setup_def and setup_def.get("filters"):
+            effective_filters.update(setup_def["filters"])
+
         if filters and isinstance(filters, dict):
             effective_filters.update(filters)
 
@@ -211,6 +383,7 @@ class ModelBookService:
                         "median_days_to_target": 0,
                         "avg_drawdown_pct": 0.0,
                         "regime_breakdown": {},
+                        "sub_setup_id": target_sub_id,
                         "filters": effective_filters
                     },
                     "winners": [],
@@ -376,6 +549,7 @@ class ModelBookService:
                 "avg_winner_base_depth": avg_winner_base_depth,
                 "avg_winner_rs_score": avg_winner_rs,
                 "regime_breakdown": regime_breakdown,
+                "sub_setup_id": target_sub_id,
                 "filters": effective_filters
             }
 
@@ -734,6 +908,7 @@ class ModelBookService:
         elif setup_type == "parabolic":
             min_runup = float(effective_filters.get("min_parabolic_runup", 40.0))
             min_ema_dist = float(effective_filters.get("min_parabolic_ema_dist", 18.0))
+            window_days = max(3, int(effective_filters.get("parabolic_window_days", 10)))
 
             query = f"""
             WITH numbered AS (
@@ -743,7 +918,7 @@ class ModelBookService:
                     d.adr_20d, d.rs_score, d.rs_rank, d.dist_ema10_pct, d.parabolic_runup_pct,
                     d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
                     s.name, s.sector, s.industry,
-                    MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 10 PRECEDING AND 1 PRECEDING) as min_low_10d,
+                    MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN {window_days} PRECEDING AND 1 PRECEDING) as min_low_window,
                     LEAD(d.date, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_date,
                     LEAD(d.open, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_open,
                     LEAD(d.high, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_high,
@@ -758,7 +933,7 @@ class ModelBookService:
             ),
             candidates AS (
                 SELECT *,
-                    COALESCE(parabolic_runup_pct, (close - min_low_10d) / NULLIF(min_low_10d, 0) * 100) as calc_runup
+                    ((close - min_low_window) / NULLIF(min_low_window, 0) * 100) as calc_runup
                 FROM numbered
                 WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE)
                   AND close >= ?
@@ -868,6 +1043,15 @@ class ModelBookService:
                                   AND (sma_200_20d_ago IS NULL OR sma_200 > sma_200_20d_ago) 
                                   AND (dist_from_52w_high IS NULL OR dist_from_52w_high <= 25.0) 
                                   AND (surge_off_low_pct IS NULL OR surge_off_low_pct >= 30.0))"""
+            elif qm_subview == 'leaders':
+                sub_sql = """AND (
+                                  close >= 10.0
+                                  AND adr_20d IS NOT NULL AND adr_20d >= 4.0
+                                  AND rs_rank IS NOT NULL AND rs_rank >= 90
+                                  AND sma_50 IS NOT NULL AND close > sma_50
+                                  AND (ema_10 IS NULL OR ema_20 IS NULL OR ema_10 > ema_20)
+                                  AND surge_off_low_pct IS NOT NULL AND surge_off_low_pct >= 70.0
+                              )"""
             elif qm_subview == 'all':
                 sub_sql = """AND (
                                   ((ret_1m IS NOT NULL AND ret_1m > 0) OR (ret_3m IS NOT NULL AND ret_3m > 0) OR (ret_6m IS NOT NULL AND ret_6m > 0))
@@ -888,6 +1072,7 @@ class ModelBookService:
                     d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
                     d.adr_20d, d.rs_score, d.rs_rank,
                     d.sma_50, d.sma_150, d.sma_200, d.sma_200_20d_ago, d.dist_from_52w_high, d.surge_off_low_pct,
+                    d.ema_10, d.ema_20,
                     d.ret_1m, d.ret_3m, d.ret_6m,
                     s.name, s.sector, s.industry,
                     MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) as max_high_20d,

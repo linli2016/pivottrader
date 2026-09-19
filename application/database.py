@@ -36,6 +36,7 @@ class DatabaseManager:
                     sector VARCHAR,
                     industry VARCHAR,
                     next_earnings_date VARCHAR,
+                    delisted_date VARCHAR,
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
@@ -79,6 +80,10 @@ class DatabaseManager:
                 conn.execute("ALTER TABLE symbols ADD COLUMN next_earnings_date VARCHAR;")
             except Exception:
                 pass
+            try:
+                conn.execute("ALTER TABLE symbols ADD COLUMN delisted_date VARCHAR;")
+            except Exception:
+                pass
             
             # 2. Historical Daily Bars Table
             conn.execute("""
@@ -120,8 +125,10 @@ class DatabaseManager:
                     ret_6m DOUBLE,
                     ema_10 DOUBLE,
                     ema_20 DOUBLE,
+                    ema_50 DOUBLE,
                     dist_ema10_pct DOUBLE,
                     dist_ema20_pct DOUBLE,
+                    dist_ema50_pct DOUBLE,
                     gap_pct DOUBLE,
                     rel_vol_50d DOUBLE,
                     ep_is_setup BOOLEAN,
@@ -175,8 +182,10 @@ class DatabaseManager:
                 ("ret_6m", "DOUBLE"),
                 ("ema_10", "DOUBLE"),
                 ("ema_20", "DOUBLE"),
+                ("ema_50", "DOUBLE"),
                 ("dist_ema10_pct", "DOUBLE"),
                 ("dist_ema20_pct", "DOUBLE"),
+                ("dist_ema50_pct", "DOUBLE"),
                 ("gap_pct", "DOUBLE"),
                 ("rel_vol_50d", "DOUBLE"),
                 ("ep_is_setup", "BOOLEAN"),
@@ -261,6 +270,7 @@ class DatabaseManager:
                     exchange = EXCLUDED.exchange,
                     asset_type = EXCLUDED.asset_type,
                     active = EXCLUDED.active,
+                    delisted_date = NULL,
                     ipo_date = COALESCE(symbols.ipo_date, CAST(EXCLUDED.ipo_date AS VARCHAR)),
                     sector = COALESCE(EXCLUDED.sector, symbols.sector),
                     industry = COALESCE(EXCLUDED.industry, symbols.industry),
@@ -268,6 +278,49 @@ class DatabaseManager:
                     last_updated = EXCLUDED.last_updated
             """)
             conn.execute("DROP TABLE temp_symbols")
+
+    def deactivate_missing_symbols(self, active_symbols: List[str]) -> int:
+        """Marks symbols in the database as active = FALSE if they are not in active_symbols."""
+        if not active_symbols:
+            return 0
+        df = pd.DataFrame({"symbol": [s.strip().upper() for s in active_symbols if s.strip()]})
+        with self.get_connection() as conn:
+            conn.execute("CREATE OR REPLACE TEMP TABLE current_active AS SELECT symbol FROM df")
+            count_res = conn.execute("""
+                SELECT COUNT(*) FROM symbols
+                WHERE active = TRUE AND symbol NOT IN (SELECT symbol FROM current_active)
+            """).fetchone()
+            count = count_res[0] if count_res else 0
+            if count > 0:
+                conn.execute("""
+                    UPDATE symbols
+                    SET active = FALSE, delisted_date = CAST(CURRENT_DATE AS VARCHAR), last_updated = CURRENT_TIMESTAMP
+                    WHERE active = TRUE AND symbol NOT IN (SELECT symbol FROM current_active)
+                """)
+            conn.execute("DROP TABLE current_active")
+            return count
+
+    def deactivate_symbols(self, symbols: List[str]) -> int:
+        """Explicitly deactivates a list of symbols (e.g., verified stale / no price data)."""
+        if not symbols:
+            return 0
+        sym_list = [s.strip().upper() for s in symbols if s.strip()]
+        df = pd.DataFrame({"symbol": sym_list})
+        with self.get_connection() as conn:
+            conn.execute("CREATE OR REPLACE TEMP TABLE to_deactivate AS SELECT symbol FROM df")
+            count_res = conn.execute("""
+                SELECT COUNT(*) FROM symbols
+                WHERE active = TRUE AND symbol IN (SELECT symbol FROM to_deactivate)
+            """).fetchone()
+            count = count_res[0] if count_res else 0
+            if count > 0:
+                conn.execute("""
+                    UPDATE symbols
+                    SET active = FALSE, delisted_date = CAST(CURRENT_DATE AS VARCHAR), last_updated = CURRENT_TIMESTAMP
+                    WHERE active = TRUE AND symbol IN (SELECT symbol FROM to_deactivate)
+                """)
+            conn.execute("DROP TABLE to_deactivate")
+            return count
 
     def get_active_symbols(self) -> List[str]:
         """Returns a list of all active stock symbols stored in the database."""
@@ -462,7 +515,9 @@ class DatabaseManager:
                     b.vol_50d_ma,
                     b.volume,
                     wi.added_at,
-                    COALESCE(b.dollar_vol_50d_ma, b.close * b.vol_50d_ma) as dollar_vol_50d_ma
+                    COALESCE(b.dollar_vol_50d_ma, b.close * b.vol_50d_ma) as dollar_vol_50d_ma,
+                    s.active,
+                    b.date as last_trade_date
                 FROM watchlist_items wi
                 JOIN symbols s ON wi.symbol = s.symbol
                 LEFT JOIN (
@@ -489,7 +544,9 @@ class DatabaseManager:
                     "vol_50d_ma": row[6],
                     "volume": row[7],
                     "added_at": str(row[8]) if row[8] else None,
-                    "dollar_vol_50d_ma": row[9]
+                    "dollar_vol_50d_ma": row[9],
+                    "active": bool(row[10]) if len(row) > 10 and row[10] is not None else True,
+                    "last_trade_date": str(row[11]) if len(row) > 11 and row[11] else None
                 }
                 for row in rows
             ]

@@ -23,7 +23,7 @@ export default function ModelBookTab({
 }) {
   // Screening Parameters
   const [setupType, setSetupType] = useState('breakouts');
-  const [activeFilters, setActiveFilters] = useState({});
+  const [selectedSubSetupId, setSelectedSubSetupId] = useState('htf');
   const modelBookChartRef = useRef(null);
   const [targetGainPct, setTargetGainPct] = useState(16.0);
   const [customGain, setCustomGain] = useState('');
@@ -52,37 +52,26 @@ export default function ModelBookTab({
     return setupOptions.find(s => s.id === setupType) || setupOptions[0];
   }, [setupOptions, setupType]);
 
-  // Sync initial filters when activeSetup changes or on first load
+  // Sync initial sub-setup ID when activeSetup changes
   useEffect(() => {
-    if (activeSetup?.filters) {
-      setActiveFilters(prev => {
-        if (!prev || Object.keys(prev).length === 0) {
-          return { ...activeSetup.filters };
+    if (activeSetup?.sub_setups?.length > 0) {
+      setSelectedSubSetupId(prev => {
+        if (!prev || !activeSetup.sub_setups.some(s => s.id === prev)) {
+          return activeSetup.sub_setups[0].id;
         }
         return prev;
       });
+    } else {
+      setSelectedSubSetupId(null);
     }
   }, [activeSetup]);
 
   const isSubActive = useCallback((sub) => {
-    if (!sub || !sub.filters) return false;
-    const filterKeys = Object.keys(sub.filters);
-    if (filterKeys.length === 0) return false;
-
-    if (sub.filters.breakout_subview) {
-      const current = activeFilters.breakout_subview !== undefined ? activeFilters.breakout_subview : activeSetup?.filters?.breakout_subview;
-      if (current === sub.id) return true;
-    }
-    if (sub.filters.qm_subview) {
-      const current = activeFilters.qm_subview !== undefined ? activeFilters.qm_subview : activeSetup?.filters?.qm_subview;
-      if (current === sub.id) return true;
-    }
-
-    return filterKeys.every(k => {
-      const currentVal = activeFilters[k] !== undefined ? activeFilters[k] : activeSetup?.filters?.[k];
-      return currentVal === sub.filters[k];
-    });
-  }, [activeFilters, activeSetup]);
+    if (!sub) return false;
+    const defaultSubId = activeSetup?.sub_setups?.[0]?.id;
+    const currentSubId = selectedSubSetupId || defaultSubId;
+    return sub.id === currentSubId;
+  }, [selectedSubSetupId, activeSetup]);
 
   const activeSubSetup = useMemo(() => {
     if (!activeSetup?.sub_setups || activeSetup.sub_setups.length === 0) return null;
@@ -168,7 +157,7 @@ export default function ModelBookTab({
 
   // Active criteria chips preview
   const activeFilterChips = useMemo(() => {
-    const filters = scanResult?.summary?.filters || (Object.keys(activeFilters).length > 0 ? activeFilters : activeSetup?.filters) || {};
+    const filters = scanResult?.summary?.filters || {};
     const chips = [];
 
     // Baseline Liquidity
@@ -206,6 +195,7 @@ export default function ModelBookTab({
       const viewMap = {
         'all': 'All Views',
         'stage2': 'Stage 2',
+        'leaders': 'Leaders',
         'gainers': 'All Gainers',
         '1m': '1M Gainers',
         '3m': '3M Gainers',
@@ -215,6 +205,9 @@ export default function ModelBookTab({
       chips.push({ text: `View: ${subLabel}`, highlight: true });
       if (filters.qm_top_n) {
         chips.push({ text: `Top ${filters.qm_top_n}`, highlight: false });
+      }
+      if (filters.min_breakout_days !== undefined) {
+        chips.push({ text: `Consolidation: ≥${filters.min_breakout_days}d`, highlight: false });
       }
     } else {
       if (filters.min_pp_runup !== undefined) {
@@ -245,7 +238,7 @@ export default function ModelBookTab({
         chips.push({ text: `Base Depth: ≤${filters.max_ipo_depth}%`, highlight: false });
       }
       if (filters.min_parabolic_runup !== undefined) {
-        chips.push({ text: `Runup: ≥${filters.min_parabolic_runup}% (3–10d)`, highlight: true });
+        chips.push({ text: `Runup: ≥${filters.min_parabolic_runup}% (${filters.parabolic_window_days || 10}d)`, highlight: true });
       }
       if (filters.min_parabolic_ema_dist !== undefined) {
         chips.push({ text: `10 EMA Stretch: ≥${filters.min_parabolic_ema_dist}%`, highlight: true });
@@ -273,7 +266,7 @@ export default function ModelBookTab({
     }
 
     return chips;
-  }, [scanResult, activeSetup, activeFilters, setupType, stopLossPct, emaExitType]);
+  }, [scanResult, activeSetup, setupType, stopLossPct, emaExitType]);
 
   // Table & View Filters
   const [viewMode, setViewMode] = useState('winners'); // 'winners' | 'all'
@@ -359,14 +352,16 @@ export default function ModelBookTab({
     const { start, end } = targetPreset;
     setStartDate(start);
     setEndDate(end);
-    handleRunScan(setupType, activeFilters, { start, end });
+    handleRunScan(setupType, selectedSubSetupId, { start, end });
   };
 
   // Run Scan API
-  const handleRunScan = async (setupToRun = null, filtersToRun = null, dateRangeToRun = null) => {
+  const handleRunScan = async (setupToRun = null, subSetupIdToRun = null, dateRangeToRun = null) => {
     const targetSetup = typeof setupToRun === 'string' && setupToRun.trim() !== '' ? setupToRun : setupType;
     const activeSetupObj = (setupOptions || []).find(s => s.id === targetSetup);
-    const targetFilters = filtersToRun || (Object.keys(activeFilters).length > 0 ? activeFilters : (activeSetupObj?.filters || {}));
+    const targetSubSetupId = subSetupIdToRun !== null && subSetupIdToRun !== undefined
+      ? subSetupIdToRun
+      : (selectedSubSetupId || activeSetupObj?.sub_setups?.[0]?.id || null);
     const targetStart = dateRangeToRun?.start || startDate;
     const targetEnd = dateRangeToRun?.end || endDate;
     setLoading(true);
@@ -374,6 +369,7 @@ export default function ModelBookTab({
     try {
       const payload = {
         setup_type: targetSetup,
+        sub_setup_id: targetSubSetupId,
         target_gain_pct: parseFloat(targetGainPct) || 20.0,
         stop_loss_pct: stopLossPct !== null && stopLossPct !== '' ? parseFloat(stopLossPct) : null,
         ema_exit_type: emaExitType || 'ema_10',
@@ -381,8 +377,7 @@ export default function ModelBookTab({
         end_date: targetEnd,
         forward_days: parseInt(forwardDays, 10) || 20,
         max_drawdown_limit: stopLossPct !== null && stopLossPct !== '' ? parseFloat(stopLossPct) : null,
-        episode_window_days: 15,
-        filters: targetFilters
+        episode_window_days: 15
       };
 
       const res = await fetch(`${API_BASE}/api/model-book/scan`, {
@@ -420,19 +415,15 @@ export default function ModelBookTab({
   const handleSelectSetup = (newId) => {
     setSetupType(newId);
     const newSetup = setupOptions.find(s => s.id === newId);
-    const defaultFilters = newSetup?.filters ? { ...newSetup.filters } : {};
-    setActiveFilters(defaultFilters);
-    handleRunScan(newId, defaultFilters, { start: startDate, end: endDate });
+    const defaultSub = newSetup?.sub_setups?.[0]?.id || null;
+    setSelectedSubSetupId(defaultSub);
+    handleRunScan(newId, defaultSub, { start: startDate, end: endDate });
   };
 
   const handleSelectSubSetup = (sub) => {
-    if (!sub || !sub.filters) return;
-    const merged = {
-      ...activeFilters,
-      ...sub.filters
-    };
-    setActiveFilters(merged);
-    handleRunScan(setupType, merged, { start: startDate, end: endDate });
+    if (!sub) return;
+    setSelectedSubSetupId(sub.id);
+    handleRunScan(setupType, sub.id, { start: startDate, end: endDate });
   };
 
   // Filter and sort candidates

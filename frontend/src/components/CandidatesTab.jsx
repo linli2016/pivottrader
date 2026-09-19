@@ -1,118 +1,6 @@
 import React from 'react';
 import CandlestickChart from './CandlestickChart';
-
-function FilterControl({ filterKey, filterDef, value, onChange }) {
-  if (!filterDef) return null;
-
-  if (filterDef.type === 'boolean') {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', height: '100%', minHeight: '38px' }}>
-        <label
-          title={filterDef.description || ''}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            fontSize: '13px',
-            color: value ? '#f8fafc' : 'var(--text-secondary)',
-            fontWeight: '500',
-            cursor: 'pointer',
-            userSelect: 'none'
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={!!value}
-            onChange={(e) => onChange(e.target.checked)}
-            style={{ accentColor: 'var(--accent-color)', cursor: 'pointer', width: '16px', height: '16px' }}
-          />
-          {filterDef.name || filterKey}
-        </label>
-      </div>
-    );
-  }
-
-  if (filterDef.type === 'select') {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }} title={filterDef.description || ''}>
-        <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>
-          {filterDef.name || filterKey}
-        </label>
-        <select
-          value={value !== undefined ? value : (filterDef.default || '')}
-          onChange={(e) => onChange(e.target.value)}
-          style={{
-            background: 'rgba(30, 41, 59, 0.8)',
-            color: '#f8fafc',
-            border: '1px solid var(--border-color)',
-            borderRadius: '6px',
-            padding: '6px 10px',
-            fontSize: '12px',
-            outline: 'none',
-            cursor: 'pointer'
-          }}
-        >
-          {(filterDef.options || []).map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-      </div>
-    );
-  }
-
-  // Number type with range + numeric input
-  const numVal = Number(value !== undefined && value !== null ? value : (filterDef.default || 0));
-
-  const formatDisplay = () => {
-    if (filterDef.unit === '$' && numVal >= 1000000) return `$${(numVal / 1000000).toFixed(1)}M`;
-    if (filterDef.unit === '$') return `$${numVal.toFixed(2)}`;
-    if (filterDef.unit === 'shares' && numVal >= 1000) return `${(numVal / 1000).toFixed(0)}k shares`;
-    if (filterDef.unit === '%') return `${numVal}%`;
-    return `${numVal}${filterDef.unit ? ' ' + filterDef.unit : ''}`;
-  };
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }} title={filterDef.description || ''}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <label style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '500' }}>
-          {filterDef.name || filterKey}:
-        </label>
-        <span style={{ fontSize: '12px', fontWeight: '600', color: '#38bdf8' }}>
-          {formatDisplay()}
-        </span>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <input
-          type="range"
-          min={filterDef.min ?? 0}
-          max={filterDef.max ?? 100}
-          step={filterDef.step ?? 1}
-          value={numVal}
-          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-          style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent-color)' }}
-        />
-        <input
-          type="number"
-          min={filterDef.min ?? 0}
-          max={filterDef.max ? filterDef.max * 10 : 1000000000}
-          step={filterDef.step ?? 1}
-          value={numVal}
-          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-          style={{
-            width: (filterDef.max && filterDef.max >= 10000) ? '80px' : '60px',
-            padding: '4px',
-            borderRadius: '4px',
-            border: '1px solid var(--border-color)',
-            background: 'var(--bg-primary)',
-            color: '#fff',
-            fontSize: '12px',
-            textAlign: 'center'
-          }}
-        />
-      </div>
-    </div>
-  );
-}
+import ExpressionCheatSheet from './ExpressionCheatSheet';
 
 const SETUP_COLORS = {
   power_play: '#38bdf8',
@@ -124,6 +12,8 @@ const SETUP_COLORS = {
   ipo_base: '#06b6d4',
   vcp: '#10b981',
   low_cheat: '#f97316',
+  cheat: '#eab308',
+  cup_and_handle: '#10b981',
 };
 
 export default function CandidatesTab({
@@ -139,9 +29,9 @@ export default function CandidatesTab({
   setupsConfig = { setups: [], filters: {} },
   activeSetupKey = 'breakouts',
   onSelectSetup = () => { },
-  activeFilters = {},
-  onFilterChange = () => { },
-  onResetFilters = () => { },
+  activeExpression = '',
+  onExpressionChange = () => { },
+  onResetExpression = () => { },
   handleTriggerLiveQuotesSync = () => { },
   syncStatus = {},
   handleSelectStock = () => { },
@@ -242,13 +132,71 @@ export default function CandidatesTab({
   const [browseDetail, setBrowseDetail] = React.useState(null);
   const [targetWatchlistId, setTargetWatchlistId] = React.useState(null);
   const [loadingBrowsePrices, setLoadingBrowsePrices] = React.useState(false);
-  const [showFiltersSection, setShowFiltersSection] = React.useState(false);
+  const [showCheatSheet, setShowCheatSheet] = React.useState(false);
+  const [showExpressionSection, setShowExpressionSection] = React.useState(false);
+  const [exprValidation, setExprValidation] = React.useState({ valid: true, error: null });
   const [selectedSector, setSelectedSector] = React.useState('ALL');
 
+  const textareaRef = React.useRef(null);
   const selectedItemRef = React.useRef(null);
   const chartComponentRef = React.useRef(null);
 
   const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
+
+  React.useEffect(() => {
+    if (!activeExpression || !activeExpression.trim()) {
+      setExprValidation({ valid: true, error: null });
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/setups/validate-expression`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ expression: activeExpression })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setExprValidation(data);
+        }
+      } catch (e) {
+        // ignore network error
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [activeExpression]);
+
+  const handleInsertVariable = (sym) => {
+    if (!textareaRef.current) {
+      onExpressionChange((activeExpression ? activeExpression + ' ' : '') + sym);
+      return;
+    }
+    const el = textareaRef.current;
+    const start = el.selectionStart ?? activeExpression.length;
+    const end = el.selectionEnd ?? activeExpression.length;
+    const text = activeExpression || '';
+
+    let insertText = sym;
+    const prevChar = text.charAt(start - 1);
+    const nextChar = text.charAt(end);
+    if (prevChar && prevChar !== ' ' && prevChar !== '(') {
+      insertText = ' ' + insertText;
+    }
+    if (nextChar && nextChar !== ' ' && nextChar !== ')') {
+      insertText = insertText + ' ';
+    }
+
+    const updated = text.substring(0, start) + insertText + text.substring(end);
+    onExpressionChange(updated);
+
+    setTimeout(() => {
+      if (el) {
+        el.focus();
+        const newPos = start + insertText.length;
+        el.setSelectionRange(newPos, newPos);
+      }
+    }, 10);
+  };
 
   // Sector Breakdown and Filtering
   const sectorCounts = React.useMemo(() => {
@@ -293,16 +241,21 @@ export default function CandidatesTab({
   }, [setupsConfig, activeSetupKey]);
 
   const activeSetupName = React.useMemo(() => {
+    if (currentSetup?.sub_setups && activeExpression) {
+      const activeSub = currentSetup.sub_setups.find(s => s.expression === activeExpression);
+      if (activeSub?.label || activeSub?.name) return activeSub.label || activeSub.name;
+    }
     if (currentSetup?.name) return currentSetup.name;
     if (currentCandidate?.pp_is_setup) return 'Power Play';
     if (currentCandidate?.breakout_is_setup) return 'QM Breakout';
     if (currentCandidate?.ep_is_setup) return 'Episodic Pivot';
     if (currentCandidate?.parabolic_short_is_setup) return 'Parabolic Short';
-    if (currentCandidate?.vcp_is_setup) return 'VCP';
+    if (currentCandidate?.vcp_is_setup) return 'Cup and Handle';
+    if (currentCandidate?.cheat_is_setup) return 'Cheat';
     if (currentCandidate?.low_cheat_is_setup) return 'Low Cheat';
     if (currentCandidate?.ipo_days_count !== undefined && currentCandidate?.ipo_days_count <= 350) return 'IPO Base';
     return 'General';
-  }, [currentSetup, currentCandidate]);
+  }, [currentSetup, currentCandidate, activeSetupKey, activeExpression]);
 
   const browseEarningsBadge = React.useMemo(() => {
     const dt = currentCandidate?.next_earnings_date || browseDetail?.next_earnings_date || browseDetail?.metadata?.next_earnings_date;
@@ -342,6 +295,29 @@ export default function CandidatesTab({
       return { dateStr: dt, badgeSub: dt, displayText: `Earning ${dt}`, fullDisplay: dt, isUrgent: false };
     }
   }, [currentCandidate?.next_earnings_date, browseDetail?.next_earnings_date, browseDetail?.metadata?.next_earnings_date]);
+
+  const getCandidateGainerBadge = React.useCallback((candidate) => {
+    if (!candidate || activeSetupKey !== 'momentum') return null;
+    const expr = activeExpression || '';
+    if (expr.includes('RET_1M') && !expr.includes('RET_3M') && !expr.includes('RET_6M')) {
+      if (candidate.ret_1m != null) return `1M ${candidate.ret_1m >= 0 ? '+' : ''}${candidate.ret_1m.toFixed(0)}%`;
+    }
+    if (expr.includes('RET_3M') && !expr.includes('RET_1M') && !expr.includes('RET_6M')) {
+      if (candidate.ret_3m != null) return `3M ${candidate.ret_3m >= 0 ? '+' : ''}${candidate.ret_3m.toFixed(0)}%`;
+    }
+    if (expr.includes('RET_6M') && !expr.includes('RET_1M') && !expr.includes('RET_3M')) {
+      if (candidate.ret_6m != null) return `6M ${candidate.ret_6m >= 0 ? '+' : ''}${candidate.ret_6m.toFixed(0)}%`;
+    }
+    const rets = [];
+    if (candidate.ret_1m != null) rets.push({ val: candidate.ret_1m, str: `1M ${candidate.ret_1m >= 0 ? '+' : ''}${candidate.ret_1m.toFixed(0)}%` });
+    if (candidate.ret_3m != null) rets.push({ val: candidate.ret_3m, str: `3M ${candidate.ret_3m >= 0 ? '+' : ''}${candidate.ret_3m.toFixed(0)}%` });
+    if (candidate.ret_6m != null) rets.push({ val: candidate.ret_6m, str: `6M ${candidate.ret_6m >= 0 ? '+' : ''}${candidate.ret_6m.toFixed(0)}%` });
+    if (rets.length > 0) {
+      rets.sort((a, b) => b.val - a.val);
+      return rets[0].str;
+    }
+    return null;
+  }, [activeSetupKey, activeExpression]);
 
   // Auto-scroll selected candidate stock into view in the Filtered Candidates list
   React.useEffect(() => {
@@ -638,7 +614,7 @@ export default function CandidatesTab({
 
             <button
               className="btn btn-secondary btn-sm"
-              onClick={() => setShowFiltersSection(!showFiltersSection)}
+              onClick={() => setShowExpressionSection(!showExpressionSection)}
               style={{
                 padding: '5px 12px',
                 fontSize: '12px',
@@ -646,17 +622,19 @@ export default function CandidatesTab({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '5px',
-                background: showFiltersSection ? 'rgba(255, 255, 255, 0.12)' : undefined,
+                background: showExpressionSection ? 'rgba(56, 189, 248, 0.18)' : undefined,
+                borderColor: showExpressionSection ? '#38bdf8' : undefined,
+                color: showExpressionSection ? '#38bdf8' : undefined,
                 whiteSpace: 'nowrap'
               }}
             >
-              ⚙️ {showFiltersSection ? 'Filters ▲' : 'Filters ▼'}
+              ⚙️ {showExpressionSection ? 'Expression ▲' : 'Expression ▼'}
             </button>
 
           </div>
         </div>
 
-        {/* Dynamic Sub-Bar for Any Setup defining sub_setups (e.g., Breakouts, Momentum) */}
+        {/* Dynamic Sub-Bar for Any Setup defining sub_setups (e.g., Breakouts, Momentum, VCP) */}
         {currentSetup?.sub_setups && currentSetup.sub_setups.length > 0 && (
           <div style={{
             display: 'flex',
@@ -664,9 +642,9 @@ export default function CandidatesTab({
             alignItems: 'center',
             gap: '12px',
             flexWrap: 'wrap',
-            padding: '10px 14px',
-            background: activeSetupKey === 'momentum' ? 'rgba(168, 85, 247, 0.08)' : 'rgba(56, 189, 248, 0.08)',
-            border: activeSetupKey === 'momentum' ? '1px solid rgba(168, 85, 247, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)',
+            padding: '8px 12px',
+            background: activeSetupKey === 'momentum' ? 'rgba(168, 85, 247, 0.08)' : (activeSetupKey === 'vcp' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(56, 189, 248, 0.08)'),
+            border: activeSetupKey === 'momentum' ? '1px solid rgba(168, 85, 247, 0.25)' : (activeSetupKey === 'vcp' ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)'),
             borderRadius: '8px',
             marginTop: '2px'
           }}>
@@ -674,33 +652,28 @@ export default function CandidatesTab({
               <span style={{
                 fontSize: '12px',
                 fontWeight: '700',
-                color: activeSetupKey === 'momentum' ? '#c084fc' : '#38bdf8',
+                color: activeSetupKey === 'momentum' ? '#c084fc' : (activeSetupKey === 'vcp' ? '#34d399' : '#38bdf8'),
                 display: 'flex',
                 alignItems: 'center',
                 gap: '4px'
               }}>
-                {currentSetup.sub_title || `${currentSetup.name} Mode:`}
+                {currentSetup.sub_title || `${currentSetup.name} Presets:`}
               </span>
               {currentSetup.sub_setups.map(sub => {
-                const subFilterKeys = Object.keys(sub.filters || {});
-                const isActive = subFilterKeys.length > 0
-                  ? (activeFilters.breakout_subview === sub.id) ||
-                    (activeFilters.qm_subview === sub.id) ||
-                    subFilterKeys.every(k => activeFilters[k] === sub.filters[k])
-                  : false;
-
-                const activeThemeColor = activeSetupKey === 'momentum' ? '#a855f7' : '#38bdf8';
-                const activeBg = activeSetupKey === 'momentum' ? 'rgba(168, 85, 247, 0.3)' : 'rgba(56, 189, 248, 0.3)';
+                const isActive = activeExpression === sub.expression;
+                const activeThemeColor = activeSetupKey === 'momentum' ? '#a855f7' : (activeSetupKey === 'vcp' ? '#10b981' : '#38bdf8');
+                const activeBg = activeSetupKey === 'momentum' ? 'rgba(168, 85, 247, 0.3)' : (activeSetupKey === 'vcp' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(56, 189, 248, 0.3)');
 
                 return (
                   <button
                     key={sub.id}
                     type="button"
                     onClick={() => {
-                      if (sub.filters) {
-                        onFilterChange(sub.filters);
+                      if (sub.expression) {
+                        onExpressionChange(sub.expression);
                       }
                     }}
+                    title={sub.expression || ''}
                     style={{
                       padding: '4px 12px',
                       fontSize: '11.5px',
@@ -718,55 +691,147 @@ export default function CandidatesTab({
                 );
               })}
             </div>
-
-            {/* Top N limit selector for Momentum / My Universe (applied to Gainers) */}
-            {activeSetupKey === 'momentum' && activeFilters.qm_subview !== 'stage2' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: '600' }} title="Number of top gainers extracted from each momentum timeframe">Top per scan:</span>
-                {[50, 75, 100, 125, 150].map(n => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => onFilterChange('qm_top_n', n)}
-                    style={{
-                      padding: '3px 9px',
-                      fontSize: '11px',
-                      fontWeight: (activeFilters.qm_top_n || 100) === n ? '700' : '500',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      border: (activeFilters.qm_top_n || 100) === n ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.1)',
-                      background: (activeFilters.qm_top_n || 100) === n ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
-                      color: (activeFilters.qm_top_n || 100) === n ? '#38bdf8' : 'var(--text-secondary)'
-                    }}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         )}
 
-        {/* Collapsible Section for Rules & Sliders */}
-        {showFiltersSection && (
-          <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '16px', borderTop: '1px solid var(--border-color)', paddingTop: '14px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
-              {(currentSetup?.visible_filters || Object.keys(setupsConfig?.filters || {})).map(fKey => {
-                if (activeSetupKey === 'momentum' && (fKey === 'qm_subview' || fKey === 'qm_top_n')) return null;
-                if (activeSetupKey === 'breakouts' && (fKey === 'breakout_subview' || fKey === 'enable_htf_mode')) return null;
-                const fDef = setupsConfig?.filters?.[fKey];
-                if (!fDef) return null;
-                return (
-                  <FilterControl
-                    key={fKey}
-                    filterKey={fKey}
-                    filterDef={fDef}
-                    value={activeFilters[fKey]}
-                    onChange={(val) => onFilterChange(fKey, val)}
-                  />
-                );
-              })}
+        {/* Expression Input Bar */}
+        {showExpressionSection && (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+            marginTop: '4px',
+            background: 'rgba(15, 23, 42, 0.65)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '8px',
+            padding: '10px 12px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '12px', fontWeight: '700', color: '#f8fafc', letterSpacing: '0.3px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <span style={{ color: '#38bdf8' }}>⚙️</span> Expression
+                </span>
+                {/* Validation Status Indicator */}
+                {activeExpression && (
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    background: exprValidation.valid ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                    border: exprValidation.valid ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(239, 68, 68, 0.4)',
+                    color: exprValidation.valid ? '#34d399' : '#f87171',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
+                    {exprValidation.valid ? '✓ Syntax Valid' : `⚠ ${exprValidation.error}`}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setShowCheatSheet(!showCheatSheet)}
+                  style={{
+                    fontSize: '11.5px',
+                    padding: '3px 10px',
+                    background: showCheatSheet ? 'rgba(56, 189, 248, 0.2)' : undefined,
+                    borderColor: showCheatSheet ? '#38bdf8' : undefined,
+                    color: showCheatSheet ? '#38bdf8' : 'var(--text-secondary)'
+                  }}
+                >
+                  📚 {showCheatSheet ? 'Cheat Sheet ▲' : 'Cheat Sheet ▼'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={onResetExpression}
+                  title="Reset formula to setup default"
+                  style={{
+                    fontSize: '11.5px',
+                    padding: '3px 10px',
+                    color: 'var(--text-secondary)'
+                  }}
+                >
+                  ↺ Reset
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => fetchCandidates && fetchCandidates()}
+                  disabled={loadingCandidates || !exprValidation.valid}
+                  style={{
+                    fontSize: '11.5px',
+                    padding: '3px 12px',
+                    fontWeight: '700',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px'
+                  }}
+                >
+                  {loadingCandidates ? <span className="spin-icon">↻</span> : '▶'} Run Scan
+                </button>
+              </div>
             </div>
+
+            {/* Monospace Formula Input Box */}
+            <div style={{ position: 'relative' }}>
+              <textarea
+                ref={textareaRef}
+                value={activeExpression || ''}
+                onChange={(e) => onExpressionChange(e.target.value)}
+                placeholder="e.g. C >= 15 AND C > AVGC50 AND V > 100000 AND STAGE2 AND (C - C1) / C1 * 100 >= 3"
+                rows={2}
+                spellCheck="false"
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  background: 'rgba(10, 15, 29, 0.85)',
+                  border: exprValidation.valid ? '1px solid rgba(56, 189, 248, 0.3)' : '1px solid rgba(239, 68, 68, 0.6)',
+                  borderRadius: '6px',
+                  padding: '8px 12px',
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                  fontSize: '13px',
+                  lineHeight: '1.45',
+                  color: '#38bdf8',
+                  resize: 'vertical',
+                  outline: 'none',
+                  boxShadow: 'inset 0 1px 3px rgba(0, 0, 0, 0.4)',
+                  transition: 'border-color 0.15s ease'
+                }}
+                onFocus={(e) => {
+                  if (exprValidation.valid) {
+                    e.target.style.borderColor = '#38bdf8';
+                  }
+                }}
+                onBlur={(e) => {
+                  if (exprValidation.valid) {
+                    e.target.style.borderColor = 'rgba(56, 189, 248, 0.3)';
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    if (fetchCandidates && exprValidation.valid) {
+                      fetchCandidates();
+                    }
+                  }
+                }}
+              />
+            </div>
+
+            {/* Variable Cheat Sheet Drawer */}
+            {showCheatSheet && (
+              <div style={{ marginTop: '4px' }}>
+                <ExpressionCheatSheet
+                  onInsert={handleInsertVariable}
+                  onClose={() => setShowCheatSheet(false)}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -928,6 +993,57 @@ export default function CandidatesTab({
                     </span>
                   )}
 
+                  {currentCandidate?.ret_1m !== null && currentCandidate?.ret_1m !== undefined && (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        background: 'rgba(59, 130, 246, 0.18)',
+                        color: '#60a5fa',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                        fontWeight: 600
+                      }}
+                      title={`1-Month Return: ${currentCandidate.ret_1m.toFixed(1)}%`}
+                    >
+                      1M: {currentCandidate.ret_1m >= 0 ? '+' : ''}{currentCandidate.ret_1m.toFixed(1)}%
+                    </span>
+                  )}
+
+                  {currentCandidate?.ret_3m !== null && currentCandidate?.ret_3m !== undefined && (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        background: 'rgba(168, 85, 247, 0.18)',
+                        color: '#c084fc',
+                        border: '1px solid rgba(168, 85, 247, 0.3)',
+                        fontWeight: 600
+                      }}
+                      title={`3-Month Return: ${currentCandidate.ret_3m.toFixed(1)}%`}
+                    >
+                      3M: {currentCandidate.ret_3m >= 0 ? '+' : ''}{currentCandidate.ret_3m.toFixed(1)}%
+                    </span>
+                  )}
+
+                  {currentCandidate?.ret_6m !== null && currentCandidate?.ret_6m !== undefined && (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        background: 'rgba(236, 72, 153, 0.18)',
+                        color: '#f472b6',
+                        border: '1px solid rgba(236, 72, 153, 0.3)',
+                        fontWeight: 600
+                      }}
+                      title={`6-Month Return: ${currentCandidate.ret_6m.toFixed(1)}%`}
+                    >
+                      6M: {currentCandidate.ret_6m >= 0 ? '+' : ''}{currentCandidate.ret_6m.toFixed(1)}%
+                    </span>
+                  )}
+
                   {/* Next Earnings Date Badge */}
                   {browseEarningsBadge ? (
                     <span
@@ -1086,6 +1202,26 @@ export default function CandidatesTab({
                       {isItemSaved && <span style={{ fontSize: '11px' }} title="Saved in active watchlist">⭐️</span>}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      {(() => {
+                        const gainerStr = getCandidateGainerBadge(c);
+                        if (!gainerStr) return null;
+                        return (
+                          <span
+                            className="pill"
+                            style={{
+                              fontSize: '10px',
+                              padding: '1px 5px',
+                              fontWeight: 600,
+                              background: 'rgba(59, 130, 246, 0.15)',
+                              color: '#60a5fa',
+                              border: '1px solid rgba(59, 130, 246, 0.25)'
+                            }}
+                            title="Period Gain"
+                          >
+                            {gainerStr}
+                          </span>
+                        );
+                      })()}
                       {c.ti_65 !== null && c.ti_65 !== undefined && (
                         <span
                           className="pill"

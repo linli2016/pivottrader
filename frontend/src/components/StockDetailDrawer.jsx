@@ -129,6 +129,11 @@ export default function StockDetailDrawer({
               Exchange: {stockDetail?.metadata?.exchange || selectedStock.exchange || 'N/A'} | Asset Type: {stockDetail?.metadata?.asset_type || 'Common Stock'}
             </span>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              {(stockDetail?.metadata?.active === false || selectedStock?.active === false) && (
+                <span className="pill" style={{ fontSize: '12px', padding: '4px 10px', fontWeight: '700', background: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.4)' }} title="This stock is no longer actively trading on major US exchanges.">
+                  ⚠️ Inactive / Delisted
+                </span>
+              )}
               <span className="pill pill-success" style={{ fontSize: '12px', padding: '4px 10px', fontWeight: '700' }}>
                 RS: {stockDetail?.rs_rank !== null && stockDetail?.rs_rank !== undefined ? stockDetail.rs_rank : (selectedStock?.rs_rank ?? 'N/A')}
               </span>

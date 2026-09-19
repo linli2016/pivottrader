@@ -91,7 +91,7 @@ function App() {
   // Centralized setups configuration and filter states
   const [setupsConfig, setSetupsConfig] = useState({ setups: [], filters: {} });
   const [activeSetupKey, setActiveSetupKey] = useState('breakouts');
-  const [activeFilters, setActiveFilters] = useState({});
+  const [activeExpression, setActiveExpression] = useState('');
 
   // Full inspector state
   const [inspectorSymbol, setInspectorSymbol] = useState('');
@@ -103,7 +103,7 @@ function App() {
   // References
   const inspectorInputRef = useRef(null);
   const syncIntervalRef = useRef(null);
-  const activeFiltersRef = useRef(null);
+  const activeExpressionRef = useRef('');
 
   // Fetch summary counts
   const fetchSummary = async () => {
@@ -126,7 +126,7 @@ function App() {
         const defaultSetup = (data.setups || []).find(s => s.id === 'breakouts' || s.id === 'breakout') || (data.setups || [])[0];
         if (defaultSetup) {
           setActiveSetupKey(defaultSetup.id);
-          setActiveFilters({ ...(defaultSetup.filters || {}) });
+          setActiveExpression(defaultSetup.expression || '');
         }
         return data;
       }
@@ -136,43 +136,35 @@ function App() {
     return null;
   };
 
-  const handleSelectSetup = (setupKey) => {
+  const handleSelectSetup = (setupKey, expressionOverride = null) => {
     setActiveSetupKey(setupKey);
     const setup = (setupsConfig.setups || []).find(s => s.id === setupKey);
     if (setup) {
-      setActiveFilters({ ...(setup.filters || {}) });
+      setActiveExpression(expressionOverride !== null ? expressionOverride : (setup.expression || ''));
+    } else if (expressionOverride !== null) {
+      setActiveExpression(expressionOverride);
     }
   };
 
-  const handleFilterChange = (filterKey, value) => {
-    if (typeof filterKey === 'object' && filterKey !== null) {
-      setActiveFilters(prev => ({
-        ...prev,
-        ...filterKey
-      }));
-    } else {
-      setActiveFilters(prev => ({
-        ...prev,
-        [filterKey]: value
-      }));
-    }
+  const handleExpressionChange = (newExpr) => {
+    setActiveExpression(newExpr);
   };
 
-  const handleResetFilters = () => {
+  const handleResetExpression = () => {
     const setup = (setupsConfig.setups || []).find(s => s.id === activeSetupKey);
-    if (setup) {
-      setActiveFilters({ ...(setup.filters || {}) });
+    if (setup && setup.expression) {
+      setActiveExpression(setup.expression);
     }
   };
 
   // Fetch candidates from backend with server-side filtering
-  const fetchCandidates = async (targetDt = selectedDate, currentFilters = null) => {
+  const fetchCandidates = async (targetDt = selectedDate, currentExpr = null) => {
     setLoadingCandidates(true);
     try {
-      const filtersToSend = currentFilters !== null ? currentFilters : (activeFiltersRef.current || {});
+      const exprToSend = currentExpr !== null ? currentExpr : (activeExpressionRef.current !== undefined ? activeExpressionRef.current : activeExpression);
       const payload = {
         date: targetDt && targetDt !== 'latest' ? targetDt : undefined,
-        filters: filtersToSend
+        expression: exprToSend ? exprToSend.trim() : undefined
       };
       const res = await fetch(`${API_BASE}/api/candidates`, {
         method: 'POST',
@@ -381,17 +373,16 @@ function App() {
     }
   };
 
-  activeFiltersRef.current = activeFilters;
-  const activeFiltersKey = JSON.stringify(activeFilters);
+  activeExpressionRef.current = activeExpression;
 
-  // Debounced server-side candidate fetching when filters or selected date change
+  // Debounced server-side candidate fetching when expression or selected date change
   useEffect(() => {
-    if (!activeFilters || Object.keys(activeFilters).length === 0) return;
+    if (!activeExpression) return;
     const handler = setTimeout(() => {
-      fetchCandidates(selectedDate, activeFilters);
-    }, 200);
+      fetchCandidates(selectedDate, activeExpression);
+    }, 250);
     return () => clearTimeout(handler);
-  }, [selectedDate, activeFiltersKey]);
+  }, [selectedDate, activeExpression]);
 
   // Sidebar collapse state with localStorage persistence
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
@@ -652,9 +643,9 @@ function App() {
             setupsConfig={setupsConfig}
             activeSetupKey={activeSetupKey}
             onSelectSetup={handleSelectSetup}
-            activeFilters={activeFilters}
-            onFilterChange={handleFilterChange}
-            onResetFilters={handleResetFilters}
+            activeExpression={activeExpression}
+            onExpressionChange={handleExpressionChange}
+            onResetExpression={handleResetExpression}
             handleTriggerLiveQuotesSync={handleTriggerLiveQuotesSync}
             syncStatus={syncStatus}
             handleSelectStock={handleSelectStock}

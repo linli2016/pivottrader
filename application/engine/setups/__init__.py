@@ -12,7 +12,7 @@ from application.engine.setups.episodic_pivot import detect_episodic_pivot
 from application.engine.setups.parabolic_extension import detect_parabolic_extension
 from application.engine.setups.power_play import detect_power_play
 from application.engine.setups.breakout import detect_breakout
-from application.engine.setups.low_cheat import detect_low_cheat
+from application.engine.setups.low_cheat import detect_low_cheat, detect_cheat
 
 __all__ = [
     "detect_vcp",
@@ -21,4 +21,5 @@ __all__ = [
     "detect_power_play",
     "detect_breakout",
     "detect_low_cheat",
+    "detect_cheat",
 ]

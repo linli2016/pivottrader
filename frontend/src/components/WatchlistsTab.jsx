@@ -270,7 +270,14 @@ export default function WatchlistsTab({ handleSelectStock, watchlists, fetchWatc
               <tbody>
                 {items.map((item) => (
                   <tr key={item.symbol} onClick={() => handleSelectStock(item, items)} style={{ cursor: 'pointer' }}>
-                    <td style={{ fontWeight: 700, color: 'var(--accent-color)', fontSize: '15px' }}>{item.symbol}</td>
+                    <td style={{ fontWeight: 700, color: 'var(--accent-color)', fontSize: '15px' }}>
+                      {item.symbol}
+                      {item.active === false && (
+                        <span style={{ marginLeft: '8px', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.4)', fontWeight: 600 }} title={`Delisted / Inactive (Last trade: ${item.last_trade_date || 'N/A'})`}>
+                          Delisted
+                        </span>
+                      )}
+                    </td>
                     <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{item.name || 'N/A'}</td>
                     <td style={{ color: 'var(--text-secondary)' }}>{item.sector || 'N/A'}</td>
                     <td style={{ textAlign: 'right', fontWeight: 600 }}>

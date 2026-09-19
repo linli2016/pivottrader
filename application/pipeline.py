@@ -92,11 +92,16 @@ def main():
                     print("Error: Empty universe retrieved. Exiting screening.")
                     sys.exit(1)
                 print(f"Retrieved {len(universe)} symbols from the active universe.")
+                is_full = not getattr(args, "symbols", None)
                 if getattr(args, "symbols", None):
                     custom_syms = set(s.strip().upper() for s in args.symbols.split(",") if s.strip())
                     universe = [u for u in universe if u["symbol"] in custom_syms]
                 db.upsert_symbols(universe)
-                active_symbols = [item["symbol"] for item in universe]
+                if is_full:
+                    deactivated = db.deactivate_missing_symbols([u["symbol"] for u in universe])
+                    if deactivated > 0:
+                        print(f"Reconciled active universe: marked {deactivated} delisted/removed symbols as inactive.")
+                active_symbols = db.get_active_symbols() if is_full else [item["symbol"] for item in universe]
         else:
             print("\n[Step 1/5] Fetching NYSE/NASDAQ active stock universe...")
             universe = price_provider.fetch_universe()
@@ -146,6 +151,12 @@ def main():
             print("Upserting ticker directories into database...")
             db.upsert_symbols(universe)
             
+            is_full_universe_sync = not getattr(args, "symbols", None) and not getattr(args, "fix_splits", False) and not getattr(args, "limit_tickers", None)
+            if is_full_universe_sync:
+                deactivated = db.deactivate_missing_symbols([u["symbol"] for u in universe])
+                if deactivated > 0:
+                    print(f"Reconciled active universe: marked {deactivated} delisted/removed symbols as inactive.")
+            
             # Synchronize IPO Dates from yfinance (Incremental & Parallelized)
             missing_ipo_symbols = db.get_symbols_missing_ipo_date()
             if missing_ipo_symbols:
@@ -187,7 +198,7 @@ def main():
                     print(f"Saving {len(results)} IPO dates to database...")
                     db.update_multiple_symbol_ipo_dates(results)
             
-            active_symbols = [item["symbol"] for item in universe]
+            active_symbols = db.get_active_symbols() if is_full_universe_sync else [item["symbol"] for item in universe]
 
         # 5. Incremental Daily Bars Ingestion
         if args.include_premarket:
@@ -276,45 +287,68 @@ def main():
 
             # Ingest existing symbols incrementally
             if existing_symbols:
-                # Find earliest date among existing symbols to request delta
-                earliest_last_date = min(last_dates[sym] for sym in existing_symbols)
-                # Subtract 5 days overlap buffer to avoid missing adjustments or weekend gaps
-                delta_start_date = (datetime.strptime(earliest_last_date, "%Y-%m-%d") - timedelta(days=5)).strftime("%Y-%m-%d")
-                
-                print(f"Syncing daily bars incrementally since {delta_start_date} for {len(existing_symbols)} tickers...")
-                delta_bars = price_provider.fetch_daily_bars(existing_symbols, delta_start_date)
-                if not delta_bars.empty:
-                    # Detect if any tickers underwent stock splits in the delta window
-                    split_symbols = []
-                    if "stock_splits" in delta_bars.columns:
-                        split_rows = delta_bars[(delta_bars["stock_splits"] > 0) & (delta_bars["stock_splits"] != 1.0)]
-                        if not split_rows.empty:
-                            split_symbols = split_rows["symbol"].unique().tolist()
+                # Find latest recorded date across all symbols to establish market recency
+                latest_market_date_str = max(last_dates.values()) if last_dates else datetime.now().strftime("%Y-%m-%d")
+                latest_market_dt = datetime.strptime(latest_market_date_str, "%Y-%m-%d")
+                stale_cutoff_dt = latest_market_dt - timedelta(days=14)
+                stale_cutoff_str = stale_cutoff_dt.strftime("%Y-%m-%d")
+
+                fresh_existing = [s for s in existing_symbols if last_dates[s] >= stale_cutoff_str]
+                stale_existing = [s for s in existing_symbols if last_dates[s] < stale_cutoff_str]
+
+                # Check stale existing symbols separately so they don't drag down the entire universe
+                if stale_existing:
+                    print(f"\nChecking {len(stale_existing)} potentially inactive/stale symbols (last bar before {stale_cutoff_str})...")
+                    stale_bars = price_provider.fetch_daily_bars(stale_existing, stale_cutoff_str)
+                    stale_returned_syms = set(stale_bars["symbol"].unique()) if not stale_bars.empty else set()
+                    delisted_candidates = [s for s in stale_existing if s not in stale_returned_syms]
+                    if delisted_candidates:
+                        deact_count = db.deactivate_symbols(delisted_candidates)
+                        print(f"Deactivated {deact_count} confirmed inactive/delisted symbols: {delisted_candidates}")
+                    if not stale_bars.empty:
+                        print(f"Upserting {len(stale_bars)} resumed bars for recovered symbols...")
+                        db.upsert_daily_bars(stale_bars)
+
+                if fresh_existing:
+                    # Find earliest date among fresh existing symbols to request delta
+                    earliest_last_date = min(last_dates[sym] for sym in fresh_existing)
+                    # Subtract 5 days overlap buffer to avoid missing adjustments or weekend gaps
+                    delta_start_date = (datetime.strptime(earliest_last_date, "%Y-%m-%d") - timedelta(days=5)).strftime("%Y-%m-%d")
                     
-                    if split_symbols:
-                        print(f"\n⚠️ Stock splits detected for: {split_symbols}")
-                        print(f"Purging and refetching full {full_lookback_date} history for split-adjusted consistency...")
-                        
-                        # 1. Fetch full lookback for the split tickers
-                        adjusted_bars = price_provider.fetch_daily_bars(split_symbols, full_lookback_date)
-                        if not adjusted_bars.empty:
-                            # 2. Delete existing history for these tickers from the database to purge unadjusted data
-                            with db.get_connection() as conn:
-                                symbols_str = ", ".join(f"'{s}'" for s in split_symbols)
-                                conn.execute(f"DELETE FROM daily_bars WHERE symbol IN ({symbols_str})")
-                            
-                            # 3. Upsert the fully adjusted historical prices
-                            db.upsert_daily_bars(adjusted_bars)
-                            print(f"Updated full split-adjusted history for: {split_symbols}")
-                            
-                            # 4. Remove these split tickers' incremental rows from delta_bars to avoid redundant upserts
-                            delta_bars = delta_bars[~delta_bars["symbol"].isin(split_symbols)]
-                    
+                    print(f"Syncing daily bars incrementally since {delta_start_date} for {len(fresh_existing)} tickers...")
+                    delta_bars = price_provider.fetch_daily_bars(fresh_existing, delta_start_date)
                     if not delta_bars.empty:
-                        print(f"Upserting {len(delta_bars)} rows for existing tickers...")
-                        db.upsert_daily_bars(delta_bars)
-                else:
-                    print("No incremental bars fetched.")
+                        # Detect if any tickers underwent stock splits in the delta window
+                        split_symbols = []
+                        if "stock_splits" in delta_bars.columns:
+                            split_rows = delta_bars[(delta_bars["stock_splits"] > 0) & (delta_bars["stock_splits"] != 1.0)]
+                            if not split_rows.empty:
+                                split_symbols = split_rows["symbol"].unique().tolist()
+                        
+                        if split_symbols:
+                            print(f"\n⚠️ Stock splits detected for: {split_symbols}")
+                            print(f"Purging and refetching full {full_lookback_date} history for split-adjusted consistency...")
+                            
+                            # 1. Fetch full lookback for the split tickers
+                            adjusted_bars = price_provider.fetch_daily_bars(split_symbols, full_lookback_date)
+                            if not adjusted_bars.empty:
+                                # 2. Delete existing history for these tickers from the database to purge unadjusted data
+                                with db.get_connection() as conn:
+                                    symbols_str = ", ".join(f"'{s}'" for s in split_symbols)
+                                    conn.execute(f"DELETE FROM daily_bars WHERE symbol IN ({symbols_str})")
+                                
+                                # 3. Upsert the fully adjusted historical prices
+                                db.upsert_daily_bars(adjusted_bars)
+                                print(f"Updated full split-adjusted history for: {split_symbols}")
+                                
+                                # 4. Remove these split tickers' incremental rows from delta_bars to avoid redundant upserts
+                                delta_bars = delta_bars[~delta_bars["symbol"].isin(split_symbols)]
+                        
+                        if not delta_bars.empty:
+                            print(f"Upserting {len(delta_bars)} rows for existing tickers...")
+                            db.upsert_daily_bars(delta_bars)
+                    else:
+                        print("No incremental bars fetched.")
 
         # 6. Relative Strength Scoring & Ranking
         mom_engine = MomentumEngine(db_path)

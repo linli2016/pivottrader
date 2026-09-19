@@ -1,23 +1,30 @@
 import React from 'react';
 
 export default function LowCheatFootprintCard({ lowCheatFootprint }) {
-  if (!lowCheatFootprint || !lowCheatFootprint.low_cheat_is_setup) {
+  if (!lowCheatFootprint || (!lowCheatFootprint.low_cheat_is_setup && !lowCheatFootprint.cheat_is_setup)) {
     return (
       <div className="glass-card" style={{ padding: '16px', marginBottom: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
           <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--accent-color)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            🏹 Minervini Low Cheat
+            🏹 Minervini Cheat / Low Cheat
           </h4>
           <span className="pill" style={{ background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-secondary)', fontSize: '11px' }}>
             No Active Setup
           </span>
         </div>
         <p style={{ color: 'var(--text-secondary)', fontSize: '13px', margin: 0 }}>
-          Stock is currently not forming an early-stage base reversal Low Cheat pattern.
+          Stock is currently not forming an early-stage base reversal Low Cheat or Cheat (3-C) pattern.
         </p>
       </div>
     );
   }
+
+  const isCheat = lowCheatFootprint.cheat_type === 'cheat' || (lowCheatFootprint.base_position_pct > 50.0);
+  const setupTitle = isCheat ? '⚡ Minervini Cheat (3-C)' : '🏹 Minervini Low Cheat';
+  const badgeColor = isCheat ? '#eab308' : '#f97316';
+  const badgeBg = isCheat ? 'rgba(234, 179, 8, 0.15)' : 'rgba(249, 115, 22, 0.15)';
+  const badgeBorder = isCheat ? 'rgba(234, 179, 8, 0.3)' : 'rgba(249, 115, 22, 0.3)';
+  const triggerLabel = isCheat ? '⚡ Cheat (3-C) Breakout Triggered' : '⚡ Low Cheat Breakout Triggered';
 
   const {
     low_cheat_is_trigger,
@@ -41,7 +48,7 @@ export default function LowCheatFootprintCard({ lowCheatFootprint }) {
     if (exhaustion_type === 'both') return 'VDU + Shakeout';
     if (exhaustion_type === 'volume_dry_up') return 'Volume Dry-Up (VDU)';
     if (exhaustion_type === 'shakeout') return 'Undercut & Rally';
-    return 'Base Low';
+    return isCheat ? 'Right Side Pause' : 'Base Low';
   };
 
   return (
@@ -56,7 +63,7 @@ export default function LowCheatFootprintCard({ lowCheatFootprint }) {
           height: '180px',
           borderRadius: '50%',
           background: low_cheat_is_trigger
-            ? 'radial-gradient(circle, rgba(249, 115, 22, 0.25) 0%, transparent 70%)'
+            ? `radial-gradient(circle, ${isCheat ? 'rgba(234, 179, 8, 0.25)' : 'rgba(249, 115, 22, 0.25)'} 0%, transparent 70%)`
             : 'radial-gradient(circle, rgba(56, 189, 248, 0.15) 0%, transparent 70%)',
           pointerEvents: 'none'
         }}
@@ -66,18 +73,18 @@ export default function LowCheatFootprintCard({ lowCheatFootprint }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px', borderBottom: '1px solid rgba(255, 255, 255, 0.06)', paddingBottom: '12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           <h4 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--accent-color)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            🏹 Minervini Low Cheat
+            {setupTitle}
           </h4>
           <span
             style={{
               fontSize: '14px',
               fontWeight: '800',
               fontFamily: 'monospace',
-              background: 'rgba(249, 115, 22, 0.15)',
-              color: '#f97316',
+              background: badgeBg,
+              color: badgeColor,
               padding: '4px 12px',
               borderRadius: '6px',
-              border: '1px solid rgba(249, 115, 22, 0.3)',
+              border: `1px solid ${badgeBorder}`,
               letterSpacing: '0.5px'
             }}
           >
@@ -87,8 +94,8 @@ export default function LowCheatFootprintCard({ lowCheatFootprint }) {
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           {low_cheat_is_trigger ? (
-            <span className="pill pill-success" style={{ fontWeight: '700', fontSize: '11px', padding: '4px 10px', background: 'rgba(249, 115, 22, 0.2)', color: '#fb923c', border: '1px solid rgba(249, 115, 22, 0.4)' }}>
-              ⚡ Low Cheat Breakout Triggered
+            <span className="pill pill-success" style={{ fontWeight: '700', fontSize: '11px', padding: '4px 10px', background: badgeBg, color: badgeColor, border: `1px solid ${badgeBorder}` }}>
+              {triggerLabel}
             </span>
           ) : (
             <span className="pill" style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', fontSize: '11px', padding: '4px 10px' }}>

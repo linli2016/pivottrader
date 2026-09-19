@@ -15,6 +15,7 @@ def detect_low_cheat(
     ipo_days: Optional[int] = None,
     min_base_depth: float = 12.0,
     max_base_depth: float = 45.0,
+    min_base_position: float = 0.0,
     max_base_position: float = 50.0,
     require_exhaustion_or_shakeout: bool = True,
     enforce_stage2: bool = True,
@@ -37,6 +38,12 @@ def detect_low_cheat(
         "low_cheat_pivot_price": 0.0,
         "low_cheat_stop_loss": 0.0,
         "low_cheat_risk_pct": 0.0,
+        "cheat_is_setup": False,
+        "cheat_is_trigger": False,
+        "cheat_pivot_price": 0.0,
+        "cheat_stop_loss": 0.0,
+        "cheat_risk_pct": 0.0,
+        "cheat_type": "none",
         "base_peak_price": 0.0,
         "base_peak_date": None,
         "base_trough_price": 0.0,
@@ -186,7 +193,7 @@ def detect_low_cheat(
 
     base_position_pct = ((cheat_pivot_high - base_trough_low) / base_height) * 100.0
 
-    if base_position_pct > max_base_position:
+    if base_position_pct > max_base_position or base_position_pct < min_base_position:
         return default_res
 
     # 6. Trigger / Character Change Evaluation
@@ -220,12 +227,20 @@ def detect_low_cheat(
     reward_to_base_peak_pct = ((base_peak_high - current_close) / current_close) * 100.0 if current_close > 0 else 0.0
     reward_risk_ratio = round(reward_to_base_peak_pct / max(0.5, risk_pct), 1)
 
+    cheat_type = "cheat" if base_position_pct >= 40.0 else "low_cheat"
+
     return {
         "low_cheat_is_setup": True,
         "low_cheat_is_trigger": is_trigger,
         "low_cheat_pivot_price": round(cheat_pivot_high, 2),
         "low_cheat_stop_loss": stop_loss,
         "low_cheat_risk_pct": risk_pct,
+        "cheat_is_setup": True,
+        "cheat_is_trigger": is_trigger,
+        "cheat_pivot_price": round(cheat_pivot_high, 2),
+        "cheat_stop_loss": stop_loss,
+        "cheat_risk_pct": risk_pct,
+        "cheat_type": cheat_type,
         "base_peak_price": round(base_peak_high, 2),
         "base_peak_date": base_peak_date,
         "base_trough_price": round(base_trough_low, 2),
@@ -239,4 +254,66 @@ def detect_low_cheat(
         "target_price": round(base_peak_high, 2),
         "stage2_qualified": stage2_qualified
     }
+
+
+def detect_cheat(
+    opens: List[float],
+    highs: List[float],
+    lows: List[float],
+    closes: List[float],
+    volumes: List[float],
+    dates: List[Any],
+    vol_50d_ma: Optional[float] = None,
+    sma_50: Optional[float] = None,
+    sma_150: Optional[float] = None,
+    sma_200: Optional[float] = None,
+    ipo_days: Optional[int] = None,
+    min_base_depth: float = 12.0,
+    max_base_depth: float = 45.0,
+    min_base_position: float = 40.0,
+    max_base_position: float = 80.0,
+    require_exhaustion_or_shakeout: bool = False,
+    enforce_stage2: bool = True,
+    min_cheat_vol_ratio: Optional[float] = None,
+    **kwargs
+) -> Dict[str, Any]:
+    """
+    Detects Mark Minervini's Cheat (3-C / Cup Completion Cheat) setup:
+    1. Stock is in a verified Stage 2 uptrend.
+    2. Corrects into a base with depth between 12% and 45%.
+    3. Price rounds out of the bottom and rallies up the right side of the cup into mid-to-upper base (40% to 80% position).
+    4. Pauses / plateaus with volume contraction before reaching the base peak high.
+    5. Triggers when price breaks above the cheat pivot on volume.
+    """
+    res = detect_low_cheat(
+        opens=opens,
+        highs=highs,
+        lows=lows,
+        closes=closes,
+        volumes=volumes,
+        dates=dates,
+        vol_50d_ma=vol_50d_ma,
+        sma_50=sma_50,
+        sma_150=sma_150,
+        sma_200=sma_200,
+        ipo_days=ipo_days,
+        min_base_depth=min_base_depth,
+        max_base_depth=max_base_depth,
+        min_base_position=min_base_position,
+        max_base_position=max_base_position,
+        require_exhaustion_or_shakeout=require_exhaustion_or_shakeout,
+        enforce_stage2=enforce_stage2,
+        min_cheat_vol_ratio=min_cheat_vol_ratio,
+        **kwargs
+    )
+    res["cheat_type"] = "cheat"
+    res["cheat_is_setup"] = res.get("low_cheat_is_setup", False)
+    res["cheat_is_trigger"] = res.get("low_cheat_is_trigger", False)
+    res["cheat_pivot_price"] = res.get("low_cheat_pivot_price", 0.0)
+    res["cheat_stop_loss"] = res.get("low_cheat_stop_loss", 0.0)
+    res["cheat_risk_pct"] = res.get("low_cheat_risk_pct", 0.0)
+    res["cheat_base_depth"] = res.get("base_depth_pct", 0.0)
+    res["cheat_base_position"] = res.get("base_position_pct", 0.0)
+    return res
+
 

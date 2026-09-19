@@ -221,6 +221,70 @@ class YFinanceProvider(AbstractDataProvider):
                 
         return unique_tickers
 
+    @staticmethod
+    def _adjust_unadjusted_splits(sym_df: pd.DataFrame, symbol: str = "") -> pd.DataFrame:
+        """
+        Detects if Yahoo Finance returned unadjusted historical bars for any split event
+        (where Yahoo recorded a split ratio but forgot to back-adjust pre-split OHLC prices).
+        If detected, back-adjusts pre-split prices (open, high, low, close) and volume.
+        Also propagates split ratio to the first post-split bar if the split date row has NaN close,
+        so that downstream split detection in incremental pipeline runs remains aware of the split.
+        """
+        if "stock_splits" not in sym_df.columns or sym_df.empty:
+            return sym_df
+
+        splits = sym_df[(sym_df["stock_splits"] > 0) & (sym_df["stock_splits"] != 1.0)]
+        if splits.empty:
+            return sym_df
+
+        # Sort descending by date so most recent split is evaluated and adjusted first
+        for _, s in splits.sort_values(by="date", ascending=False).iterrows():
+            s_date = s["date"]
+            s_ratio = float(s["stock_splits"])
+            if s_ratio <= 0:
+                continue
+
+            expected_jump = 1.0 / s_ratio
+            pre_mask = (sym_df["date"] < s_date) & sym_df["close"].notna()
+            post_mask = (sym_df["date"] >= s_date) & sym_df["close"].notna()
+
+            if pre_mask.any() and post_mask.any():
+                pre_close = float(sym_df.loc[pre_mask, "close"].iloc[-1])
+                post_close = float(sym_df.loc[post_mask, "close"].iloc[0])
+                if pre_close > 0 and post_close > 0:
+                    actual_ratio = post_close / pre_close
+                    # Compare log-distance to expected split jump vs normal continuous trading (ratio ~ 1.0)
+                    dist_to_unadjusted = abs(math.log(actual_ratio) - math.log(expected_jump))
+                    dist_to_adjusted = abs(math.log(actual_ratio))
+
+                    if dist_to_unadjusted < dist_to_adjusted and dist_to_unadjusted < 0.6:
+                        sym_str = f" [{symbol}]" if symbol else ""
+                        print(f"\n[YFinance]{sym_str} Detected unadjusted split on {s_date} (ratio: {s_ratio}, factor: {expected_jump:.2f}). Applying split adjustment...")
+                        # Adjust all pre-split bars
+                        for col in ["open", "high", "low", "close"]:
+                            if col in sym_df.columns:
+                                sym_df.loc[sym_df["date"] < s_date, col] *= expected_jump
+                        if "volume" in sym_df.columns:
+                            sym_df.loc[sym_df["date"] < s_date, "volume"] = (
+                                sym_df.loc[sym_df["date"] < s_date, "volume"] * s_ratio
+                            ).round()
+
+                        # If the split date bar itself has NaN close (ex-date halt / holiday),
+                        # carry the split ratio over to the first valid post-split bar
+                        if pd.isna(s["close"]):
+                            first_post_idx = sym_df[post_mask].index[0]
+                            sym_df.loc[first_post_idx, "stock_splits"] = s_ratio
+                    elif pd.isna(s["close"]):
+                        # Already adjusted, but split row has NaN close -> propagate to first post-split bar
+                        first_post_idx = sym_df[post_mask].index[0]
+                        sym_df.loc[first_post_idx, "stock_splits"] = s_ratio
+            elif pd.isna(s["close"]) and post_mask.any():
+                # Split at the boundary of downloaded range and split row has NaN close
+                first_post_idx = sym_df[post_mask].index[0]
+                sym_df.loc[first_post_idx, "stock_splits"] = s_ratio
+
+        return sym_df
+
     def fetch_daily_bars(self, symbols: List[str], start_date: str) -> pd.DataFrame:
         """Fetches historical price bars using multi-threaded batching."""
         if not symbols:
@@ -271,10 +335,15 @@ class YFinanceProvider(AbstractDataProvider):
 
                     for col in ["open", "high", "low", "close"]:
                         if col in sym_df.columns:
-                            sym_df[col] = sym_df[col].astype(float)
+                            sym_df[col] = pd.to_numeric(sym_df[col], errors="coerce").astype(float)
+
+                    if "volume" in sym_df.columns:
+                        sym_df["volume"] = pd.to_numeric(sym_df["volume"], errors="coerce").fillna(0)
 
                     if "stock_splits" in sym_df.columns:
-                        sym_df["stock_splits"] = sym_df["stock_splits"].fillna(0.0).astype(float)
+                        sym_df["stock_splits"] = pd.to_numeric(sym_df["stock_splits"], errors="coerce").fillna(0.0).astype(float)
+
+                    sym_df = self._adjust_unadjusted_splits(sym_df, symbol=sym)
 
                     sym_df = sym_df.dropna(subset=["close"])
 

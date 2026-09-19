@@ -58,15 +58,37 @@ class TestParabolicShort(unittest.TestCase):
 
         self.assertIsNotNone(parabolic)
         self.assertEqual(parabolic["name"], "Parabolic Short")
-        filters = parabolic.get("filters", {})
-        self.assertEqual(filters.get("min_price"), 1.0)
-        self.assertEqual(filters.get("min_volume_sma_50"), 0)
-        self.assertEqual(filters.get("min_dollar_vol"), 0.0)
+        self.assertIn("PARABOLIC_SHORT", parabolic.get("expression", ""))
+        self.assertIn("C >= 1.0", parabolic.get("expression", ""))
+        self.assertIn("DIST_EMA10 >= 18.0", parabolic.get("expression", ""))
 
-        # Check bounds in filter definitions
-        all_filters = config.get("filters", {})
-        self.assertEqual(all_filters.get("min_volume_sma_50", {}).get("min"), 0)
-        self.assertEqual(all_filters.get("min_dollar_vol", {}).get("min"), 0.0)
+
+    def test_custom_parabolic_window_days(self):
+        # 12 bars: flat at 10.0 for 7 bars, then jumps to 12.0 for 2 bars, then jumps to 16.0 for 3 bars
+        # Last 5 bars: lows = [12.0, 12.0, 13.5, 14.8, 15.2] -> min low in last 5 bars is 12.0. Max high = 16.2.
+        # Runup over 5 bars = (16.2 - 12.0) / 12.0 * 100 = 35%
+        # Last 10 bars: min low in last 10 bars is 9.8. Runup over 10 bars = (16.2 - 9.8) / 9.8 * 100 = 65.3%
+        highs = [10.2] * 7 + [12.2, 12.5, 14.0, 15.8, 16.2]
+        lows = [9.8] * 7 + [12.0, 12.0, 13.5, 14.8, 15.2]
+        closes = [10.0] * 7 + [12.0, 12.3, 14.0, 15.5, 16.0]
+        dates = [f"2026-06-{i+1:02d}" for i in range(len(closes))]
+        ema_10 = 12.0
+
+        # With 10-day window, runup is 65.3% >= 40% -> triggers setup
+        res_10 = detect_parabolic_extension(highs, lows, closes, dates, ema_10, min_runup_pct=40.0, window_days=10)
+        self.assertIsNotNone(res_10)
+        self.assertTrue(res_10["parabolic_short_is_setup"])
+        self.assertEqual(res_10["parabolic_window_days"], 10)
+
+        # With 5-day window, runup is only 35% < 40% -> does NOT trigger setup
+        res_5 = detect_parabolic_extension(highs, lows, closes, dates, ema_10, min_runup_pct=40.0, window_days=5)
+        self.assertIsNone(res_5)
+
+        # But with 5-day window and min_runup_pct=30%, it triggers!
+        res_5_low = detect_parabolic_extension(highs, lows, closes, dates, ema_10, min_runup_pct=30.0, window_days=5)
+        self.assertIsNotNone(res_5_low)
+        self.assertTrue(res_5_low["parabolic_short_is_setup"])
+        self.assertEqual(res_5_low["parabolic_window_days"], 5)
 
 
 if __name__ == "__main__":
