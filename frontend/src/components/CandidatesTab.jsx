@@ -296,29 +296,6 @@ export default function CandidatesTab({
     }
   }, [currentCandidate?.next_earnings_date, browseDetail?.next_earnings_date, browseDetail?.metadata?.next_earnings_date]);
 
-  const getCandidateGainerBadge = React.useCallback((candidate) => {
-    if (!candidate || activeSetupKey !== 'momentum') return null;
-    const expr = activeExpression || '';
-    if (expr.includes('RET_1M') && !expr.includes('RET_3M') && !expr.includes('RET_6M')) {
-      if (candidate.ret_1m != null) return `1M ${candidate.ret_1m >= 0 ? '+' : ''}${candidate.ret_1m.toFixed(0)}%`;
-    }
-    if (expr.includes('RET_3M') && !expr.includes('RET_1M') && !expr.includes('RET_6M')) {
-      if (candidate.ret_3m != null) return `3M ${candidate.ret_3m >= 0 ? '+' : ''}${candidate.ret_3m.toFixed(0)}%`;
-    }
-    if (expr.includes('RET_6M') && !expr.includes('RET_1M') && !expr.includes('RET_3M')) {
-      if (candidate.ret_6m != null) return `6M ${candidate.ret_6m >= 0 ? '+' : ''}${candidate.ret_6m.toFixed(0)}%`;
-    }
-    const rets = [];
-    if (candidate.ret_1m != null) rets.push({ val: candidate.ret_1m, str: `1M ${candidate.ret_1m >= 0 ? '+' : ''}${candidate.ret_1m.toFixed(0)}%` });
-    if (candidate.ret_3m != null) rets.push({ val: candidate.ret_3m, str: `3M ${candidate.ret_3m >= 0 ? '+' : ''}${candidate.ret_3m.toFixed(0)}%` });
-    if (candidate.ret_6m != null) rets.push({ val: candidate.ret_6m, str: `6M ${candidate.ret_6m >= 0 ? '+' : ''}${candidate.ret_6m.toFixed(0)}%` });
-    if (rets.length > 0) {
-      rets.sort((a, b) => b.val - a.val);
-      return rets[0].str;
-    }
-    return null;
-  }, [activeSetupKey, activeExpression]);
-
   // Auto-scroll selected candidate stock into view in the Filtered Candidates list
   React.useEffect(() => {
     if (selectedItemRef.current) {
@@ -1202,26 +1179,6 @@ export default function CandidatesTab({
                       {isItemSaved && <span style={{ fontSize: '11px' }} title="Saved in active watchlist">⭐️</span>}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      {(() => {
-                        const gainerStr = getCandidateGainerBadge(c);
-                        if (!gainerStr) return null;
-                        return (
-                          <span
-                            className="pill"
-                            style={{
-                              fontSize: '10px',
-                              padding: '1px 5px',
-                              fontWeight: 600,
-                              background: 'rgba(59, 130, 246, 0.15)',
-                              color: '#60a5fa',
-                              border: '1px solid rgba(59, 130, 246, 0.25)'
-                            }}
-                            title="Period Gain"
-                          >
-                            {gainerStr}
-                          </span>
-                        );
-                      })()}
                       {c.ti_65 !== null && c.ti_65 !== undefined && (
                         <span
                           className="pill"
