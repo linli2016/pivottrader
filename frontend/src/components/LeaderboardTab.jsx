@@ -131,6 +131,7 @@ export default function LeaderboardTab({
   // Table Sort State
   const [sortBy, setSortBy] = useState('pivot_rs');
   const [sortOrder, setSortOrder] = useState('desc');
+  const [leaderViewMode, setLeaderViewMode] = useState('table'); // 'table' | 'heatmap' | 'board'
 
   // Switch board handler
   const handleBoardChange = (boardId) => {
@@ -315,6 +316,22 @@ export default function LeaderboardTab({
 
     return list;
   }, [data.stocks, searchQuery, filterSweetSpot, filterHealthyAtr, filterExpandingVol, filterPrs90, filterAccelerating, sortBy, sortOrder]);
+
+  // Group displayed stocks by sector for Board view
+  const sectorGroups = useMemo(() => {
+    if (!displayedStocks || displayedStocks.length === 0) return [];
+    const map = new Map();
+    displayedStocks.forEach((stock, idx) => {
+      const sec = stock.sector || 'Unassigned';
+      if (!map.has(sec)) {
+        map.set(sec, []);
+      }
+      map.get(sec).push({ ...stock, rank: idx + 1 });
+    });
+    return Array.from(map.entries())
+      .map(([sector, stocks]) => ({ sector, stocks }))
+      .sort((a, b) => b.stocks.length - a.stocks.length);
+  }, [displayedStocks]);
 
   // Handle Sort Change
   const handleSort = (column) => {
@@ -1236,7 +1253,7 @@ export default function LeaderboardTab({
         {/* RIGHT COLUMN: Leadership Table */}
         <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
           
-          <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
                 Leading Stocks
@@ -1245,8 +1262,33 @@ export default function LeaderboardTab({
                 {displayedStocks.length} displayed
               </span>
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-              Use ↑ ↓ arrow keys to inspect
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div className="leaderboard-view-bar">
+                <button
+                  className={`leaderboard-view-btn ${leaderViewMode === 'table' ? 'active' : ''}`}
+                  onClick={() => setLeaderViewMode('table')}
+                  title="Table View"
+                >
+                  📋 Table
+                </button>
+                <button
+                  className={`leaderboard-view-btn ${leaderViewMode === 'heatmap' ? 'active' : ''}`}
+                  onClick={() => setLeaderViewMode('heatmap')}
+                  title="Heatmap View"
+                >
+                  🔥 Heatmap
+                </button>
+                <button
+                  className={`leaderboard-view-btn ${leaderViewMode === 'board' ? 'active' : ''}`}
+                  onClick={() => setLeaderViewMode('board')}
+                  title="Sector Board View"
+                >
+                  📊 Sector Board
+                </button>
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                Use ↑ ↓ arrow keys to inspect
+              </div>
             </div>
           </div>
 
@@ -1279,6 +1321,157 @@ export default function LeaderboardTab({
                 >
                   Reset Filters
                 </button>
+              </div>
+            ) : leaderViewMode === 'heatmap' ? (
+              <div style={{ padding: '14px' }}>
+                <div className="leaderboard-heatmap-grid">
+                  {displayedStocks.map((stock, index) => {
+                    const isSelected = selectedSymbol === stock.symbol;
+                    const change = stock.change_pct ?? 0;
+                    const isPos = change > 0;
+                    const isNeg = change < 0;
+                    const bg = isPos
+                      ? `rgba(16, 185, 129, ${Math.min(0.32, 0.08 + Math.abs(change) * 0.04)})`
+                      : isNeg
+                      ? `rgba(244, 63, 94, ${Math.min(0.32, 0.08 + Math.abs(change) * 0.04)})`
+                      : 'rgba(255, 255, 255, 0.03)';
+                    const borderColor = isSelected
+                      ? '#10b981'
+                      : isPos
+                      ? 'rgba(16, 185, 129, 0.3)'
+                      : isNeg
+                      ? 'rgba(244, 63, 94, 0.3)'
+                      : 'var(--border-color)';
+
+                    return (
+                      <div
+                        key={stock.symbol}
+                        onClick={() => handleRowClick(stock)}
+                        className="leaderboard-tile"
+                        style={{
+                          background: bg,
+                          borderColor: borderColor,
+                          boxShadow: isSelected ? '0 0 0 2px #10b981' : undefined
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                          <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                            #{index + 1}
+                          </span>
+                          <span
+                            onClick={(e) => handleToggleWatchlist(stock.symbol, e)}
+                            style={{
+                              cursor: 'pointer',
+                              fontSize: '13px',
+                              color: activeWatchlistSymbols.has(stock.symbol.toUpperCase()) ? '#f59e0b' : 'rgba(255,255,255,0.2)'
+                            }}
+                          >
+                            ★
+                          </span>
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: '700', fontSize: '13px', color: 'var(--text-primary)' }}>
+                            {stock.symbol}
+                          </div>
+                          <div style={{ fontSize: '10px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={stock.name || stock.company_name}>
+                            {stock.name || stock.company_name || stock.sector}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '6px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: '700', color: isPos ? '#10b981' : isNeg ? '#f43f5e' : 'var(--text-primary)' }}>
+                            {isPos ? '+' : ''}{change.toFixed(2)}%
+                          </span>
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                            ${stock.close ? stock.close.toFixed(2) : '-'}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', paddingTop: '4px', borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: '10px' }}>
+                          <span style={{ color: 'var(--text-muted)' }}>RS {stock.rs_rank ?? '-'}</span>
+                          <span style={{ color: '#38bdf8' }}>Kova {stock.pivot_rs ?? '-'}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : leaderViewMode === 'board' ? (
+              <div style={{ padding: '14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
+                {sectorGroups.map(({ sector, stocks }) => (
+                  <div
+                    key={sector}
+                    style={{
+                      background: 'rgba(15, 23, 42, 0.4)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '10px',
+                      overflow: 'hidden',
+                      display: 'flex',
+                      flexDirection: 'column'
+                    }}
+                  >
+                    <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: '700', fontSize: '12px', color: 'var(--text-primary)' }}>
+                        {sector}
+                      </span>
+                      <span className="badge" style={{ fontSize: '10px', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8' }}>
+                        {stocks.length} stocks
+                      </span>
+                    </div>
+                    <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '360px', overflowY: 'auto' }}>
+                      {stocks.map(stock => {
+                        const isSelected = selectedSymbol === stock.symbol;
+                        const change = stock.change_pct ?? 0;
+                        const isPos = change > 0;
+                        const isNeg = change < 0;
+                        return (
+                          <div
+                            key={stock.symbol}
+                            onClick={() => handleRowClick(stock)}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '6px 10px',
+                              borderRadius: '6px',
+                              background: isSelected ? 'rgba(16, 185, 129, 0.12)' : 'rgba(255,255,255,0.02)',
+                              border: `1px solid ${isSelected ? '#10b981' : 'transparent'}`,
+                              cursor: 'pointer',
+                              transition: 'all 0.12s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', width: '20px' }}>
+                                #{stock.rank}
+                              </span>
+                              <div>
+                                <div style={{ fontWeight: '700', fontSize: '12px', color: 'var(--text-primary)' }}>
+                                  {stock.symbol}
+                                </div>
+                                <div style={{ fontSize: '10px', color: 'var(--text-muted)', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {stock.name || stock.company_name}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontSize: '11px', fontWeight: '700', color: isPos ? '#10b981' : isNeg ? '#f43f5e' : 'var(--text-secondary)' }}>
+                                {isPos ? '+' : ''}{change.toFixed(2)}%
+                              </div>
+                              <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                                RS {stock.rs_rank ?? '-'} · ${stock.close ? stock.close.toFixed(2) : '-'}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed', fontSize: '11.5px' }}>

@@ -413,7 +413,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         flex: 1,
         minHeight: 0,
         width: '100%',
-        gap: '1px',
+        gap: '8px',
         background: 'rgba(255, 255, 255, 0.05)',
         borderTop: '1px solid var(--border-color)'
       }}>
@@ -704,14 +704,11 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                         }}
                         className="watchlist-item-row"
                       >
-                        {/* Ticker + Logo */}
+                        {/* Ticker */}
                         <td style={{ padding: '7px 8px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <StockBrandIcon symbol={item.symbol} />
-                            <span style={{ fontWeight: 800, color: isSelected ? '#10b981' : 'var(--text-primary)', fontSize: '12px' }}>
-                              {item.symbol}
-                            </span>
-                          </div>
+                          <span style={{ fontWeight: 800, color: isSelected ? '#10b981' : 'var(--text-primary)', fontSize: '12px' }}>
+                            {item.symbol}
+                          </span>
                         </td>
 
                         {/* Price */}

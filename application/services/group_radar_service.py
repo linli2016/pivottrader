@@ -313,6 +313,39 @@ class GroupRadarService:
                     item = dict(zip(cols, r))
                     results.append(item)
 
+                if g_type in ("industries", "themes") and results:
+                    try:
+                        rrg_items = self.get_rrg_data(group_type=g_type, date=date, trail_bars=5, sector=sector)
+                        rrg_map = {item["name"]: item for item in rrg_items}
+
+                        def sort_key(item):
+                            rrg_i = rrg_map.get(item["name"])
+                            rrg_score = (rrg_i.get("x", 100) + rrg_i.get("y", 100)) if rrg_i else 200
+                            rs_val = item.get("rs_rank") or 50
+                            ret_1w = item.get("ret_1w_pct") or 0
+                            return (rrg_score * 0.4) + (rs_val * 0.4) + (ret_1w * 2.0)
+
+                        sorted_items = sorted(results, key=sort_key, reverse=True)
+                        for rank_idx, item in enumerate(sorted_items, start=1):
+                            item["rank"] = rank_idx
+                            rrg_i = rrg_map.get(item["name"])
+                            if rrg_i:
+                                item["quadrant"] = rrg_i.get("quadrant", "Improving")
+                                item["rs_ratio"] = rrg_i.get("x")
+                                item["rs_momentum"] = rrg_i.get("y")
+                                trail = rrg_i.get("trail", [])
+                                if trail and len(trail) >= 2:
+                                    delta = round((rrg_i.get("y", 100) - trail[0].get("y", 100)) / 1.5)
+                                    item["rank_delta"] = delta
+                                else:
+                                    item["rank_delta"] = 0
+                            else:
+                                item["quadrant"] = "Improving"
+                                item["rank_delta"] = 0
+                        results = sorted_items
+                    except Exception as e:
+                        logger.error(f"Error augmenting {g_type} with RRG metadata: {e}")
+
                 return results
 
         except Exception as e:

@@ -297,6 +297,15 @@ def get_market_monitor(limit: int = 252, refresh: bool = False):
         logger.error(f"Error in get_market_monitor: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/api/market/cross-asset")
+def get_cross_asset():
+    """Retrieve multi-asset cross-asset macro indicators across Equities, Rates, Credit, FX, Commodities, Volatility, and Crypto."""
+    try:
+        return db_service.get_cross_asset_data()
+    except Exception as e:
+        logger.error(f"Error in get_cross_asset: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/api/sectors/etfs")
 def get_sector_etfs():
     """Retrieve Sector ETF performance, RS Rank, and RS Rank Changes (1W, 1M, 3M)."""
@@ -338,6 +347,27 @@ def get_leaderboard(
         )
     except Exception as e:
         logger.error(f"Error in get_leaderboard: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/score-movers")
+def get_score_movers(
+    date: Optional[str] = None,
+    timeframe: str = "1d",
+    limit: int = 5,
+    min_price: float = 5.0,
+    min_volume: int = 50000
+):
+    """Retrieve Pivot Strength Score biggest gains and drops with sparkline score history."""
+    try:
+        return leaderboard_service.get_score_movers(
+            target_date=date,
+            timeframe=timeframe,
+            limit=limit,
+            min_price=min_price,
+            min_volume=min_volume
+        )
+    except Exception as e:
+        logger.error(f"Error in get_score_movers: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 # ----------------- Group Radar & Themes Endpoints -----------------

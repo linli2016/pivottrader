@@ -926,7 +926,7 @@ export default function LearnTab({ setActiveTab, onSelectSetup }) {
               <button
                 className="btn btn-secondary btn-sm full-width"
                 style={{ marginBottom: '8px', justifyContent: 'flex-start' }}
-                onClick={() => setActiveTab && setActiveTab('market-monitor')}
+                onClick={() => setActiveTab && setActiveTab('dashboard')}
               >
                 📈 {lang === 'en' ? 'Check Market Regime' : '查看大盘多空状态'}
               </button>

@@ -5,6 +5,7 @@ import time
 import sys
 from typing import List, Dict, Any
 from application.providers.base import AbstractDataProvider
+from application.services.taxonomy import get_tactical_sector
 
 try:
     from ib_insync import IB, Stock, util
@@ -79,7 +80,9 @@ class IBKRProvider(AbstractDataProvider):
                         "exchange": exchange,
                         "name": name,
                         "asset_type": "Common Stock",
-                        "active": True
+                        "active": True,
+                        "sector": get_tactical_sector(industry),
+                        "industry": industry
                     })
                 return clean_data
             except Exception as e:

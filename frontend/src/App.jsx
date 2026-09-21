@@ -4,7 +4,6 @@ import CandidatesTab from './components/CandidatesTab';
 import InspectorTab from './components/InspectorTab';
 import SqlConsoleTab from './components/SqlConsoleTab';
 import SettingsTab from './components/SettingsTab';
-import MarketMonitorTab from './components/MarketMonitorTab';
 import SectorCompareTab from './components/SectorCompareTab';
 import StockDetailDrawer from './components/StockDetailDrawer';
 import WatchlistsTab from './components/WatchlistsTab';
@@ -484,66 +483,54 @@ function App() {
           <div className="nav-section">
             <div className="nav-section-title">Daily Routine</div>
             <ul className="nav-menu">
-              {/* 0. Sync Data */}
+              {/* 0. Market Ingest */}
               <li
                 className={`nav-item ${activeTab === 'sync-data' ? 'active' : ''}`}
                 onClick={() => setActiveTab('sync-data')}
-                title="0. Sync Data (DuckDB Pipelines & Live Quotes)"
+                title="0. Market Ingest (DuckDB Pipelines & Live Quotes)"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">🔄</span>
-                  <span className="nav-label">0. Sync Data</span>
+                  <span className="nav-label">0. Market Ingest</span>
                 </div>
                 {syncStatus.status === 'running' && (
                   <span className="nav-badge emerald spin-icon" style={{ fontSize: '10px' }}>⟳</span>
                 )}
               </li>
 
-              {/* 1. Market Monitor */}
-              <li
-                className={`nav-item ${activeTab === 'market-monitor' ? 'active' : ''}`}
-                onClick={() => setActiveTab('market-monitor')}
-                title="1. Market Monitor (Market Breadth & Regime)"
-              >
-                <div className="nav-item-content">
-                  <span className="nav-icon">📈</span>
-                  <span className="nav-label">1. Market Monitor</span>
-                </div>
-              </li>
-
-              {/* 2. Leaderboard */}
+              {/* 1. Leaderboard */}
               <li
                 className={`nav-item ${activeTab === 'leaderboard' ? 'active' : ''}`}
                 onClick={() => setActiveTab('leaderboard')}
-                title="2. Leaderboard (Kova Near-Highs Playbook: Sector Concentration & Leadership Stocks)"
+                title="1. Leaderboard (Kova Near-Highs Playbook: Sector Concentration & Leadership Stocks)"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">🏆</span>
-                  <span className="nav-label">2. Leaderboard</span>
+                  <span className="nav-label">1. Leaderboard</span>
                 </div>
               </li>
 
-              {/* 3. Group Radar */}
+              {/* 2. Industry Radar */}
               <li
                 className={`nav-item ${activeTab === 'sector-compare' ? 'active' : ''}`}
                 onClick={() => setActiveTab('sector-compare')}
-                title="3. Group Radar (Sectors • Industries • Themes)"
+                title="2. Industry Radar (Sectors • Industries • Themes)"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">🌐</span>
-                  <span className="nav-label">3. Group Radar</span>
+                  <span className="nav-label">2. Industry Radar</span>
                 </div>
               </li>
 
-              {/* 4. Stock Screen */}
+              {/* 3. Stock Screen */}
               <li
                 className={`nav-item ${activeTab === 'candidates' ? 'active' : ''}`}
                 onClick={() => setActiveTab('candidates')}
-                title="4. Stock Screen & Setup Scanner"
+                title="3. Stock Screen & Setup Scanner"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">🎯</span>
-                  <span className="nav-label">4. Stock Screen</span>
+                  <span className="nav-label">3. Stock Screen</span>
                 </div>
                 <span className="nav-badge emerald" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                   {loadingCandidates && <span className="spin-icon" style={{ fontSize: '10px' }}>⟳</span>}
@@ -551,20 +538,20 @@ function App() {
                 </span>
               </li>
 
-              {/* 5. Watchlists */}
+              {/* 4. Watchlists */}
               <li
                 className={`nav-item ${activeTab === 'watchlists' ? 'active' : ''}`}
                 onClick={() => setActiveTab('watchlists')}
-                title="5. My Watchlists"
+                title="4. My Watchlists"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">⭐️</span>
-                  <span className="nav-label">5. My Watchlists</span>
+                  <span className="nav-label">4. My Watchlists</span>
                 </div>
                 <span className="nav-badge emerald">{watchlists.reduce((sum, w) => sum + (w.item_count || 0), 0)}</span>
               </li>
 
-              {/* 6. Stock Inspector */}
+              {/* 5. Stock Inspector */}
               <li
                 className={`nav-item ${activeTab === 'inspector' ? 'active' : ''}`}
                 onClick={() => {
@@ -574,11 +561,11 @@ function App() {
                     handleInspectorSearch(selectedStock.symbol);
                   }
                 }}
-                title="6. Stock Inspector"
+                title="5. Stock Inspector"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">🔍</span>
-                  <span className="nav-label">6. Stock Inspector</span>
+                  <span className="nav-label">5. Stock Inspector</span>
                 </div>
               </li>
             </ul>
@@ -653,7 +640,7 @@ function App() {
 
       {/* Main Content Area */}
       <div className="main-content">
-        {activeTab === 'dashboard' && (
+        {(activeTab === 'dashboard' || activeTab === 'market-monitor') && (
           <DashboardTab
             summary={summary}
             syncStatus={syncStatus}
@@ -688,10 +675,6 @@ function App() {
             summary={summary}
             setActiveTab={setActiveTab}
           />
-        )}
-
-        {activeTab === 'market-monitor' && (
-          <MarketMonitorTab />
         )}
 
         {activeTab === 'leaderboard' && (

@@ -7,6 +7,7 @@ import pandas as pd
 import yfinance as yf
 from typing import List, Dict, Any, Optional
 from application.providers.base import AbstractDataProvider
+from application.services.taxonomy import get_tactical_sector
 
 def _calculate_easter(year: int) -> datetime.date:
     """Computes Easter Sunday for a given year using Butcher's algorithm."""
@@ -173,7 +174,7 @@ class YFinanceProvider(AbstractDataProvider):
                         "name": name,
                         "asset_type": "Common Stock",
                         "active": True,
-                        "sector": sector,
+                        "sector": get_tactical_sector(industry),
                         "industry": industry
                     })
                 return clean_data

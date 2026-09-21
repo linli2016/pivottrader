@@ -247,7 +247,22 @@ class DatabaseManager:
                 except Exception:
                     pass
 
-            # 4. Earnings Calendar Table (Historical actuals and upcoming earnings dates)
+            # Migration: remap symbols.sector from industry using the 30 IBD-style tactical
+            # sectors. Industry is the ground truth; the raw upstream feed's broad GICS sector
+            # names (Technology, Financials, etc.) are replaced by the more granular 30-sector
+            # taxonomy on every startup. Rows with no industry are left unchanged.
+            try:
+                from application.services.taxonomy import get_tactical_sector
+                rows = conn.execute(
+                    "SELECT symbol, industry FROM symbols WHERE industry IS NOT NULL AND industry != ''"
+                ).fetchall()
+                if rows:
+                    updates = [(get_tactical_sector(industry), sym) for sym, industry in rows]
+                    conn.executemany("UPDATE symbols SET sector = ? WHERE symbol = ?", updates)
+            except Exception:
+                pass
+
+
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS earnings_calendar (
                     symbol VARCHAR NOT NULL,

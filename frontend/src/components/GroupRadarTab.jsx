@@ -42,9 +42,27 @@ export const QUADRANT_CONFIG = {
   }
 };
 
+export const SECTOR_LEGEND_DOTS = [
+  { name: 'Technology', color: '#38bdf8' },
+  { name: 'Financials', color: '#10b981' },
+  { name: 'Healthcare', color: '#f43f5e' },
+  { name: 'Consumer', color: '#f59e0b' },
+  { name: 'Industrials', color: '#94a3b8' },
+  { name: 'Energy', color: '#fb923c' },
+  { name: 'Defensive', color: '#a855f7' },
+  { name: 'Materials', color: '#ec4899' },
+  { name: 'Real Estate', color: '#06b6d4' },
+  { name: 'Utilities', color: '#84cc16' }
+];
+
 export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates = [] }) {
   const [activeTab, setActiveTab] = useState('sectors'); // 'sectors', 'industries', or 'themes'
-  const [viewMode, setViewMode] = useState('table'); // 'table' | 'rrg'
+  const [viewMode, setViewMode] = useState('rrg'); // 'rrg' | 'board' | 'heatmap' | 'table'
+  const [timeframe, setTimeframe] = useState('1wk'); // '1wk' | '1mo' | '3mo' | '6mo'
+  const [selectedGroupName, setSelectedGroupName] = useState(null);
+  const [selectedConstituents, setSelectedConstituents] = useState([]);
+  const [loadingSelectedConstituents, setLoadingSelectedConstituents] = useState(false);
+
   const [selectedDate, setSelectedDate] = useState('');
   const [data, setData] = useState([]);
   const [selectedSectorFilter, setSelectedSectorFilter] = useState(null);
@@ -114,12 +132,43 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
     }
   };
 
+  const handleTimeframeChange = (tf) => {
+    setTimeframe(tf);
+    const bars = tf === '1wk' ? 5 : tf === '1mo' ? 21 : tf === '3mo' ? 63 : 126;
+    setTrailBars(bars);
+  };
+
+  const handleSelectGroup = (name) => {
+    if (selectedGroupName === name) {
+      setSelectedGroupName(null);
+      setSelectedConstituents([]);
+    } else {
+      setSelectedGroupName(name);
+      fetchInspectorConstituents(name);
+    }
+  };
+
+  const fetchInspectorConstituents = async (name) => {
+    if (!name) return;
+    setLoadingSelectedConstituents(true);
+    try {
+      const dateParam = selectedDate ? `&date=${encodeURIComponent(selectedDate)}` : '';
+      const res = await fetch(`${API_BASE}/api/groups/constituents?type=${activeTab}&name=${encodeURIComponent(name)}${dateParam}`);
+      if (res.ok) {
+        const items = await res.json();
+        setSelectedConstituents(Array.isArray(items) ? items : []);
+      }
+    } catch (err) {
+      console.error('Error loading inspector constituents:', err);
+    } finally {
+      setLoadingSelectedConstituents(false);
+    }
+  };
+
   useEffect(() => {
     fetchGroupStrength(activeTab, selectedDate);
-    if (viewMode === 'rrg') {
-      fetchRRGData(activeTab, selectedDate, trailBars);
-    }
-  }, [activeTab, selectedDate, viewMode, trailBars]);
+    fetchRRGData(activeTab, selectedDate, trailBars);
+  }, [activeTab, selectedDate, trailBars]);
 
 
   // Fetch constituents or child groups for a specific parent group
@@ -292,6 +341,69 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
 
     return list;
   }, [data, activeTab, selectedSectorFilter, searchTerm, sortBy, sortOrder]);
+
+  const selectedItem = useMemo(() => {
+    if (!selectedGroupName || !Array.isArray(data)) return null;
+    return data.find((d) => d.name === selectedGroupName) || null;
+  }, [selectedGroupName, data]);
+
+  const topMovers = useMemo(() => {
+    if (!Array.isArray(data) || data.length === 0) return [];
+    return [...data]
+      .filter((d) => (d.rank_delta !== undefined && d.rank_delta !== 0) || d.ret_1w_pct !== undefined)
+      .sort((a, b) => {
+        const deltaA = a.rank_delta ?? 0;
+        const deltaB = b.rank_delta ?? 0;
+        if (deltaB !== deltaA) return deltaB - deltaA;
+        return (b.ret_1w_pct ?? 0) - (a.ret_1w_pct ?? 0);
+      })
+      .slice(0, 8);
+  }, [data]);
+
+  const quadrantCounts = useMemo(() => {
+    const counts = { Leading: 0, Improving: 0, Weakening: 0, Lagging: 0 };
+    if (!Array.isArray(data)) return counts;
+    data.forEach((d) => {
+      const q = d.quadrant || 'Improving';
+      if (counts[q] !== undefined) counts[q]++;
+    });
+    return counts;
+  }, [data]);
+
+  const boardQuadrants = useMemo(() => {
+    const groups = {
+      Improving: [],
+      Leading: [],
+      Lagging: [],
+      Weakening: []
+    };
+    if (!Array.isArray(data)) return groups;
+    data.forEach((item) => {
+      const q = item.quadrant || 'Improving';
+      if (groups[q]) groups[q].push(item);
+    });
+    Object.keys(groups).forEach((k) => {
+      groups[k].sort((a, b) => (a.rank || 999) - (b.rank || 999));
+    });
+    return groups;
+  }, [data]);
+
+  const heatmapItems = useMemo(() => {
+    if (!Array.isArray(filteredAndSortedGroups)) return [];
+    return [...filteredAndSortedGroups].sort((a, b) => (a.rank || 999) - (b.rank || 999));
+  }, [filteredAndSortedGroups]);
+
+  const getReturnDisplay = (item) => {
+    let val = item.ret_1w_pct;
+    if (timeframe === '1mo') val = item.ret_1m_pct;
+    else if (timeframe === '3mo') val = item.ret_3m_pct;
+    else if (timeframe === '6mo') val = item.ret_ytd_pct;
+
+    if (val === undefined || val === null) return '-';
+    const num = Number(val);
+    if (isNaN(num)) return '-';
+    return `${num >= 0 ? '+' : ''}${num.toFixed(1)}%`;
+  };
 
   // Theme Management handlers
   const openNewThemeModal = () => {
@@ -510,22 +622,21 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
           alignItems: 'center',
           flexWrap: 'wrap',
           gap: '16px',
-          marginBottom: '20px'
+          marginBottom: '16px'
         }}
       >
         <div className="header-title">
           <div className="header-subtitle-tag">
-            <span>GROUP RADAR</span>
+            <span>INDUSTRY RADAR</span>
             <span>•</span>
-            <span>INSTITUTIONAL ROTATION</span>
+            <span>LEADERSHIP & ROTATION</span>
           </div>
-          <h1>Group Strength Radar</h1>
-          <p>Real-Time Relative Strength, Multi-Horizon Momentum & Breadth Across Sectors, Industries, and Themes</p>
+          <h1>Industry Radar</h1>
+          <p>Institutional Relative Strength, Multi-Horizon Rotation & Breadth Across Sectors, Industries, and Themes</p>
         </div>
 
         {/* Top Right Controls: Snapshot / Date Picker & Refresh */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          {/* Live indicator badge */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {!selectedDate && (
             <div
               style={{
@@ -546,7 +657,6 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
             </div>
           )}
 
-          {/* Historical Snapshot Dropdown */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Snapshot:</span>
             <select
@@ -557,7 +667,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                 color: 'var(--text-primary)',
                 border: '1px solid var(--border-color)',
                 borderRadius: 'var(--border-radius-md)',
-                padding: '6px 10px',
+                padding: '5px 10px',
                 fontSize: '12px',
                 cursor: 'pointer'
               }}
@@ -573,165 +683,128 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
 
           <button
             className="btn btn-secondary btn-sm"
-            onClick={() => fetchGroupStrength(activeTab, selectedDate)}
+            onClick={() => {
+              fetchGroupStrength(activeTab, selectedDate);
+              fetchRRGData(activeTab, selectedDate, trailBars);
+            }}
             disabled={loading}
-            style={{ padding: '6px 14px', fontSize: '12px' }}
+            style={{ padding: '5px 12px', fontSize: '12px' }}
           >
             🔄 Refresh
           </button>
         </div>
       </div>
 
-      {/* 3-Pill Switcher & Search Bar */}
-      <div
-        className="glass-card"
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '16px',
-          padding: '12px 18px',
-          marginBottom: '20px'
-        }}
-      >
-        {/* The 3 Pills (Sectors, Industries, Themes) */}
-        <div
-          style={{
-            display: 'inline-flex',
-            background: 'rgba(0, 0, 0, 0.4)',
-            padding: '4px',
-            borderRadius: '24px',
-            border: '1px solid var(--border-color)',
-            gap: '4px'
-          }}
-        >
-          {/* Pill 1: Sectors */}
-          <button
-            onClick={() => { setActiveTab('sectors'); setSelectedSectorFilter(null); }}
-            style={{
-              background: activeTab === 'sectors' ? '#10b981' : 'transparent',
-              color: activeTab === 'sectors' ? '#ffffff' : 'var(--text-secondary)',
-              border: 'none',
-              borderRadius: '20px',
-              padding: '6px 18px',
-              fontSize: '13px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            Sectors {activeTab === 'sectors' && data.length > 0 ? `(${data.length})` : ''}
-          </button>
+      {/* Redesigned Institutional Toolbar */}
+      <div className="radar-toolbar">
+        <div className="radar-toolbar-left">
+          {/* Scope Switcher: Sectors / Industries / Themes */}
+          <div className="radar-pills-group">
+            <button
+              className={`radar-pill-btn ${activeTab === 'sectors' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('sectors'); setSelectedSectorFilter(null); }}
+            >
+              Sectors {activeTab === 'sectors' && data.length > 0 ? `(${data.length})` : ''}
+            </button>
+            <button
+              className={`radar-pill-btn ${activeTab === 'industries' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('industries'); setSelectedSectorFilter(null); }}
+            >
+              Industries {activeTab === 'industries' && data.length > 0 ? `(${data.length})` : ''}
+            </button>
+            <button
+              className={`radar-pill-btn ${activeTab === 'themes' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('themes'); setSelectedSectorFilter(null); }}
+            >
+              Themes {activeTab === 'themes' && data.length > 0 ? `(${data.length})` : ''}
+            </button>
+          </div>
 
-          {/* Pill 2: Industries */}
-          <button
-            onClick={() => { setActiveTab('industries'); setSelectedSectorFilter(null); }}
-            style={{
-              background: activeTab === 'industries' ? '#10b981' : 'transparent',
-              color: activeTab === 'industries' ? '#ffffff' : 'var(--text-secondary)',
-              border: 'none',
-              borderRadius: '20px',
-              padding: '6px 18px',
-              fontSize: '13px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            Industries {activeTab === 'industries' && data.length > 0 ? `(${data.length})` : ''}
-          </button>
+          {/* View Mode Switcher: ① RRG / ② Board / ③ Heatmap / ④ Table */}
+          <div className="radar-pills-group">
+            <button
+              className={`radar-pill-btn ${viewMode === 'rrg' ? 'view-active' : ''}`}
+              onClick={() => setViewMode('rrg')}
+            >
+              ① RRG
+            </button>
+            <button
+              className={`radar-pill-btn ${viewMode === 'board' ? 'view-active' : ''}`}
+              onClick={() => setViewMode('board')}
+            >
+              ② Board
+            </button>
+            <button
+              className={`radar-pill-btn ${viewMode === 'heatmap' ? 'view-active' : ''}`}
+              onClick={() => setViewMode('heatmap')}
+            >
+              ③ Heatmap
+            </button>
+            <button
+              className={`radar-pill-btn ${viewMode === 'table' ? 'view-active' : ''}`}
+              onClick={() => setViewMode('table')}
+            >
+              ④ Table
+            </button>
+          </div>
 
-          {/* Pill 3: Themes */}
-          <button
-            onClick={() => { setActiveTab('themes'); setSelectedSectorFilter(null); }}
-            style={{
-              background: activeTab === 'themes' ? '#10b981' : 'transparent',
-              color: activeTab === 'themes' ? '#ffffff' : 'var(--text-secondary)',
-              border: 'none',
-              borderRadius: '20px',
-              padding: '6px 18px',
-              fontSize: '13px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            Themes {activeTab === 'themes' && data.length > 0 ? `(${data.length})` : ''}
-          </button>
+          {/* Timeframe Switcher: 1wk / 1mo / 3mo / 6mo */}
+          <div className="radar-pills-group">
+            {['1wk', '1mo', '3mo', '6mo'].map((tf) => (
+              <button
+                key={tf}
+                className={`radar-pill-btn ${timeframe === tf ? 'active' : ''}`}
+                onClick={() => handleTimeframeChange(tf)}
+              >
+                {tf}
+              </button>
+            ))}
+          </div>
+
+          {/* Ranking info */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+            <span>📅 {selectedDate ? `ranking as of ${selectedDate}` : 'ranking as of Latest'}</span>
+          </div>
         </div>
 
-        {/* View Mode Toggle: Table View vs RRG Quadrant View */}
-        <div
-          style={{
-            display: 'inline-flex',
-            background: 'rgba(0, 0, 0, 0.4)',
-            padding: '3px',
-            borderRadius: '20px',
-            border: '1px solid var(--border-color)',
-            gap: '3px'
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setViewMode('table')}
-            style={{
-              background: viewMode === 'table' ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
-              color: viewMode === 'table' ? '#38bdf8' : 'var(--text-secondary)',
-              border: viewMode === 'table' ? '1px solid rgba(56, 189, 248, 0.4)' : 'none',
-              borderRadius: '16px',
-              padding: '5px 14px',
-              fontSize: '12px',
-              fontWeight: viewMode === 'table' ? 700 : 500,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <span>📋</span> Table View
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('rrg')}
-            style={{
-              background: viewMode === 'rrg' ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
-              color: viewMode === 'rrg' ? '#38bdf8' : 'var(--text-secondary)',
-              border: viewMode === 'rrg' ? '1px solid rgba(56, 189, 248, 0.4)' : 'none',
-              borderRadius: '16px',
-              padding: '5px 14px',
-              fontSize: '12px',
-              fontWeight: viewMode === 'rrg' ? 700 : 500,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            <span>🎯</span> RRG Quadrant View
-          </button>
-        </div>
-
-        {/* Right side of toolbar: Search + Optional "+ New Theme" */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <input
-            type="text"
-            className="select-input"
-            placeholder={`🔍 Filter ${activeTab} or tickers...`}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              width: '240px',
-              background: 'rgba(0, 0, 0, 0.3)',
-              color: 'var(--text-primary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: 'var(--border-radius-md)',
-              padding: '7px 14px',
-              fontSize: '13px'
-            }}
-          />
+        <div className="radar-toolbar-right">
+          {/* Search box */}
+          <div style={{ position: 'relative' }}>
+            <input
+              type="text"
+              className="select-input"
+              placeholder={`Search ${activeTab} name...`}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: '210px',
+                background: 'rgba(0, 0, 0, 0.35)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '20px',
+                padding: '6px 28px 6px 12px',
+                fontSize: '12px'
+              }}
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                style={{
+                  position: 'absolute',
+                  right: '8px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontSize: '12px'
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
 
           {activeTab === 'themes' && (
             <button
@@ -742,194 +815,309 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                 color: '#10b981',
                 borderColor: 'rgba(16, 185, 129, 0.4)',
                 fontWeight: 700,
-                padding: '7px 14px'
+                padding: '5px 12px',
+                borderRadius: '16px',
+                fontSize: '11.5px'
               }}
             >
-              + New Theme
+              + Theme
             </button>
           )}
         </div>
       </div>
 
-      {/* RRG Quadrant View */}
-      {viewMode === 'rrg' && (
-        <RRGQuadrantChart
-          data={rrgData}
-          loading={loadingRRG}
-          trailBars={trailBars}
-          onChangeTrailBars={(n) => {
-            setTrailBars(n);
-            fetchRRGData(activeTab, selectedDate, n);
-          }}
-          onSelectGroup={(item) => {
-            setViewMode('table');
-            setSearchTerm(item.name);
-            toggleGroupExpand(item.name);
-          }}
-        />
-      )}
-
-      {/* Table View */}
-      {viewMode === 'table' && (
-        <>
-          {/* Loading state */}
-          {loading && (
-            <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-secondary)' }}>
-              <div style={{ fontSize: '28px', marginBottom: '12px' }}>⏳</div>
-              Calculating {activeTab} relative strength & momentum metrics...
+      {/* 3-Column Institutional Layout */}
+      <div className="radar-3col-layout">
+        {/* LEFT COLUMN: Ranks List */}
+        <div className="radar-left-col">
+          <div className="radar-left-header">
+            <div className="radar-left-title">
+              <span>{activeTab === 'sectors' ? 'Sector' : activeTab === 'industries' ? 'Industry' : 'Theme'} ranks</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{filteredAndSortedGroups.length}</span>
             </div>
-          )}
+            <div className="radar-left-subtitle">Click once to focus, click again to clear.</div>
+          </div>
 
+          <div className="radar-ranks-scroll">
+            {filteredAndSortedGroups.map((g) => {
+              const isSelected = selectedGroupName === g.name;
+              const delta = g.rank_delta ?? 0;
+              const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '—';
+              const deltaColor = delta > 0 ? '#34d399' : delta < 0 ? '#f87171' : 'var(--text-muted)';
+              const retStr = getReturnDisplay(g);
+              const retColor = retStr.startsWith('+') ? '#34d399' : retStr.startsWith('-') ? '#f87171' : 'var(--text-muted)';
 
-      {/* Error state */}
-      {error && (
-        <div className="glass-card" style={{ padding: '20px', borderColor: 'var(--accent-danger)', color: 'var(--accent-danger)' }}>
-          ⚠️ {error}
-        </div>
-      )}
-
-      {/* 4-Quadrant Sector Momentum Cards for Sectors Tab */}
-      {activeTab === 'sectors' && !loading && !error && (
-        <div style={{ marginBottom: '20px' }}>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
-              gap: '14px'
-            }}
-          >
-            {['Improving', 'Leading', 'Lagging', 'Weakening'].map((quadName) => {
-              const cfg = QUADRANT_CONFIG[quadName];
-              const items = sectorQuadrants[quadName] || [];
               return (
                 <div
-                  key={quadName}
-                  style={{
-                    background: cfg.cardBg,
-                    border: `1px solid ${cfg.cardBorder}`,
-                    borderRadius: '16px',
-                    padding: '16px 18px',
-                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '12px'
-                  }}
+                  key={g.name}
+                  className={`radar-rank-row ${isSelected ? 'selected' : ''}`}
+                  onClick={() => handleSelectGroup(g.name)}
+                  title={`#${g.rank} ${g.name} | ${g.quadrant || 'Improving'} | Δ ${delta} | ${timeframe}: ${retStr}`}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '15px', fontWeight: 700, color: cfg.accent }}>
-                      {cfg.title}
-                    </span>
-                    <span style={{ fontSize: '14px', fontWeight: 700, color: cfg.accent, opacity: 0.85 }}>
-                      {items.length}
-                    </span>
+                  <span className="radar-rank-num">#{g.rank || '-'}</span>
+                  <div className="radar-rank-name-wrap">
+                    <div className="radar-rank-name">{g.name}</div>
+                    <div className="radar-rank-meta">{g.stock_count ? `${g.stock_count} stocks` : ''}</div>
                   </div>
-
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {items.length === 0 ? (
-                      <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                        None currently
-                      </span>
-                    ) : (
-                      items.map((sec) => {
-                        const isSelected = selectedSectorFilter === sec.name;
-                        const delta = sec.rank_delta ?? 0;
-                        const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '—';
-                        const deltaStr = delta !== 0 ? `${arrow} ${Math.abs(delta)}` : '—';
-
-                        return (
-                          <button
-                            key={sec.name}
-                            type="button"
-                            onClick={() => handleSectorPillClick(sec.name)}
-                            title={`#${sec.rank} ${sec.name} | 5D Rank Δ: ${delta >= 0 ? '+' : ''}${delta} | 1W: ${sec.ret_1w_pct}%`}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              padding: '5px 11px',
-                              borderRadius: '9999px',
-                              border: `1px solid ${isSelected ? cfg.accent : cfg.pillBorder}`,
-                              background: isSelected ? cfg.selectedBg : cfg.pillBg,
-                              boxShadow: isSelected ? `0 0 12px ${cfg.accent}66` : 'none',
-                              cursor: 'pointer',
-                              transition: 'all 0.15s ease',
-                              fontSize: '12px'
-                            }}
-                          >
-                            <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontWeight: 600 }}>
-                              #{sec.rank}
-                            </span>
-                            <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>
-                              {sec.name}
-                            </span>
-                            <span
-                              style={{
-                                color: delta === 0 ? 'var(--text-muted)' : cfg.accent,
-                                fontWeight: 700,
-                                fontSize: '11px'
-                              }}
-                            >
-                              {deltaStr}
-                            </span>
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
+                  <span className="radar-rank-delta" style={{ color: deltaColor }}>
+                    {arrow} {delta !== 0 ? Math.abs(delta) : ''}
+                  </span>
+                  <span className="radar-rank-return" style={{ color: retColor }}>
+                    {retStr}
+                  </span>
                 </div>
               );
             })}
           </div>
+        </div>
 
-          {/* Active sector filter badge */}
-          {selectedSectorFilter && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                marginTop: '12px',
-                padding: '8px 14px',
-                background: 'rgba(56, 189, 248, 0.08)',
-                borderRadius: '8px',
-                border: '1px solid rgba(56, 189, 248, 0.2)'
-              }}
-            >
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                Filtered to sector:
+        {/* CENTER COLUMN: Main Canvas */}
+        <div className="radar-center-col">
+          <div className="radar-canvas-header">
+            <div className="radar-category-legend">
+              {SECTOR_LEGEND_DOTS.map((cat) => (
+                <div key={cat.name} className="radar-category-dot-item">
+                  <span className="radar-category-dot" style={{ backgroundColor: cat.color }} />
+                  <span style={{ color: 'var(--text-secondary)' }}>{cat.name}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="radar-migration-pills" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ color: 'var(--text-muted)', fontSize: '11px', marginRight: '4px' }}>Migrated:</span>
+              <span className="radar-mig-pill" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                Leading {quadrantCounts.Leading}
               </span>
-              <span
-                className="pill"
+              <span className="radar-mig-pill" style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
+                Improving {quadrantCounts.Improving}
+              </span>
+              <span className="radar-mig-pill" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                Weakening {quadrantCounts.Weakening}
+              </span>
+              <span className="radar-mig-pill" style={{ background: 'rgba(244, 63, 94, 0.15)', color: '#f43f5e', border: '1px solid rgba(244, 63, 94, 0.3)' }}>
+                Lagging {quadrantCounts.Lagging}
+              </span>
+
+              {/* RRG Trail selector with stable layout footprint */}
+              <div
                 style={{
-                  fontSize: '12px',
-                  padding: '2px 10px',
-                  background: 'rgba(56, 189, 248, 0.2)',
-                  color: '#38bdf8',
-                  fontWeight: 700,
-                  cursor: 'pointer'
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '3px',
+                  marginLeft: '8px',
+                  paddingLeft: '8px',
+                  borderLeft: '1px solid rgba(255, 255, 255, 0.1)',
+                  visibility: viewMode === 'rrg' ? 'visible' : 'hidden',
+                  pointerEvents: viewMode === 'rrg' ? 'auto' : 'none',
                 }}
-                onClick={() => setSelectedSectorFilter(null)}
               >
-                {selectedSectorFilter} ✕
-              </span>
-              <button
-                className="btn btn-secondary btn-sm"
-                style={{ padding: '2px 8px', fontSize: '11px' }}
-                onClick={() => setSelectedSectorFilter(null)}
-              >
-                Show all 30 sectors
-              </button>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Trail:</span>
+                {[3, 5, 10].map((num) => (
+                  <button
+                    key={num}
+                    type="button"
+                    onClick={() => {
+                      setTrailBars(num);
+                      fetchRRGData(activeTab, selectedDate, num);
+                    }}
+                    style={{
+                      padding: '2px 7px',
+                      fontSize: '10.5px',
+                      fontWeight: trailBars === num ? 700 : 500,
+                      borderRadius: '4px',
+                      border: trailBars === num ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.1)',
+                      background: trailBars === num ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.04)',
+                      color: trailBars === num ? '#38bdf8' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {num}d
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '10px', height: '16px', lineHeight: '16px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+            {viewMode === 'rrg' && 'Lines show where leaders moved over the window • hover any bubble for detail'}
+            {viewMode === 'board' && 'Quadrants matrix showing leaders & rotation stages • click card to inspect'}
+            {viewMode === 'heatmap' && 'Rank-ordered performance tiles tinted by quadrant status • click tile to inspect'}
+            {viewMode === 'table' && 'Detailed metrics table with multi-timeframe returns & relative strength'}
+          </div>
+
+          {/* VIEW CANVAS CONTAINER WITH STABLE HEIGHT & INTERNAL SCROLL */}
+          <div className="radar-canvas-view-wrap">
+            {/* 1. RRG VIEW */}
+            {viewMode === 'rrg' && (
+              <RRGQuadrantChart
+                data={rrgData}
+                loading={loadingRRG}
+                trailBars={trailBars}
+                selectedGroupName={selectedGroupName}
+                onChangeTrailBars={(n) => {
+                  setTrailBars(n);
+                  fetchRRGData(activeTab, selectedDate, n);
+                }}
+                onSelectGroup={(item) => handleSelectGroup(item.name)}
+                hideToolbar={true}
+              />
+            )}
+
+          {/* 2. BOARD VIEW (2x2 Quadrants) */}
+          {viewMode === 'board' && (
+            <div className="radar-board-grid">
+              {['Improving', 'Leading', 'Lagging', 'Weakening'].map((quadName) => {
+                const qCfg = QUADRANT_CONFIG[quadName];
+                const items = boardQuadrants[quadName] || [];
+                return (
+                  <div
+                    key={quadName}
+                    className="radar-board-quadrant"
+                    style={{
+                      background: qCfg.cardBg,
+                      borderColor: qCfg.cardBorder
+                    }}
+                  >
+                    <div className="radar-board-quad-header">
+                      <span style={{ color: qCfg.accent }}>{qCfg.title}</span>
+                      <span style={{ color: qCfg.accent, opacity: 0.85, fontSize: '12px' }}>{items.length}</span>
+                    </div>
+
+                    <div className="radar-board-cards-wrap">
+                      {items.length === 0 ? (
+                        <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>No groups</span>
+                      ) : (
+                        items.map((item) => {
+                          const isSel = selectedGroupName === item.name;
+                          const delta = item.rank_delta ?? 0;
+                          const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '—';
+                          const deltaColor = delta > 0 ? '#34d399' : delta < 0 ? '#f87171' : 'var(--text-muted)';
+                          return (
+                            <div
+                              key={item.name}
+                              className={`radar-board-card ${isSel ? 'active-selected' : ''}`}
+                              style={{
+                                background: isSel ? qCfg.selectedBg : qCfg.pillBg,
+                                border: `1px solid ${isSel ? qCfg.accent : qCfg.pillBorder}`
+                              }}
+                              onClick={() => handleSelectGroup(item.name)}
+                              title={`#${item.rank} ${item.name} | 1W: ${item.ret_1w_pct}%`}
+                            >
+                              <span className="radar-board-card-rank">#{item.rank || '-'}</span>
+                              <span className="radar-board-card-name">{item.name}</span>
+                              <span className="radar-board-card-delta" style={{ color: deltaColor }}>
+                                {arrow} {delta !== 0 ? Math.abs(delta) : ''}
+                              </span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
-        </div>
-      )}
 
-      {/* Main Leaderboard Table */}
+          {/* 3. HEATMAP VIEW */}
+          {viewMode === 'heatmap' && (
+            <div className="radar-heatmap-grid">
+              {heatmapItems.map((item) => {
+                const isSel = selectedGroupName === item.name;
+                const qCfg = QUADRANT_CONFIG[item.quadrant || 'Improving'] || QUADRANT_CONFIG.Improving;
+                const delta = item.rank_delta ?? 0;
+                const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '—';
+                const deltaColor = delta > 0 ? '#34d399' : delta < 0 ? '#f87171' : 'var(--text-muted)';
+
+                return (
+                  <div
+                    key={item.name}
+                    className={`radar-heatmap-tile ${isSel ? 'active-selected' : ''}`}
+                    style={{
+                      background: qCfg.cardBg,
+                      borderColor: isSel ? '#ffffff' : qCfg.cardBorder
+                    }}
+                    onClick={() => handleSelectGroup(item.name)}
+                    title={`#${item.rank} ${item.name} (${item.quadrant}) | 1W: ${item.ret_1w_pct}%`}
+                  >
+                    <div className="radar-heatmap-name">{item.name}</div>
+                    <div className="radar-heatmap-bottom">
+                      <span className="radar-heatmap-rank">#{item.rank || '-'}</span>
+                      <span className="radar-heatmap-delta" style={{ color: deltaColor }}>
+                        {arrow} {delta !== 0 ? Math.abs(delta) : ''}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* 4. TABLE VIEW */}
+          {viewMode === 'table' && (
+            <div style={{ flex: 1, minWidth: 0, overflowX: 'auto' }}>
+              {/* Loading state */}
+              {loading && (
+                <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-secondary)' }}>
+                  <div style={{ fontSize: '28px', marginBottom: '12px' }}>⏳</div>
+                  Calculating {activeTab} relative strength & momentum metrics...
+                </div>
+              )}
+
+              {/* Error state */}
+              {error && (
+                <div className="glass-card" style={{ padding: '20px', borderColor: 'var(--accent-danger)', color: 'var(--accent-danger)' }}>
+                  ⚠️ {error}
+                </div>
+              )}
+
+              {/* Active sector filter badge */}
+              {selectedSectorFilter && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    marginBottom: '12px',
+                    padding: '8px 14px',
+                    background: 'rgba(56, 189, 248, 0.08)',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(56, 189, 248, 0.2)'
+                  }}
+                >
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    Filtered to sector:
+                  </span>
+                  <span
+                    className="pill"
+                    style={{
+                      fontSize: '12px',
+                      padding: '2px 10px',
+                      background: 'rgba(56, 189, 248, 0.2)',
+                      color: '#38bdf8',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                    onClick={() => setSelectedSectorFilter(null)}
+                  >
+                    {selectedSectorFilter} ✕
+                  </span>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    style={{ padding: '2px 8px', fontSize: '11px' }}
+                    onClick={() => setSelectedSectorFilter(null)}
+                  >
+                    Show all
+                  </button>
+                </div>
+              )}
+
+              {/* Main Leaderboard Table */}
       {!loading && !error && (
-        <div className="glass-card" style={{ padding: '16px', overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto' }}>
           <table className="data-table" style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid var(--border-color)', userSelect: 'none' }}>
+              <tr style={{ borderBottom: '1px solid var(--border-color)', userSelect: 'none', position: 'sticky', top: 0, zIndex: 10, background: '#0e1422' }}>
                 <th
                   onClick={() => handleSort('name')}
                   style={{ textAlign: 'left', padding: '10px 12px', cursor: 'pointer', minWidth: '220px' }}
@@ -1541,9 +1729,173 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
           </table>
         </div>
       )}
+            </div>
+          )}
+        </div>
+      </div>
 
-        </>
-      )}
+        {/* RIGHT COLUMN: Selection Inspector & Top Movers */}
+        <div className="radar-right-col">
+          {/* Selected Group Card */}
+          <div className="radar-inspector-card">
+            <div className="radar-inspector-title">
+              Selected {activeTab === 'sectors' ? 'Sector' : activeTab === 'industries' ? 'Industry' : 'Theme'}
+            </div>
+
+            {!selectedItem ? (
+              <div style={{ padding: '24px 10px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
+                <div style={{ fontSize: '24px', marginBottom: '8px' }}>🔍</div>
+                <div style={{ fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>No selection</div>
+                Pick a row, map bubble, board card, or heatmap tile to inspect constituents and momentum details.
+              </div>
+            ) : (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '10px' }}>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#ffffff' }}>
+                      {selectedItem.name}
+                    </h4>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      Rank #{selectedItem.rank} {selectedItem.rank_delta ? `(Δ ${selectedItem.rank_delta > 0 ? '+' : ''}${selectedItem.rank_delta})` : ''}
+                    </span>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      padding: '3px 8px',
+                      borderRadius: '12px',
+                      background: (QUADRANT_CONFIG[selectedItem.quadrant || 'Improving'] || QUADRANT_CONFIG.Improving).pillBg,
+                      color: (QUADRANT_CONFIG[selectedItem.quadrant || 'Improving'] || QUADRANT_CONFIG.Improving).accent,
+                      border: `1px solid ${(QUADRANT_CONFIG[selectedItem.quadrant || 'Improving'] || QUADRANT_CONFIG.Improving).pillBorder}`
+                    }}
+                  >
+                    {selectedItem.quadrant || 'Improving'}
+                  </span>
+                </div>
+
+                {/* Metrics Matrix */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px', marginBottom: '14px' }}>
+                  <div style={{ background: 'rgba(0,0,0,0.3)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>RS-Ratio / Mom</div>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#38bdf8', fontFamily: 'var(--font-mono)' }}>
+                      {selectedItem.rs_ratio || '--'} / {selectedItem.rs_momentum || '--'}
+                    </div>
+                  </div>
+                  <div style={{ background: 'rgba(0,0,0,0.3)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>1W Return</div>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: (selectedItem.ret_1w_pct || 0) >= 0 ? '#34d399' : '#f87171', fontFamily: 'var(--font-mono)' }}>
+                      {selectedItem.ret_1w_pct !== undefined ? `${selectedItem.ret_1w_pct >= 0 ? '+' : ''}${selectedItem.ret_1w_pct}%` : '--'}
+                    </div>
+                  </div>
+                  <div style={{ background: 'rgba(0,0,0,0.3)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>1M Return</div>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: (selectedItem.ret_1m_pct || 0) >= 0 ? '#34d399' : '#f87171', fontFamily: 'var(--font-mono)' }}>
+                      {selectedItem.ret_1m_pct !== undefined ? `${selectedItem.ret_1m_pct >= 0 ? '+' : ''}${selectedItem.ret_1m_pct}%` : '--'}
+                    </div>
+                  </div>
+                  <div style={{ background: 'rgba(0,0,0,0.3)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>YTD Return</div>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: (selectedItem.ret_ytd_pct || 0) >= 0 ? '#34d399' : '#f87171', fontFamily: 'var(--font-mono)' }}>
+                      {selectedItem.ret_ytd_pct !== undefined ? `${selectedItem.ret_ytd_pct >= 0 ? '+' : ''}${selectedItem.ret_ytd_pct}%` : '--'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Top Constituent Stocks */}
+                <div>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase' }}>
+                    Top Constituents ({selectedConstituents.length || selectedItem.top_symbols?.length || 0})
+                  </div>
+
+                  {loadingSelectedConstituents ? (
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', padding: '10px 0', textAlign: 'center' }}>
+                      Loading stocks...
+                    </div>
+                  ) : selectedConstituents.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '240px', overflowY: 'auto' }}>
+                      {selectedConstituents.slice(0, 10).map((stk) => (
+                        <div
+                          key={stk.symbol}
+                          onClick={() => onSelectStock && onSelectStock(stk.symbol)}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '4px 6px',
+                            borderRadius: '4px',
+                            background: 'rgba(0,0,0,0.25)',
+                            cursor: 'pointer',
+                            fontSize: '11.5px',
+                            transition: 'background 0.12s ease'
+                          }}
+                          className="hover-brighten"
+                          title="Click to inspect stock"
+                        >
+                          <span style={{ fontWeight: 700, color: '#38bdf8' }}>{stk.symbol}</span>
+                          <span style={{ color: 'var(--text-secondary)', maxWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {stk.name}
+                          </span>
+                          <span style={{ fontWeight: 700, color: (stk.ret_today || 0) >= 0 ? '#34d399' : '#f87171', fontFamily: 'var(--font-mono)' }}>
+                            {stk.close ? `$${Number(stk.close).toFixed(2)}` : ''}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : selectedItem.top_symbols && selectedItem.top_symbols.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {selectedItem.top_symbols.map((sym) => (
+                        <button
+                          key={sym}
+                          className="badge badge-outline"
+                          onClick={() => onSelectStock && onSelectStock(sym)}
+                          style={{ cursor: 'pointer', fontSize: '11px', padding: '3px 8px' }}
+                        >
+                          {sym}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>No constituent tickers</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Top Movers Card */}
+          <div className="radar-inspector-card">
+            <div className="radar-inspector-title">Top Movers ({timeframe})</div>
+            <div className="radar-top-movers-list">
+              {topMovers.map((m) => {
+                const delta = m.rank_delta ?? 0;
+                const deltaStr = delta > 0 ? `+${delta}` : delta < 0 ? `${delta}` : (m.ret_1w_pct ? `+${m.ret_1w_pct}%` : '+0');
+                const isPositive = delta > 0 || (m.ret_1w_pct || 0) > 0;
+                const dotColor = (QUADRANT_CONFIG[m.quadrant || 'Improving'] || QUADRANT_CONFIG.Improving).accent;
+
+                return (
+                  <div
+                    key={m.name}
+                    className="radar-mover-item"
+                    onClick={() => handleSelectGroup(m.name)}
+                    title={`Click to focus ${m.name}`}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
+                      <span style={{ fontWeight: 600, color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {m.name}
+                      </span>
+                    </div>
+                    <span style={{ fontWeight: 700, color: isPositive ? '#34d399' : '#f87171', fontFamily: 'var(--font-mono)' }}>
+                      {deltaStr}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Theme Creation / Editing Modal */}
       {isThemeModalOpen && (

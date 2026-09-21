@@ -731,3 +731,169 @@ class LeaderboardService:
         except Exception as e:
             logger.error(f"Error in LeaderboardService.get_leaderboard: {e}", exc_info=True)
             raise e
+
+    def get_score_movers(
+        self,
+        target_date: Optional[str] = None,
+        timeframe: str = "1d",
+        limit: int = 5,
+        min_price: float = 5.0,
+        min_volume: int = 50000
+    ) -> Dict[str, Any]:
+        """
+        Calculates Pivot Strength Score (PSS) movers:
+        - Biggest gains (highest positive delta)
+        - Biggest drops (largest negative delta)
+        Over selectable timeframes:
+        - 1d: 1 trading session delta (default)
+        - 5d: 5 trading sessions delta (~1 week)
+        - 20d: 20 trading sessions delta (~1 month)
+        Includes recent score sparkline history for each mover.
+        """
+        try:
+            with self._get_connection() as conn:
+                # 1. Resolve actual target date
+                if target_date and str(target_date).strip().lower() != "latest":
+                    target_dt_input = str(target_date).strip()
+                    row = conn.execute(
+                        "SELECT MAX(date) FROM daily_bars WHERE date <= CAST(? AS DATE)",
+                        [target_dt_input]
+                    ).fetchone()
+                    if row and row[0]:
+                        actual_date = row[0]
+                        actual_date_str = actual_date.strftime("%Y-%m-%d") if hasattr(actual_date, "strftime") else str(actual_date)
+                    else:
+                        actual_date_str = target_dt_input
+                else:
+                    max_dt = conn.execute("SELECT MAX(date) FROM daily_bars WHERE date <= CURRENT_DATE").fetchone()[0]
+                    if not max_dt:
+                        max_dt = conn.execute("SELECT MAX(date) FROM daily_bars").fetchone()[0]
+                    if not max_dt:
+                        return {"as_of_date": "", "timeframe": timeframe, "biggest_gains": [], "biggest_drops": []}
+                    actual_date_str = max_dt.strftime("%Y-%m-%d") if hasattr(max_dt, "strftime") else str(max_dt)
+
+                tf = (timeframe or "1d").strip().lower()
+                if tf in ("5d", "1w", "week", "weekly"):
+                    lag = 5
+                    norm_tf = "5d"
+                elif tf in ("20d", "1m", "month", "monthly", "21d"):
+                    lag = 20
+                    norm_tf = "20d"
+                else:
+                    lag = 1
+                    norm_tf = "1d"
+
+                sparkline_sessions = 15
+                lookback_sessions = max(lag + 10, 25)
+
+                query = """
+                WITH recent_dates AS (
+                    SELECT DISTINCT date FROM daily_bars 
+                    WHERE date <= CAST(? AS DATE)
+                    ORDER BY date DESC LIMIT ?
+                ),
+                min_d AS (
+                    SELECT MIN(date) as min_date FROM recent_dates
+                ),
+                perf AS (
+                    SELECT d.symbol, d.date, d.close, d.volume, d.vol_50d_ma, d.adr_20d,
+                           s.name, s.sector, s.industry,
+                           (COALESCE(d.ret_1m, 0) * 0.50 + COALESCE(d.ret_3m, 0) * 0.35 + COALESCE(d.ret_6m, 0) * 0.15) as prs_raw
+                    FROM daily_bars d
+                    JOIN symbols s ON d.symbol = s.symbol
+                    WHERE d.date >= (SELECT min_date FROM min_d)
+                      AND d.date <= CAST(? AS DATE)
+                      AND d.close >= ?
+                      AND COALESCE(d.vol_50d_ma, d.volume) >= ?
+                ),
+                ranked AS (
+                    SELECT symbol, name, sector, industry, date, close, adr_20d,
+                           CAST(PERCENT_RANK() OVER (PARTITION BY date ORDER BY prs_raw) * 98 + 1 AS INTEGER) as prs
+                    FROM perf
+                ),
+                with_lag AS (
+                    SELECT symbol, name, sector, industry, date, close, adr_20d, prs,
+                           LAG(prs, ?) OVER (PARTITION BY symbol ORDER BY date) as prev_prs,
+                           LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) as prev_close
+                    FROM ranked
+                ),
+                target_movers AS (
+                    SELECT symbol, name, sector, industry, close, adr_20d, prs, prev_prs,
+                           (prs - prev_prs) as delta,
+                           ROUND(((close - prev_close) / NULLIF(prev_close, 0)) * 100.0, 2) as change_pct
+                    FROM with_lag
+                    WHERE date = CAST(? AS DATE) AND prev_prs IS NOT NULL
+                ),
+                top_gains AS (
+                    SELECT symbol, name, sector, industry, close, adr_20d, prs, prev_prs, delta, change_pct, 'gain' as move_type
+                    FROM target_movers
+                    ORDER BY delta DESC
+                    LIMIT ?
+                ),
+                top_drops AS (
+                    SELECT symbol, name, sector, industry, close, adr_20d, prs, prev_prs, delta, change_pct, 'drop' as move_type
+                    FROM target_movers
+                    ORDER BY delta ASC
+                    LIMIT ?
+                ),
+                selected_movers AS (
+                    SELECT * FROM top_gains
+                    UNION ALL
+                    SELECT * FROM top_drops
+                ),
+                sparklines AS (
+                    SELECT r.symbol, LIST(r.prs ORDER BY r.date) as sparkline_scores
+                    FROM ranked r
+                    WHERE r.symbol IN (SELECT symbol FROM selected_movers)
+                    GROUP BY r.symbol
+                )
+                SELECT m.symbol, m.name, m.sector, m.industry, m.close, m.adr_20d, m.prs, m.prev_prs, m.delta, m.change_pct, m.move_type,
+                       s.sparkline_scores
+                FROM selected_movers m
+                JOIN sparklines s ON m.symbol = s.symbol
+                """
+
+                params = [
+                    actual_date_str, lookback_sessions, actual_date_str,
+                    float(min_price), int(min_volume),
+                    lag, actual_date_str, int(limit), int(limit)
+                ]
+
+                rows = conn.execute(query, params).fetchall()
+
+                gains = []
+                drops = []
+                for r in rows:
+                    item = {
+                        "symbol": r[0],
+                        "name": r[1] or r[0],
+                        "sector": r[2] or "",
+                        "industry": r[3] or "",
+                        "close": round(float(r[4]), 2) if r[4] is not None else None,
+                        "adr_20d": round(float(r[5]), 1) if r[5] is not None else None,
+                        "score": int(r[6]),
+                        "prev_score": int(r[7]),
+                        "delta": int(r[8]),
+                        "change_pct": float(r[9]) if r[9] is not None else 0.0,
+                        "sparkline": r[11][-sparkline_sessions:] if r[11] else []
+                    }
+                    if r[10] == "gain":
+                        gains.append(item)
+                    else:
+                        drops.append(item)
+
+                gains.sort(key=lambda x: x["delta"], reverse=True)
+                drops.sort(key=lambda x: x["delta"])
+
+                return {
+                    "as_of_date": actual_date_str,
+                    "timeframe": norm_tf,
+                    "lag_sessions": lag,
+                    "limit": limit,
+                    "biggest_gains": gains,
+                    "biggest_drops": drops
+                }
+
+        except Exception as e:
+            logger.error(f"Error in LeaderboardService.get_score_movers: {e}", exc_info=True)
+            raise e

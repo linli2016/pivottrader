@@ -38,6 +38,7 @@ export default function RRGQuadrantChart({
   selectedGroupName = null,
   trailBars = 5,
   onChangeTrailBars = null,
+  hideToolbar = false,
 }) {
   const [hoveredItem, setHoveredItem] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -115,154 +116,160 @@ export default function RRGQuadrantChart({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: '12px',
+        gap: hideToolbar ? '0' : '12px',
         width: '100%',
         height: '100%',
+        flex: 1,
         position: 'relative',
       }}
     >
       {/* Top Toolbar: Search, Filters, Trail Length, Clockwise Legend */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '10px',
-          background: 'rgba(15, 23, 42, 0.7)',
-          padding: '8px 14px',
-          borderRadius: '8px',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          {/* Search box */}
-          <div style={{ position: 'relative' }}>
-            <input
-              type="text"
-              placeholder="Filter by name / symbol..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+      {!hideToolbar && (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '10px',
+            background: 'rgba(15, 23, 42, 0.7)',
+            padding: '8px 14px',
+            borderRadius: '8px',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {/* Search box */}
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                placeholder="Filter by name / symbol..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  background: 'rgba(30, 41, 59, 0.9)',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  borderRadius: '6px',
+                  padding: '4px 8px 4px 26px',
+                  color: '#fff',
+                  fontSize: '12px',
+                  width: '180px',
+                  outline: 'none',
+                }}
+              />
+              <span
+                style={{
+                  position: 'absolute',
+                  left: '8px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  fontSize: '12px',
+                  opacity: 0.5,
+                }}
+              >
+                🔍
+              </span>
+            </div>
+
+            {/* Quadrant Quick Filter Pills */}
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+              {['ALL', 'Leading', 'Weakening', 'Lagging', 'Improving'].map((quad) => {
+                const isActive = activeQuadrantFilter === quad;
+                const qColor = quad === 'ALL' ? '#94a3b8' : QUADRANT_CONFIG[quad].color;
+                return (
+                  <button
+                    key={quad}
+                    type="button"
+                    onClick={() => setActiveQuadrantFilter(quad)}
+                    style={{
+                      padding: '3px 9px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      borderRadius: '5px',
+                      border: isActive ? `1px solid ${qColor}` : '1px solid rgba(255, 255, 255, 0.08)',
+                      background: isActive ? `${qColor}25` : 'rgba(255, 255, 255, 0.03)',
+                      color: isActive ? '#fff' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {quad === 'ALL' ? 'All' : quad}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Rotation Cycle Guide & Trail Selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {/* Clockwise cycle indicator */}
+            <div
               style={{
-                background: 'rgba(30, 41, 59, 0.9)',
-                border: '1px solid rgba(255, 255, 255, 0.12)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontSize: '11px',
+                color: 'var(--text-muted)',
+                background: 'rgba(255, 255, 255, 0.03)',
+                padding: '3px 8px',
                 borderRadius: '6px',
-                padding: '4px 8px 4px 26px',
-                color: '#fff',
-                fontSize: '12px',
-                width: '180px',
-                outline: 'none',
-              }}
-            />
-            <span
-              style={{
-                position: 'absolute',
-                left: '8px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                fontSize: '12px',
-                opacity: 0.5,
+                border: '1px solid rgba(255, 255, 255, 0.05)',
               }}
             >
-              🔍
-            </span>
-          </div>
-
-          {/* Quadrant Quick Filter Pills */}
-          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-            {['ALL', 'Leading', 'Weakening', 'Lagging', 'Improving'].map((quad) => {
-              const isActive = activeQuadrantFilter === quad;
-              const qColor = quad === 'ALL' ? '#94a3b8' : QUADRANT_CONFIG[quad].color;
-              return (
-                <button
-                  key={quad}
-                  type="button"
-                  onClick={() => setActiveQuadrantFilter(quad)}
-                  style={{
-                    padding: '3px 9px',
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    borderRadius: '5px',
-                    border: isActive ? `1px solid ${qColor}` : '1px solid rgba(255, 255, 255, 0.08)',
-                    background: isActive ? `${qColor}25` : 'rgba(255, 255, 255, 0.03)',
-                    color: isActive ? '#fff' : 'var(--text-secondary)',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  {quad === 'ALL' ? 'All' : quad}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Rotation Cycle Guide & Trail Selector */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {/* Clockwise cycle indicator */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontSize: '11px',
-              color: 'var(--text-muted)',
-              background: 'rgba(255, 255, 255, 0.03)',
-              padding: '3px 8px',
-              borderRadius: '6px',
-              border: '1px solid rgba(255, 255, 255, 0.05)',
-            }}
-          >
-            <span>Cycle:</span>
-            <span style={{ color: '#38bdf8', fontWeight: 600 }}>Improving</span>
-            <span>➔</span>
-            <span style={{ color: '#10b981', fontWeight: 600 }}>Leading</span>
-            <span>➔</span>
-            <span style={{ color: '#f59e0b', fontWeight: 600 }}>Weakening</span>
-            <span>➔</span>
-            <span style={{ color: '#ef4444', fontWeight: 600 }}>Lagging</span>
-          </div>
-
-          {/* Trail Length Buttons */}
-          {onChangeTrailBars && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Trail:</span>
-              {[3, 5, 10].map((num) => (
-                <button
-                  key={num}
-                  type="button"
-                  onClick={() => onChangeTrailBars(num)}
-                  style={{
-                    padding: '2px 7px',
-                    fontSize: '11px',
-                    fontWeight: trailBars === num ? 700 : 500,
-                    borderRadius: '4px',
-                    border: trailBars === num ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.08)',
-                    background: trailBars === num ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.03)',
-                    color: trailBars === num ? '#38bdf8' : 'var(--text-secondary)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {num}d
-                </button>
-              ))}
+              <span>Cycle:</span>
+              <span style={{ color: '#38bdf8', fontWeight: 600 }}>Improving</span>
+              <span>➔</span>
+              <span style={{ color: '#10b981', fontWeight: 600 }}>Leading</span>
+              <span>➔</span>
+              <span style={{ color: '#f59e0b', fontWeight: 600 }}>Weakening</span>
+              <span>➔</span>
+              <span style={{ color: '#ef4444', fontWeight: 600 }}>Lagging</span>
             </div>
-          )}
+
+            {/* Trail Length Buttons */}
+            {onChangeTrailBars && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Trail:</span>
+                {[3, 5, 10].map((num) => (
+                  <button
+                    key={num}
+                    type="button"
+                    onClick={() => onChangeTrailBars(num)}
+                    style={{
+                      padding: '2px 7px',
+                      fontSize: '11px',
+                      fontWeight: trailBars === num ? 700 : 500,
+                      borderRadius: '4px',
+                      border: trailBars === num ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.08)',
+                      background: trailBars === num ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.03)',
+                      color: trailBars === num ? '#38bdf8' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {num}d
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Main SVG Quadrant Chart Surface */}
       <div
-        className="glass-card"
+        className={hideToolbar ? "" : "glass-card"}
         style={{
           flex: 1,
-          minHeight: '520px',
+          height: '100%',
+          minHeight: '480px',
           position: 'relative',
-          padding: '8px',
+          padding: hideToolbar ? '0' : '8px',
           overflow: 'hidden',
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
+          background: hideToolbar ? 'transparent' : undefined,
+          border: hideToolbar ? 'none' : undefined,
         }}
       >
         {loading ? (

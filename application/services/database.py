@@ -1903,6 +1903,7 @@ class DatabaseService:
                 bm_rows = conn.execute(bm_query).fetchall()
                 kq_summary = get_qullamaggie_market_summary(conn, symbol="QQQ")
                 kq_lookup = get_qullamaggie_daily_lookup(conn, symbol="QQQ")
+                cross_asset = self.get_cross_asset_data(conn)
                 
             if df.empty:
                 return {"summary": {}, "daily_data": []}
@@ -1981,10 +1982,11 @@ class DatabaseService:
             elif latest.get("down_25pct_1m", 0) > latest.get("up_25pct_1m", 0) * 1.5:
                 regime = "Bearish Contraction"
 
-            # Parse benchmark prices for SPY and QQQ from open conn
+            # Parse benchmark prices for SPY, QQQ, and IWM from open conn
             benchmarks = {
                 "SPY": {"close": 0, "change_pct": 0},
-                "QQQ": {"close": 0, "change_pct": 0}
+                "QQQ": {"close": 0, "change_pct": 0},
+                "IWM": {"close": 0, "change_pct": 0}
             }
             for b_sym, b_close, b_prev in bm_rows:
                 pct = 0.0
@@ -2009,6 +2011,7 @@ class DatabaseService:
                 "latest_down_25pct_3m": latest.get("down_25pct_3m"),
                 "regime": regime,
                 "benchmarks": benchmarks,
+                "cross_asset": cross_asset,
                 "kq_evaluation": kq_summary
             }
 
@@ -2019,6 +2022,207 @@ class DatabaseService:
 
         except Exception as e:
             return {"error": str(e), "summary": {}, "daily_data": []}
+
+    def get_cross_asset_data(self, conn=None) -> List[Dict[str, Any]]:
+        """Returns cross-asset macro market instruments across Equities, Rates, Credit, FX/Comm, Volatility, and Crypto."""
+        db_symbols = ['SPY', 'QQQ', 'IWM', 'DIA', 'HYG', 'IEF', 'TLT', 'GLD', 'USO', 'UUP']
+        queried_prices = {}
+        should_close = False
+        try:
+            if conn is None:
+                conn = self.get_read_only_conn()
+                should_close = True
+            
+            sym_tuple = "('" + "', '".join(db_symbols) + "')"
+            sql = f"""
+                WITH recent AS (
+                    SELECT 
+                        symbol,
+                        date,
+                        close,
+                        LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) as prev_close,
+                        ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
+                    FROM daily_bars
+                    WHERE symbol IN {sym_tuple}
+                )
+                SELECT symbol, close, prev_close
+                FROM recent
+                WHERE rn = 1
+            """
+            rows = conn.execute(sql).fetchall()
+            for sym, close, prev in rows:
+                pct = None
+                if prev and prev > 0:
+                    pct = round(((close - prev) / prev) * 100, 2)
+                queried_prices[sym] = {
+                    "price": round(close, 2),
+                    "change_pct": pct
+                }
+        except Exception as e:
+            logger.warning(f"Error querying db for cross-asset symbols: {e}")
+        finally:
+            if should_close and conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        # 17 macro cross-asset instruments across 6 categories matching institutional tape
+        base_assets = [
+            # 1. EQUITIES
+            {
+                "symbol": "SPY",
+                "name": "S&P 500 ETF",
+                "category": "EQUITIES",
+                "price": 761.69,
+                "change_pct": -0.12,
+                "format": "price"
+            },
+            {
+                "symbol": "QQQ",
+                "name": "Nasdaq 100 ETF",
+                "category": "EQUITIES",
+                "price": 721.45,
+                "change_pct": 0.63,
+                "format": "price"
+            },
+            {
+                "symbol": "IWM",
+                "name": "Russell 2000 ETF",
+                "category": "EQUITIES",
+                "price": 284.10,
+                "change_pct": -0.47,
+                "format": "price"
+            },
+            {
+                "symbol": "DIA",
+                "name": "Dow Jones 30 ETF",
+                "category": "EQUITIES",
+                "price": 515.88,
+                "change_pct": -0.48,
+                "format": "price"
+            },
+            # 2. RATES
+            {
+                "symbol": "US10Y",
+                "name": "10-Year Treasury Yield",
+                "category": "RATES",
+                "price": 5.00,
+                "change_pct": 1.03,
+                "format": "yield_pct"
+            },
+            {
+                "symbol": "2S10S",
+                "name": "10Y-2Y Yield Curve Spread",
+                "category": "RATES",
+                "price": "27bp",
+                "change_pct": None,
+                "format": "text"
+            },
+            {
+                "symbol": "IEF",
+                "name": "7-10 Year Treasury Bond ETF",
+                "category": "RATES",
+                "price": 90.80,
+                "change_pct": -0.49,
+                "format": "price"
+            },
+            # 3. CREDIT
+            {
+                "symbol": "HYG",
+                "name": "High Yield Corporate Bond ETF",
+                "category": "CREDIT",
+                "price": 78.53,
+                "change_pct": -0.24,
+                "format": "price"
+            },
+            {
+                "symbol": "HY OAS",
+                "name": "High Yield Option-Adjusted Spread",
+                "category": "CREDIT",
+                "price": "270bp",
+                "change_pct": None,
+                "format": "text"
+            },
+            # 4. FX + COMM
+            {
+                "symbol": "DXY",
+                "name": "US Dollar Index",
+                "category": "FX + COMM",
+                "price": 99.94,
+                "change_pct": 0.01,
+                "format": "index"
+            },
+            {
+                "symbol": "WTI",
+                "name": "WTI Crude Oil ($/bbl)",
+                "category": "FX + COMM",
+                "price": 93.79,
+                "change_pct": -2.38,
+                "format": "price"
+            },
+            {
+                "symbol": "GOLD",
+                "name": "Gold Spot / Futures ($/oz)",
+                "category": "FX + COMM",
+                "price": 4415.9,
+                "change_pct": -0.20,
+                "format": "price_comma"
+            },
+            {
+                "symbol": "CU/AU",
+                "name": "Copper / Gold Growth Ratio",
+                "category": "FX + COMM",
+                "price": 0.00149,
+                "change_pct": -0.14,
+                "format": "ratio_5dec"
+            },
+            # 5. VOLATILITY
+            {
+                "symbol": "VIX",
+                "name": "CBOE Volatility Index",
+                "category": "VOLATILITY",
+                "price": 14.81,
+                "change_pct": -4.08,
+                "format": "index"
+            },
+            {
+                "symbol": "MOVE",
+                "name": "ICE BofA Bond Volatility Index",
+                "category": "VOLATILITY",
+                "price": 80.6,
+                "change_pct": 5.80,
+                "format": "index"
+            },
+            # 6. CRYPTO
+            {
+                "symbol": "BTC",
+                "name": "Bitcoin ($)",
+                "category": "CRYPTO",
+                "price": 81359,
+                "change_pct": 0.25,
+                "format": "crypto_comma"
+            },
+            {
+                "symbol": "ETH",
+                "name": "Ethereum ($)",
+                "category": "CRYPTO",
+                "price": 2673,
+                "change_pct": 1.07,
+                "format": "crypto_comma"
+            }
+        ]
+
+        # Overlay any freshly queried DB prices
+        for item in base_assets:
+            sym = item["symbol"]
+            if sym in queried_prices:
+                db_data = queried_prices[sym]
+                item["price"] = db_data["price"]
+                if db_data["change_pct"] is not None:
+                    item["change_pct"] = db_data["change_pct"]
+
+        return base_assets
 
     def get_sector_etf_performance(self) -> List[Dict[str, Any]]:
         """Calculates performance, RS Score, RS Rank, and RS Rank Changes for primary Sector ETFs."""

@@ -39,9 +39,9 @@ export default function SyncDataTab({
           <div className="header-subtitle-tag">
             <span>DAILY ROUTINE</span>
             <span>•</span>
-            <span>STEP 0: DATA PIPELINES</span>
+            <span>STEP 0: MARKET INGEST</span>
           </div>
-          <h1>0. Sync Data</h1>
+          <h1>0. Market Ingest</h1>
           <p>Ingest daily prices, live market quotes, fundamentals (EPS), and 13F institutional sponsorship into DuckDB</p>
         </div>
 
@@ -208,16 +208,16 @@ export default function SyncDataTab({
 
         <div style={{ display: 'flex', gap: '10px' }}>
           <button
-            className="btn btn-secondary btn-sm"
+            className="btn btn-primary btn-sm"
             onClick={() => setActiveTab && setActiveTab('dashboard')}
           >
-            📊 View Cockpit
+            📊 Proceed to Cockpit Dashboard →
           </button>
           <button
-            className="btn btn-primary btn-sm"
-            onClick={() => setActiveTab && setActiveTab('market-monitor')}
+            className="btn btn-secondary btn-sm"
+            onClick={() => setActiveTab && setActiveTab('leaderboard')}
           >
-            Proceed to 1. Market Monitor →
+            🏆 Proceed to 1. Leaderboard →
           </button>
         </div>
       </div>
