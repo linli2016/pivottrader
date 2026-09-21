@@ -105,7 +105,7 @@ export default function LeaderboardTab({
     }
   };
 
-  // KovaView Boards Definitions
+  // Boards Definitions
   const BOARDS = useMemo(() => [
     { id: 'near_52w_high', label: 'Near 52w high', defaultRs: 90, defaultSort: 'pivot_rs' },
     { id: 'new_highs', label: 'New highs', defaultRs: 0, defaultSort: 'pivot_rs' },
@@ -118,7 +118,7 @@ export default function LeaderboardTab({
 
   // Filter & Grouping States
   const [groupViewMode, setGroupViewMode] = useState('sector'); // 'sector' | 'industry'
-  const [minRs, setMinRs] = useState(90); // Default to 90 as per Kova playbook
+  const [minRs, setMinRs] = useState(90); // Default to 90 as per playbook
   const [selectedSector, setSelectedSector] = useState(null);
   const [selectedIndustry, setSelectedIndustry] = useState(null);
   const [filterSweetSpot, setFilterSweetSpot] = useState(false);

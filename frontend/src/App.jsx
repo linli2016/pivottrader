@@ -502,7 +502,7 @@ function App() {
               <li
                 className={`nav-item ${activeTab === 'leaderboard' ? 'active' : ''}`}
                 onClick={() => setActiveTab('leaderboard')}
-                title="1. Leaderboard (Kova Near-Highs Playbook: Sector Concentration & Leadership Stocks)"
+                title="1. Leaderboard (Near-Highs Playbook: Sector Concentration & Leadership Stocks)"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">🏆</span>
@@ -597,7 +597,7 @@ function App() {
               <li
                 className={`nav-item ${activeTab === 'learn' ? 'active' : ''}`}
                 onClick={() => setActiveTab('learn')}
-                title="Learn: KovaView Trading System (Michael @kovainvest)"
+                title="Learn: Trading System (Michael @kovainvest)"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">🎓</span>

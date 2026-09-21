@@ -959,7 +959,7 @@ export default function DashboardTab({
           <button
             className="btn btn-secondary btn-sm"
             onClick={() => setActiveTab && setActiveTab('learn')}
-            title="Open Kova Trading System Playbook"
+            title="Open Trading System Playbook"
           >
             🎓 Learn Playbook
           </button>
@@ -1571,7 +1571,7 @@ export default function DashboardTab({
           )}
         </div>
 
-        {/* Right Card: High-Conviction Momentum Leaders (Kova Picks Style) */}
+        {/* Right Card: High-Conviction Momentum Leaders (Picks Style) */}
         <div className="glass-card cockpit-intel-card">
           <div className="cockpit-card-header">
             <div>

@@ -24,7 +24,7 @@ class LeaderboardService:
         industry: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Executes KovaView Boards Playbook query:
+        Executes Boards Playbook query:
         Boards supported:
         - near_52w_high: Stocks within max_dist_high% (default 10%) of 52-week high with bullish MAs: Close > 10 EMA > 20 EMA > 50 EMA
         - new_highs: Stocks reaching new 52-week highs on the date (is_52w_high=True or high >= high_52w or dist_from_52w_high <= 0.2)
@@ -33,7 +33,7 @@ class LeaderboardService:
         - pre_market: Opening gap and pre-market momentum leaders (Gap >= 1.0%)
 
         Includes:
-        - Exact KovaView metrics: Today (% change), RVOL, 1W (% return over 5 trading days), 1M, 3M, YTD, Pivot RS, Off 52w, Days at Highs, ATR extension
+        - Exact metrics: Today (% change), RVOL, 1W (% return over 5 trading days), 1M, 3M, YTD, Pivot RS, Off 52w, Days at Highs, ATR extension
         - Sector & Industry concentration (Left/Right two-level hierarchy)
         - Top 20 RS institutional clustering
         """
@@ -69,7 +69,7 @@ class LeaderboardService:
                     else str(prev_row[0]) if (prev_row and prev_row[0]) else actual_date_str
                 )
 
-                # 5 trading days ago for 1-Week (1W) return calculation (exact KovaView 1W metric)
+                # 5 trading days ago for 1-Week (1W) return calculation (exact 1W metric)
                 w1_row = conn.execute("""
                     SELECT date FROM (
                         SELECT DISTINCT date FROM daily_bars WHERE date < CAST(? AS DATE) ORDER BY date DESC LIMIT 5
@@ -625,7 +625,7 @@ class LeaderboardService:
 
                 sector_distribution.sort(key=lambda x: x["count"], reverse=True)
 
-                # Calculate Top 20 RS Leader Clusters (Kova "Drill Deeper" institutional clustering)
+                # Calculate Top 20 RS Leader Clusters ("Drill Deeper" institutional clustering)
                 qualified_rs_stocks = [s for s in all_stocks if s["rs_rank"] >= min_rs]
                 top_20_stocks = qualified_rs_stocks[:20]
                 top_20_ind_counts = {}

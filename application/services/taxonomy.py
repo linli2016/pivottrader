@@ -1,5 +1,5 @@
 """
-Taxonomy definitions and mappings for KovaView / IBD 30 Tactical Sectors.
+Taxonomy definitions and mappings for IBD 30 Tactical Sectors.
 """
 
 from typing import Dict, List
@@ -275,7 +275,7 @@ INDUSTRY_TO_TACTICAL_SECTOR: Dict[str, str] = {
 }
 
 def get_tactical_sector(industry: str, default: str = "Misc") -> str:
-    """Returns the KovaView 30 tactical sector for a given industry."""
+    """Returns the IBD 30 tactical sector for a given industry."""
     if not industry:
         return default
     ind_clean = industry.strip()

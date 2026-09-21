@@ -808,7 +808,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                     </div>
                   )}
 
-                  {/* Kova RS Badge */}
+                  {/* Pivot RS Badge */}
                   {selectedStock.rs_rank !== null && selectedStock.rs_rank !== undefined && (
                     <span style={{
                       padding: '2px 8px',
@@ -819,7 +819,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                       color: '#38bdf8',
                       border: '1px solid rgba(56, 189, 248, 0.3)'
                     }}>
-                      Kova {selectedStock.rs_rank} ↑
+                      Pivot {selectedStock.rs_rank} ↑
                     </span>
                   )}
 
@@ -889,9 +889,9 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                   </div>
                 )}
 
-                {/* Row 2: Kova Essentials Moving Averages */}
+                {/* Row 2: Pivot Essentials Moving Averages */}
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', fontSize: '10.5px' }}>
-                  <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Kova Essentials:</span>
+                  <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Pivot Essentials:</span>
                   <span style={{ color: '#facc15' }}>
                     EMA 10 <strong>${selectedStock.ema_10 ? selectedStock.ema_10.toFixed(2) : latestBar?.close?.toFixed(2)}</strong>
                   </span>
@@ -1209,7 +1209,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                                 fontWeight: 800,
                                 color: peer.rs_rank >= 70 ? '#34d399' : '#fb7185'
                               }}>
-                                Kova {peer.rs_rank}
+                                Pivot {peer.rs_rank}
                               </span>
                             </div>
                           </div>

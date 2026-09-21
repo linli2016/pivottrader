@@ -324,7 +324,7 @@ def get_sector_stocks(sector_name: str):
         logger.error(f"Error in get_sector_stocks({sector_name}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-# ----------------- KovaView Leaderboard Endpoint -----------------
+# ----------------- Leaderboard Endpoint -----------------
 
 @router.get("/api/leaderboard")
 def get_leaderboard(
@@ -335,7 +335,7 @@ def get_leaderboard(
     sector: Optional[str] = None,
     industry: Optional[str] = None
 ):
-    """Retrieve KovaView Boards (Near 52w High, New Highs, Gainers, Strongest, Pre-Market) and Sector Concentration."""
+    """Retrieve Leaderboards (Near 52w High, New Highs, Gainers, Strongest, Pre-Market) and Sector Concentration."""
     try:
         return leaderboard_service.get_leaderboard(
             target_date=date,

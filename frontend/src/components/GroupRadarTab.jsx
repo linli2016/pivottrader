@@ -273,7 +273,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
     }
   };
 
-  // Group sectors into 4 RRG quadrants for KovaView-style cards
+  // Group sectors into 4 RRG quadrants
   const sectorQuadrants = useMemo(() => {
     if (activeTab !== 'sectors' || !Array.isArray(data)) return {};
     const groups = {
