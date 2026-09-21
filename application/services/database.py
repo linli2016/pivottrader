@@ -516,41 +516,26 @@ class DatabaseService:
                 {limit_clause};
             """
             
-            # Calculate point-in-time sector ranks from Sector ETFs
-            sector_etf_map = {
-                'XLK': 'Technology',
-                'XLE': 'Energy',
-                'XLV': 'Health Care',
-                'XLI': 'Industrials',
-                'XLB': 'Basic Materials',
-                'XLF': 'Finance',
-                'XLRE': 'Real Estate',
-                'XLP': 'Consumer Staples',
-                'XLY': 'Consumer Discretionary',
-                'XLU': 'Utilities',
-                'XLC': 'Telecommunications'
-            }
-            
+            # Calculate point-in-time sector ranks from the 30 tactical sectors
             sector_ranks = {}
             try:
-                etf_rows = conn.execute("""
-                    WITH etf_bars AS (
-                        SELECT d.symbol, d.rs_rank,
-                                ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date DESC) as rn
+                sector_rows = conn.execute("""
+                    WITH sec_bars AS (
+                        SELECT s.sector, AVG(d.rs_score) as avg_rs
                         FROM daily_bars d
-                        WHERE d.symbol IN ('XLK', 'XLF', 'XLV', 'XLY', 'XLP', 'XLE', 'XLI', 'XLB', 'XLU', 'XLRE', 'XLC')
-                          AND d.date <= CAST(? AS DATE)
+                        JOIN symbols s ON d.symbol = s.symbol
+                        WHERE d.date = CAST(? AS DATE)
+                          AND s.active = true
+                          AND s.asset_type = 'Common Stock'
+                          AND s.sector IS NOT NULL AND s.sector != ''
+                          AND d.close >= 3.0
+                        GROUP BY s.sector
                     )
-                    SELECT symbol, rs_rank FROM etf_bars WHERE rn = 1 ORDER BY rs_rank DESC
+                    SELECT sector, ROW_NUMBER() OVER (ORDER BY avg_rs DESC) as rk
+                    FROM sec_bars
                 """, [actual_date_str]).fetchall()
-                for rank_idx, (etf_sym, etf_rs) in enumerate(etf_rows, 1):
-                    sec_name = sector_etf_map.get(etf_sym)
-                    if sec_name:
-                        sector_ranks[sec_name] = rank_idx
-                        if sec_name == 'Finance':
-                            sector_ranks['Financials'] = rank_idx
-                        elif sec_name == 'Telecommunications':
-                            sector_ranks['Communication Services'] = rank_idx
+                for sec_name, rk in sector_rows:
+                    sector_ranks[sec_name] = rk
             except Exception as e:
                 print(f"Error calculating sector ranks: {e}")
 

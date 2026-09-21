@@ -5,21 +5,6 @@ from application.services.theme_service import ThemeService
 
 logger = logging.getLogger(__name__)
 
-SECTOR_ETF_MAPPING = {
-    'Technology': 'XLK',
-    'Financials': 'XLF',
-    'Finance': 'XLF',
-    'Health Care': 'XLV',
-    'Consumer Discretionary': 'XLY',
-    'Consumer Staples': 'XLP',
-    'Energy': 'XLE',
-    'Industrials': 'XLI',
-    'Basic Materials': 'XLB',
-    'Utilities': 'XLU',
-    'Real Estate': 'XLRE',
-    'Telecommunications': 'XLC',
-    'Communication Services': 'XLC'
-}
 
 
 class GroupRadarService:
@@ -157,22 +142,143 @@ class GroupRadarService:
                 elif g_type == "sectors":
                     query = f"""
                         WITH {calendar_cte},
-                        {stock_cte}
+                        {stock_cte},
+                        rrg_calendar AS (SELECT date FROM calendar_dates LIMIT 40),
+                        sec_summary AS (
+                            SELECT 
+                                sector as name,
+                                COUNT(*) as stock_count,
+                                ROUND(MEDIAN(ret_today), 2) as today_pct,
+                                ROUND(MEDIAN(ret_1w), 2) as ret_1w_pct,
+                                ROUND(MEDIAN(ret_1m), 2) as ret_1m_pct,
+                                ROUND(MEDIAN(ret_3m), 2) as ret_3m_pct,
+                                ROUND(MEDIAN(ret_ytd), 2) as ret_ytd_pct,
+                                ROUND(MEDIAN(rs_rank), 0) as rs_rank,
+                                ROUND(-COALESCE(MEDIAN(dist_from_52w_high), 0), 1) as dist_52wh_pct,
+                                ROUND(SUM(volume)::DOUBLE / NULLIF(SUM(vol_50d_ma), 0) * 100.0, 0) as rvol_pct,
+                                list(symbol ORDER BY rs_rank DESC NULLS LAST)[:4] as top_symbols
+                            FROM stock_metrics
+                            WHERE sector IS NOT NULL AND sector != ''
+                            GROUP BY sector
+                        ),
+                        sec_d0_rs AS (
+                            SELECT s.sector, AVG(d.rs_score) as avg_rs_score
+                            FROM daily_bars d
+                            JOIN symbols s ON d.symbol = s.symbol
+                            WHERE d.date = (SELECT date FROM d0_date)
+                              AND s.active = true AND s.asset_type = 'Common Stock'
+                              AND s.sector IS NOT NULL AND s.sector != ''
+                              AND d.close >= 3.0
+                            GROUP BY s.sector
+                        ),
+                        sec_d5_rs AS (
+                            SELECT s.sector, AVG(d.rs_score) as avg_rs_score
+                            FROM daily_bars d
+                            JOIN symbols s ON d.symbol = s.symbol
+                            WHERE d.date = (SELECT date FROM d5_date)
+                              AND s.active = true AND s.asset_type = 'Common Stock'
+                              AND s.sector IS NOT NULL AND s.sector != ''
+                              AND d.close >= 3.0
+                            GROUP BY s.sector
+                        ),
+                        ranked_d0 AS (
+                            SELECT sector, ROW_NUMBER() OVER (ORDER BY avg_rs_score DESC) as rank_d0
+                            FROM sec_d0_rs
+                        ),
+                        ranked_d5 AS (
+                            SELECT sector, ROW_NUMBER() OVER (ORDER BY avg_rs_score DESC) as rank_d5
+                            FROM sec_d5_rs
+                        ),
+                        spy AS (
+                            SELECT date, close as spy_close 
+                            FROM daily_bars 
+                            WHERE symbol = 'SPY' AND date IN (SELECT date FROM rrg_calendar)
+                        ),
+                        sec_stock_bars AS (
+                            SELECT s.sector, d.date, d.symbol, d.close,
+                                   (d.close / NULLIF(LAG(d.close) OVER (PARTITION BY s.sector, d.symbol ORDER BY d.date), 0)) - 1.0 as daily_ret
+                            FROM symbols s
+                            JOIN daily_bars d ON s.symbol = d.symbol
+                            WHERE s.active = true 
+                              AND s.asset_type = 'Common Stock'
+                              AND s.sector IS NOT NULL AND s.sector != ''
+                              AND d.date IN (SELECT date FROM rrg_calendar)
+                              AND d.close >= 3.0
+                        ),
+                        sec_daily_ret AS (
+                            SELECT sector, date, MEDIAN(daily_ret) as med_ret
+                            FROM sec_stock_bars
+                            WHERE daily_ret IS NOT NULL
+                            GROUP BY sector, date
+                        ),
+                        sec_cum AS (
+                            SELECT sector, date,
+                                   EXP(SUM(LN(1.0 + COALESCE(med_ret, 0.0))) OVER (PARTITION BY sector ORDER BY date)) * 100.0 as sec_index
+                            FROM sec_daily_ret
+                        ),
+                        spy_ret AS (
+                            SELECT date, spy_close,
+                                   (spy_close / NULLIF(LAG(spy_close) OVER (ORDER BY date), 0)) - 1.0 as spy_daily_ret
+                            FROM spy
+                        ),
+                        spy_cum AS (
+                            SELECT date,
+                                   EXP(SUM(LN(1.0 + COALESCE(spy_daily_ret, 0.0))) OVER (ORDER BY date)) * 100.0 as spy_index
+                            FROM spy_ret
+                        ),
+                        sec_rs AS (
+                            SELECT sc.sector, sc.date,
+                                   (sc.sec_index / NULLIF(spc.spy_index, 0)) * 100.0 as rs_raw
+                            FROM sec_cum sc
+                            JOIN spy_cum spc ON sc.date = spc.date
+                        ),
+                        with_rs_ratio AS (
+                            SELECT sector, date, rs_raw,
+                                   AVG(rs_raw) OVER (PARTITION BY sector ORDER BY date ROWS BETWEEN 13 PRECEDING AND CURRENT ROW) as rs_sma14
+                            FROM sec_rs
+                        ),
+                        with_metrics AS (
+                            SELECT sector, date, rs_raw,
+                                   ROUND(100.0 + ((rs_raw - rs_sma14) / NULLIF(rs_sma14, 0)) * 100.0, 2) as rs_ratio
+                            FROM with_rs_ratio
+                        ),
+                        with_momentum AS (
+                            SELECT sector, date, rs_ratio,
+                                   ROUND(100.0 + (rs_ratio - LAG(rs_ratio, 5) OVER (PARTITION BY sector ORDER BY date)) * 2.0, 2) as rs_momentum
+                            FROM with_metrics
+                        ),
+                        rrg_latest AS (
+                            SELECT sector, rs_ratio, rs_momentum,
+                                   CASE 
+                                     WHEN rs_ratio >= 100.0 AND rs_momentum >= 100.0 THEN 'Leading'
+                                     WHEN rs_ratio >= 100.0 AND rs_momentum < 100.0 THEN 'Weakening'
+                                     WHEN rs_ratio < 100.0 AND rs_momentum < 100.0 THEN 'Lagging'
+                                     ELSE 'Improving'
+                                   END as quadrant
+                            FROM with_momentum
+                            WHERE date = (SELECT date FROM d0_date)
+                        )
                         SELECT 
-                            sector as name,
-                            COUNT(*) as stock_count,
-                            ROUND(MEDIAN(ret_today), 2) as today_pct,
-                            ROUND(MEDIAN(ret_1w), 2) as ret_1w_pct,
-                            ROUND(MEDIAN(ret_1m), 2) as ret_1m_pct,
-                            ROUND(MEDIAN(ret_3m), 2) as ret_3m_pct,
-                            ROUND(MEDIAN(ret_ytd), 2) as ret_ytd_pct,
-                            ROUND(MEDIAN(rs_rank), 0) as rs_rank,
-                            ROUND(-COALESCE(MEDIAN(dist_from_52w_high), 0), 1) as dist_52wh_pct,
-                            ROUND(SUM(volume)::DOUBLE / NULLIF(SUM(vol_50d_ma), 0) * 100.0, 0) as rvol_pct,
-                            list(symbol ORDER BY rs_rank DESC NULLS LAST)[:4] as top_symbols
-                        FROM stock_metrics
-                        WHERE sector IS NOT NULL AND sector != ''
-                        GROUP BY sector
+                            s.name,
+                            s.stock_count,
+                            s.today_pct,
+                            s.ret_1w_pct,
+                            s.ret_1m_pct,
+                            s.ret_3m_pct,
+                            s.ret_ytd_pct,
+                            s.rs_rank,
+                            s.dist_52wh_pct,
+                            s.rvol_pct,
+                            s.top_symbols,
+                            r0.rank_d0 as rank,
+                            (r5.rank_d5 - r0.rank_d0) as rank_delta,
+                            COALESCE(q.quadrant, 'Improving') as quadrant,
+                            q.rs_ratio,
+                            q.rs_momentum
+                        FROM sec_summary s
+                        JOIN ranked_d0 r0 ON s.name = r0.sector
+                        JOIN ranked_d5 r5 ON s.name = r5.sector
+                        LEFT JOIN rrg_latest q ON s.name = q.sector
                         ORDER BY ret_1w_pct DESC;
                     """
 
@@ -205,8 +311,6 @@ class GroupRadarService:
                 results = []
                 for r in res:
                     item = dict(zip(cols, r))
-                    if g_type == "sectors":
-                        item["etf_symbol"] = SECTOR_ETF_MAPPING.get(item["name"])
                     results.append(item)
 
                 return results
@@ -403,54 +507,70 @@ class GroupRadarService:
                             WHERE date <= '{target_date}' 
                             ORDER BY date DESC LIMIT 40
                         ),
-                        etf_map(sector, symbol) AS (
-                            VALUES 
-                                ('Technology', 'XLK'),
-                                ('Financials', 'XLF'),
-                                ('Health Care', 'XLV'),
-                                ('Consumer Discretionary', 'XLY'),
-                                ('Consumer Staples', 'XLP'),
-                                ('Energy', 'XLE'),
-                                ('Industrials', 'XLI'),
-                                ('Basic Materials', 'XLB'),
-                                ('Utilities', 'XLU'),
-                                ('Real Estate', 'XLRE'),
-                                ('Communication Services', 'XLC')
-                        ),
                         spy AS (
                             SELECT date, close as spy_close 
                             FROM daily_bars 
                             WHERE symbol = 'SPY' AND date IN (SELECT date FROM calendar)
                         ),
-                        etf_prices AS (
-                            SELECT m.sector, m.symbol, d.date, d.close, s.spy_close,
-                                   (d.close / NULLIF(s.spy_close, 0)) * 100.0 as rs_raw
-                            FROM etf_map m
-                            JOIN daily_bars d ON m.symbol = d.symbol
-                            JOIN spy s ON d.date = s.date
-                            WHERE d.date IN (SELECT date FROM calendar)
+                        sec_stock_bars AS (
+                            SELECT s.sector, d.date, d.symbol, d.close,
+                                   (d.close / NULLIF(LAG(d.close) OVER (PARTITION BY s.sector, d.symbol ORDER BY d.date), 0)) - 1.0 as daily_ret
+                            FROM symbols s
+                            JOIN daily_bars d ON s.symbol = d.symbol
+                            WHERE s.active = true 
+                              AND s.asset_type = 'Common Stock'
+                              AND s.sector IS NOT NULL AND s.sector != ''
+                              AND d.date IN (SELECT date FROM calendar)
+                              AND d.close >= 3.0
+                        ),
+                        sec_daily_ret AS (
+                            SELECT sector, date, MEDIAN(daily_ret) as med_ret
+                            FROM sec_stock_bars
+                            WHERE daily_ret IS NOT NULL
+                            GROUP BY sector, date
+                        ),
+                        sec_cum AS (
+                            SELECT sector, date,
+                                   EXP(SUM(LN(1.0 + COALESCE(med_ret, 0.0))) OVER (PARTITION BY sector ORDER BY date)) * 100.0 as sec_index
+                            FROM sec_daily_ret
+                        ),
+                        spy_ret AS (
+                            SELECT date, spy_close,
+                                   (spy_close / NULLIF(LAG(spy_close) OVER (ORDER BY date), 0)) - 1.0 as spy_daily_ret
+                            FROM spy
+                        ),
+                        spy_cum AS (
+                            SELECT date,
+                                   EXP(SUM(LN(1.0 + COALESCE(spy_daily_ret, 0.0))) OVER (ORDER BY date)) * 100.0 as spy_index
+                            FROM spy_ret
+                        ),
+                        sec_rs AS (
+                            SELECT sc.sector, sc.date,
+                                   (sc.sec_index / NULLIF(spc.spy_index, 0)) * 100.0 as rs_raw
+                            FROM sec_cum sc
+                            JOIN spy_cum spc ON sc.date = spc.date
                         ),
                         with_rs_ratio AS (
-                            SELECT sector, symbol, date, close, rs_raw,
+                            SELECT sector, date, rs_raw,
                                    AVG(rs_raw) OVER (PARTITION BY sector ORDER BY date ROWS BETWEEN 13 PRECEDING AND CURRENT ROW) as rs_sma14
-                            FROM etf_prices
+                            FROM sec_rs
                         ),
                         with_metrics AS (
-                            SELECT sector, symbol, date, close, rs_raw,
+                            SELECT sector, date, rs_raw,
                                    ROUND(100.0 + ((rs_raw - rs_sma14) / NULLIF(rs_sma14, 0)) * 100.0, 2) as rs_ratio
                             FROM with_rs_ratio
                         ),
                         with_momentum AS (
-                            SELECT sector, symbol, date, close, rs_ratio,
+                            SELECT sector, date, rs_ratio,
                                    ROUND(100.0 + (rs_ratio - LAG(rs_ratio, 5) OVER (PARTITION BY sector ORDER BY date)) * 2.0, 2) as rs_momentum,
-                                   ROUND((close - LAG(close, 5) OVER (PARTITION BY sector ORDER BY date)) / NULLIF(LAG(close, 5) OVER (PARTITION BY sector ORDER BY date), 0) * 100.0, 2) as ret_1w
+                                   ROUND((rs_ratio - LAG(rs_ratio, 5) OVER (PARTITION BY sector ORDER BY date)), 2) as ret_1w
                             FROM with_metrics
                         ),
                         ranked_dates AS (
                             SELECT *, DENSE_RANK() OVER (ORDER BY date DESC) as date_rank
                             FROM with_momentum
                         )
-                        SELECT sector as name, symbol, date, rs_ratio, rs_momentum, ret_1w, date_rank
+                        SELECT sector as name, NULL as symbol, date, rs_ratio, rs_momentum, ret_1w, date_rank
                         FROM ranked_dates
                         WHERE date_rank <= {trail_n} AND rs_ratio IS NOT NULL AND rs_momentum IS NOT NULL
                         ORDER BY sector, date ASC;

@@ -3,12 +3,51 @@ import RRGQuadrantChart from './RRGQuadrantChart';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
+export const QUADRANT_CONFIG = {
+  Improving: {
+    title: 'Improving',
+    accent: '#38bdf8',
+    cardBg: 'rgba(56, 189, 248, 0.05)',
+    cardBorder: 'rgba(56, 189, 248, 0.22)',
+    pillBg: 'rgba(56, 189, 248, 0.08)',
+    pillBorder: 'rgba(56, 189, 248, 0.25)',
+    selectedBg: 'rgba(56, 189, 248, 0.25)'
+  },
+  Leading: {
+    title: 'Leading',
+    accent: '#10b981',
+    cardBg: 'rgba(16, 185, 129, 0.05)',
+    cardBorder: 'rgba(16, 185, 129, 0.22)',
+    pillBg: 'rgba(16, 185, 129, 0.08)',
+    pillBorder: 'rgba(16, 185, 129, 0.25)',
+    selectedBg: 'rgba(16, 185, 129, 0.25)'
+  },
+  Lagging: {
+    title: 'Lagging',
+    accent: '#f43f5e',
+    cardBg: 'rgba(244, 63, 94, 0.05)',
+    cardBorder: 'rgba(244, 63, 94, 0.22)',
+    pillBg: 'rgba(244, 63, 94, 0.08)',
+    pillBorder: 'rgba(244, 63, 94, 0.25)',
+    selectedBg: 'rgba(244, 63, 94, 0.25)'
+  },
+  Weakening: {
+    title: 'Weakening',
+    accent: '#f59e0b',
+    cardBg: 'rgba(245, 158, 11, 0.05)',
+    cardBorder: 'rgba(245, 158, 11, 0.22)',
+    pillBg: 'rgba(245, 158, 11, 0.08)',
+    pillBorder: 'rgba(245, 158, 11, 0.25)',
+    selectedBg: 'rgba(245, 158, 11, 0.25)'
+  }
+};
+
 export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates = [] }) {
   const [activeTab, setActiveTab] = useState('sectors'); // 'sectors', 'industries', or 'themes'
   const [viewMode, setViewMode] = useState('table'); // 'table' | 'rrg'
   const [selectedDate, setSelectedDate] = useState('');
   const [data, setData] = useState([]);
-  const [sectorEtfs, setSectorEtfs] = useState([]);
+  const [selectedSectorFilter, setSelectedSectorFilter] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -51,15 +90,6 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
       }
       const json = await res.json();
       setData(json);
-
-      // Also fetch sector ETFs if on Sectors tab
-      if (tab === 'sectors') {
-        const etfRes = await fetch(`${API_BASE}/api/sectors/etfs`);
-        if (etfRes.ok) {
-          const etfJson = await etfRes.json();
-          setSectorEtfs(etfJson);
-        }
-      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -194,9 +224,47 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
     }
   };
 
+  // Group sectors into 4 RRG quadrants for KovaView-style cards
+  const sectorQuadrants = useMemo(() => {
+    if (activeTab !== 'sectors' || !Array.isArray(data)) return {};
+    const groups = {
+      Improving: [],
+      Leading: [],
+      Lagging: [],
+      Weakening: []
+    };
+    data.forEach((item) => {
+      const q = item.quadrant || 'Improving';
+      if (groups[q]) {
+        groups[q].push(item);
+      }
+    });
+    // Sort within each quadrant by rank ascending
+    Object.keys(groups).forEach((k) => {
+      groups[k].sort((a, b) => (a.rank || 99) - (b.rank || 99));
+    });
+    return groups;
+  }, [activeTab, data]);
+
+  const handleSectorPillClick = (sectorName) => {
+    if (selectedSectorFilter === sectorName) {
+      setSelectedSectorFilter(null);
+    } else {
+      setSelectedSectorFilter(sectorName);
+      if (!expandedGroups[sectorName]) {
+        toggleGroupExpand(sectorName);
+      }
+    }
+  };
+
   // Filtered & Sorted groups
   const filteredAndSortedGroups = useMemo(() => {
     let list = [...data];
+
+    // Sector pill filter
+    if (activeTab === 'sectors' && selectedSectorFilter) {
+      list = list.filter((g) => g.name === selectedSectorFilter);
+    }
 
     // Search filter
     if (searchTerm.trim()) {
@@ -223,7 +291,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
     });
 
     return list;
-  }, [data, searchTerm, sortBy, sortOrder]);
+  }, [data, activeTab, selectedSectorFilter, searchTerm, sortBy, sortOrder]);
 
   // Theme Management handlers
   const openNewThemeModal = () => {
@@ -540,7 +608,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
         >
           {/* Pill 1: Sectors */}
           <button
-            onClick={() => setActiveTab('sectors')}
+            onClick={() => { setActiveTab('sectors'); setSelectedSectorFilter(null); }}
             style={{
               background: activeTab === 'sectors' ? '#10b981' : 'transparent',
               color: activeTab === 'sectors' ? '#ffffff' : 'var(--text-secondary)',
@@ -558,7 +626,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
 
           {/* Pill 2: Industries */}
           <button
-            onClick={() => setActiveTab('industries')}
+            onClick={() => { setActiveTab('industries'); setSelectedSectorFilter(null); }}
             style={{
               background: activeTab === 'industries' ? '#10b981' : 'transparent',
               color: activeTab === 'industries' ? '#ffffff' : 'var(--text-secondary)',
@@ -576,7 +644,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
 
           {/* Pill 3: Themes */}
           <button
-            onClick={() => setActiveTab('themes')}
+            onClick={() => { setActiveTab('themes'); setSelectedSectorFilter(null); }}
             style={{
               background: activeTab === 'themes' ? '#10b981' : 'transparent',
               color: activeTab === 'themes' ? '#ffffff' : 'var(--text-secondary)',
@@ -720,6 +788,142 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
         </div>
       )}
 
+      {/* 4-Quadrant Sector Momentum Cards for Sectors Tab */}
+      {activeTab === 'sectors' && !loading && !error && (
+        <div style={{ marginBottom: '20px' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+              gap: '14px'
+            }}
+          >
+            {['Improving', 'Leading', 'Lagging', 'Weakening'].map((quadName) => {
+              const cfg = QUADRANT_CONFIG[quadName];
+              const items = sectorQuadrants[quadName] || [];
+              return (
+                <div
+                  key={quadName}
+                  style={{
+                    background: cfg.cardBg,
+                    border: `1px solid ${cfg.cardBorder}`,
+                    borderRadius: '16px',
+                    padding: '16px 18px',
+                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '15px', fontWeight: 700, color: cfg.accent }}>
+                      {cfg.title}
+                    </span>
+                    <span style={{ fontSize: '14px', fontWeight: 700, color: cfg.accent, opacity: 0.85 }}>
+                      {items.length}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {items.length === 0 ? (
+                      <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                        None currently
+                      </span>
+                    ) : (
+                      items.map((sec) => {
+                        const isSelected = selectedSectorFilter === sec.name;
+                        const delta = sec.rank_delta ?? 0;
+                        const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '—';
+                        const deltaStr = delta !== 0 ? `${arrow} ${Math.abs(delta)}` : '—';
+
+                        return (
+                          <button
+                            key={sec.name}
+                            type="button"
+                            onClick={() => handleSectorPillClick(sec.name)}
+                            title={`#${sec.rank} ${sec.name} | 5D Rank Δ: ${delta >= 0 ? '+' : ''}${delta} | 1W: ${sec.ret_1w_pct}%`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '5px 11px',
+                              borderRadius: '9999px',
+                              border: `1px solid ${isSelected ? cfg.accent : cfg.pillBorder}`,
+                              background: isSelected ? cfg.selectedBg : cfg.pillBg,
+                              boxShadow: isSelected ? `0 0 12px ${cfg.accent}66` : 'none',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                              fontSize: '12px'
+                            }}
+                          >
+                            <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontWeight: 600 }}>
+                              #{sec.rank}
+                            </span>
+                            <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>
+                              {sec.name}
+                            </span>
+                            <span
+                              style={{
+                                color: delta === 0 ? 'var(--text-muted)' : cfg.accent,
+                                fontWeight: 700,
+                                fontSize: '11px'
+                              }}
+                            >
+                              {deltaStr}
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Active sector filter badge */}
+          {selectedSectorFilter && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                marginTop: '12px',
+                padding: '8px 14px',
+                background: 'rgba(56, 189, 248, 0.08)',
+                borderRadius: '8px',
+                border: '1px solid rgba(56, 189, 248, 0.2)'
+              }}
+            >
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Filtered to sector:
+              </span>
+              <span
+                className="pill"
+                style={{
+                  fontSize: '12px',
+                  padding: '2px 10px',
+                  background: 'rgba(56, 189, 248, 0.2)',
+                  color: '#38bdf8',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+                onClick={() => setSelectedSectorFilter(null)}
+              >
+                {selectedSectorFilter} ✕
+              </span>
+              <button
+                className="btn btn-secondary btn-sm"
+                style={{ padding: '2px 8px', fontSize: '11px' }}
+                onClick={() => setSelectedSectorFilter(null)}
+              >
+                Show all 30 sectors
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Main Leaderboard Table */}
       {!loading && !error && (
         <div className="glass-card" style={{ padding: '16px', overflowX: 'auto' }}>
@@ -833,20 +1037,47 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                             >
                               ▶
                             </span>
+                            {activeTab === 'sectors' && group.rank && (
+                              <span
+                                style={{
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  color: 'var(--text-muted)',
+                                  minWidth: '24px'
+                                }}
+                              >
+                                #{group.rank}
+                              </span>
+                            )}
                             <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '13px' }}>
                               {group.name}
                             </span>
-                            {group.etf_symbol && (
+                            {activeTab === 'sectors' && group.rank_delta !== undefined && group.rank_delta !== null && (
+                              <span
+                                style={{
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  color: group.rank_delta > 0 ? '#10b981' : group.rank_delta < 0 ? '#f43f5e' : 'var(--text-muted)'
+                                }}
+                                title={`5-Day Rank Change: ${group.rank_delta > 0 ? '+' : ''}${group.rank_delta}`}
+                              >
+                                {group.rank_delta > 0 ? `▲ ${group.rank_delta}` : group.rank_delta < 0 ? `▼ ${Math.abs(group.rank_delta)}` : '—'}
+                              </span>
+                            )}
+                            {activeTab === 'sectors' && group.quadrant && (
                               <span
                                 className="pill"
                                 style={{
                                   fontSize: '10px',
-                                  padding: '1px 6px',
-                                  background: 'rgba(56, 189, 248, 0.15)',
-                                  color: '#38bdf8'
+                                  padding: '1px 8px',
+                                  borderRadius: '9999px',
+                                  fontWeight: 600,
+                                  background: QUADRANT_CONFIG[group.quadrant]?.pillBg || 'rgba(255,255,255,0.06)',
+                                  color: QUADRANT_CONFIG[group.quadrant]?.accent || 'var(--text-secondary)',
+                                  border: `1px solid ${QUADRANT_CONFIG[group.quadrant]?.pillBorder || 'transparent'}`
                                 }}
                               >
-                                {group.etf_symbol}
+                                {group.quadrant}
                               </span>
                             )}
                             <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '4px' }}>
@@ -1311,53 +1542,6 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
         </div>
       )}
 
-      {/* Sector ETFs Leaderboard Section (when Sectors tab is selected) */}
-      {activeTab === 'sectors' && sectorEtfs.length > 0 && !loading && (
-        <div className="glass-card" style={{ marginTop: '28px', padding: '20px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '14px', color: 'var(--text-primary)' }}>
-            Primary 11 Sector ETFs Leaderboard (XLK, XLF, XLE, etc.)
-          </h3>
-          <div style={{ overflowX: 'auto', width: '100%' }}>
-            <table className="data-table" style={{ width: '100%', fontSize: '13px' }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: 'left' }}>ETF Ticker</th>
-                  <th style={{ textAlign: 'left' }}>Sector</th>
-                  <th style={{ textAlign: 'center' }}>RS Rank</th>
-                  <th style={{ textAlign: 'center' }}>1W RS Δ</th>
-                  <th style={{ textAlign: 'right' }}>1W Return</th>
-                  <th style={{ textAlign: 'center' }}>1M RS Δ</th>
-                  <th style={{ textAlign: 'right' }}>1M Return</th>
-                  <th style={{ textAlign: 'right' }}>3M Return</th>
-                  <th style={{ textAlign: 'right' }}>Price</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sectorEtfs
-                  .filter((e) => e.symbol !== 'SPY' && e.symbol !== 'QQQ')
-                  .sort((a, b) => (b.delta_rs_1w || 0) - (a.delta_rs_1w || 0))
-                  .map((etf) => (
-                    <tr key={etf.symbol} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ fontWeight: 700, color: '#38bdf8' }}>{etf.symbol}</td>
-                      <td style={{ fontWeight: 600 }}>{etf.sector}</td>
-                      <td style={{ textAlign: 'center' }}>{getRsRankBadge(etf.rs_rank)}</td>
-                      <td style={{ textAlign: 'center', fontWeight: 600, color: etf.delta_rs_1w >= 0 ? '#10b981' : '#f43f5e' }}>
-                        {etf.delta_rs_1w >= 0 ? `+${etf.delta_rs_1w}` : etf.delta_rs_1w}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>{formatReturn(etf.ret_1w_pct)}</td>
-                      <td style={{ textAlign: 'center', fontWeight: 600, color: etf.delta_rs_1m >= 0 ? '#10b981' : '#f43f5e' }}>
-                        {etf.delta_rs_1m >= 0 ? `+${etf.delta_rs_1m}` : etf.delta_rs_1m}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>{formatReturn(etf.ret_1m_pct)}</td>
-                      <td style={{ textAlign: 'right' }}>{formatReturn(etf.ret_3m_pct)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>${etf.close?.toFixed(2)}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
         </>
       )}
 

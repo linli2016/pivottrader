@@ -280,3 +280,4 @@ def get_tactical_sector(industry: str, default: str = "Misc") -> str:
         return default
     ind_clean = industry.strip()
     return INDUSTRY_TO_TACTICAL_SECTOR.get(ind_clean, default)
+

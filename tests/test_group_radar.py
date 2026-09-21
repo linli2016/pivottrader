@@ -97,26 +97,36 @@ class TestGroupRadarService(unittest.TestCase):
     def test_group_strength_sectors(self):
         results = self.service.get_group_strength("sectors")
         self.assertIsInstance(results, list)
-        self.assertGreaterEqual(len(results), 10)
+        self.assertEqual(len(results), 30)
 
-        # Technology, Health Care, Finance should be present
+        # Tactical sectors Software, Chips, Medical, Banks, Energy should be present
         names = [r["name"] for r in results]
-        self.assertIn("Technology", names)
-        self.assertIn("Health Care", names)
+        self.assertIn("Software", names)
+        self.assertIn("Chips", names)
+        self.assertIn("Medical", names)
+        self.assertIn("Banks", names)
+        self.assertIn("Energy", names)
+
+        # Each sector should have rank, rank_delta, and quadrant
+        for r in results:
+            self.assertIn("rank", r)
+            self.assertIn("rank_delta", r)
+            self.assertIn("quadrant", r)
+            self.assertIn(r["quadrant"], ["Leading", "Weakening", "Lagging", "Improving"])
 
     def test_group_strength_industries_in_sector(self):
-        results = self.service.get_group_strength("industries", sector="Technology")
+        results = self.service.get_group_strength("industries", sector="Software")
         self.assertIsInstance(results, list)
-        self.assertGreaterEqual(len(results), 5)
+        self.assertGreaterEqual(len(results), 2)
         names = [r["name"] for r in results]
-        self.assertTrue(any("Software" in n or "Semiconductors" in n for n in names))
+        self.assertTrue(any("Software" in n or "EDP" in n for n in names))
 
     def test_group_strength_themes_in_sector(self):
-        results = self.service.get_group_strength("themes", sector="Technology")
+        results = self.service.get_group_strength("themes", sector="Software")
         self.assertIsInstance(results, list)
         self.assertGreater(len(results), 0)
         names = [r["name"] for r in results]
-        self.assertTrue(any("AI" in n or "Cybersecurity" in n for n in names))
+        self.assertTrue(any("AI" in n or "Cloud" in n or "Cybersecurity" in n for n in names))
 
     def test_group_constituents_theme(self):
         constituents = self.service.get_group_constituents("themes", "Crypto & Blockchain")
@@ -150,8 +160,7 @@ class TestGroupRadarService(unittest.TestCase):
 
     def test_get_rrg_data_sectors(self):
         rrg = self.service.get_rrg_data("sectors", trail_bars=5)
-        self.assertIsInstance(rrg, list)
-        self.assertGreaterEqual(len(rrg), 10)
+        self.assertEqual(len(rrg), 30)
         first = rrg[0]
         self.assertIn("name", first)
         self.assertIn("symbol", first)
