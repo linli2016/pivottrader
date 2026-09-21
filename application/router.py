@@ -7,12 +7,14 @@ from typing import Optional, Dict, Any, List
 from application.services import config_service, db_service, sync_service, chart_service, model_book_service, setup_service, saved_trades_service
 from application.services.theme_service import ThemeService
 from application.services.group_radar_service import GroupRadarService
+from application.services.leaderboard_service import LeaderboardService
 
 logger = logging.getLogger("pivottrader.api")
 router = APIRouter()
 
 theme_service = ThemeService()
 group_radar_service = GroupRadarService(theme_service=theme_service)
+leaderboard_service = LeaderboardService()
 
 # ----------------- Models -----------------
 class ThemeCreateUpdateSchema(BaseModel):
@@ -46,7 +48,11 @@ class WatchlistCreateSchema(BaseModel):
     name: str
 
 class WatchlistItemAddSchema(BaseModel):
-    symbol: str
+    symbol: Optional[str] = None
+    symbols: Optional[List[str]] = None
+
+class WatchlistBatchRemoveSchema(BaseModel):
+    symbols: List[str]
 
 class RulesUpdateSchema(BaseModel):
     content: str
@@ -228,6 +234,15 @@ def get_stock_earnings(symbol: str):
         logger.error(f"Error in get_stock_earnings({symbol}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/api/stocks/{symbol}/peers")
+def get_stock_peers(symbol: str, limit: int = 6):
+    """Retrieve industry peer stocks ranked by relative strength."""
+    try:
+        return db_service.get_industry_peers(symbol, limit)
+    except Exception as e:
+        logger.error(f"Error in get_stock_peers({symbol}): {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/api/config")
 def get_config():
     """Retrieve current screener parameters."""
@@ -298,6 +313,31 @@ def get_sector_stocks(sector_name: str):
         return db_service.get_sector_stocks(sector_name)
     except Exception as e:
         logger.error(f"Error in get_sector_stocks({sector_name}): {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- KovaView Leaderboard Endpoint -----------------
+
+@router.get("/api/leaderboard")
+def get_leaderboard(
+    date: Optional[str] = None,
+    board: str = "near_52w_high",
+    min_rs: Optional[int] = None,
+    max_dist_high: float = 10.0,
+    sector: Optional[str] = None,
+    industry: Optional[str] = None
+):
+    """Retrieve KovaView Boards (Near 52w High, New Highs, Gainers, Strongest, Pre-Market) and Sector Concentration."""
+    try:
+        return leaderboard_service.get_leaderboard(
+            target_date=date,
+            board=board,
+            min_rs=min_rs,
+            max_dist_high=max_dist_high,
+            sector=sector,
+            industry=industry
+        )
+    except Exception as e:
+        logger.error(f"Error in get_leaderboard: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 # ----------------- Group Radar & Themes Endpoints -----------------
@@ -406,11 +446,29 @@ def get_watchlist_items(watchlist_id: int):
 
 @router.post("/api/watchlists/{watchlist_id}/items")
 def add_watchlist_item(watchlist_id: int, payload: WatchlistItemAddSchema):
-    """Add a stock symbol to a specific watchlist."""
+    """Add a stock symbol or batch of symbols to a specific watchlist."""
     try:
-        return db_service.add_watchlist_item(watchlist_id, payload.symbol)
+        if payload.symbols:
+            count = db_service.add_watchlist_items_batch(watchlist_id, payload.symbols)
+            return {"status": "ok", "added_count": count, "watchlist_id": watchlist_id}
+        if payload.symbol:
+            return db_service.add_watchlist_item(watchlist_id, payload.symbol)
+        raise HTTPException(status_code=400, detail="Either 'symbol' or 'symbols' must be provided")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in add_watchlist_item: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/watchlists/{watchlist_id}/items/batch")
+def add_watchlist_items_batch_endpoint(watchlist_id: int, payload: WatchlistItemAddSchema):
+    """Add a batch of stock symbols to a specific watchlist."""
+    try:
+        symbols = payload.symbols or ([payload.symbol] if payload.symbol else [])
+        count = db_service.add_watchlist_items_batch(watchlist_id, symbols)
+        return {"status": "ok", "added_count": count, "watchlist_id": watchlist_id}
+    except Exception as e:
+        logger.error(f"Error in add_watchlist_items_batch: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/api/watchlists/{watchlist_id}/items")
@@ -429,6 +487,26 @@ def remove_watchlist_item(watchlist_id: int, symbol: str):
         return db_service.remove_watchlist_item(watchlist_id, symbol)
     except Exception as e:
         logger.error(f"Error in remove_watchlist_item({symbol}): {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/watchlists/{watchlist_id}/items/remove-batch")
+def remove_watchlist_items_batch_endpoint(watchlist_id: int, payload: WatchlistBatchRemoveSchema):
+    """Remove a batch of stock symbols from a specific watchlist."""
+    try:
+        count = db_service.remove_watchlist_items_batch(watchlist_id, payload.symbols)
+        return {"status": "ok", "removed_count": count, "watchlist_id": watchlist_id}
+    except Exception as e:
+        logger.error(f"Error in remove_watchlist_items_batch: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/api/watchlists/{watchlist_id}/items/batch")
+def delete_watchlist_items_batch_endpoint(watchlist_id: int, payload: WatchlistBatchRemoveSchema):
+    """Remove a batch of stock symbols from a specific watchlist."""
+    try:
+        count = db_service.remove_watchlist_items_batch(watchlist_id, payload.symbols)
+        return {"status": "ok", "removed_count": count, "watchlist_id": watchlist_id}
+    except Exception as e:
+        logger.error(f"Error in delete_watchlist_items_batch: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 # ----------------- Setups & Rules Playbook Endpoints -----------------

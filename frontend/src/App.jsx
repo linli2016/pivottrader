@@ -10,6 +10,9 @@ import StockDetailDrawer from './components/StockDetailDrawer';
 import WatchlistsTab from './components/WatchlistsTab';
 import SetupsAndRulesTab from './components/SetupsAndRulesTab';
 import ModelBookTab from './components/ModelBookTab';
+import LearnTab from './components/LearnTab';
+import SyncDataTab from './components/SyncDataTab';
+import LeaderboardTab from './components/LeaderboardTab';
 
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
@@ -128,7 +131,10 @@ function App() {
         const defaultSetup = (data.setups || []).find(s => s.id === 'breakouts' || s.id === 'breakout') || (data.setups || [])[0];
         if (defaultSetup) {
           setActiveSetupKey(defaultSetup.id);
-          setActiveExpression(defaultSetup.expression || '');
+          const defaultSub = (defaultSetup.default_sub_id && defaultSetup.sub_setups?.length > 0)
+            ? defaultSetup.sub_setups.find(s => s.id === defaultSetup.default_sub_id)
+            : null;
+          setActiveExpression(defaultSub?.expression || defaultSetup.expression || '');
         }
         return data;
       }
@@ -140,9 +146,16 @@ function App() {
 
   const handleSelectSetup = (setupKey, expressionOverride = null) => {
     setActiveSetupKey(setupKey);
-    const setup = (setupsConfig.setups || []).find(s => s.id === setupKey);
+    const setup = (setupsConfig?.setups || []).find(s => s.id === setupKey);
     if (setup) {
-      setActiveExpression(expressionOverride !== null ? expressionOverride : (setup.expression || ''));
+      if (expressionOverride !== null) {
+        setActiveExpression(expressionOverride);
+      } else if (setup.default_sub_id && setup.sub_setups?.length > 0) {
+        const defSub = setup.sub_setups.find(s => s.id === setup.default_sub_id);
+        setActiveExpression(defSub?.expression || setup.expression || '');
+      } else {
+        setActiveExpression(setup.expression || '');
+      }
     } else if (expressionOverride !== null) {
       setActiveExpression(expressionOverride);
     }
@@ -153,9 +166,14 @@ function App() {
   };
 
   const handleResetExpression = () => {
-    const setup = (setupsConfig.setups || []).find(s => s.id === activeSetupKey);
-    if (setup && setup.expression) {
-      setActiveExpression(setup.expression);
+    const setup = (setupsConfig?.setups || []).find(s => s.id === activeSetupKey);
+    if (setup) {
+      if (setup.default_sub_id && setup.sub_setups?.length > 0) {
+        const defSub = setup.sub_setups.find(s => s.id === setup.default_sub_id);
+        setActiveExpression(defSub?.expression || setup.expression || '');
+      } else if (setup.expression) {
+        setActiveExpression(setup.expression);
+      }
     }
   };
 
@@ -466,6 +484,21 @@ function App() {
           <div className="nav-section">
             <div className="nav-section-title">Daily Routine</div>
             <ul className="nav-menu">
+              {/* 0. Sync Data */}
+              <li
+                className={`nav-item ${activeTab === 'sync-data' ? 'active' : ''}`}
+                onClick={() => setActiveTab('sync-data')}
+                title="0. Sync Data (DuckDB Pipelines & Live Quotes)"
+              >
+                <div className="nav-item-content">
+                  <span className="nav-icon">🔄</span>
+                  <span className="nav-label">0. Sync Data</span>
+                </div>
+                {syncStatus.status === 'running' && (
+                  <span className="nav-badge emerald spin-icon" style={{ fontSize: '10px' }}>⟳</span>
+                )}
+              </li>
+
               {/* 1. Market Monitor */}
               <li
                 className={`nav-item ${activeTab === 'market-monitor' ? 'active' : ''}`}
@@ -478,27 +511,39 @@ function App() {
                 </div>
               </li>
 
-              {/* 2. Group Radar */}
+              {/* 2. Leaderboard */}
               <li
-                className={`nav-item ${activeTab === 'sector-compare' ? 'active' : ''}`}
-                onClick={() => setActiveTab('sector-compare')}
-                title="2. Group Radar (Sectors • Industries • Themes)"
+                className={`nav-item ${activeTab === 'leaderboard' ? 'active' : ''}`}
+                onClick={() => setActiveTab('leaderboard')}
+                title="2. Leaderboard (Kova Near-Highs Playbook: Sector Concentration & Leadership Stocks)"
               >
                 <div className="nav-item-content">
-                  <span className="nav-icon">🌐</span>
-                  <span className="nav-label">2. Group Radar</span>
+                  <span className="nav-icon">🏆</span>
+                  <span className="nav-label">2. Leaderboard</span>
                 </div>
               </li>
 
-              {/* 3. Stock Screen */}
+              {/* 3. Group Radar */}
+              <li
+                className={`nav-item ${activeTab === 'sector-compare' ? 'active' : ''}`}
+                onClick={() => setActiveTab('sector-compare')}
+                title="3. Group Radar (Sectors • Industries • Themes)"
+              >
+                <div className="nav-item-content">
+                  <span className="nav-icon">🌐</span>
+                  <span className="nav-label">3. Group Radar</span>
+                </div>
+              </li>
+
+              {/* 4. Stock Screen */}
               <li
                 className={`nav-item ${activeTab === 'candidates' ? 'active' : ''}`}
                 onClick={() => setActiveTab('candidates')}
-                title="3. Stock Screen & Setup Scanner"
+                title="4. Stock Screen & Setup Scanner"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">🎯</span>
-                  <span className="nav-label">3. Stock Screen</span>
+                  <span className="nav-label">4. Stock Screen</span>
                 </div>
                 <span className="nav-badge emerald" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                   {loadingCandidates && <span className="spin-icon" style={{ fontSize: '10px' }}>⟳</span>}
@@ -506,20 +551,20 @@ function App() {
                 </span>
               </li>
 
-              {/* 4. Watchlists */}
+              {/* 5. Watchlists */}
               <li
                 className={`nav-item ${activeTab === 'watchlists' ? 'active' : ''}`}
                 onClick={() => setActiveTab('watchlists')}
-                title="4. My Watchlists"
+                title="5. My Watchlists"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">⭐️</span>
-                  <span className="nav-label">4. My Watchlists</span>
+                  <span className="nav-label">5. My Watchlists</span>
                 </div>
                 <span className="nav-badge emerald">{watchlists.reduce((sum, w) => sum + (w.item_count || 0), 0)}</span>
               </li>
 
-              {/* 5. Stock Inspector */}
+              {/* 6. Stock Inspector */}
               <li
                 className={`nav-item ${activeTab === 'inspector' ? 'active' : ''}`}
                 onClick={() => {
@@ -529,11 +574,11 @@ function App() {
                     handleInspectorSearch(selectedStock.symbol);
                   }
                 }}
-                title="5. Stock Inspector"
+                title="6. Stock Inspector"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">🔍</span>
-                  <span className="nav-label">5. Stock Inspector</span>
+                  <span className="nav-label">6. Stock Inspector</span>
                 </div>
               </li>
             </ul>
@@ -560,6 +605,16 @@ function App() {
                 <div className="nav-item-content">
                   <span className="nav-icon">📖</span>
                   <span className="nav-label">Setups & Rules</span>
+                </div>
+              </li>
+              <li
+                className={`nav-item ${activeTab === 'learn' ? 'active' : ''}`}
+                onClick={() => setActiveTab('learn')}
+                title="Learn: KovaView Trading System (Michael @kovainvest)"
+              >
+                <div className="nav-item-content">
+                  <span className="nav-icon">🎓</span>
+                  <span className="nav-label">Learn</span>
                 </div>
               </li>
               <li
@@ -600,6 +655,20 @@ function App() {
       <div className="main-content">
         {activeTab === 'dashboard' && (
           <DashboardTab
+            summary={summary}
+            syncStatus={syncStatus}
+            handleTriggerLiveQuotesSync={handleTriggerLiveQuotesSync}
+            handleTriggerSync={handleTriggerSync}
+            fetchSyncStatus={fetchSyncStatus}
+            fetchSummary={fetchSummary}
+            setActiveTab={setActiveTab}
+            handleSelectStock={handleSelectStock}
+            onSelectSetup={handleSelectSetup}
+          />
+        )}
+
+        {activeTab === 'sync-data' && (
+          <SyncDataTab
             syncPrices={syncPrices}
             setSyncPrices={setSyncPrices}
             syncFundamentals={syncFundamentals}
@@ -623,6 +692,17 @@ function App() {
 
         {activeTab === 'market-monitor' && (
           <MarketMonitorTab />
+        )}
+
+        {activeTab === 'leaderboard' && (
+          <LeaderboardTab
+            onSelectStock={handleSelectStock}
+            tradingDates={tradingDates}
+            selectedDate={selectedDate}
+            setSelectedDate={setSelectedDate}
+            watchlists={watchlists}
+            fetchWatchlists={fetchWatchlists}
+          />
         )}
 
         {activeTab === 'sector-compare' && (
@@ -694,6 +774,13 @@ function App() {
 
         {activeTab === 'setups-rules' && (
           <SetupsAndRulesTab />
+        )}
+
+        {activeTab === 'learn' && (
+          <LearnTab
+            setActiveTab={setActiveTab}
+            onSelectSetup={handleSelectSetup}
+          />
         )}
 
         {activeTab === 'settings' && (

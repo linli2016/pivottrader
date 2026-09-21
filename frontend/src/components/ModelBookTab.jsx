@@ -25,6 +25,8 @@ export default function ModelBookTab({
   const [setupType, setSetupType] = useState('breakouts');
   const [selectedSubSetupId, setSelectedSubSetupId] = useState('htf');
   const modelBookChartRef = useRef(null);
+  const selectedCandidateRowRef = useRef(null);
+  const selectedSavedTradeRowRef = useRef(null);
   const [targetGainPct, setTargetGainPct] = useState(16.0);
   const [customGain, setCustomGain] = useState('');
   const [stopLossPct, setStopLossPct] = useState(8.0);
@@ -841,6 +843,26 @@ export default function ModelBookTab({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentIndex, displayedCandidates, activeSubView, currentSavedIndex, filteredSavedTrades]);
 
+  // Auto-scroll selected candidate into view in the candidates table
+  useEffect(() => {
+    if (selectedCandidateRowRef.current) {
+      selectedCandidateRowRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest'
+      });
+    }
+  }, [selectedCandidate]);
+
+  // Auto-scroll selected saved trade into view in the saved trades table
+  useEffect(() => {
+    if (selectedSavedTradeRowRef.current) {
+      selectedSavedTradeRowRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest'
+      });
+    }
+  }, [selectedSavedTrade]);
+
   // Handle Sort Toggle
   const handleSort = (field) => {
     if (sortField === field) {
@@ -1561,236 +1583,10 @@ export default function ModelBookTab({
         </div>
       )}
 
-      {/* 4. Split-Screen Layout: Master Table (Left) + Interactive Model Book Chart (Right) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(310px, 28%) 1fr', gap: '16px', alignItems: 'stretch' }}>
-        {/* Left Column: Candidates & Winners Table */}
-        <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {/* Table Header Controls */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-            {/* View Mode Pills: Winners vs All */}
-            <div style={{ display: 'flex', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '6px', padding: '2px' }}>
-              <button
-                onClick={() => setViewMode('winners')}
-                style={{
-                  padding: '4px 12px',
-                  borderRadius: '4px',
-                  border: 'none',
-                  backgroundColor: viewMode === 'winners' ? 'var(--accent-color)' : 'transparent',
-                  color: viewMode === 'winners' ? '#080b11' : 'var(--text-secondary)',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  cursor: 'pointer'
-                }}
-              >
-                🏆 Winners Only ({scanResult?.winners?.length || 0})
-              </button>
-              <button
-                onClick={() => setViewMode('all')}
-                style={{
-                  padding: '4px 12px',
-                  borderRadius: '4px',
-                  border: 'none',
-                  backgroundColor: viewMode === 'all' ? 'var(--accent-color)' : 'transparent',
-                  color: viewMode === 'all' ? '#080b11' : 'var(--text-secondary)',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  cursor: 'pointer'
-                }}
-              >
-                All Setups ({scanResult?.all_candidates?.length || 0})
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              {/* Sector filter */}
-              <select
-                value={selectedSector}
-                onChange={e => {
-                  setSelectedSector(e.target.value);
-                  setSelectedCandidate(null);
-                }}
-                style={{
-                  padding: '4px 8px',
-                  backgroundColor: 'rgba(0,0,0,0.3)',
-                  border: selectedSector !== 'ALL' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  color: selectedSector !== 'ALL' ? '#38bdf8' : 'var(--text-primary)',
-                  fontSize: '12px',
-                  fontWeight: selectedSector !== 'ALL' ? '600' : '400',
-                  cursor: 'pointer'
-                }}
-                title="Filter candidates by sector"
-              >
-                <option value="ALL">
-                  All Sectors ({viewMode === 'winners' ? (scanResult?.winners?.length || 0) : (scanResult?.all_candidates?.length || 0)})
-                </option>
-                {sectorCounts.map(({ sector, count }) => (
-                  <option key={sector} value={sector}>
-                    {sector} ({count})
-                  </option>
-                ))}
-              </select>
-
-              {/* Market Tape filter */}
-              <select
-                value={selectedRegime}
-                onChange={e => setSelectedRegime(e.target.value)}
-                style={{
-                  padding: '4px 8px',
-                  backgroundColor: 'rgba(0,0,0,0.3)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  color: selectedRegime === 'BULLISH' ? '#34d399' : (selectedRegime === 'BEARISH' ? '#fb7185' : (selectedRegime === 'CAUTION' ? '#fbbf24' : 'var(--text-primary)')),
-                  fontSize: '12px',
-                  fontWeight: selectedRegime !== 'ALL' ? '600' : '400',
-                  cursor: 'pointer'
-                }}
-              >
-                <option value="ALL">All Market Tapes</option>
-                <option value="BULLISH">🟢 Bullish Tape</option>
-                <option value="CAUTION">🟡 Caution Tape</option>
-                <option value="BEARISH">🔴 Bearish Tape</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Search bar & sub-header */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <input
-              type="text"
-              placeholder="Search ticker or company name..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '6px 12px',
-                backgroundColor: 'rgba(0,0,0,0.25)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)',
-                fontSize: '12.5px'
-              }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-muted)', padding: '0 2px' }}>
-              <span>Showing {displayedCandidates.length} setups</span>
-              <span>Use ↑ / ↓ arrow keys to flip</span>
-            </div>
-          </div>
-
-          {/* Table Container */}
-          <div className="custom-scrollbar" style={{ height: '580px', maxHeight: '580px', overflowX: 'auto', overflowY: 'auto', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'rgba(0, 0, 0, 0.15)' }}>
-            <table className="data-table compact-table" style={{ width: '100%', fontSize: '12px' }}>
-              <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
-                <tr>
-                  <th onClick={() => handleSort('symbol')} style={{ cursor: 'pointer' }}>
-                    Ticker {sortField === 'symbol' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
-                  </th>
-                  <th onClick={() => handleSort('date')} style={{ cursor: 'pointer' }}>
-                    Setup {sortField === 'date' || sortField === 'setup_date' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
-                  </th>
-                  <th onClick={() => handleSort('market_regime')} style={{ cursor: 'pointer', textAlign: 'center' }}>
-                    Tape {sortField === 'market_regime' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayedCandidates.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
-                      {loading ? 'Analyzing historical setups and trade paths...' : 'No setups found matching criteria.'}
-                    </td>
-                  </tr>
-                ) : (
-                  displayedCandidates.map(cand => {
-                    const candDate = cand.setup_date || cand.date;
-                    const isSelected = selectedCandidate && selectedCandidate.symbol === cand.symbol && (selectedCandidate.setup_date || selectedCandidate.date) === candDate;
-                    const isWinner = cand.hit_target;
-
-                    return (
-                      <tr
-                        key={`${cand.symbol}_${candDate}`}
-                        onClick={() => handleSelectCandidate(cand)}
-                        style={{
-                          backgroundColor: isSelected ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
-                          borderLeft: isSelected ? '3px solid var(--accent-color)' : '3px solid transparent',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <span style={{ fontWeight: '700', color: isWinner ? '#34d399' : (cand.trade_return_pct > 0 ? 'var(--text-primary)' : 'var(--text-secondary)') }}>
-                              {cand.symbol}
-                            </span>
-                            {isWinner && <span title="Hit Profit Target" style={{ fontSize: '10px' }}>🏆</span>}
-                          </div>
-                        </td>
-                        <td style={{ color: 'var(--text-secondary)' }}>{candDate}</td>
-
-                        {/* Market Tape Column */}
-                        <td style={{ textAlign: 'center' }}>
-                          {cand.market_regime === 'BULLISH' && (
-                            <span
-                              className="pill"
-                              style={{
-                                background: 'rgba(16, 185, 129, 0.18)',
-                                color: '#34d399',
-                                border: '1px solid rgba(16, 185, 129, 0.35)',
-                                fontSize: '10px',
-                                padding: '1px 6px',
-                                fontWeight: 700
-                              }}
-                              title={`Bullish Uptrend (Green Light)\nQQQ Close: $${cand.market_index_close ?? '-'}\nStack: ${cand.market_stack ?? '-'}`}
-                            >
-                              🟢 Bullish
-                            </span>
-                          )}
-                          {cand.market_regime === 'CAUTION' && (
-                            <span
-                              className="pill"
-                              style={{
-                                background: 'rgba(245, 158, 11, 0.18)',
-                                color: '#fbbf24',
-                                border: '1px solid rgba(245, 158, 11, 0.35)',
-                                fontSize: '10px',
-                                padding: '1px 6px',
-                                fontWeight: 700
-                              }}
-                              title={`Caution / Pullback (Yellow Light)\nQQQ Close: $${cand.market_index_close ?? '-'}\nStack: ${cand.market_stack ?? '-'}`}
-                            >
-                              🟡 Caution
-                            </span>
-                          )}
-                          {cand.market_regime === 'BEARISH' && (
-                            <span
-                              className="pill"
-                              style={{
-                                background: 'rgba(244, 63, 94, 0.18)',
-                                color: '#fb7185',
-                                border: '1px solid rgba(244, 63, 94, 0.35)',
-                                fontSize: '10px',
-                                padding: '1px 6px',
-                                fontWeight: 700
-                              }}
-                              title={`High Risk / Distribution (Red Light)\nQQQ Close: $${cand.market_index_close ?? '-'}\nStack: ${cand.market_stack ?? '-'}`}
-                            >
-                              🔴 Bearish
-                            </span>
-                          )}
-                          {!['BULLISH', 'CAUTION', 'BEARISH'].includes(cand.market_regime) && (
-                            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>-</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Right Column: Model Book Chart Reviewer */}
-        <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      {/* 4. Split-Screen Layout: Interactive Model Book Chart (Left) + Master Table (Right) */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr minmax(320px, 28%)', gap: '16px', alignItems: 'start' }}>
+        {/* Left Column: Model Book Chart Reviewer */}
+        <div className="glass-card" style={{ minWidth: 0, padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {selectedCandidate ? (
             <>
               {/* Active Winner Banner */}
@@ -2122,6 +1918,277 @@ export default function ModelBookTab({
             </div>
           )}
         </div>
+
+        {/* Right Column: Candidates & Winners Table */}
+        <div className="glass-card" style={{ minWidth: 0, padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* Table Header Controls */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            {/* View Mode Pills: Winners vs All */}
+            <div style={{ display: 'flex', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '6px', padding: '2px' }}>
+              <button
+                onClick={() => setViewMode('winners')}
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  backgroundColor: viewMode === 'winners' ? 'var(--accent-color)' : 'transparent',
+                  color: viewMode === 'winners' ? '#080b11' : 'var(--text-secondary)',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                🏆 Winners Only ({scanResult?.winners?.length || 0})
+              </button>
+              <button
+                onClick={() => setViewMode('all')}
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  backgroundColor: viewMode === 'all' ? 'var(--accent-color)' : 'transparent',
+                  color: viewMode === 'all' ? '#080b11' : 'var(--text-secondary)',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                All Setups ({scanResult?.all_candidates?.length || 0})
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {/* Sector filter */}
+              <select
+                value={selectedSector}
+                onChange={e => {
+                  setSelectedSector(e.target.value);
+                  setSelectedCandidate(null);
+                }}
+                style={{
+                  padding: '4px 8px',
+                  backgroundColor: 'rgba(0,0,0,0.3)',
+                  border: selectedSector !== 'ALL' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  color: selectedSector !== 'ALL' ? '#38bdf8' : 'var(--text-primary)',
+                  fontSize: '12px',
+                  fontWeight: selectedSector !== 'ALL' ? '600' : '400',
+                  cursor: 'pointer'
+                }}
+                title="Filter candidates by sector"
+              >
+                <option value="ALL">
+                  All Sectors ({viewMode === 'winners' ? (scanResult?.winners?.length || 0) : (scanResult?.all_candidates?.length || 0)})
+                </option>
+                {sectorCounts.map(({ sector, count }) => (
+                  <option key={sector} value={sector}>
+                    {sector} ({count})
+                  </option>
+                ))}
+              </select>
+
+              {/* Market Tape filter */}
+              <select
+                value={selectedRegime}
+                onChange={e => setSelectedRegime(e.target.value)}
+                style={{
+                  padding: '4px 8px',
+                  backgroundColor: 'rgba(0,0,0,0.3)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  color: selectedRegime === 'BULLISH' ? '#34d399' : (selectedRegime === 'BEARISH' ? '#fb7185' : (selectedRegime === 'CAUTION' ? '#fbbf24' : 'var(--text-primary)')),
+                  fontSize: '12px',
+                  fontWeight: selectedRegime !== 'ALL' ? '600' : '400',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="ALL">All Market Tapes</option>
+                <option value="BULLISH">🟢 Bullish Tape</option>
+                <option value="CAUTION">🟡 Caution Tape</option>
+                <option value="BEARISH">🔴 Bearish Tape</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Search bar & sub-header */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <input
+              type="text"
+              placeholder="Search ticker or company name..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '6px 12px',
+                backgroundColor: 'rgba(0,0,0,0.25)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                fontSize: '12.5px'
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-muted)', padding: '0 2px' }}>
+              <span>Showing {displayedCandidates.length} setups</span>
+              <span>Use ↑ / ↓ arrow keys to flip</span>
+            </div>
+          </div>
+
+          {/* Table Container */}
+          <div className="custom-scrollbar" style={{ height: '600px', maxHeight: '600px', overflowX: 'hidden', overflowY: 'auto', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'rgba(0, 0, 0, 0.2)' }}>
+            <table className="data-table compact-table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed' }}>
+              <thead>
+                <tr>
+                  <th
+                    onClick={() => handleSort('symbol')}
+                    style={{
+                      cursor: 'pointer',
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 10,
+                      backgroundColor: '#111827',
+                      borderBottom: '1px solid var(--border-color)',
+                      width: '34%',
+                      padding: '8px 10px',
+                      whiteSpace: 'nowrap',
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    Ticker {sortField === 'symbol' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+                  </th>
+                  <th
+                    onClick={() => handleSort('date')}
+                    style={{
+                      cursor: 'pointer',
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 10,
+                      backgroundColor: '#111827',
+                      borderBottom: '1px solid var(--border-color)',
+                      width: '36%',
+                      padding: '8px 6px',
+                      whiteSpace: 'nowrap',
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    Setup {sortField === 'date' || sortField === 'setup_date' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+                  </th>
+                  <th
+                    onClick={() => handleSort('market_regime')}
+                    style={{
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 10,
+                      backgroundColor: '#111827',
+                      borderBottom: '1px solid var(--border-color)',
+                      width: '30%',
+                      padding: '8px 6px',
+                      whiteSpace: 'nowrap',
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    Tape {sortField === 'market_regime' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayedCandidates.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                      {loading ? 'Analyzing historical setups and trade paths...' : 'No setups found matching criteria.'}
+                    </td>
+                  </tr>
+                ) : (
+                  displayedCandidates.map(cand => {
+                    const candDate = cand.setup_date || cand.date;
+                    const isSelected = selectedCandidate && selectedCandidate.symbol === cand.symbol && (selectedCandidate.setup_date || selectedCandidate.date) === candDate;
+                    const isWinner = cand.hit_target;
+
+                    return (
+                      <tr
+                        key={`${cand.symbol}_${candDate}`}
+                        ref={isSelected ? selectedCandidateRowRef : null}
+                        onClick={() => handleSelectCandidate(cand)}
+                        style={{
+                          backgroundColor: isSelected ? 'rgba(16, 185, 129, 0.18)' : 'transparent',
+                          boxShadow: isSelected ? 'inset 3px 0 0 var(--accent-color)' : 'none',
+                          cursor: 'pointer',
+                          transition: 'background-color 0.12s ease'
+                        }}
+                      >
+                        <td style={{ padding: '8px 10px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', boxSizing: 'border-box' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <span style={{ fontWeight: '700', color: isWinner ? '#34d399' : (cand.trade_return_pct > 0 ? 'var(--text-primary)' : 'var(--text-secondary)') }}>
+                              {cand.symbol}
+                            </span>
+                            {isWinner && <span title="Hit Profit Target" style={{ fontSize: '10px' }}>🏆</span>}
+                          </div>
+                        </td>
+                        <td style={{ padding: '8px 6px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', boxSizing: 'border-box' }}>{candDate}</td>
+
+                        {/* Market Tape Column */}
+                        <td style={{ textAlign: 'center' }}>
+                          {cand.market_regime === 'BULLISH' && (
+                            <span
+                              className="pill"
+                              style={{
+                                background: 'rgba(16, 185, 129, 0.18)',
+                                color: '#34d399',
+                                border: '1px solid rgba(16, 185, 129, 0.35)',
+                                fontSize: '10px',
+                                padding: '1px 6px',
+                                fontWeight: 700
+                              }}
+                              title={`Bullish Uptrend (Green Light)\nQQQ Close: $${cand.market_index_close ?? '-'}\nStack: ${cand.market_stack ?? '-'}`}
+                            >
+                              🟢 Bullish
+                            </span>
+                          )}
+                          {cand.market_regime === 'CAUTION' && (
+                            <span
+                              className="pill"
+                              style={{
+                                background: 'rgba(245, 158, 11, 0.18)',
+                                color: '#fbbf24',
+                                border: '1px solid rgba(245, 158, 11, 0.35)',
+                                fontSize: '10px',
+                                padding: '1px 6px',
+                                fontWeight: 700
+                              }}
+                              title={`Caution / Pullback (Yellow Light)\nQQQ Close: $${cand.market_index_close ?? '-'}\nStack: ${cand.market_stack ?? '-'}`}
+                            >
+                              🟡 Caution
+                            </span>
+                          )}
+                          {cand.market_regime === 'BEARISH' && (
+                            <span
+                              className="pill"
+                              style={{
+                                background: 'rgba(244, 63, 94, 0.18)',
+                                color: '#fb7185',
+                                border: '1px solid rgba(244, 63, 94, 0.35)',
+                                fontSize: '10px',
+                                padding: '1px 6px',
+                                fontWeight: 700
+                              }}
+                              title={`High Risk / Distribution (Red Light)\nQQQ Close: $${cand.market_index_close ?? '-'}\nStack: ${cand.market_stack ?? '-'}`}
+                            >
+                              🔴 Bearish
+                            </span>
+                          )}
+                          {!['BULLISH', 'CAUTION', 'BEARISH'].includes(cand.market_regime) && (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>-</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </>
   ) : (
@@ -2193,111 +2260,10 @@ export default function ModelBookTab({
         </div>
       </div>
 
-      {/* Split View: Left List + Right Chart & Notes */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(310px, 28%) 1fr', gap: '16px', alignItems: 'stretch' }}>
-        {/* Left Column: Saved Trades List */}
-        <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
-              Saved Setups
-            </span>
-            <span style={{ fontSize: '11px', color: '#38bdf8', fontWeight: '600' }}>
-              {filteredSavedTrades.length} Entries
-            </span>
-          </div>
-
-          {/* Saved Trades Table */}
-          <div className="custom-scrollbar" style={{ height: '640px', maxHeight: '640px', overflowX: 'auto', overflowY: 'auto', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'rgba(0, 0, 0, 0.15)' }}>
-            <table className="data-table compact-table" style={{ width: '100%', fontSize: '12px' }}>
-              <thead>
-                <tr>
-                  <th>Ticker</th>
-                  <th>Date</th>
-                  <th style={{ textAlign: 'center' }}>Tape</th>
-                  <th style={{ width: '28px' }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredSavedTrades.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} style={{ textAlign: 'center', padding: '30px 15px', color: 'var(--text-muted)' }}>
-                      {loadingSavedTrades
-                        ? 'Loading saved trades...'
-                        : (savedTrades.length === 0
-                            ? 'No saved trades yet. Save golden setups from the Study & Scanner tab!'
-                            : 'No saved trades match the search/filter.')}
-                    </td>
-                  </tr>
-                ) : (
-                  filteredSavedTrades.map(trade => {
-                    const isSelected = selectedSavedTrade && selectedSavedTrade.id === trade.id;
-
-                    return (
-                      <tr
-                        key={trade.id}
-                        onClick={() => handleSelectSavedTrade(trade)}
-                        style={{
-                          backgroundColor: isSelected ? 'rgba(56, 189, 248, 0.15)' : 'transparent',
-                          borderLeft: isSelected ? '3px solid #38bdf8' : '3px solid transparent',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <td>
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>
-                              {trade.symbol}
-                            </span>
-                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                              {trade.setup_name || trade.setup_type}
-                            </span>
-                            {trade.notes && (
-                              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontStyle: 'italic', maxWidth: '130px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: '2px' }} title={trade.notes}>
-                                📝 {trade.notes}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td style={{ color: 'var(--text-secondary)', fontSize: '11px', whiteSpace: 'nowrap' }}>
-                          {trade.setup_date}
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          {trade.market_regime === 'BULLISH' && <span title="Bullish Tape">🟢</span>}
-                          {trade.market_regime === 'CAUTION' && <span title="Caution Tape">🟡</span>}
-                          {trade.market_regime === 'BEARISH' && <span title="Bearish Tape">🔴</span>}
-                          {!['BULLISH', 'CAUTION', 'BEARISH'].includes(trade.market_regime) && <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>-</span>}
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteSavedTrade(trade.id);
-                            }}
-                            title="Delete from saved model book"
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              color: 'var(--text-muted)',
-                              cursor: 'pointer',
-                              fontSize: '13px',
-                              padding: '2px 4px'
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.color = '#fb7185'}
-                            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
-                          >
-                            🗑️
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Right Column: Chart & Study Notes */}
-        <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', minHeight: '650px' }}>
+      {/* Split View: Left Chart & Notes + Right List */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr minmax(320px, 28%)', gap: '16px', alignItems: 'start' }}>
+        {/* Left Column: Chart & Study Notes */}
+        <div className="glass-card" style={{ minWidth: 0, padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', minHeight: '650px' }}>
           {selectedSavedTrade ? (
             <>
               {/* Header Banner */}
@@ -2584,10 +2550,113 @@ export default function ModelBookTab({
               <p style={{ margin: 0, fontSize: '13.5px', maxWidth: '450px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                 {savedTrades.length === 0
                   ? 'You have not saved any trades yet. Switch over to the "Study & Scanner" tab, find an exemplary setup, and click "☆ Save to Model Book" to add it here.'
-                  : 'Select a saved trade from the list on the left to review its textbook chart and notes.'}
+                  : 'Select a saved trade from the list on the right to review its textbook chart and notes.'}
               </p>
             </div>
           )}
+        </div>
+
+        {/* Right Column: Saved Trades List */}
+        <div className="glass-card" style={{ minWidth: 0, padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
+              Saved Setups
+            </span>
+            <span style={{ fontSize: '11px', color: '#38bdf8', fontWeight: '600' }}>
+              {filteredSavedTrades.length} Entries
+            </span>
+          </div>
+
+          {/* Saved Trades Table */}
+          <div className="custom-scrollbar" style={{ height: '640px', maxHeight: '640px', overflowX: 'hidden', overflowY: 'auto', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'rgba(0, 0, 0, 0.2)' }}>
+            <table className="data-table compact-table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed' }}>
+              <thead>
+                <tr>
+                  <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#111827', borderBottom: '1px solid var(--border-color)', width: '42%', padding: '8px 10px', whiteSpace: 'nowrap', boxSizing: 'border-box' }}>Ticker</th>
+                  <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#111827', borderBottom: '1px solid var(--border-color)', width: '30%', padding: '8px 6px', whiteSpace: 'nowrap', boxSizing: 'border-box' }}>Date</th>
+                  <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#111827', borderBottom: '1px solid var(--border-color)', width: '18%', textAlign: 'center', padding: '8px 6px', whiteSpace: 'nowrap', boxSizing: 'border-box' }}>Tape</th>
+                  <th style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#111827', borderBottom: '1px solid var(--border-color)', width: '10%', textAlign: 'center', padding: '8px 4px', whiteSpace: 'nowrap', boxSizing: 'border-box' }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSavedTrades.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={{ textAlign: 'center', padding: '30px 15px', color: 'var(--text-muted)' }}>
+                      {loadingSavedTrades
+                        ? 'Loading saved trades...'
+                        : (savedTrades.length === 0
+                            ? 'No saved trades yet. Save golden setups from the Study & Scanner tab!'
+                            : 'No saved trades match the search/filter.')}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredSavedTrades.map(trade => {
+                    const isSelected = selectedSavedTrade && selectedSavedTrade.id === trade.id;
+
+                    return (
+                      <tr
+                        key={trade.id}
+                        ref={isSelected ? selectedSavedTradeRowRef : null}
+                        onClick={() => handleSelectSavedTrade(trade)}
+                        style={{
+                          backgroundColor: isSelected ? 'rgba(56, 189, 248, 0.18)' : 'transparent',
+                          boxShadow: isSelected ? 'inset 3px 0 0 #38bdf8' : 'none',
+                          cursor: 'pointer',
+                          transition: 'background-color 0.12s ease'
+                        }}
+                      >
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>
+                              {trade.symbol}
+                            </span>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                              {trade.setup_name || trade.setup_type}
+                            </span>
+                            {trade.notes && (
+                              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontStyle: 'italic', maxWidth: '130px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: '2px' }} title={trade.notes}>
+                                📝 {trade.notes}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ color: 'var(--text-secondary)', fontSize: '11px', whiteSpace: 'nowrap' }}>
+                          {trade.setup_date}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          {trade.market_regime === 'BULLISH' && <span title="Bullish Tape">🟢</span>}
+                          {trade.market_regime === 'CAUTION' && <span title="Caution Tape">🟡</span>}
+                          {trade.market_regime === 'BEARISH' && <span title="Bearish Tape">🔴</span>}
+                          {!['BULLISH', 'CAUTION', 'BEARISH'].includes(trade.market_regime) && <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>-</span>}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteSavedTrade(trade.id);
+                            }}
+                            title="Delete from saved model book"
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: 'var(--text-muted)',
+                              cursor: 'pointer',
+                              fontSize: '13px',
+                              padding: '2px 4px'
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.color = '#fb7185'}
+                            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
+                          >
+                            🗑️
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>

@@ -10,6 +10,17 @@ from application.engine.market_regime import get_qullamaggie_market_summary, get
 
 logger = logging.getLogger(__name__)
 
+COMPANY_DESCRIPTIONS: Dict[str, str] = {
+    "AAPL": "Apple Inc. designs consumer electronics such as the iPhone, Mac, iPad, and Watch, along with its own software and semiconductors, and earns most of its revenue from iPhone sales, supplemented by Services, Wearables, and iPad.",
+    "MSFT": "Microsoft Corporation develops, licenses, and supports a range of software products, services, devices, and solutions worldwide, including Azure cloud infrastructure, Microsoft 365, Windows, and gaming.",
+    "GOOG": "Alphabet Inc. offers products and platforms in the United States, Europe, the Middle East, Africa, the Asia-Pacific, Canada, and Latin America. It operates through Google Services, Google Cloud, and Other Bets segments.",
+    "GOOGL": "Alphabet Inc. offers products and platforms in the United States, Europe, the Middle East, Africa, the Asia-Pacific, Canada, and Latin America. It operates through Google Services, Google Cloud, and Other Bets segments.",
+    "AMZN": "Amazon.com, Inc. focuses on retail sale of consumer products, advertising, and subscriptions through online and physical stores. It also manufactures and sells electronic devices and develops media content, operating the world's leading cloud platform AWS.",
+    "NVDA": "NVIDIA Corporation provides graphics, computing and networking solutions. It operates in Compute & Networking and Graphics segments, pioneering accelerated computing to tackle challenges in AI, high performance computing, and gaming.",
+    "META": "Meta Platforms, Inc. engages in the development of products that enable people to connect and share through mobile devices, personal computers, virtual reality headsets, and wearables worldwide.",
+    "TSLA": "Tesla, Inc. designs, develops, manufactures, sells, and leases fully electric vehicles, energy generation and storage systems, and offers services related to its products and autonomous driving AI technologies.",
+}
+
 
 class DatabaseService:
     def __init__(self, config_service):
@@ -32,6 +43,7 @@ class DatabaseService:
             rows = conn.execute("""
                 SELECT DISTINCT CAST(date AS VARCHAR) as dt 
                 FROM daily_bars 
+                WHERE date <= CURRENT_DATE
                 ORDER BY dt DESC
             """).fetchall()
             return [r[0] for r in rows if r[0]]
@@ -954,10 +966,9 @@ class DatabaseService:
                         ))
                     ]
 
-            # If low cheat was not precomputed on this date, filter by dynamically computed low_cheat_is_setup
+            # If low cheat was requested, ensure low_cheat_is_setup is True
             if require_low_cheat and not enable_cheat:
-                if not has_precomputed_low_cheat:
-                    candidates = [c for c in candidates if c.get("low_cheat_is_setup")]
+                candidates = [c for c in candidates if c.get("low_cheat_is_setup")]
                 min_bp = float(f.get("min_base_position", 0.0))
                 max_bp = float(f.get("max_base_position", 50.0))
                 candidates = [
@@ -1236,6 +1247,11 @@ class DatabaseService:
             if not meta:
                 return {}
                 
+            company_desc = COMPANY_DESCRIPTIONS.get(symbol)
+            if not company_desc:
+                c_name = (meta[2] or symbol).split(" Common Stock")[0].split(" Class")[0]
+                company_desc = f"{c_name} operates in the {meta[6] or 'Equity'} sector ({meta[7] or 'Diversified'}), listed on the {meta[1]}."
+
             meta_dict = {
                 "symbol": meta[0],
                 "exchange": meta[1],
@@ -1245,7 +1261,8 @@ class DatabaseService:
                 "ipo_date": meta[5] if len(meta) > 5 else None,
                 "sector": meta[6] if len(meta) > 6 else None,
                 "industry": meta[7] if len(meta) > 7 else None,
-                "next_earnings_date": meta[8] if len(meta) > 8 else None
+                "next_earnings_date": meta[8] if len(meta) > 8 else None,
+                "description": company_desc
             }
             
             # Fundamentals
@@ -2183,32 +2200,53 @@ class DatabaseService:
                 return []
 
             query = """
+                WITH target_symbols AS (
+                    SELECT symbol, added_at FROM watchlist_items WHERE watchlist_id = ?
+                ),
+                ranked_bars AS (
+                    SELECT 
+                        db.*,
+                        ROW_NUMBER() OVER (PARTITION BY db.symbol ORDER BY db.date DESC) as rn
+                    FROM daily_bars db
+                    JOIN target_symbols ts ON db.symbol = ts.symbol
+                ),
+                latest_bars AS (
+                    SELECT * FROM ranked_bars WHERE rn = 1
+                ),
+                prev_bars AS (
+                    SELECT symbol, close as prev_close FROM ranked_bars WHERE rn = 2
+                )
                 SELECT 
                     s.symbol,
                     s.name,
                     s.exchange,
                     s.sector,
-                    b.close,
-                    b.rs_rank,
-                    b.vol_50d_ma,
-                    b.volume,
-                    wi.added_at,
-                    COALESCE(b.dollar_vol_50d_ma, b.close * b.vol_50d_ma) as dollar_vol_50d_ma,
+                    s.industry,
+                    lb.close,
+                    lb.rs_rank,
+                    lb.vol_50d_ma,
+                    lb.volume,
+                    ts.added_at,
+                    COALESCE(lb.dollar_vol_50d_ma, lb.close * lb.vol_50d_ma) as dollar_vol_50d_ma,
                     s.active,
-                    b.date as last_trade_date
-                FROM watchlist_items wi
-                JOIN symbols s ON wi.symbol = s.symbol
-                LEFT JOIN (
-                    SELECT db.*
-                    FROM daily_bars db
-                    INNER JOIN (
-                        SELECT symbol, MAX(date) as max_date
-                        FROM daily_bars
-                        GROUP BY symbol
-                    ) latest ON db.symbol = latest.symbol AND db.date = latest.max_date
-                ) b ON s.symbol = b.symbol
-                WHERE wi.watchlist_id = ?
-                ORDER BY wi.added_at DESC
+                    lb.date as last_trade_date,
+                    ROUND((lb.close - pb.prev_close) / NULLIF(pb.prev_close, 0) * 100.0, 2) as chg_pct,
+                    ROUND(lb.volume / NULLIF(lb.vol_50d_ma, 0) * 100.0, 0) as rvol_pct,
+                    lb.adr_20d,
+                    lb.dist_from_52w_high,
+                    lb.high_52w,
+                    lb.low_52w,
+                    lb.ema_10,
+                    lb.ema_20,
+                    lb.ema_50,
+                    lb.sma_200,
+                    lb.vcp_is_setup,
+                    lb.low_cheat_is_setup
+                FROM target_symbols ts
+                JOIN symbols s ON ts.symbol = s.symbol
+                LEFT JOIN latest_bars lb ON s.symbol = lb.symbol
+                LEFT JOIN prev_bars pb ON s.symbol = pb.symbol
+                ORDER BY ts.added_at DESC
             """
             rows = conn.execute(query, [watchlist_id]).fetchall()
             return [
@@ -2217,17 +2255,87 @@ class DatabaseService:
                     "name": row[1],
                     "exchange": row[2],
                     "sector": row[3],
-                    "close": row[4],
-                    "rs_rank": row[5],
-                    "vol_50d_ma": row[6],
-                    "volume": row[7],
-                    "added_at": str(row[8]) if row[8] else None,
-                    "dollar_vol_50d_ma": row[9],
-                    "active": bool(row[10]) if len(row) > 10 and row[10] is not None else True,
-                    "last_trade_date": str(row[11]) if len(row) > 11 and row[11] else None
+                    "industry": row[4],
+                    "close": row[5],
+                    "rs_rank": row[6],
+                    "vol_50d_ma": row[7],
+                    "volume": row[8],
+                    "added_at": str(row[9]) if row[9] else None,
+                    "dollar_vol_50d_ma": row[10],
+                    "active": bool(row[11]) if len(row) > 11 and row[11] is not None else True,
+                    "last_trade_date": str(row[12]) if len(row) > 12 and row[12] else None,
+                    "chg_pct": row[13],
+                    "rvol_pct": row[14],
+                    "adr_20d": row[15],
+                    "dist_from_52w_high": row[16],
+                    "high_52w": row[17],
+                    "low_52w": row[18],
+                    "ema_10": row[19],
+                    "ema_20": row[20],
+                    "ema_50": row[21],
+                    "sma_200": row[22],
+                    "vcp_is_setup": row[23],
+                    "low_cheat_is_setup": row[24]
                 }
                 for row in rows
             ]
+
+    def get_industry_peers(self, symbol: str, limit: int = 6) -> Dict[str, Any]:
+        """Retrieve peer stocks in the same industry ranked by RS."""
+        symbol = symbol.strip().upper()
+        with self.get_read_only_conn() as conn:
+            meta = conn.execute(
+                "SELECT industry, sector FROM symbols WHERE symbol = ?", [symbol]
+            ).fetchone()
+            if not meta or not meta[0]:
+                return {"symbol": symbol, "industry": None, "sector": None, "peers": []}
+            industry = meta[0]
+            sector = meta[1]
+
+            query = """
+                WITH ranked_bars AS (
+                    SELECT 
+                        db.symbol, db.close, db.rs_rank, db.volume,
+                        ROW_NUMBER() OVER (PARTITION BY db.symbol ORDER BY db.date DESC) as rn
+                    FROM daily_bars db
+                    JOIN symbols s ON db.symbol = s.symbol
+                    WHERE s.industry = ? AND s.active = true AND db.close >= 1.0
+                ),
+                latest_bars AS (
+                    SELECT * FROM ranked_bars WHERE rn = 1
+                ),
+                prev_bars AS (
+                    SELECT symbol, close as prev_close FROM ranked_bars WHERE rn = 2
+                )
+                SELECT 
+                    s.symbol,
+                    s.name,
+                    lb.close,
+                    lb.rs_rank,
+                    ROUND((lb.close - pb.prev_close) / NULLIF(pb.prev_close, 0) * 100.0, 2) as chg_pct
+                FROM latest_bars lb
+                JOIN symbols s ON lb.symbol = s.symbol
+                LEFT JOIN prev_bars pb ON lb.symbol = pb.symbol
+                ORDER BY lb.rs_rank DESC NULLS LAST, lb.close DESC
+                LIMIT ?
+            """
+            rows = conn.execute(query, [industry, limit]).fetchall()
+            peers = [
+                {
+                    "symbol": r[0],
+                    "name": r[1],
+                    "close": r[2],
+                    "rs_rank": r[3],
+                    "chg_pct": r[4]
+                }
+                for r in rows
+            ]
+            return {
+                "symbol": symbol,
+                "industry": industry,
+                "sector": sector,
+                "peers": peers
+            }
 
     def add_watchlist_item(self, watchlist_id: int, symbol: str) -> bool:
         db_path = self.get_db_path()
@@ -2244,12 +2352,40 @@ class DatabaseService:
             conn.execute("INSERT OR IGNORE INTO watchlist_items (watchlist_id, symbol) VALUES (?, ?)", [watchlist_id, symbol_upper])
             return True
 
+    def add_watchlist_items_batch(self, watchlist_id: int, symbols: List[str]) -> int:
+        db_path = self.get_db_path()
+        with duckdb.connect(db_path) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS watchlist_items (
+                    watchlist_id INTEGER NOT NULL,
+                    symbol VARCHAR NOT NULL,
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (watchlist_id, symbol)
+                );
+            """)
+            cleaned = list(set(s.strip().upper() for s in symbols if s and s.strip()))
+            if not cleaned:
+                return 0
+            rows = [(watchlist_id, s) for s in cleaned]
+            conn.executemany("INSERT OR IGNORE INTO watchlist_items (watchlist_id, symbol) VALUES (?, ?)", rows)
+            return len(cleaned)
+
     def remove_watchlist_item(self, watchlist_id: int, symbol: str) -> bool:
         db_path = self.get_db_path()
         with duckdb.connect(db_path) as conn:
             symbol_upper = symbol.strip().upper()
             conn.execute("DELETE FROM watchlist_items WHERE watchlist_id = ? AND symbol = ?", [watchlist_id, symbol_upper])
             return True
+
+    def remove_watchlist_items_batch(self, watchlist_id: int, symbols: List[str]) -> int:
+        db_path = self.get_db_path()
+        with duckdb.connect(db_path) as conn:
+            cleaned = list(set(s.strip().upper() for s in symbols if s and s.strip()))
+            if not cleaned:
+                return 0
+            rows = [(watchlist_id, s) for s in cleaned]
+            conn.executemany("DELETE FROM watchlist_items WHERE watchlist_id = ? AND symbol = ?", rows)
+            return len(cleaned)
 
     def clear_watchlist_items(self, watchlist_id: int) -> bool:
         db_path = self.get_db_path()

@@ -346,6 +346,9 @@ class YFinanceProvider(AbstractDataProvider):
                     sym_df = self._adjust_unadjusted_splits(sym_df, symbol=sym)
 
                     sym_df = sym_df.dropna(subset=["close"])
+                    # Filter out future placeholder bars
+                    today_dt = pd.Timestamp.now().date()
+                    sym_df = sym_df[sym_df["date"] <= today_dt]
 
                     if not sym_df.empty:
                         if "volume" in sym_df.columns:

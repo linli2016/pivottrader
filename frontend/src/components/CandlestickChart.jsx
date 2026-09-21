@@ -1083,7 +1083,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           fixRightEdge: false,
         },
         width: chartContainerRef.current.clientWidth || 700,
-        height: height,
+        height: typeof height === 'number' ? height : (chartContainerRef.current.clientHeight || 400),
       });
 
       // Configure main price scale with arithmetic (linear) scale (mode: 0) by default and bottom margin for volume

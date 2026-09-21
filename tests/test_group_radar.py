@@ -27,11 +27,14 @@ class TestThemeService(unittest.TestCase):
 
     def test_default_themes_seeded(self):
         themes = self.service.load_themes()
-        self.assertGreaterEqual(len(themes), 10)
+        self.assertEqual(len(themes), 24)
         theme_names = [t["name"] for t in themes]
         self.assertIn("Crypto & Blockchain", theme_names)
-        self.assertIn("AI & Data Center Infrastructure", theme_names)
-        self.assertIn("Nuclear & Uranium Power", theme_names)
+        self.assertIn("AI Compute Silicon", theme_names)
+        self.assertIn("AI Cloud & Data Centers", theme_names)
+        self.assertIn("Nuclear Renaissance", theme_names)
+        self.assertIn("Uranium & Nuclear Fuel", theme_names)
+        self.assertIn("Robotics & Automation", theme_names)
 
     def test_create_and_get_theme(self):
         created = self.service.create_or_update_theme(

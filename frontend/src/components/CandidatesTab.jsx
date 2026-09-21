@@ -242,7 +242,7 @@ export default function CandidatesTab({
 
   const activeSetupName = React.useMemo(() => {
     if (currentSetup?.sub_setups && activeExpression) {
-      const activeSub = currentSetup.sub_setups.find(s => s.expression === activeExpression);
+      const activeSub = currentSetup.sub_setups.find(s => s.expression?.trim() === activeExpression?.trim());
       if (activeSub?.label || activeSub?.name) return activeSub.label || activeSub.name;
     }
     if (currentSetup?.name) return currentSetup.name;
@@ -438,6 +438,110 @@ export default function CandidatesTab({
     }
   };
 
+  const [isProcessingAll, setIsProcessingAll] = React.useState(false);
+  const [batchFeedback, setBatchFeedback] = React.useState(null);
+
+  const allDisplayedAreAdded = React.useMemo(() => {
+    if (!displayedCandidates || displayedCandidates.length === 0) return false;
+    return displayedCandidates.every(c => c.symbol && activeWatchlistSymbols.has(c.symbol.toUpperCase()));
+  }, [displayedCandidates, activeWatchlistSymbols]);
+
+  const handleToggleAllWatchlist = async () => {
+    if (displayedCandidates.length === 0) {
+      alert("No candidate stocks to process.");
+      return;
+    }
+    const symbols = displayedCandidates.map(c => c.symbol).filter(Boolean);
+    if (symbols.length === 0) return;
+
+    let wlId = targetWatchlistId;
+    if (!wlId) {
+      if (watchlists && watchlists.length > 0) {
+        wlId = watchlists[0].id;
+        setTargetWatchlistId(wlId);
+      } else {
+        try {
+          const createRes = await fetch(`${API_BASE}/api/watchlists`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: 'Screen Candidates' })
+          });
+          if (createRes.ok) {
+            const created = await createRes.json();
+            wlId = created.id;
+            setTargetWatchlistId(wlId);
+            if (fetchWatchlists) fetchWatchlists();
+          } else {
+            alert("Please create a watchlist first.");
+            return;
+          }
+        } catch (e) {
+          console.error("Error creating watchlist:", e);
+          alert("Please create a watchlist first.");
+          return;
+        }
+      }
+    }
+
+    const wlObj = (watchlists || []).find(w => w.id === wlId);
+    const wlName = wlObj ? wlObj.name : 'Watchlist';
+
+    if (allDisplayedAreAdded) {
+      const confirmRemove = window.confirm(
+        `Remove all ${symbols.length} candidate stocks from '${wlName}'?`
+      );
+      if (!confirmRemove) return;
+
+      setIsProcessingAll(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/watchlists/${wlId}/items/remove-batch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbols }),
+        });
+        if (res.ok) {
+          const nextSet = new Set(activeWatchlistSymbols);
+          symbols.forEach(s => nextSet.delete(s.toUpperCase()));
+          setActiveWatchlistSymbols(nextSet);
+          if (fetchWatchlists) fetchWatchlists();
+          setBatchFeedback(`✓ Removed`);
+          setTimeout(() => setBatchFeedback(null), 2500);
+        } else {
+          alert("Failed to batch remove candidates from watchlist.");
+        }
+      } catch (e) {
+        console.error("Error removing candidates from watchlist:", e);
+        alert(`Error: ${e.message}`);
+      } finally {
+        setIsProcessingAll(false);
+      }
+    } else {
+      setIsProcessingAll(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/watchlists/${wlId}/items/batch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbols }),
+        });
+        if (res.ok) {
+          const nextSet = new Set(activeWatchlistSymbols);
+          symbols.forEach(s => nextSet.add(s.toUpperCase()));
+          setActiveWatchlistSymbols(nextSet);
+          if (fetchWatchlists) fetchWatchlists();
+          setBatchFeedback(`✓ Added`);
+          setTimeout(() => setBatchFeedback(null), 2500);
+        } else {
+          alert("Failed to batch add candidates to watchlist.");
+        }
+      } catch (e) {
+        console.error("Error adding all candidates to watchlist:", e);
+        alert(`Error: ${e.message}`);
+      } finally {
+        setIsProcessingAll(false);
+      }
+    }
+  };
+
   const handleExportTradingView = () => {
     if (displayedCandidates.length === 0) {
       alert("No candidates to export!");
@@ -474,7 +578,14 @@ export default function CandidatesTab({
                 <button
                   key={setup.id}
                   type="button"
-                  onClick={() => onSelectSetup(setup.id)}
+                  onClick={() => {
+                    if (setup.default_sub_id && setup.sub_setups?.length > 0) {
+                      const defSub = setup.sub_setups.find(s => s.id === setup.default_sub_id);
+                      onSelectSetup(setup.id, defSub?.expression || setup.expression);
+                    } else {
+                      onSelectSetup(setup.id, setup.expression);
+                    }
+                  }}
                   title={setup.description || ''}
                   style={{
                     padding: '5px 12px',
@@ -648,7 +759,7 @@ export default function CandidatesTab({
                 {currentSetup.sub_title || `${currentSetup.name} Presets:`}
               </span>
               {currentSetup.sub_setups.map(sub => {
-                const isActive = activeExpression === sub.expression;
+                const isActive = activeExpression?.trim() === sub.expression?.trim();
                 const activeThemeColor = activeSetupKey === 'momentum' ? '#a855f7' : (activeSetupKey === 'vcp' ? '#10b981' : '#38bdf8');
                 const activeBg = activeSetupKey === 'momentum' ? 'rgba(168, 85, 247, 0.3)' : (activeSetupKey === 'vcp' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(56, 189, 248, 0.3)');
 
@@ -916,6 +1027,7 @@ export default function CandidatesTab({
                     );
                   })()}
 
+
                   {/* Header Quick Screenshot Action Button */}
                   <button
                     className="btn btn-secondary btn-sm"
@@ -1162,32 +1274,77 @@ export default function CandidatesTab({
           <div className="glass-card browse-side-col">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexShrink: 0 }}>
               <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent-color)', textTransform: 'uppercase', margin: 0 }}>
-                Candidates ({displayedCandidates.length}{selectedSector !== 'ALL' ? ` / ${filteredCandidates.length}` : ''})
+                Total ({displayedCandidates.length}{selectedSector !== 'ALL' ? ` / ${filteredCandidates.length}` : ''})
               </h4>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={handleExportTradingView}
-                disabled={displayedCandidates.length === 0}
-                title="Export to TradingView watchlist (.txt)"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: '26px',
-                  height: '26px',
-                  padding: 0,
-                  borderRadius: '6px',
-                  cursor: displayedCandidates.length > 0 ? 'pointer' : 'not-allowed',
-                  opacity: displayedCandidates.length > 0 ? 1 : 0.4,
-                  flexShrink: 0
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleToggleAllWatchlist}
+                  disabled={displayedCandidates.length === 0 || isProcessingAll}
+                  title={allDisplayedAreAdded
+                    ? `Remove all ${displayedCandidates.length} candidate stocks from '${watchlists.find(w => w.id === targetWatchlistId)?.name || 'Watchlist'}'`
+                    : `Add all ${displayedCandidates.length} candidate stocks into '${watchlists.find(w => w.id === targetWatchlistId)?.name || 'Watchlist'}'`
+                  }
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    height: '26px',
+                    padding: '0 8px',
+                    borderRadius: '6px',
+                    cursor: (displayedCandidates.length > 0 && !isProcessingAll) ? 'pointer' : 'not-allowed',
+                    opacity: (displayedCandidates.length > 0 && !isProcessingAll) ? 1 : 0.4,
+                    background: batchFeedback 
+                      ? 'rgba(16, 185, 129, 0.25)' 
+                      : (allDisplayedAreAdded ? 'rgba(244, 63, 94, 0.12)' : 'rgba(56, 189, 248, 0.12)'),
+                    border: batchFeedback 
+                      ? '1px solid #10b981' 
+                      : (allDisplayedAreAdded ? '1px solid rgba(244, 63, 94, 0.35)' : '1px solid rgba(56, 189, 248, 0.35)'),
+                    color: batchFeedback 
+                      ? '#34d399' 
+                      : (allDisplayedAreAdded ? '#fb7185' : '#38bdf8'),
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    flexShrink: 0,
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {isProcessingAll ? (
+                    '...'
+                  ) : batchFeedback ? (
+                    batchFeedback
+                  ) : allDisplayedAreAdded ? (
+                    <><span>⭐️-</span> Remove All</>
+                  ) : (
+                    <><span>⭐️+</span> Add All</>
+                  )}
+                </button>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleExportTradingView}
+                  disabled={displayedCandidates.length === 0}
+                  title="Export to TradingView watchlist (.txt)"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '26px',
+                    height: '26px',
+                    padding: 0,
+                    borderRadius: '6px',
+                    cursor: displayedCandidates.length > 0 ? 'pointer' : 'not-allowed',
+                    opacity: displayedCandidates.length > 0 ? 1 : 0.4,
+                    flexShrink: 0
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             {/* Sector Filter Dropdown */}

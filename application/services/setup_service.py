@@ -66,6 +66,14 @@ class SetupService:
                             normalized_subs.append(sub_v)
                     s_val["sub_setups"] = normalized_subs
 
+                # If default_sub_id is set, align default setup expression with default sub_setup
+                default_sub_id = s_val.get("default_sub_id")
+                if default_sub_id and isinstance(s_val.get("sub_setups"), list):
+                    for sub in s_val["sub_setups"]:
+                        if isinstance(sub, dict) and sub.get("id") == default_sub_id and sub.get("expression"):
+                            s_val["expression"] = sub["expression"]
+                            break
+
                 setups_list.append(s_val)
 
         setups_list.sort(key=lambda s: s.get("display_order", 99))
@@ -75,12 +83,15 @@ class SetupService:
             "setups": setups_list,
             "filters": {}
         }
+        self._last_mtime = os.path.getmtime(resolved_setups_path) if os.path.exists(resolved_setups_path) else 0.0
         logger.info(f"Loaded {len(setups_list)} setups from {resolved_setups_path}")
         return self._cached_config
 
     def get_setups_config(self) -> Dict[str, Any]:
-        """Returns the cached setups and filter definitions."""
-        if not self._cached_config:
+        """Returns the cached setups and filter definitions, auto-reloading if setups.yaml changed."""
+        resolved_path = self._resolve_file_path(self.yaml_path)
+        current_mtime = os.path.getmtime(resolved_path) if os.path.exists(resolved_path) else 0.0
+        if not self._cached_config or current_mtime > getattr(self, "_last_mtime", 0.0):
             return self.load_config()
         return self._cached_config
 

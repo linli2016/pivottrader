@@ -7,69 +7,124 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_THEMES = [
     {
-        "name": "Crypto & Blockchain",
-        "description": "Cryptocurrency miners, exchanges, and Bitcoin treasury infrastructure",
-        "symbols": ["MSTR", "COIN", "MARA", "RIOT", "CLSK", "CIFR", "HUT", "CORZ", "WULF", "IREN"]
+        "name": "AI Compute Silicon",
+        "description": "AI chips, accelerators, discrete GPUs, and high-speed silicon connectivity",
+        "symbols": ["NVDA", "AVGO", "AMD", "MRVL", "QCOM", "INTC", "TSM", "ALAB", "CRDO"]
     },
     {
-        "name": "AI & Data Center Infrastructure",
-        "description": "AI accelerators, optical networking, server hardware, and power suppliers",
-        "symbols": ["NVDA", "AVGO", "SMCI", "ANET", "VST", "CEG", "DELL", "MRVL", "ALAB"]
+        "name": "AI Cloud & Data Centers",
+        "description": "Hyperscalers, cloud hyperscale infrastructure, AI server builders, and networking fabric",
+        "symbols": ["MSFT", "AMZN", "GOOG", "META", "ORCL", "SMCI", "DELL", "ANET", "HPE"]
     },
     {
-        "name": "Nuclear & Uranium Power",
-        "description": "Nuclear reactors, uranium miners, small modular reactors (SMR), and clean baseload power",
-        "symbols": ["CCJ", "OKLO", "SMR", "BWXT", "TLN", "CEG", "VST"]
+        "name": "Power & Electrification",
+        "description": "Grid modernization, electrical equipment, independent power producers, and utility power",
+        "symbols": ["VST", "CEG", "GEV", "ETN", "PWR", "HUBB", "NRG", "TLN"]
     },
     {
-        "name": "GLP-1 & Obesity",
-        "description": "Weight loss therapies, GLP-1 agonists, and metabolic biopharma",
-        "symbols": ["LLY", "NVO", "VKTX", "ALT"]
+        "name": "Nuclear Renaissance",
+        "description": "Nuclear reactors, SMR technology, baseload clean energy, and nuclear plant operators",
+        "symbols": ["CCJ", "OKLO", "SMR", "BWXT", "TLN", "CEG", "VST", "NNE", "LEU", "FLR", "GEV"]
     },
     {
-        "name": "Cybersecurity",
-        "description": "Cloud security, zero-trust network access, and endpoint protection",
-        "symbols": ["CRWD", "PANW", "FTNT", "NET", "ZS"]
+        "name": "Copper",
+        "description": "Copper mining, refined cathode production, and conductive metal infrastructure",
+        "symbols": ["FCX", "SCCO", "ERO", "HBM", "TECK", "RIO"]
+    },
+    {
+        "name": "Uranium & Nuclear Fuel",
+        "description": "Uranium exploration, mining, enrichment, and nuclear fuel cycle suppliers",
+        "symbols": ["CCJ", "NXE", "UEC", "DNN", "UUUU", "URG", "EU", "LEU", "UROY"]
+    },
+    {
+        "name": "Rare Earths & Critical Minerals",
+        "description": "Neodymium, dysprosium, critical mineral refining, and strategic supply chain elements",
+        "symbols": ["MP", "LAC", "ALB", "SQM", "CRML", "NB", "AREC"]
+    },
+    {
+        "name": "Gold Miners",
+        "description": "Senior and intermediate gold producers, royalty streaming, and exploration",
+        "symbols": ["NEM", "GOLD", "AEM", "KGC", "AU", "HMY", "AGI", "EGO"]
+    },
+    {
+        "name": "Silver Miners",
+        "description": "Primary silver mining companies, silver streamers, and polymetallic producers",
+        "symbols": ["PAAS", "AG", "HL", "EXK", "FSM", "CDE"]
+    },
+    {
+        "name": "Lithium & Battery Materials",
+        "description": "Lithium brine, spodumene extraction, and EV battery cathode chemicals",
+        "symbols": ["ALB", "SQM", "LAC", "SGML"]
+    },
+    {
+        "name": "Steel & Aluminum",
+        "description": "Electric arc furnace steelmakers, flat-rolled steel, and primary aluminum producers",
+        "symbols": ["NUE", "STLD", "CLF", "AA", "RS", "CMC"]
     },
     {
         "name": "Quantum Computing",
         "description": "Quantum hardware processors, quantum algorithms, and photonic computing",
-        "symbols": ["IONQ", "RGTI", "QBTS", "QUBT"]
+        "symbols": ["IONQ", "RGTI", "QBTS", "QUBT", "ARQQ"]
     },
     {
-        "name": "Defense Tech & Drones",
-        "description": "Unmanned aerial vehicles, defense intelligence, tactical systems, and aerospace defense",
-        "symbols": ["PLTR", "KTOS", "AVAV", "RKLB", "LMT", "NOC", "LHX", "AXON"]
-    },
-    {
-        "name": "Gold & Silver Miners",
-        "description": "Precious metals exploration, gold and silver producers, and royalty streaming",
-        "symbols": ["AEM", "KGC", "PAAS", "AG", "HMY", "AU", "WPM"]
+        "name": "Memory & Storage",
+        "description": "DRAM, NAND flash memory, enterprise solid-state drives, and hard disk storage",
+        "symbols": ["MU", "WDC", "STX", "NTAP"]
     },
     {
         "name": "Semiconductor Equipment",
-        "description": "Lithography, wafer fabrication, etching, metrology, and chip test equipment",
-        "symbols": ["ASML", "AMAT", "LRCX", "KLAC", "AMKR", "TER"]
+        "description": "Wafer fab equipment, lithography, etch, deposition, and semiconductor process control",
+        "symbols": ["ASML", "AMAT", "LRCX", "KLAC", "TER"]
     },
     {
-        "name": "Neobanks & Modern Fintech",
-        "description": "Digital banking, consumer credit, alternative lending, and digital brokerages",
+        "name": "Cybersecurity",
+        "description": "Cloud security, zero-trust network access, endpoint protection, and identity governance",
+        "symbols": ["CRWD", "PANW", "FTNT", "NET", "ZS", "S", "TENB"]
+    },
+    {
+        "name": "AI Software & Data",
+        "description": "Enterprise AI platforms, cloud data warehouses, document search, and analytics software",
+        "symbols": ["PLTR", "SNOW", "AI", "MDB", "ESTC", "DDOG"]
+    },
+    {
+        "name": "Crypto & Blockchain",
+        "description": "Bitcoin treasury holdings, crypto asset exchanges, and high-efficiency proof-of-work miners",
+        "symbols": ["MSTR", "COIN", "MARA", "RIOT", "CLSK", "CIFR", "HUT", "IREN"]
+    },
+    {
+        "name": "Fintech",
+        "description": "Digital consumer banking, modern retail brokerage, point-of-sale credit, and neobanks",
         "symbols": ["SOFI", "AFRM", "UPST", "HOOD", "NU", "PYPL"]
     },
     {
-        "name": "Space & Satellite",
-        "description": "Commercial space launch, orbital satellite communications, and space technology",
-        "symbols": ["RKLB", "LUNR", "BKSY", "RDW", "PL"]
+        "name": "Space Economy",
+        "description": "Small-sat launch services, lunar landers, space manufacturing, and Earth observation",
+        "symbols": ["RKLB", "LUNR", "RDW", "BKSY", "PL", "SPCE"]
     },
     {
-        "name": "Solar & Clean Energy",
-        "description": "Solar inverters, photovoltaic systems, and clean energy storage",
-        "symbols": ["FSLR", "ENPH", "SEDG", "RUN", "NXT"]
+        "name": "Defense & Aerospace",
+        "description": "Tactical defense systems, military aircraft, autonomous loitering drones, and naval shipbuilding",
+        "symbols": ["LMT", "RTX", "NOC", "GD", "LHX", "HII", "KTOS", "AVAV"]
     },
     {
-        "name": "Homebuilders & Housing",
-        "description": "Residential home construction, building materials, and housing infrastructure",
-        "symbols": ["TOL", "LEN", "DHI", "PHM", "KBH", "BLDR"]
+        "name": "Gene Editing & Genomics",
+        "description": "CRISPR therapeutics, base editing, in-vivo gene correction, and next-gen DNA sequencing",
+        "symbols": ["CRSP", "BEAM", "NTLA", "EDIT", "PACB"]
+    },
+    {
+        "name": "GLP-1 & Obesity",
+        "description": "Incretin mimetics, GLP-1/GIP dual agonists, oral weight loss drugs, and metabolic therapies",
+        "symbols": ["LLY", "NVO", "VKTX", "ALT", "TNDM"]
+    },
+    {
+        "name": "Robotics & Automation",
+        "description": "Surgical robotics, industrial automation, machine vision, and automated testing robotics",
+        "symbols": ["ISRG", "ROK", "CGNX", "TER"]
+    },
+    {
+        "name": "EV & Autonomy",
+        "description": "Electric vehicle manufacturers, autonomous driving software, and next-gen fleet mobility",
+        "symbols": ["TSLA", "RIVN", "LCID"]
     }
 ]
 
