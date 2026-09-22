@@ -199,7 +199,7 @@ export default function StockDetailDrawer({
 
   return (
     <div className="full-page-modal-backdrop" onClick={() => setSelectedStock(null)}>
-      <div className="full-page-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="full-page-modal custom-scrollbar" onClick={(e) => e.stopPropagation()}>
         {/* KovaView Pro Header Bar */}
         <div style={{
           display: 'flex',

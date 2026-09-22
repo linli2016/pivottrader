@@ -1379,6 +1379,7 @@ export default function CandidatesTab({
             </div>
 
             <div
+              className="custom-scrollbar"
               style={{
                 flex: 1,
                 overflowY: 'auto',

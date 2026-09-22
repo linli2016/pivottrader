@@ -704,7 +704,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
           </form>
 
           {/* Symbol List Table */}
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px' }}>
               <thead>
                 <tr style={{
@@ -1112,16 +1112,19 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         {/* ======================================================== */}
         {/* COLUMN 3: RIGHT STOCK & COMPANY INFO PANEL (~340px)      */}
         {/* ======================================================== */}
-        <div style={{
-          width: '340px',
-          minWidth: '340px',
-          maxWidth: '340px',
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'var(--bg-secondary)',
-          borderLeft: '1px solid var(--border-color)',
-          overflowY: 'auto'
-        }}>
+        <div
+          className="custom-scrollbar"
+          style={{
+            width: '340px',
+            minWidth: '340px',
+            maxWidth: '340px',
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--bg-secondary)',
+            borderLeft: '1px solid var(--border-color)',
+            overflowY: 'auto'
+          }}
+        >
           {selectedStock ? (
             <>
               {/* Header: Symbol, Name & Prev/Next Arrows */}

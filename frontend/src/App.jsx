@@ -639,7 +639,7 @@ function App() {
       </div>
 
       {/* Main Content Area */}
-      <div className="main-content">
+      <div className="main-content custom-scrollbar">
         {(activeTab === 'dashboard' || activeTab === 'market-monitor') && (
           <DashboardTab
             summary={summary}
