@@ -1922,7 +1922,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         width: '100%',
         height: typeof height === 'number' ? `${height}px` : (height || '100%'),
         minHeight: typeof height === 'number' ? `${height}px` : '240px',
-        flex: 1,
+        maxHeight: typeof height === 'number' ? `${height}px` : undefined,
+        flex: typeof height === 'number' ? '0 0 auto' : 1,
         display: 'flex',
         flexDirection: 'column',
       }}

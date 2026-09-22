@@ -26,6 +26,9 @@ export default function SyncDataTab({
   setSyncHistoryYears,
   syncForceFull = false,
   setSyncForceFull,
+  syncFixSplits = true,
+  setSyncFixSplits,
+  handleTriggerRepairSplits,
   syncStatus,
   handleTriggerSync,
   summary,
@@ -162,18 +165,42 @@ export default function SyncDataTab({
               />
               🔄 Force Full Backfill History
             </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', color: '#10b981' }} title="Automatically detect stock split price jumps and smooth historical data">
+              <input
+                type="checkbox"
+                checked={syncFixSplits}
+                onChange={(e) => setSyncFixSplits && setSyncFixSplits(e.target.checked)}
+                disabled={syncStatus.status === 'running'}
+                style={{ cursor: 'pointer', accentColor: '#10b981' }}
+              />
+              ✂️ Auto-Repair Stock Splits
+            </label>
           </div>
 
-          <button
-            className="btn btn-primary"
-            onClick={handleTriggerSync}
-            disabled={syncStatus.status === 'running' || (!syncPrices && !syncFundamentals && !syncPremarket && !syncSponsorship)}
-            style={syncPremarket ? { background: '#ec4899', borderColor: '#db2777' } : {}}
-          >
-            {syncStatus.status === 'running'
-              ? 'Running Sync...'
-              : (syncPremarket ? '⚡ Sync Live Market Quotes' : 'Sync Database Tickers')}
-          </button>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {handleTriggerRepairSplits && (
+              <button
+                className="btn btn-secondary"
+                onClick={handleTriggerRepairSplits}
+                disabled={syncStatus.status === 'running'}
+                title="Scan all stocks in DuckDB for unadjusted stock split price gaps and heal historical bars"
+                style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <span>🔧</span>
+                <span>Repair Stock Splits</span>
+              </button>
+            )}
+            <button
+              className="btn btn-primary"
+              onClick={handleTriggerSync}
+              disabled={syncStatus.status === 'running' || (!syncPrices && !syncFundamentals && !syncPremarket && !syncSponsorship)}
+              style={syncPremarket ? { background: '#ec4899', borderColor: '#db2777' } : {}}
+            >
+              {syncStatus.status === 'running'
+                ? 'Running Sync...'
+                : (syncPremarket ? '⚡ Sync Live Market Quotes' : 'Sync Database Tickers')}
+            </button>
+          </div>
         </div>
       </div>
 

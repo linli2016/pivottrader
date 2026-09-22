@@ -102,6 +102,6 @@ The application will boot up at **`http://localhost:8000`**. Open this link in y
 | Overlay Strategy | Trading History | Trend Baseline | Proximity Constraint | Consolidation Limit |
 | :--- | :--- | :--- | :--- | :--- |
 | **Stage 2 Baseline** | $> 250$ trading days | `Close > SMA(50) > SMA(150) > SMA(200)` | Within 25% of 52-week High | $\ge 30\%$ above 52-week Low |
-| **Power Play** | Any | Optional / Stage 2 Trend Template | consolidates near highs | Drawdown $\le 25\%$ |
+| **Power Play (HTF)** | $\ge 100\%$ move in $\le 8$ weeks (`RUNUP >= 100`, `RUNUP_DAYS <= 40`) | Optional / Stage 2 Trend Template | Consolidates near high (`DAYS_SINCE_PEAK >= 10`) | Pullback $\le 25\%$ (`PULLBACK <= 25`) |
 | **IPO Base** | $10$ to $756$ days (3 yrs) | `Close > SMA(50)` (waives SMA 150/200) | Within 20% of IPO High | Drawdown $\le 35\%$ |
 | **VCP Setup** | Any | Stage 2 / IPO Base Uptrend | alternates local extremes | Alternating swings contract ($D_n$) |

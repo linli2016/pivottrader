@@ -190,14 +190,22 @@ def build_qullamaggie_regime_dataframe(conn, symbol: str = "QQQ") -> pd.DataFram
     return df
 
 
-def get_qullamaggie_market_summary(conn, symbol: str = "QQQ") -> Dict[str, Any]:
-    """Returns the latest Qullamaggie Market Evaluation summary object for the dashboard."""
+def get_qullamaggie_market_summary(conn, symbol: str = "QQQ", as_of_date: Optional[str] = None) -> Dict[str, Any]:
+    """Returns the Qullamaggie Market Evaluation summary object for the dashboard (optionally as of a historical date)."""
     df = build_qullamaggie_regime_dataframe(conn, symbol=symbol)
     if df.empty:
         return {}
 
-    latest = df.iloc[-1]
-    prev = df.iloc[-2] if len(df) > 1 else latest
+    if as_of_date:
+        df_sub = df[df["date_str"] <= as_of_date]
+    else:
+        today_str = pd.Timestamp.now().strftime("%Y-%m-%d")
+        df_sub = df[df["date_str"] <= today_str]
+
+    if df_sub.empty:
+        return {}
+    latest = df_sub.iloc[-1]
+    prev = df_sub.iloc[-2] if len(df_sub) > 1 else latest
 
     c = round(float(latest["close"]), 2)
     prev_c = round(float(prev["close"]), 2)

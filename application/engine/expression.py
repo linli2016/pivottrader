@@ -419,13 +419,56 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
     },
 
     # ---------------- Pattern Primitives & Metrics ----------------
-    "POWER_PLAY": {
-        "sql": "(COALESCE(b.pp_runup_pct, 0) >= 100.0 AND COALESCE(b.pp_drawdown_pct, 100.0) <= 25.0 AND COALESCE(b.pp_days_since_peak, 0) >= 10)",
-        "type": "boolean",
-        "label": "Power Play",
+    "RUNUP": {
+        "sql": "b.pp_runup_pct",
+        "type": "numeric",
+        "label": "Runup %",
         "category": "pattern",
-        "description": "High tight flag (100%+ move within 8 weeks, <=25% pullback, 10+ days)"
+        "description": "Explosive prior runup percentage over prior 8 weeks (40 trading days)"
     },
+    "RUNUP_PCT": {
+        "sql": "b.pp_runup_pct",
+        "type": "numeric",
+        "label": "Runup %",
+        "category": "pattern",
+        "description": "Explosive prior runup percentage over prior 8 weeks"
+    },
+    "RUNUP_DAYS": {
+        "sql": "COALESCE(b.pp_runup_days, 0)",
+        "type": "numeric",
+        "label": "Runup Days",
+        "category": "pattern",
+        "description": "Trading days duration of prior runup to peak (<= 40 days / 8 weeks)"
+    },
+    "PULLBACK": {
+        "sql": "b.pp_drawdown_pct",
+        "type": "numeric",
+        "label": "Pullback %",
+        "category": "pattern",
+        "description": "Maximum base pullback depth from peak high"
+    },
+    "PULLBACK_PCT": {
+        "sql": "b.pp_drawdown_pct",
+        "type": "numeric",
+        "label": "Pullback %",
+        "category": "pattern",
+        "description": "Maximum base pullback depth from peak high"
+    },
+    "DAYS_SINCE_PEAK": {
+        "sql": "b.pp_days_since_peak",
+        "type": "numeric",
+        "label": "Days Since Peak",
+        "category": "pattern",
+        "description": "Consolidation days spent in flag base"
+    },
+    "BASE_DAYS": {
+        "sql": "b.pp_days_since_peak",
+        "type": "numeric",
+        "label": "Base Days",
+        "category": "pattern",
+        "description": "Consolidation days spent in base"
+    },
+    # Backward compatibility aliases
     "PP_RUNUP": {
         "sql": "b.pp_runup_pct",
         "type": "numeric",

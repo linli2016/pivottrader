@@ -3,11 +3,124 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 
+import math
+from typing import List, Dict, Any, Optional
+
 from application.config import Config
 from application.database import DatabaseManager
 from application.providers.yfinance_prov import YFinanceProvider
 from application.providers.ibkr_prov import IBKRProvider
 from application.engine.momentum import MomentumEngine
+
+
+def heal_split_anomalies(
+    db: DatabaseManager,
+    price_provider,
+    full_lookback_date: str,
+    target_symbols: Optional[List[str]] = None,
+    recent_days: Optional[int] = 30,
+    full_scan: bool = False
+) -> List[str]:
+    """
+    Detects and heals stock split price anomalies in daily_bars:
+    1. Scans daily_bars for consecutive-session price ratio jumps/drops (>= 1.45 or <= 0.70)
+       within recent_days (or across all dates if full_scan is True).
+    2. For identified suspect symbols, downloads full lookback history from price_provider.
+    3. Verifies whether newly downloaded bars resolve or substantially reduce the jump ratio.
+    4. For confirmed splits, purges unadjusted bars from DuckDB and upserts clean split-adjusted bars.
+    Returns list of repaired symbols.
+    """
+    with db.get_connection() as conn:
+        date_filter = ""
+        if not full_scan and recent_days:
+            date_filter = f"AND date >= (SELECT MAX(date) - INTERVAL '{recent_days} DAYS' FROM daily_bars)"
+
+        sym_filter = ""
+        if target_symbols:
+            sym_list_str = ", ".join(f"'{s}'" for s in target_symbols)
+            sym_filter = f"AND symbol IN ({sym_list_str})"
+
+        query = f"""
+            WITH price_changes AS (
+                SELECT 
+                    symbol,
+                    date,
+                    close,
+                    LAG(close) OVER (PARTITION BY symbol ORDER BY date) as prev_close
+                FROM daily_bars
+                WHERE 1=1 {sym_filter}
+            )
+            SELECT symbol, date, prev_close, close, (close / prev_close) as ratio
+            FROM price_changes
+            WHERE prev_close > 0 AND (close / prev_close >= 1.45 OR close / prev_close <= 0.70)
+            {date_filter}
+            ORDER BY symbol, date;
+        """
+        suspect_rows = conn.execute(query).fetchall()
+
+    if not suspect_rows:
+        return []
+
+    # Map suspect symbols to their anomalous dates and ratios
+    suspect_dict = {}
+    for sym, dt, prev_c, c, r in suspect_rows:
+        if sym not in suspect_dict:
+            suspect_dict[sym] = []
+        suspect_dict[sym].append((dt, float(prev_c), float(c), float(r)))
+
+    suspect_symbols = list(suspect_dict.keys())
+    scan_desc = "full database" if full_scan else f"last {recent_days} days"
+    print(f"\n[Split Healer] Identified {len(suspect_symbols)} candidate ticker(s) with potential split anomalies in {scan_desc}: {suspect_symbols[:15]}{'...' if len(suspect_symbols) > 15 else ''}")
+    print(f"[Split Healer] Verifying against clean provider history ({full_lookback_date})...")
+
+    # Fetch full lookback for candidates
+    new_bars = price_provider.fetch_daily_bars(suspect_symbols, full_lookback_date)
+    if new_bars.empty:
+        return []
+
+    repaired = []
+    for sym in suspect_symbols:
+        sym_new = new_bars[new_bars["symbol"] == sym].sort_values("date")
+        if sym_new.empty:
+            continue
+
+        # Check if provider explicitly recorded a split
+        has_provider_split = False
+        if "stock_splits" in sym_new.columns:
+            splits_present = sym_new[(sym_new["stock_splits"] > 0) & (sym_new["stock_splits"] != 1.0)]
+            if not splits_present.empty:
+                has_provider_split = True
+
+        # Check if the ratio jump on anomalous dates is resolved
+        is_jump_resolved = False
+        sym_new_indexed = sym_new.set_index("date")
+        for dt, old_prev_c, old_c, old_ratio in suspect_dict[sym]:
+            if dt in sym_new_indexed.index:
+                pos = sym_new_indexed.index.get_loc(dt)
+                if pos > 0:
+                    new_c = float(sym_new_indexed.iloc[pos]["close"])
+                    new_prev_c = float(sym_new_indexed.iloc[pos - 1]["close"])
+                    if new_prev_c > 0 and new_c > 0:
+                        new_ratio = new_c / new_prev_c
+                        old_jump = abs(math.log(old_ratio))
+                        new_jump = abs(math.log(new_ratio))
+                        if new_jump < 0.25 or new_jump < old_jump - 0.25:
+                            is_jump_resolved = True
+                            break
+
+        if has_provider_split or is_jump_resolved:
+            with db.get_connection() as conn:
+                conn.execute(f"DELETE FROM daily_bars WHERE symbol = '{sym}'")
+            db.upsert_daily_bars(sym_new)
+            repaired.append(sym)
+            print(f"[Split Healer] ✅ Repaired stock split for {sym} (history resynced since {full_lookback_date}).")
+        else:
+            print(f"[Split Healer] ℹ️ Verified {sym}: confirmed genuine market volatility (not a split).")
+
+    if repaired:
+        print(f"[Split Healer] Successfully healed {len(repaired)} split ticker(s): {repaired}")
+    return repaired
+
 
 
 def main():
@@ -121,31 +234,6 @@ def main():
                 if not universe:
                     universe = [{"symbol": s, "exchange": "UNKNOWN", "name": s, "asset_type": "Common Stock", "active": True} for s in custom_syms]
                 print(f"Restricting run to custom symbols: {[u['symbol'] for u in universe]}")
-            elif getattr(args, "fix_splits", False):
-                print("\n[Split Fixer] Scanning database for tickers with historical split jump/drop anomalies...")
-                with db.get_connection() as conn:
-                    split_query = """
-                    WITH price_changes AS (
-                        SELECT 
-                            symbol,
-                            date,
-                            close,
-                            LAG(close) OVER (PARTITION BY symbol ORDER BY date) as prev_close
-                        FROM daily_bars
-                    )
-                    SELECT DISTINCT symbol
-                    FROM price_changes
-                    WHERE prev_close > 0 AND (close / prev_close >= 1.7 OR close / prev_close <= 0.6);
-                    """
-                    suspect_symbols = set(r[0] for r in conn.execute(split_query).fetchall())
-                print(f"[Split Fixer] Identified {len(suspect_symbols)} tickers with unadjusted split anomalies.")
-                if suspect_symbols:
-                    universe = [u for u in universe if u["symbol"] in suspect_symbols]
-                    if not universe:
-                        universe = [{"symbol": s, "exchange": "UNKNOWN", "name": s, "asset_type": "Common Stock", "active": True} for s in suspect_symbols]
-                else:
-                    print("No split anomalies found in database. Exiting.")
-                    return
             elif getattr(args, "limit_tickers", None):
                 print(f"Applying debug limits: restricting run to first {args.limit_tickers} tickers.")
                 universe = universe[:args.limit_tickers]
@@ -203,8 +291,19 @@ def main():
             
             active_symbols = db.get_active_symbols() if is_full_universe_sync else [item["symbol"] for item in universe]
 
-        # 5. Incremental Daily Bars Ingestion
-        if args.include_premarket:
+        # Resolve historical lookback window for pricing and split healing
+        history_years = args.history_years if args.history_years is not None else config.history_lookback_years
+        full_lookback_date = (datetime.now() - timedelta(days=365 * history_years)).strftime("%Y-%m-%d")
+
+        # 5. Incremental Daily Bars Ingestion / Dedicated Split Repair
+        if getattr(args, "fix_splits", False):
+            print(f"\n[Step 2/5] Running dedicated Full-Database Stock Split Healer (lookback since {full_lookback_date})...")
+            repaired = heal_split_anomalies(db, price_provider, full_lookback_date, full_scan=True)
+            if not repaired:
+                print("No unresolved stock split anomalies found in database.")
+            else:
+                print(f"Successfully repaired {len(repaired)} split ticker(s) across database.")
+        elif args.include_premarket:
             print("\n[Step 2/5] Evaluating market session status...")
             session_info = price_provider.get_market_session_status()
             state = session_info.get("state")
@@ -245,6 +344,8 @@ def main():
             if not ext_bars.empty:
                 print(f"Upserting {len(ext_bars)} daily bars with current prices into DuckDB...")
                 db.upsert_daily_bars(ext_bars)
+                # Auto-heal any overnight stock split anomalies in live quotes
+                heal_split_anomalies(db, price_provider, full_lookback_date, target_symbols=active_symbols, recent_days=5)
             else:
                 print("Notice: No quotes returned.")
         elif args.skip_prices:
@@ -353,8 +454,17 @@ def main():
                     else:
                         print("No incremental bars fetched.")
 
+                    # Auto-heal any stock splits in recent window (last 30 trading days) for existing symbols
+                    heal_split_anomalies(db, price_provider, full_lookback_date, target_symbols=fresh_existing, recent_days=30)
+
         # 6. Relative Strength Scoring & Ranking
         mom_engine = MomentumEngine(db_path)
+        if getattr(args, "fix_splits", False):
+            print("\n[Step 3/5] Recalculating momentum scores, moving averages, and ranks for repaired tickers...")
+            mom_engine.calculate_and_store_momentum_metrics()
+            print("\n[Sync Process] All stock splits and momentum metrics successfully updated.")
+            return
+
         if args.include_premarket:
             print("\n[Step 3/5] Computing fast intraday momentum & Episodic Pivot metrics...")
             ep_count = mom_engine.update_intraday_metrics(target_date=target_date)

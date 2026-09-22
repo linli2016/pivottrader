@@ -73,6 +73,7 @@ function App() {
   const [syncPremarket, setSyncPremarket] = useState(false);
   const [syncHistoryYears, setSyncHistoryYears] = useState(5);
   const [syncForceFull, setSyncForceFull] = useState(false);
+  const [syncFixSplits, setSyncFixSplits] = useState(true);
   const [syncStatus, setSyncStatus] = useState({
     status: 'idle',
     start_time: null,
@@ -295,12 +296,26 @@ function App() {
           include_premarket: syncPremarket,
           include_extended: syncPremarket,
           history_years: parseInt(syncHistoryYears, 10),
-          force_full: syncForceFull
+          force_full: syncForceFull,
+          fix_splits: syncFixSplits
         })
       });
       fetchSyncStatus();
     } catch (e) {
       console.error("Error triggering sync run: ", e);
+    }
+  };
+
+  // Trigger dedicated stock split scan and repair
+  const handleTriggerRepairSplits = async () => {
+    try {
+      await fetch(`${API_BASE}/api/sync/repair-splits`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      fetchSyncStatus();
+    } catch (e) {
+      console.error("Error triggering repair splits: ", e);
     }
   };
 
@@ -651,6 +666,7 @@ function App() {
             setActiveTab={setActiveTab}
             handleSelectStock={handleSelectStock}
             onSelectSetup={handleSelectSetup}
+            tradingDates={tradingDates}
           />
         )}
 
@@ -670,6 +686,9 @@ function App() {
             setSyncHistoryYears={setSyncHistoryYears}
             syncForceFull={syncForceFull}
             setSyncForceFull={setSyncForceFull}
+            syncFixSplits={syncFixSplits}
+            setSyncFixSplits={setSyncFixSplits}
+            handleTriggerRepairSplits={handleTriggerRepairSplits}
             syncStatus={syncStatus}
             handleTriggerSync={handleTriggerSync}
             summary={summary}

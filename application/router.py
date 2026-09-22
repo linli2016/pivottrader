@@ -43,6 +43,7 @@ class SyncTriggerSchema(BaseModel):
     include_extended: Optional[bool] = None
     history_years: Optional[int] = None
     force_full: bool = False
+    fix_splits: bool = False
 
 class WatchlistCreateSchema(BaseModel):
     name: str
@@ -179,10 +180,10 @@ def post_candidates(payload: CandidateFilterSchema):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/candidates")
-def get_candidates(date: Optional[str] = None):
+def get_candidates(date: Optional[str] = None, expression: Optional[str] = None):
     """Retrieve candidates for a specific target date (default/unfiltered or date query)."""
     try:
-        data = db_service.get_candidates(target_date=date)
+        data = db_service.get_candidates(target_date=date, expression=expression)
         return Response(content=json.dumps(data), media_type="application/json")
     except Exception as e:
         logger.error(f"Error in get_candidates: {e}", exc_info=True)
@@ -275,7 +276,18 @@ def trigger_sync_run(background_tasks: BackgroundTasks, payload: SyncTriggerSche
         include_premarket=is_ext,
         include_extended=is_ext,
         history_years=payload.history_years,
-        force_full=payload.force_full
+        force_full=payload.force_full,
+        fix_splits=payload.fix_splits
+    )
+
+@router.post("/api/sync/repair-splits")
+def trigger_repair_splits(background_tasks: BackgroundTasks):
+    """Triggers a targeted stock split scan and repair across all symbols in the database."""
+    return sync_service.trigger_sync_run(
+        background_tasks,
+        skip_prices=False,
+        skip_fundamentals=True,
+        fix_splits=True
     )
 
 @router.get("/api/sync/status")
@@ -289,19 +301,19 @@ def execute_sql_query(payload: SQLQuerySchema):
     return db_service.execute_sql_query(payload.query)
 
 @router.get("/api/market-monitor")
-def get_market_monitor(limit: int = 252, refresh: bool = False):
+def get_market_monitor(limit: int = 252, refresh: bool = False, date: Optional[str] = None):
     """Retrieve Stockbee Market Monitor daily breadth metrics and regime summary across the entire market."""
     try:
-        return db_service.get_market_monitor(limit=limit, force_refresh=refresh)
+        return db_service.get_market_monitor(limit=limit, force_refresh=refresh, as_of_date=date)
     except Exception as e:
         logger.error(f"Error in get_market_monitor: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/market/cross-asset")
-def get_cross_asset():
+def get_cross_asset(date: Optional[str] = None):
     """Retrieve multi-asset cross-asset macro indicators across Equities, Rates, Credit, FX, Commodities, Volatility, and Crypto."""
     try:
-        return db_service.get_cross_asset_data()
+        return db_service.get_cross_asset_data(as_of_date=date)
     except Exception as e:
         logger.error(f"Error in get_cross_asset: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

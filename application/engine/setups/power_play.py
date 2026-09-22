@@ -23,6 +23,7 @@ def detect_power_play(
             "pp_is_setup": False,
             "pp_is_trigger": False,
             "pp_runup_pct": 0.0,
+            "pp_runup_days": 0,
             "pp_drawdown_pct": 0.0,
             "pp_days_since_peak": 0,
             "pp_pivot_price": 0.0
@@ -40,7 +41,10 @@ def detect_power_play(
 
     # 2. Prior 40-day lowest low leading up to that peak
     start_runup_idx = max(0, base_peak_idx - 40)
-    low_before_peak = min(lows[start_runup_idx : base_peak_idx + 1])
+    low_window = lows[start_runup_idx : base_peak_idx + 1]
+    low_before_peak = min(low_window)
+    low_idx = start_runup_idx + low_window.index(low_before_peak)
+    runup_days = base_peak_idx - low_idx
     
     if low_before_peak <= 0:
         runup_pct = 0.0
@@ -81,6 +85,7 @@ def detect_power_play(
         "pp_is_setup": is_setup,
         "pp_is_trigger": is_trigger,
         "pp_runup_pct": round(runup_pct, 2),
+        "pp_runup_days": runup_days,
         "pp_drawdown_pct": round(drawdown_pct, 2),
         "pp_days_since_peak": days_since_peak,
         "pp_pivot_price": round(base_peak_high, 2)

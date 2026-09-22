@@ -212,7 +212,7 @@ class DatabaseService:
             require_low_cheat = False
 
             if raw_expr:
-                require_power_play = "POWER_PLAY" in used_variables or "PP_RUNUP" in used_variables
+                require_power_play = any(v in used_variables for v in ("POWER_PLAY", "PP_RUNUP", "RUNUP", "RUNUP_PCT", "RUNUP_DAYS", "PULLBACK", "PULLBACK_PCT", "DAYS_SINCE_PEAK", "BASE_DAYS"))
                 require_breakout = "BREAKOUT" in used_variables
                 require_episodic_pivot = "EPISODIC_PIVOT" in used_variables
                 require_momentum = False
@@ -524,7 +524,8 @@ class DatabaseService:
                     f.inst_holders_qoq_change,
                     f.inst_ownership_pct,
                     f.sponsorship_streak,
-                    db.days_since_52w_high
+                    db.days_since_52w_high,
+                    db.pp_runup_days
                 FROM {from_table}
                 LEFT JOIN latest_fundamentals f ON db.symbol = f.symbol AND f.rn = 1
                 JOIN symbols s ON db.symbol = s.symbol
@@ -638,7 +639,8 @@ class DatabaseService:
                     "inst_holders_qoq_change": row[69] if len(row) > 69 else None,
                     "inst_ownership_pct": row[70] if len(row) > 70 else None,
                     "sponsorship_streak": int(row[71]) if len(row) > 71 and row[71] is not None else 0,
-                    "days_since_52w_high": int(row[72]) if len(row) > 72 and row[72] is not None else None
+                    "days_since_52w_high": int(row[72]) if len(row) > 72 and row[72] is not None else None,
+                    "pp_runup_days": int(row[73]) if len(row) > 73 and row[73] is not None else 0
                 })
 
             if not candidates:
@@ -785,6 +787,7 @@ class DatabaseService:
                                 c["pp_is_trigger"] = pp_res.get("pp_is_trigger", False)
                                 c["pp_pivot_price"] = pp_res.get("pp_pivot_price", 0.0)
                                 c["pp_runup_pct"] = pp_res.get("pp_runup_pct", c.get("pp_runup_pct", 0.0))
+                                c["pp_runup_days"] = pp_res.get("pp_runup_days", c.get("pp_runup_days", 0))
                                 c["pp_drawdown_pct"] = pp_res.get("pp_drawdown_pct", c.get("pp_drawdown_pct", 0.0))
                                 c["pp_days_since_peak"] = pp_res.get("pp_days_since_peak", c.get("pp_days_since_peak", 0))
 
@@ -910,6 +913,7 @@ class DatabaseService:
                 c.setdefault("pp_is_trigger", False)
                 c.setdefault("pp_pivot_price", 0.0)
                 c.setdefault("pp_runup_pct", 0.0)
+                c.setdefault("pp_runup_days", 0)
                 c.setdefault("pp_drawdown_pct", 0.0)
                 c.setdefault("pp_days_since_peak", 0)
                 c.setdefault("breakout_is_setup", False)
@@ -1861,25 +1865,29 @@ class DatabaseService:
                 "count": 0
             }
 
-    def get_market_monitor(self, limit: int = 252, force_refresh: bool = False) -> Dict[str, Any]:
+    def get_market_monitor(self, limit: int = 252, force_refresh: bool = False, as_of_date: Optional[str] = None) -> Dict[str, Any]:
         """Calculates Stockbee Market Monitor metrics across recent trading days with in-memory caching."""
-        cache_key = limit if limit and limit > 0 else 252
+        cache_key = (limit if limit and limit > 0 else 252, as_of_date)
         now = time.time()
         # Serve from memory cache if available and fresh (10-minute TTL)
         if not force_refresh and cache_key in self._market_monitor_cache and (now - self._cache_timestamp < 600):
             return self._market_monitor_cache[cache_key]
 
-        lookback_needed = cache_key + 120
+        lookback_needed = (limit if limit and limit > 0 else 252) + 120
+        date_filter_qqq = f"AND date <= '{as_of_date}'" if as_of_date else "AND date <= CURRENT_DATE"
+        date_filter_bars = f"AND date <= '{as_of_date}'" if as_of_date else "AND date <= CURRENT_DATE"
+        date_filter_bm = f"AND date <= '{as_of_date}'" if as_of_date else "AND date <= CURRENT_DATE"
+
         query = f"""
             WITH cutoff AS (
                 SELECT MIN(date) as min_date FROM (
-                    SELECT date FROM daily_bars WHERE symbol = 'QQQ' ORDER BY date DESC LIMIT {lookback_needed}
+                    SELECT date FROM daily_bars WHERE symbol = 'QQQ' {date_filter_qqq} ORDER BY date DESC LIMIT {lookback_needed}
                 )
             ),
             filtered_bars AS (
                 SELECT symbol, date, close
                 FROM daily_bars, cutoff
-                WHERE date >= min_date
+                WHERE date >= min_date {date_filter_bars}
             ),
             daily_gains AS (
                 SELECT 
@@ -1909,7 +1917,7 @@ class DatabaseService:
             )
             SELECT * FROM daily_counts;
         """
-        bm_query = """
+        bm_query = f"""
             WITH bm_bars AS (
                 SELECT 
                     symbol,
@@ -1918,7 +1926,7 @@ class DatabaseService:
                     LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) as prev_close,
                     ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
                 FROM daily_bars
-                WHERE symbol IN ('SPY', 'QQQ')
+                WHERE symbol IN ('SPY', 'QQQ') {date_filter_bm}
             )
             SELECT symbol, close, prev_close
             FROM bm_bars
@@ -1928,9 +1936,9 @@ class DatabaseService:
             with self.get_read_only_conn() as conn:
                 df = conn.execute(query).df()
                 bm_rows = conn.execute(bm_query).fetchall()
-                kq_summary = get_qullamaggie_market_summary(conn, symbol="QQQ")
+                kq_summary = get_qullamaggie_market_summary(conn, symbol="QQQ", as_of_date=as_of_date)
                 kq_lookup = get_qullamaggie_daily_lookup(conn, symbol="QQQ")
-                cross_asset = self.get_cross_asset_data(conn)
+                cross_asset = self.get_cross_asset_data(conn, as_of_date=as_of_date)
                 
             if df.empty:
                 return {"summary": {}, "daily_data": []}
@@ -2050,7 +2058,7 @@ class DatabaseService:
         except Exception as e:
             return {"error": str(e), "summary": {}, "daily_data": []}
 
-    def get_cross_asset_data(self, conn=None) -> List[Dict[str, Any]]:
+    def get_cross_asset_data(self, conn=None, as_of_date: Optional[str] = None) -> List[Dict[str, Any]]:
         """Returns cross-asset macro market instruments across Equities, Rates, Credit, FX/Comm, Volatility, and Crypto."""
         db_symbols = ['SPY', 'QQQ', 'IWM', 'DIA', 'HYG', 'IEF', 'TLT', 'GLD', 'USO', 'UUP']
         queried_prices = {}
@@ -2061,6 +2069,7 @@ class DatabaseService:
                 should_close = True
             
             sym_tuple = "('" + "', '".join(db_symbols) + "')"
+            date_filter = f"AND date <= '{as_of_date}'" if as_of_date else "AND date <= CURRENT_DATE"
             sql = f"""
                 WITH recent AS (
                     SELECT 
@@ -2070,7 +2079,7 @@ class DatabaseService:
                         LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) as prev_close,
                         ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
                     FROM daily_bars
-                    WHERE symbol IN {sym_tuple}
+                    WHERE symbol IN {sym_tuple} {date_filter}
                 )
                 SELECT symbol, close, prev_close
                 FROM recent

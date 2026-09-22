@@ -1654,39 +1654,28 @@ export default function LeaderboardTab({
                         <td style={{ padding: '6px 5px', overflow: 'hidden' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', lineHeight: 1.2 }}>
                             <span
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedSector(stock.sector === selectedSector ? null : stock.sector);
-                                setSelectedIndustry(null);
-                              }}
                               style={{
                                 fontSize: '11px',
                                 fontWeight: '600',
                                 color: selectedSector === stock.sector ? '#38bdf8' : 'var(--text-primary)',
-                                cursor: 'pointer',
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap'
                               }}
-                              title={`Filter by Sector: ${stock.sector}`}
+                              title={stock.sector}
                             >
                               {stock.sector}
                             </span>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
                               <span
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedIndustry(stock.industry === selectedIndustry ? null : stock.industry);
-                                }}
                                 style={{
                                   fontSize: '10px',
                                   color: selectedIndustry === stock.industry ? '#c084fc' : 'var(--text-muted)',
-                                  cursor: 'pointer',
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis',
                                   whiteSpace: 'nowrap'
                                 }}
-                                title={`Filter by Industry: ${stock.industry}`}
+                                title={stock.industry}
                               >
                                 {stock.industry}
                               </span>

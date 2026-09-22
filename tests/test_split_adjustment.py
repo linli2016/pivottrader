@@ -1,8 +1,13 @@
+import os
+import tempfile
 import datetime
 import unittest
+from unittest.mock import MagicMock
 import numpy as np
 import pandas as pd
 from application.providers.yfinance_prov import YFinanceProvider
+from application.database import DatabaseManager
+from application.pipeline import heal_split_anomalies
 
 class TestSplitAdjustment(unittest.TestCase):
     def setUp(self):
@@ -145,6 +150,116 @@ class TestSplitAdjustment(unittest.TestCase):
         self.assertAlmostEqual(adjusted.loc[4, "close"], 10.0)
         # Split ratio 0.05 propagated to bar index 4
         self.assertEqual(adjusted.loc[4, "stock_splits"], 0.05)
+
+
+class TestSplitHealingPipeline(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db_path = os.path.join(self.temp_dir.name, "test_split.db")
+        self.db = DatabaseManager(self.db_path)
+        with self.db.get_connection() as conn:
+            conn.execute("""
+                INSERT INTO symbols (symbol, name, exchange, asset_type) 
+                VALUES ('MNST', 'Monster', 'NASDAQ', 'stock'),
+                       ('BIOT', 'Biotech Inc', 'NASDAQ', 'stock');
+            """)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_heal_split_anomalies_resolves_unadjusted_split(self):
+        """Tests that an unadjusted stock split jump is detected, verified against provider, and healed."""
+        # Unadjusted bars in DB: 2:1 split occurred on 2026-09-03, but pre-split close was 100/102 and post-split is 51/52
+        db_bars = pd.DataFrame({
+            "symbol": ["MNST"] * 4,
+            "date": [datetime.date(2026, 9, 1), datetime.date(2026, 9, 2), datetime.date(2026, 9, 3), datetime.date(2026, 9, 4)],
+            "open": [99.0, 100.0, 50.0, 51.0],
+            "high": [101.0, 103.0, 52.0, 53.0],
+            "low": [98.0, 99.0, 49.0, 50.0],
+            "close": [100.0, 102.0, 51.0, 52.0],
+            "volume": [1000.0, 1200.0, 2400.0, 2200.0]
+        })
+        self.db.upsert_daily_bars(db_bars)
+
+        # Mock provider returns properly back-adjusted clean bars
+        clean_bars = pd.DataFrame({
+            "symbol": ["MNST"] * 4,
+            "date": [datetime.date(2026, 9, 1), datetime.date(2026, 9, 2), datetime.date(2026, 9, 3), datetime.date(2026, 9, 4)],
+            "open": [49.5, 50.0, 50.0, 51.0],
+            "high": [50.5, 51.5, 52.0, 53.0],
+            "low": [49.0, 49.5, 49.0, 50.0],
+            "close": [50.0, 51.0, 51.0, 52.0],
+            "volume": [2000.0, 2400.0, 2400.0, 2200.0],
+            "stock_splits": [0.0, 0.0, 2.0, 0.0]
+        })
+
+        mock_provider = MagicMock()
+        mock_provider.fetch_daily_bars.return_value = clean_bars
+
+        repaired = heal_split_anomalies(
+            db=self.db,
+            price_provider=mock_provider,
+            full_lookback_date=datetime.date(2025, 1, 1),
+            full_scan=True
+        )
+
+        self.assertEqual(repaired, ["MNST"])
+
+        # Verify bars in DB are now healed to clean prices
+        with self.db.get_connection() as conn:
+            rows = conn.execute("SELECT date, close, volume FROM daily_bars WHERE symbol = 'MNST' ORDER BY date").fetchall()
+        self.assertEqual(len(rows), 4)
+        # Pre-split closes are now 50.0 and 51.0 (healed), not 100.0 and 102.0
+        self.assertAlmostEqual(rows[0][1], 50.0)
+        self.assertAlmostEqual(rows[1][1], 51.0)
+        self.assertAlmostEqual(rows[2][1], 51.0)
+        self.assertAlmostEqual(rows[3][1], 52.0)
+
+    def test_heal_split_anomalies_ignores_genuine_market_volatility(self):
+        """Tests that a genuine crash/surge (without split resolution in clean data) is recognized and not modified."""
+        db_bars = pd.DataFrame({
+            "symbol": ["BIOT"] * 3,
+            "date": [datetime.date(2026, 9, 1), datetime.date(2026, 9, 2), datetime.date(2026, 9, 3)],
+            "open": [10.0, 5.0, 4.8],
+            "high": [10.2, 5.2, 5.0],
+            "low": [9.8, 4.6, 4.5],
+            "close": [10.0, 4.9, 4.8],
+            "volume": [100000.0, 500000.0, 200000.0]
+        })
+        self.db.upsert_daily_bars(db_bars)
+
+        # Provider also returns the genuine crash (ratio is still 4.9 / 10.0 = 0.49, no stock_splits)
+        clean_bars = pd.DataFrame({
+            "symbol": ["BIOT"] * 3,
+            "date": [datetime.date(2026, 9, 1), datetime.date(2026, 9, 2), datetime.date(2026, 9, 3)],
+            "open": [10.0, 5.0, 4.8],
+            "high": [10.2, 5.2, 5.0],
+            "low": [9.8, 4.6, 4.5],
+            "close": [10.0, 4.9, 4.8],
+            "volume": [100000.0, 500000.0, 200000.0],
+            "stock_splits": [0.0, 0.0, 0.0]
+        })
+
+        mock_provider = MagicMock()
+        mock_provider.fetch_daily_bars.return_value = clean_bars
+
+        repaired = heal_split_anomalies(
+            db=self.db,
+            price_provider=mock_provider,
+            full_lookback_date=datetime.date(2025, 1, 1),
+            full_scan=True
+        )
+
+        # Must not repair genuine market moves
+        self.assertEqual(repaired, [])
+
+        # Bars remain unchanged
+        with self.db.get_connection() as conn:
+            rows = conn.execute("SELECT date, close FROM daily_bars WHERE symbol = 'BIOT' ORDER BY date").fetchall()
+        self.assertEqual(len(rows), 3)
+        self.assertAlmostEqual(rows[0][1], 10.0)
+        self.assertAlmostEqual(rows[1][1], 4.9)
+
 
 if __name__ == "__main__":
     unittest.main()

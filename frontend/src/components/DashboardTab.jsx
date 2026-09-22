@@ -135,6 +135,7 @@ export default function DashboardTab({
   setActiveTab,
   handleSelectStock,
   onSelectSetup,
+  tradingDates = [],
 }) {
   const [marketData, setMarketData] = useState(null);
   const [loadingMarket, setLoadingMarket] = useState(true);
@@ -142,6 +143,23 @@ export default function DashboardTab({
   const [loadingGroups, setLoadingGroups] = useState(true);
   const [focusLeaders, setFocusLeaders] = useState([]);
   const [loadingLeaders, setLoadingLeaders] = useState(true);
+
+  // As Of Date selection state
+  const [asOfDate, setAsOfDate] = useState('');
+  const [availableDates, setAvailableDates] = useState(tradingDates || []);
+
+  useEffect(() => {
+    if (tradingDates && tradingDates.length > 0) {
+      setAvailableDates(tradingDates);
+    } else {
+      fetch(`${API_BASE}/api/trading-dates`)
+        .then(res => res.ok ? res.json() : [])
+        .then(dates => {
+          if (Array.isArray(dates) && dates.length > 0) setAvailableDates(dates);
+        })
+        .catch(err => console.error('Error fetching trading dates:', err));
+    }
+  }, [tradingDates]);
 
   // Quick Mini-Calculator State
   const [calcEquity, setCalcEquity] = useState(100000);
@@ -160,10 +178,11 @@ export default function DashboardTab({
   const isSyncing = syncStatus?.status === 'running';
 
   // Fetch Market Monitor evaluation with 252 sessions for breadth charts & history
-  const fetchMarket = useCallback(async () => {
+  const fetchMarket = useCallback(async (selectedDate = asOfDate) => {
     setLoadingMarket(true);
     try {
-      const res = await fetch(`${API_BASE}/api/market-monitor?limit=252`);
+      const dateParam = selectedDate ? `&date=${selectedDate}` : '';
+      const res = await fetch(`${API_BASE}/api/market-monitor?limit=252${dateParam}`);
       if (res.ok) {
         const data = await res.json();
         setMarketData(data);
@@ -175,13 +194,14 @@ export default function DashboardTab({
       setLoadingMarket(false);
     }
     return null;
-  }, []);
+  }, [asOfDate]);
 
   // Fetch top industry groups for rotation snapshot
-  const fetchGroups = useCallback(async () => {
+  const fetchGroups = useCallback(async (selectedDate = asOfDate) => {
     setLoadingGroups(true);
     try {
-      const res = await fetch(`${API_BASE}/api/groups/strength`);
+      const dateParam = selectedDate ? `?date=${selectedDate}` : '';
+      const res = await fetch(`${API_BASE}/api/groups/strength${dateParam}`);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -194,13 +214,13 @@ export default function DashboardTab({
     } finally {
       setLoadingGroups(false);
     }
-  }, []);
+  }, [asOfDate]);
 
   // Fetch top focus momentum leaders
-  const fetchLeaders = useCallback(async (customDate = null) => {
+  const fetchLeaders = useCallback(async (selectedDate = asOfDate) => {
     setLoadingLeaders(true);
     try {
-      const lDate = customDate || marketData?.summary?.latest_date || '';
+      const lDate = selectedDate || marketData?.summary?.latest_date || '';
       const expr = encodeURIComponent('RS_RANK >= 90 AND ADR20 >= 4.0 AND C >= 10.0 AND C > XAVGC50 AND XAVGC10 > XAVGC20');
       const url = `${API_BASE}/api/candidates?expression=${expr}${lDate ? `&date=${lDate}` : ''}`;
       const res = await fetch(url);
@@ -214,17 +234,17 @@ export default function DashboardTab({
     } finally {
       setLoadingLeaders(false);
     }
-  }, [marketData?.summary?.latest_date]);
+  }, [asOfDate, marketData?.summary?.latest_date]);
 
-  // Initial loads
+  // Initial and reactive loads when asOfDate changes
   useEffect(() => {
-    fetchMarket();
-    fetchGroups();
-  }, [fetchMarket, fetchGroups]);
+    fetchMarket(asOfDate);
+    fetchGroups(asOfDate);
+  }, [asOfDate, fetchMarket, fetchGroups]);
 
   useEffect(() => {
-    fetchLeaders();
-  }, [fetchLeaders]);
+    fetchLeaders(asOfDate);
+  }, [asOfDate, fetchLeaders]);
 
   // Comprehensive reload of all cockpit data (triggered automatically after background sync completes)
   const reloadAllDashboardData = useCallback(async () => {
@@ -232,14 +252,16 @@ export default function DashboardTab({
     setLoadingGroups(true);
     setLoadingLeaders(true);
     try {
+      const dateParam = asOfDate ? `&date=${asOfDate}` : '';
+      const gDateParam = asOfDate ? `?date=${asOfDate}` : '';
       const [marketRes, groupsRes] = await Promise.all([
-        fetch(`${API_BASE}/api/market-monitor?limit=252&refresh=true`),
-        fetch(`${API_BASE}/api/groups/strength`)
+        fetch(`${API_BASE}/api/market-monitor?limit=252&refresh=true${dateParam}`),
+        fetch(`${API_BASE}/api/groups/strength${gDateParam}`)
       ]);
       if (marketRes.ok) {
         const mData = await marketRes.json();
         setMarketData(mData);
-        const lDate = mData?.summary?.latest_date || '';
+        const lDate = asOfDate || mData?.summary?.latest_date || '';
         const expr = encodeURIComponent('RS_RANK >= 90 AND ADR20 >= 4.0 AND C >= 10.0 AND C > XAVGC50 AND XAVGC10 > XAVGC20');
         const leadersRes = await fetch(`${API_BASE}/api/candidates?expression=${expr}${lDate ? `&date=${lDate}` : ''}`);
         if (leadersRes.ok) {
@@ -263,27 +285,27 @@ export default function DashboardTab({
       setLoadingGroups(false);
       setLoadingLeaders(false);
     }
-  }, [fetchSummary]);
+  }, [asOfDate, fetchSummary]);
 
-  // 1-Click Quick Sync action from within the Cockpit
+  // 1-Click Quick Sync action from within the Cockpit:
+  // Runs standard daily bars price sync (identical to "Sync Price Data" on Market Ingest)
+  // WITHOUT premarket/postmarket extended data to preserve clean end-of-day market statistics.
   const handleQuickSync = async () => {
-    if (isSyncing) return;
+    if (isSyncing || asOfDate) return;
     try {
-      if (handleTriggerLiveQuotesSync) {
-        await handleTriggerLiveQuotesSync();
-      } else {
-        await fetch(`${API_BASE}/api/sync/run`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            skip_prices: false,
-            skip_fundamentals: true,
-            include_premarket: true,
-            include_extended: true
-          })
-        });
-        if (fetchSyncStatus) fetchSyncStatus();
-      }
+      await fetch(`${API_BASE}/api/sync/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          skip_prices: false,
+          skip_fundamentals: true,
+          sync_sponsorship: false,
+          include_premarket: false,
+          include_extended: false,
+          fix_splits: true
+        })
+      });
+      if (fetchSyncStatus) fetchSyncStatus();
     } catch (err) {
       console.error('Error triggering quick sync from cockpit:', err);
     }
@@ -329,7 +351,7 @@ export default function DashboardTab({
 
   const kq = marketData?.summary?.kq_evaluation;
   const summaryData = marketData?.summary;
-  const latestDate = summary?.last_price_date || summaryData?.latest_date || 'Latest Available';
+  const latestDate = asOfDate || summaryData?.latest_date || summary?.last_price_date || 'Latest Available';
 
   // Cross-Asset Macro Tape Data
   const crossAssets = useMemo(() => {
@@ -367,6 +389,7 @@ export default function DashboardTab({
 
   // Determine if DuckDB data is stale compared to expected trading date
   const isDataStale = useMemo(() => {
+    if (asOfDate) return false;
     if (!latestDate || latestDate === 'Latest Available') return false;
     const today = new Date();
     const todayStr = today.toISOString().slice(0, 10);
@@ -383,7 +406,7 @@ export default function DashboardTab({
       const fridayStr = friday.toISOString().slice(0, 10);
       return latestDate < fridayStr;
     }
-  }, [latestDate]);
+  }, [latestDate, asOfDate]);
 
   // Light color mapping
   const lightBadge = kq?.badge || 'YELLOW LIGHT';
@@ -899,6 +922,10 @@ export default function DashboardTab({
               <span className="badge" style={{ background: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.45)', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
                 <span className="spin-icon">⟳</span> Ingesting Live Data...
               </span>
+            ) : asOfDate ? (
+              <span className="badge" style={{ background: 'rgba(168, 85, 247, 0.2)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.45)', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                <span>📅</span> Historical Session: {latestDate || asOfDate}
+              </span>
             ) : isDataStale ? (
               <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.45)', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
                 <span>⚠️</span> Outdated: As of {latestDate}
@@ -918,21 +945,79 @@ export default function DashboardTab({
         </div>
 
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* As Of Date Selector */}
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            background: 'rgba(15, 23, 42, 0.7)',
+            padding: '4px 10px',
+            borderRadius: '6px',
+            border: asOfDate ? '1px solid rgba(168, 85, 247, 0.55)' : '1px solid var(--border-color)',
+            boxShadow: asOfDate ? '0 0 12px rgba(168, 85, 247, 0.25)' : 'none'
+          }}>
+            <span style={{ fontSize: '12px', color: asOfDate ? '#c084fc' : 'var(--text-muted)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <span>📅</span> As Of:
+            </span>
+            <input
+              type="date"
+              value={asOfDate}
+              onChange={(e) => setAsOfDate(e.target.value)}
+              max={availableDates && availableDates.length > 0 ? availableDates[0] : new Date().toISOString().slice(0, 10)}
+              style={{
+                background: 'rgba(0, 0, 0, 0.5)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                padding: '3px 8px',
+                fontSize: '12px',
+                fontFamily: 'inherit',
+                cursor: 'pointer'
+              }}
+              title="Select any historical trading date to view cockpit regime, breadth, rotation, and leaders"
+            />
+            {asOfDate && (
+              <button
+                type="button"
+                onClick={() => setAsOfDate('')}
+                title="Reset to latest available market session"
+                style={{
+                  background: 'rgba(168, 85, 247, 0.25)',
+                  color: '#e9d5ff',
+                  border: '1px solid rgba(168, 85, 247, 0.45)',
+                  borderRadius: '4px',
+                  padding: '2px 8px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                Reset
+              </button>
+            )}
+          </div>
+
           {/* 1-Click Inline Sync Button */}
           <button
             className="btn btn-primary btn-sm"
             onClick={handleQuickSync}
-            disabled={isSyncing}
-            title="Ingest today's latest market prices and live quotes without leaving the cockpit"
+            disabled={isSyncing || !!asOfDate}
+            title={asOfDate ? "Sync is only applicable for live/latest trading data. Reset to Latest to sync." : "Ingest today's latest regular market prices (official end-of-day bars, no extended-hours data)"}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
-              background: isSyncing ? 'rgba(56, 189, 248, 0.3)' : (isDataStale ? '#f59e0b' : 'var(--accent-color)'),
-              color: isDataStale ? '#000' : '#080b11',
+              background: isSyncing
+                ? 'rgba(56, 189, 248, 0.3)'
+                : asOfDate
+                ? 'rgba(255, 255, 255, 0.05)'
+                : (isDataStale ? '#f59e0b' : 'var(--accent-color)'),
+              color: asOfDate ? 'var(--text-muted)' : (isDataStale ? '#000' : '#080b11'),
               fontWeight: 700,
-              border: 'none',
-              boxShadow: isDataStale ? '0 0 14px rgba(245, 158, 11, 0.4)' : 'none'
+              border: asOfDate ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
+              cursor: asOfDate ? 'not-allowed' : (isSyncing ? 'wait' : 'pointer'),
+              boxShadow: !asOfDate && isDataStale ? '0 0 14px rgba(245, 158, 11, 0.4)' : 'none',
+              opacity: asOfDate ? 0.6 : 1
             }}
           >
             {isSyncing ? (
@@ -942,7 +1027,7 @@ export default function DashboardTab({
               </>
             ) : (
               <>
-                <span>⚡</span>
+                <span>🔄</span>
                 <span>Sync Today's Data</span>
               </>
             )}
@@ -965,6 +1050,41 @@ export default function DashboardTab({
           </button>
         </div>
       </div>
+
+      {/* Historical Archive Notice Banner */}
+      {asOfDate && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          padding: '10px 18px',
+          background: 'linear-gradient(90deg, rgba(168, 85, 247, 0.15) 0%, rgba(14, 19, 31, 0.8) 100%)',
+          border: '1px solid rgba(168, 85, 247, 0.4)',
+          borderRadius: '8px',
+          marginBottom: '18px',
+          gap: '12px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '18px' }}>📅</span>
+            <div>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: '#e9d5ff' }}>
+                Historical Session View: As of {latestDate || asOfDate}
+              </div>
+              <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                Viewing market monitor regime, breadth expansion metrics, rotation snapshot, and RS leaders for this historical session.
+              </div>
+            </div>
+          </div>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => setAsOfDate('')}
+            style={{ fontSize: '11.5px', padding: '4px 12px', whiteSpace: 'nowrap', borderColor: 'rgba(168, 85, 247, 0.5)', color: '#e9d5ff' }}
+          >
+            Return to Latest Session →
+          </button>
+        </div>
+      )}
 
       {/* Inline Stale Data Notice / Sync Progress Alert */}
       {isSyncing ? (
@@ -1428,15 +1548,15 @@ export default function DashboardTab({
             <button
               className="btn btn-secondary btn-sm routine-btn"
               onClick={(e) => {
-                if (isDataStale && !isSyncing) {
+                if (isDataStale && !isSyncing && !asOfDate) {
                   e.stopPropagation();
                   handleQuickSync();
                 }
               }}
-              disabled={isSyncing}
-              title={isDataStale ? "Run Quick Sync for today's market session" : "Open DuckDB pipeline details"}
+              disabled={isSyncing || !!asOfDate}
+              title={asOfDate ? "Sync disabled in historical view" : (isDataStale ? "Run Quick Sync for today's market session" : "Open DuckDB pipeline details")}
             >
-              {isSyncing ? 'Syncing...' : (isDataStale ? '⚡ Sync Now' : 'Pipeline Details →')}
+              {isSyncing ? 'Syncing...' : (isDataStale ? '🔄 Sync Now' : 'Pipeline Details →')}
             </button>
           </div>
 

@@ -29,11 +29,19 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertIn("sma_50", res["sql"])
 
     def test_pattern_primitives(self):
-        expr = "POWER_PLAY AND PP_RUNUP >= 100 AND PP_DRAWDOWN <= 25 AND PP_DAYS >= 10"
+        expr = "RUNUP >= 100 AND RUNUP_DAYS <= 40 AND PULLBACK <= 25 AND DAYS_SINCE_PEAK >= 10"
         res = ScanExpressionEngine.validate(expr)
         self.assertTrue(res["valid"])
         self.assertIn("pp_runup_pct", res["sql"])
+        self.assertIn("pp_runup_days", res["sql"])
         self.assertIn("pp_drawdown_pct", res["sql"])
+        self.assertIn("pp_days_since_peak", res["sql"])
+
+        # Test backward-compatible aliases
+        compat_expr = "PP_RUNUP >= 100 AND PP_DRAWDOWN <= 25 AND PP_DAYS >= 10"
+        res_compat = ScanExpressionEngine.validate(compat_expr)
+        self.assertTrue(res_compat["valid"])
+        self.assertIn("pp_runup_pct", res_compat["sql"])
 
     def test_52w_high_days_expressions(self):
         # Test primary name DAYS_52W_HIGH and aliases DAYS_SINCE_52W_HIGH, HIGH_52W_DAYS

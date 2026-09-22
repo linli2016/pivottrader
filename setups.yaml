@@ -16,7 +16,7 @@ setups:
       - id: "htf"
         name: "Power Play / HTF"
         label: "⚡ Power Play / HTF (100%+ Move, ≤25% Pullback)"
-        expression: "C >= 5.0 AND DOLLAR_VOL >= 3000000 AND POWER_PLAY AND PP_RUNUP >= 100.0 AND PP_DRAWDOWN <= 25.0 AND PP_DAYS >= 10"
+        expression: "C >= 5.0 AND DOLLAR_VOL >= 3000000 AND RUNUP >= 100.0 AND RUNUP_DAYS <= 40 AND PULLBACK <= 25.0 AND DAYS_SINCE_PEAK >= 10"
       - id: "standard"
         name: "QM Breakouts"
         label: "🎯 QM Breakouts (30%+ Move)"

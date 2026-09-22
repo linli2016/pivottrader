@@ -395,12 +395,16 @@ export default function StockDetailDrawer({
               border: '1px solid var(--border-color)',
               borderRadius: '8px',
               padding: '6px 10px',
-              height: 'clamp(640px, 76vh, 1050px)',
+              height: '592px',
+              minHeight: '592px',
+              maxHeight: '592px',
+              flexShrink: 0,
+              boxSizing: 'border-box',
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column'
             }}>
-              <CandlestickChart data={stockPrices} symbol={selectedStock?.symbol} height="100%" />
+              <CandlestickChart data={stockPrices} symbol={selectedStock?.symbol} height={580} />
             </div>
 
             {/* Bottom Tabs Drawer (Quarterly YoY, Annual, Patterns) */}

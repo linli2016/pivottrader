@@ -333,6 +333,7 @@ class MomentumEngine:
                     -- Daily run-up % from lowest low in prior 40 days
                     (high - MIN(low) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 39 PRECEDING AND CURRENT ROW)) / 
                     NULLIF(MIN(low) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 39 PRECEDING AND CURRENT ROW), 0) * 100 as daily_runup_pct,
+                    (row_idx - ARG_MIN(row_idx, low) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 39 PRECEDING AND CURRENT ROW)) as daily_runup_days,
                     -- IPO base metrics calculations
                     COALESCE(
                         DATEDIFF('day', CAST(ipo_date AS DATE), date),
@@ -346,7 +347,8 @@ class MomentumEngine:
             price_lags_with_pp_runup AS (
                 SELECT *,
                     -- Power play run up %: the runup on the peak high day of the last 30 days
-                    ARG_MAX(daily_runup_pct, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as pp_runup_pct
+                    ARG_MAX(daily_runup_pct, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as pp_runup_pct,
+                    ARG_MAX(daily_runup_days, high) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW) as pp_runup_days
                 FROM price_lags_base
             ),
             latest_candidates AS (
@@ -374,6 +376,7 @@ class MomentumEngine:
                     rs_score,
                     rs_rank,
                     pp_runup_pct,
+                    pp_runup_days,
                     -- Power play drawdown %: correction from 30-day peak high to lowest close on or after peak date
                     (running_peak_30d - (SELECT MIN(d.close) FROM daily_bars d WHERE d.symbol = lc.symbol AND d.date >= lc.peak_date_30d AND d.date <= lc.date)) / NULLIF(running_peak_30d, 0) * 100 as pp_drawdown_pct,
                     -- Power play trading days since 30-day peak high
@@ -386,7 +389,7 @@ class MomentumEngine:
                     (running_peak_all_time - (SELECT MIN(d.low) FROM daily_bars d WHERE d.symbol = lc.symbol AND d.date >= lc.ath_date AND d.date <= lc.date)) / NULLIF(running_peak_all_time, 0) * 100 as ipo_base_depth
                 FROM latest_candidates lc
             )
-            SELECT symbol, date, close, vol_50d_ma, dollar_vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, pp_days_since_peak, sma_50, sma_150, sma_200, ipo_days_count, ipo_all_time_high, ipo_drawdown_from_high, ipo_base_depth, ret_1m, gap_pct, rel_vol_50d
+            SELECT symbol, date, close, vol_50d_ma, dollar_vol_50d_ma, rs_score, rs_rank, atr_20d, pp_runup_pct, pp_drawdown_pct, pp_days_since_peak, sma_50, sma_150, sma_200, ipo_days_count, ipo_all_time_high, ipo_drawdown_from_high, ipo_base_depth, ret_1m, gap_pct, rel_vol_50d, pp_runup_days
             FROM price_lags_derived;
         """
         
@@ -504,6 +507,7 @@ class MomentumEngine:
                     "symbol", "date", "close", "vol_50d_ma", "dollar_vol_50d_ma", "rs_score", "rs_rank", 
                     "atr_20d", "pp_runup_pct", "pp_drawdown_pct", "pp_days_since_peak", "sma_50", "sma_150", "sma_200",
                     "ipo_days_count", "ipo_all_time_high", "ipo_drawdown_from_high", "ipo_base_depth", "ret_1m", "gap_pct", "rel_vol_50d",
+                    "pp_runup_days",
                     "vcp_is_setup", "vcp_troughs", "vcp_depths",
                     "ema_10", "ema_20", "ema_50", "dist_ema10_pct", "dist_ema20_pct", "dist_ema50_pct",
                     "ep_is_setup", "ep_gap_pct", "ep_rel_vol",
@@ -519,6 +523,7 @@ class MomentumEngine:
                         pp_runup_pct = src.pp_runup_pct,
                         pp_drawdown_pct = src.pp_drawdown_pct,
                         pp_days_since_peak = src.pp_days_since_peak,
+                        pp_runup_days = src.pp_runup_days,
                         vcp_is_setup = src.vcp_is_setup,
                         vcp_troughs = src.vcp_troughs,
                         vcp_depths = src.vcp_depths,
@@ -562,7 +567,8 @@ class MomentumEngine:
                 db.symbol, db.date, db.close, db.vol_50d_ma, COALESCE(db.dollar_vol_50d_ma, db.close * db.vol_50d_ma) as dollar_vol_50d_ma,
                 db.rs_score, db.rs_rank, db.atr_20d, db.pp_runup_pct, db.pp_drawdown_pct, 
                 db.sma_50, db.sma_150, db.sma_200, db.vcp_is_setup, db.vcp_troughs, db.vcp_depths, 
-                db.ipo_days_count, db.ipo_all_time_high, db.ipo_drawdown_from_high, db.ipo_base_depth
+                db.ipo_days_count, db.ipo_all_time_high, db.ipo_drawdown_from_high, db.ipo_base_depth,
+                db.pp_runup_days
             FROM daily_bars db
             LEFT JOIN symbols s ON db.symbol = s.symbol
             WHERE db.date = (SELECT val FROM latest_date_const)
@@ -599,7 +605,8 @@ class MomentumEngine:
                     "ipo_days_count": row[16],
                     "ipo_all_time_high": row[17],
                     "ipo_drawdown_from_high": row[18],
-                    "ipo_base_depth": row[19]
+                    "ipo_base_depth": row[19],
+                    "pp_runup_days": row[20]
                 })
         return candidates
 
