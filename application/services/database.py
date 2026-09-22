@@ -61,13 +61,31 @@ class DatabaseService:
             # Create it if it doesn't exist, to avoid connection failure
             conn = duckdb.connect(db_path)
             conn.close()
-        max_retries = 6
+        max_retries = 25
         for attempt in range(max_retries):
             try:
                 return duckdb.connect(db_path, read_only=True)
             except Exception as e:
-                if "lock" in str(e).lower() and attempt < max_retries - 1:
-                    time.sleep(0.5)
+                err_msg = str(e).lower()
+                is_lock = any(k in err_msg for k in ["lock", "different configuration", "conflict", "held in", "temporarily unavailable"])
+                if is_lock and attempt < max_retries - 1:
+                    time.sleep(0.05 + attempt * 0.02)
+                else:
+                    raise
+
+    def get_write_conn(self):
+        """Establishes a write connection to DuckDB with retry handling."""
+        import time
+        db_path = self.get_db_path()
+        max_retries = 25
+        for attempt in range(max_retries):
+            try:
+                return duckdb.connect(db_path, read_only=False)
+            except Exception as e:
+                err_msg = str(e).lower()
+                is_lock = any(k in err_msg for k in ["lock", "different configuration", "conflict", "held in", "temporarily unavailable"])
+                if is_lock and attempt < max_retries - 1:
+                    time.sleep(0.1 + attempt * 0.02)
                 else:
                     raise
 
@@ -1262,7 +1280,7 @@ class DatabaseService:
             fund_list = []
             for row in funds:
                 fund_list.append({
-                    "report_date": row[0].strftime("%Y-%m-%d") if row[0] else None,
+                    "report_date": row[0].strftime("%Y-%m-%d") if hasattr(row[0], "strftime") else (str(row[0])[:10] if row[0] else None),
                     "fiscal_quarter": row[1],
                     "eps_diluted": row[2],
                     "eps_qoq_growth": row[3],
@@ -1312,7 +1330,7 @@ class DatabaseService:
             sponsorship_history = [
                 {
                     "fiscal_quarter": r[0],
-                    "report_date": r[1].strftime("%Y-%m-%d") if r[1] else None,
+                    "report_date": r[1].strftime("%Y-%m-%d") if hasattr(r[1], "strftime") else (str(r[1])[:10] if r[1] else None),
                     "holders_count": r[2],
                     "holders_qoq_change": r[3],
                     "holders_growth_pct": round(r[4], 2) if r[4] is not None else None,
@@ -1326,7 +1344,7 @@ class DatabaseService:
             
             # Get latest RS, ATR, TI65, and Volume metrics
             latest_bar = conn.execute("""
-                SELECT rs_score, rs_rank, atr_20d, ti_65, COALESCE(dollar_vol_50d_ma, close * vol_50d_ma) as dollar_vol_50d_ma, vol_50d_ma
+                SELECT rs_score, rs_rank, atr_20d, ti_65, COALESCE(dollar_vol_50d_ma, close * vol_50d_ma) as dollar_vol_50d_ma, vol_50d_ma, adr_20d, ret_1m, ret_3m, ret_6m, is_52w_high
                 FROM daily_bars
                 WHERE symbol = ? AND date = (SELECT MAX(date) FROM daily_bars)
             """, [symbol]).fetchone()
@@ -1337,6 +1355,11 @@ class DatabaseService:
             ti_65 = latest_bar[3] if latest_bar else None
             dollar_vol_50d_ma = latest_bar[4] if latest_bar else None
             vol_50d_ma = latest_bar[5] if latest_bar else None
+            adr_20d = latest_bar[6] if latest_bar and len(latest_bar) > 6 else None
+            ret_1m = latest_bar[7] if latest_bar and len(latest_bar) > 7 else None
+            ret_3m = latest_bar[8] if latest_bar and len(latest_bar) > 8 else None
+            ret_6m = latest_bar[9] if latest_bar and len(latest_bar) > 9 else None
+            is_rs_blue_dot = latest_bar[10] if latest_bar and len(latest_bar) > 10 else False
 
             # Calculate Minervini Setups (VCP, Low Cheat & Cheat)
             from application.engine.setups.vcp import detect_vcp
@@ -1395,9 +1418,13 @@ class DatabaseService:
                 "sponsorship_summary": latest_sponsorship,
                 "rs_score": rs_score,
                 "rs_rank": rs_rank,
-                "adr_20d": atr_20d,
+                "adr_20d": adr_20d if adr_20d is not None else atr_20d,
                 "atr_20d": atr_20d,
                 "ti_65": ti_65,
+                "ret_1m": ret_1m,
+                "ret_3m": ret_3m,
+                "ret_6m": ret_6m,
+                "is_rs_blue_dot": bool(is_rs_blue_dot) if is_rs_blue_dot is not None else False,
                 "dollar_vol_50d_ma": dollar_vol_50d_ma,
                 "vol_50d_ma": vol_50d_ma,
                 "vcp_footprint": vcp_footprint,
@@ -2361,8 +2388,7 @@ class DatabaseService:
             ]
 
     def create_watchlist(self, name: str) -> Dict[str, Any]:
-        db_path = self.get_db_path()
-        with duckdb.connect(db_path) as conn:
+        with self.get_write_conn() as conn:
             conn.execute("""
                 CREATE SEQUENCE IF NOT EXISTS seq_watchlist_id START 1;
                 CREATE TABLE IF NOT EXISTS watchlists (
@@ -2376,8 +2402,7 @@ class DatabaseService:
             return {"id": row[0], "name": row[1], "created_at": str(row[2]), "item_count": 0}
 
     def delete_watchlist(self, watchlist_id: int) -> bool:
-        db_path = self.get_db_path()
-        with duckdb.connect(db_path) as conn:
+        with self.get_write_conn() as conn:
             conn.execute("DELETE FROM watchlist_items WHERE watchlist_id = ?", [watchlist_id])
             conn.execute("DELETE FROM watchlists WHERE id = ?", [watchlist_id])
             return True
@@ -2404,6 +2429,26 @@ class DatabaseService:
                 ),
                 prev_bars AS (
                     SELECT symbol, close as prev_close FROM ranked_bars WHERE rn = 2
+                ),
+                latest_fundamentals AS (
+                    SELECT 
+                        symbol,
+                        inst_holders_count,
+                        inst_holders_qoq_change,
+                        inst_ownership_pct,
+                        sponsorship_streak,
+                        ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY fiscal_quarter DESC) as rn
+                    FROM quarterly_fundamentals
+                    WHERE symbol IN (SELECT symbol FROM target_symbols)
+                ),
+                latest_sponsorship AS (
+                    SELECT 
+                        symbol,
+                        holders_count,
+                        holders_qoq_change,
+                        ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY fiscal_quarter DESC) as rn
+                    FROM institutional_sponsorship
+                    WHERE symbol IN (SELECT symbol FROM target_symbols)
                 )
                 SELECT 
                     s.symbol,
@@ -2430,11 +2475,24 @@ class DatabaseService:
                     lb.ema_50,
                     lb.sma_200,
                     lb.vcp_is_setup,
-                    lb.low_cheat_is_setup
+                    lb.low_cheat_is_setup,
+                    lb.ti_65,
+                    lb.ret_1m,
+                    lb.ret_3m,
+                    lb.ret_6m,
+                    lb.atr_20d,
+                    s.asset_type,
+                    s.next_earnings_date,
+                    COALESCE(isp.holders_count, f.inst_holders_count) as inst_holders_count,
+                    COALESCE(isp.holders_qoq_change, f.inst_holders_qoq_change) as inst_holders_qoq_change,
+                    f.sponsorship_streak,
+                    COALESCE(lb.is_52w_high, false) as is_rs_blue_dot
                 FROM target_symbols ts
                 JOIN symbols s ON ts.symbol = s.symbol
                 LEFT JOIN latest_bars lb ON s.symbol = lb.symbol
                 LEFT JOIN prev_bars pb ON s.symbol = pb.symbol
+                LEFT JOIN latest_fundamentals f ON s.symbol = f.symbol AND f.rn = 1
+                LEFT JOIN latest_sponsorship isp ON s.symbol = isp.symbol AND isp.rn = 1
                 ORDER BY ts.added_at DESC
             """
             rows = conn.execute(query, [watchlist_id]).fetchall()
@@ -2464,7 +2522,18 @@ class DatabaseService:
                     "ema_50": row[21],
                     "sma_200": row[22],
                     "vcp_is_setup": row[23],
-                    "low_cheat_is_setup": row[24]
+                    "low_cheat_is_setup": row[24],
+                    "ti_65": row[25] if len(row) > 25 else None,
+                    "ret_1m": row[26] if len(row) > 26 else None,
+                    "ret_3m": row[27] if len(row) > 27 else None,
+                    "ret_6m": row[28] if len(row) > 28 else None,
+                    "atr_20d": row[29] if len(row) > 29 else None,
+                    "asset_type": row[30] if len(row) > 30 else None,
+                    "next_earnings_date": row[31] if len(row) > 31 else None,
+                    "inst_holders_count": row[32] if len(row) > 32 else None,
+                    "inst_holders_qoq_change": row[33] if len(row) > 33 else None,
+                    "sponsorship_streak": row[34] if len(row) > 34 else 0,
+                    "is_rs_blue_dot": bool(row[35]) if len(row) > 35 and row[35] is not None else False
                 }
                 for row in rows
             ]
@@ -2527,8 +2596,7 @@ class DatabaseService:
             }
 
     def add_watchlist_item(self, watchlist_id: int, symbol: str) -> bool:
-        db_path = self.get_db_path()
-        with duckdb.connect(db_path) as conn:
+        with self.get_write_conn() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS watchlist_items (
                     watchlist_id INTEGER NOT NULL,
@@ -2542,8 +2610,7 @@ class DatabaseService:
             return True
 
     def add_watchlist_items_batch(self, watchlist_id: int, symbols: List[str]) -> int:
-        db_path = self.get_db_path()
-        with duckdb.connect(db_path) as conn:
+        with self.get_write_conn() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS watchlist_items (
                     watchlist_id INTEGER NOT NULL,
@@ -2560,15 +2627,13 @@ class DatabaseService:
             return len(cleaned)
 
     def remove_watchlist_item(self, watchlist_id: int, symbol: str) -> bool:
-        db_path = self.get_db_path()
-        with duckdb.connect(db_path) as conn:
+        with self.get_write_conn() as conn:
             symbol_upper = symbol.strip().upper()
             conn.execute("DELETE FROM watchlist_items WHERE watchlist_id = ? AND symbol = ?", [watchlist_id, symbol_upper])
             return True
 
     def remove_watchlist_items_batch(self, watchlist_id: int, symbols: List[str]) -> int:
-        db_path = self.get_db_path()
-        with duckdb.connect(db_path) as conn:
+        with self.get_write_conn() as conn:
             cleaned = list(set(s.strip().upper() for s in symbols if s and s.strip()))
             if not cleaned:
                 return 0
@@ -2577,8 +2642,7 @@ class DatabaseService:
             return len(cleaned)
 
     def clear_watchlist_items(self, watchlist_id: int) -> bool:
-        db_path = self.get_db_path()
-        with duckdb.connect(db_path) as conn:
+        with self.get_write_conn() as conn:
             conn.execute("DELETE FROM watchlist_items WHERE watchlist_id = ?", [watchlist_id])
             return True
 

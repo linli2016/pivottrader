@@ -110,7 +110,6 @@ function StockBrandIcon({ symbol }) {
 
 export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetchWatchlists }) {
   const [selectedWatchlistId, setSelectedWatchlistId] = useState(null);
-  const [activeMode, setActiveMode] = useState('watchlist'); // 'watchlist' | 'industry'
   const [items, setItems] = useState([]);
   const [loadingItems, setLoadingItems] = useState(false);
   const [selectedStock, setSelectedStock] = useState(null);
@@ -118,7 +117,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   // Center Chart Data
   const [stockPrices, setStockPrices] = useState([]);
   const [loadingPrices, setLoadingPrices] = useState(false);
-  const [selectedTimeframe, setSelectedTimeframe] = useState('1D');
 
   // Right Panel Data
   const [stockDetail, setStockDetail] = useState(null);
@@ -397,6 +395,86 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       : null
   );
 
+  // Metrics for Top Panel Badges (matching CandidatesTab / Stock Screen)
+  const rsRank = selectedStock?.rs_rank ?? stockDetail?.rs_rank ?? null;
+
+  const hasBlueDot = useMemo(() => {
+    if (selectedStock?.is_rs_blue_dot || stockDetail?.is_rs_blue_dot) return true;
+    if (stockPrices && stockPrices.length > 0) {
+      const recent = stockPrices.slice(-5);
+      return recent.some((b) => b.is_rs_blue_dot);
+    }
+    return false;
+  }, [selectedStock, stockDetail, stockPrices]);
+
+  const adrVal = selectedStock?.adr_20d ?? stockDetail?.adr_20d ?? null;
+  const atrVal = selectedStock?.atr_20d ?? stockDetail?.atr_20d ?? null;
+
+  const ti65Val = selectedStock?.ti_65 ?? stockDetail?.ti_65 ?? null;
+
+  const isEtf = (selectedStock?.asset_type === 'ETF') ||
+    (selectedStock?.asset_type && selectedStock.asset_type.toUpperCase().includes('ETF')) ||
+    (stockDetail?.metadata?.asset_type === 'ETF') ||
+    (stockDetail?.metadata?.asset_type && stockDetail.metadata.asset_type.toUpperCase().includes('ETF'));
+
+  const instHoldersCount = stockDetail?.sponsorship_summary?.holders_count ??
+    selectedStock?.inst_holders_count ??
+    stockDetail?.fundamentals?.[0]?.inst_holders_count ?? null;
+
+  const instHoldersQoqChange = stockDetail?.sponsorship_summary?.holders_qoq_change ??
+    selectedStock?.inst_holders_qoq_change ??
+    stockDetail?.fundamentals?.[0]?.inst_holders_qoq_change ?? null;
+
+  const sponsorshipStreak = stockDetail?.sponsorship_summary?.sponsorship_streak ??
+    selectedStock?.sponsorship_streak ??
+    stockDetail?.fundamentals?.[0]?.sponsorship_streak ?? 0;
+
+  const ret1m = selectedStock?.ret_1m ?? stockDetail?.ret_1m ?? null;
+  const ret3m = selectedStock?.ret_3m ?? stockDetail?.ret_3m ?? null;
+  const ret6m = selectedStock?.ret_6m ?? stockDetail?.ret_6m ?? null;
+
+  const earningsBadge = useMemo(() => {
+    const dt = selectedStock?.next_earnings_date ||
+      stockDetail?.next_earnings_date ||
+      stockDetail?.metadata?.next_earnings_date ||
+      financials?.next_earnings_date;
+    if (!dt) return null;
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const target = new Date(dt + 'T00:00:00');
+      const diffTime = target.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      let badgeSub = '';
+      let isUrgent = false;
+
+      if (diffDays === 0) {
+        badgeSub = 'Today';
+        isUrgent = true;
+      } else if (diffDays === 1) {
+        badgeSub = 'Tomorrow';
+        isUrgent = true;
+      } else if (diffDays > 1) {
+        badgeSub = `in ${diffDays}d`;
+        if (diffDays <= 7) isUrgent = true;
+      } else {
+        badgeSub = `${Math.abs(diffDays)}d ago`;
+      }
+
+      return {
+        dateStr: dt,
+        badgeSub,
+        diffDays,
+        isUrgent,
+        displayText: `Earning ${badgeSub}`,
+        fullDisplay: `${dt} (${badgeSub})`
+      };
+    } catch (e) {
+      return { dateStr: dt, badgeSub: dt, displayText: `Earning ${dt}`, fullDisplay: dt, isUrgent: false };
+    }
+  }, [selectedStock?.next_earnings_date, stockDetail?.next_earnings_date, stockDetail?.metadata?.next_earnings_date, financials?.next_earnings_date]);
+
   return (
     <div style={{
       display: 'flex',
@@ -431,7 +509,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
           borderRight: '1px solid var(--border-color)',
           overflow: 'hidden'
         }}>
-          {/* Header Mode Switcher: Watchlist / Industry */}
+          {/* Header Bar */}
           <div style={{
             padding: '10px 12px 8px',
             borderBottom: '1px solid var(--border-color)',
@@ -442,42 +520,16 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
           }}>
             <div style={{
               display: 'inline-flex',
-              background: 'rgba(0, 0, 0, 0.4)',
-              padding: '3px',
-              borderRadius: '20px',
-              border: '1px solid var(--border-color)',
-              gap: '2px'
+              alignItems: 'center',
+              background: 'rgba(16, 185, 129, 0.15)',
+              color: '#10b981',
+              border: '1px solid rgba(16, 185, 129, 0.4)',
+              borderRadius: '16px',
+              padding: '3px 12px',
+              fontSize: '11.5px',
+              fontWeight: 700
             }}>
-              <button
-                onClick={() => setActiveMode('watchlist')}
-                style={{
-                  background: activeMode === 'watchlist' ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
-                  color: activeMode === 'watchlist' ? '#10b981' : 'var(--text-secondary)',
-                  border: activeMode === 'watchlist' ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid transparent',
-                  borderRadius: '16px',
-                  padding: '3px 12px',
-                  fontSize: '11.5px',
-                  fontWeight: 700,
-                  cursor: 'pointer'
-                }}
-              >
-                Watchlist
-              </button>
-              <button
-                onClick={() => setActiveMode('industry')}
-                style={{
-                  background: activeMode === 'industry' ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
-                  color: activeMode === 'industry' ? '#10b981' : 'var(--text-secondary)',
-                  border: activeMode === 'industry' ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid transparent',
-                  borderRadius: '16px',
-                  padding: '3px 12px',
-                  fontSize: '11.5px',
-                  fontWeight: 700,
-                  cursor: 'pointer'
-                }}
-              >
-                Industry
-              </button>
+              Watchlist
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -665,7 +717,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                   fontSize: '10.5px'
                 }}>
                   <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600 }}>Ticker</th>
-                  <th style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 600 }}>Price</th>
                   <th style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 600 }}>Chg%</th>
                   <th style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 600 }}>Rel Vol</th>
                   <th style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 600 }}>RS</th>
@@ -674,13 +725,13 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
               <tbody>
                 {loadingItems ? (
                   <tr>
-                    <td colSpan={5} style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--text-muted)' }}>
+                    <td colSpan={4} style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--text-muted)' }}>
                       ⏳ Loading symbols...
                     </td>
                   </tr>
                 ) : filteredItems.length === 0 ? (
                   <tr>
-                    <td colSpan={5} style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--text-muted)' }}>
+                    <td colSpan={4} style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--text-muted)' }}>
                       No stocks in this list.<br />
                       Type a ticker above to add.
                     </td>
@@ -709,11 +760,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                           <span style={{ fontWeight: 800, color: isSelected ? '#10b981' : 'var(--text-primary)', fontSize: '12px' }}>
                             {item.symbol}
                           </span>
-                        </td>
-
-                        {/* Price */}
-                        <td style={{ textAlign: 'right', padding: '7px 6px', fontWeight: 600 }}>
-                          {item.close !== null && item.close !== undefined ? `$${item.close.toFixed(2)}` : '—'}
                         </td>
 
                         {/* Chg% */}
@@ -773,141 +819,247 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
             <>
               {/* Center Top Header Bar */}
               <div style={{
-                padding: '8px 16px',
+                padding: '10px 16px',
                 borderBottom: '1px solid var(--border-color)',
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: '12px',
+                flexDirection: 'column',
+                gap: '8px',
                 background: 'var(--bg-secondary)'
               }}>
-                {/* Left: Ticker, Price, Chg%, RS Badge */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '18px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.3px' }}>
-                      {selectedStock.symbol}
-                    </span>
-                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>🔍</span>
-                  </div>
-
-                  {latestBar && (
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                      <span style={{ fontSize: '18px', fontWeight: 800, color: '#ffffff' }}>
-                        ${latestBar.close?.toFixed(2)}
+                {/* Row 1: Ticker, Price, Chg%, Clean Name */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '18px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.3px' }}>
+                        {selectedStock.symbol}
                       </span>
-                      {selectedStock.chg_pct !== undefined && selectedStock.chg_pct !== null && (
-                        <span style={{
-                          fontSize: '13px',
-                          fontWeight: 700,
-                          color: selectedStock.chg_pct >= 0 ? '#34d399' : '#fb7185'
-                        }}>
-                          {selectedStock.chg_pct >= 0 ? `+${selectedStock.chg_pct.toFixed(1)}%` : `${selectedStock.chg_pct.toFixed(1)}%`}
-                        </span>
-                      )}
+                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>🔍</span>
                     </div>
-                  )}
 
-                  {/* Pivot RS Badge */}
-                  {selectedStock.rs_rank !== null && selectedStock.rs_rank !== undefined && (
-                    <span style={{
-                      padding: '2px 8px',
-                      borderRadius: '12px',
-                      fontSize: '11px',
-                      fontWeight: 800,
-                      background: 'rgba(56, 189, 248, 0.15)',
-                      color: '#38bdf8',
-                      border: '1px solid rgba(56, 189, 248, 0.3)'
-                    }}>
-                      Pivot {selectedStock.rs_rank} ↑
-                    </span>
-                  )}
+                    {latestBar && (
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                        <span style={{ fontSize: '18px', fontWeight: 800, color: '#ffffff' }}>
+                          ${latestBar.close?.toFixed(2)}
+                        </span>
+                        {selectedStock.chg_pct !== undefined && selectedStock.chg_pct !== null && (
+                          <span style={{
+                            fontSize: '13px',
+                            fontWeight: 700,
+                            color: selectedStock.chg_pct >= 0 ? '#34d399' : '#fb7185'
+                          }}>
+                            {selectedStock.chg_pct >= 0 ? `+${selectedStock.chg_pct.toFixed(1)}%` : `${selectedStock.chg_pct.toFixed(1)}%`}
+                          </span>
+                        )}
+                      </div>
+                    )}
 
-                  {/* Blue Dot Indicator if active */}
-                  {latestBar?.is_rs_blue_dot && (
-                    <span style={{
-                      padding: '2px 6px',
-                      borderRadius: '10px',
-                      fontSize: '10px',
-                      fontWeight: 800,
-                      background: 'rgba(56, 189, 248, 0.25)',
-                      color: '#38bdf8'
-                    }}>
-                      🔵 Blue Dot
-                    </span>
-                  )}
-                </div>
-
-                {/* Right: Timeframe Switcher & Chart Controls */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {['5m', '65m', '1D', '1W'].map((tf) => (
-                    <button
-                      key={tf}
-                      onClick={() => setSelectedTimeframe(tf)}
-                      style={{
-                        background: selectedTimeframe === tf ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
-                        color: selectedTimeframe === tf ? '#10b981' : 'var(--text-secondary)',
-                        border: selectedTimeframe === tf ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid var(--border-color)',
-                        borderRadius: '4px',
-                        padding: '3px 8px',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {tf}
-                    </button>
-                  ))}
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '6px' }}>Candles ▾</span>
-                </div>
-              </div>
-
-              {/* Chart Telemetry HUD Banner Overlays */}
-              <div style={{
-                padding: '6px 16px',
-                background: 'rgba(0, 0, 0, 0.25)',
-                borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
-                fontSize: '11px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '4px'
-              }}>
-                {/* Row 1: OHLCV + Volume Ratio */}
-                {latestBar && (
-                  <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap', color: 'var(--text-secondary)' }}>
-                    <span style={{ color: '#ffffff', fontWeight: 700 }}>{selectedStock.symbol}</span>
-                    <span>O <strong style={{ color: '#ffffff' }}>${latestBar.open?.toFixed(2)}</strong></span>
-                    <span>H <strong style={{ color: '#ffffff' }}>${latestBar.high?.toFixed(2)}</strong></span>
-                    <span>L <strong style={{ color: '#ffffff' }}>${latestBar.low?.toFixed(2)}</strong></span>
-                    <span>C <strong style={{ color: '#ffffff' }}>${latestBar.close?.toFixed(2)}</strong></span>
-                    <span>Vol <strong style={{ color: '#ffffff' }}>{(latestBar.volume / 1e6).toFixed(2)}M</strong></span>
-                    {rvolDisplay && (
-                      <span style={{ color: '#38bdf8', fontWeight: 700 }}>
-                        Vol ratio {(rvolDisplay / 100).toFixed(1)}x
+                    {cleanName && cleanName !== selectedStock.symbol && (
+                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                        {cleanName}
                       </span>
                     )}
                   </div>
-                )}
-
-                {/* Row 2: Pivot Essentials Moving Averages */}
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', fontSize: '10.5px' }}>
-                  <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Pivot Essentials:</span>
-                  <span style={{ color: '#facc15' }}>
-                    EMA 10 <strong>${selectedStock.ema_10 ? selectedStock.ema_10.toFixed(2) : latestBar?.close?.toFixed(2)}</strong>
-                  </span>
-                  <span style={{ color: '#38bdf8' }}>
-                    EMA 20 <strong>${selectedStock.ema_20 ? selectedStock.ema_20.toFixed(2) : (latestBar?.close * 0.98)?.toFixed(2)}</strong>
-                  </span>
-                  <span style={{ color: '#c084fc' }}>
-                    EMA 50 <strong>${selectedStock.ema_50 ? selectedStock.ema_50.toFixed(2) : latestBar?.sma_50?.toFixed(2)}</strong>
-                  </span>
-                  <span style={{ color: '#34d399' }}>
-                    EMA 200 <strong>${selectedStock.sma_200 ? selectedStock.sma_200.toFixed(2) : latestBar?.sma_200?.toFixed(2)}</strong>
-                  </span>
                 </div>
 
-                {/* Row 3: Growth & Pivot Wall Levels */}
-                <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap', fontSize: '10.5px' }}>
+                {/* Row 2: Badges / Pills Group (identical to Stock Screen result) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span className="pill pill-success" style={{ fontSize: '11px', padding: '3px 8px' }}>
+                    RS: {rsRank ?? 'N/A'}
+                  </span>
+
+                  {hasBlueDot && (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        background: 'rgba(56, 189, 248, 0.25)',
+                        color: '#38bdf8',
+                        border: '1px solid rgba(56, 189, 248, 0.45)',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                      title="RS Blue Dot: Relative Strength vs SPY hit a new 52-week high before price breakout (institutional accumulation)"
+                    >
+                      🔵 RS Blue Dot
+                    </span>
+                  )}
+
+                  {adrVal !== null && adrVal !== undefined ? (
+                    <span className="pill" style={{ fontSize: '11px', padding: '3px 8px', background: adrVal >= 5.0 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(59, 130, 246, 0.18)', color: adrVal >= 5.0 ? '#f59e0b' : '#60a5fa', border: adrVal >= 5.0 ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 700 }}>
+                      ADR%: {adrVal.toFixed(2)}%
+                    </span>
+                  ) : atrVal !== null && atrVal !== undefined ? (
+                    <span className="pill" style={{ fontSize: '11px', padding: '3px 8px', background: 'rgba(59, 130, 246, 0.18)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 600 }}>
+                      ADTR: {atrVal.toFixed(2)}%
+                    </span>
+                  ) : null}
+
+                  {ti65Val !== null && ti65Val !== undefined && (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        background: ti65Val >= 1.05 ? 'rgba(16, 185, 129, 0.18)' : ti65Val < 0.95 ? 'rgba(239, 68, 68, 0.18)' : 'rgba(255, 255, 255, 0.08)',
+                        color: ti65Val >= 1.05 ? '#34d399' : ti65Val < 0.95 ? '#f87171' : 'var(--text-secondary)',
+                        border: ti65Val >= 1.05 ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(255, 255, 255, 0.1)',
+                        fontWeight: 600
+                      }}
+                      title={`Stockbee Trend Intensity (TI65): ${ti65Val.toFixed(2)}${ti65Val >= 1.05 ? ' (Bullish Uptrend)' : ti65Val < 0.95 ? ' (Bearish Trend)' : ' (Neutral)'}`}
+                    >
+                      TI65: {ti65Val.toFixed(2)}
+                    </span>
+                  )}
+
+                  {!isEtf && (
+                    instHoldersCount !== null && instHoldersCount !== undefined ? (
+                      <span
+                        className="pill"
+                        style={{
+                          fontSize: '11px',
+                          padding: '3px 8px',
+                          background: (sponsorshipStreak >= 2 || (instHoldersQoqChange > 0)) ? 'rgba(34, 197, 94, 0.2)' : 'rgba(56, 189, 248, 0.18)',
+                          color: (sponsorshipStreak >= 2 || (instHoldersQoqChange > 0)) ? '#22c55e' : '#38bdf8',
+                          border: (sponsorshipStreak >= 2 || (instHoldersQoqChange > 0)) ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(56, 189, 248, 0.3)',
+                          fontWeight: 700
+                        }}
+                        title={`Institutional Sponsorship: ${instHoldersCount.toLocaleString()} funds${instHoldersQoqChange !== null && instHoldersQoqChange !== undefined ? ` (${instHoldersQoqChange >= 0 ? '+' : ''}${instHoldersQoqChange} QoQ)` : ''}${sponsorshipStreak >= 1 ? `, Streak: ${sponsorshipStreak}Q` : ''}`}
+                      >
+                        🏛️ Inst: {instHoldersCount.toLocaleString()} {instHoldersQoqChange !== null && instHoldersQoqChange !== undefined ? `(${instHoldersQoqChange >= 0 ? '+' : ''}${instHoldersQoqChange} QoQ)` : ''}{sponsorshipStreak >= 2 ? ` 🔥 +${sponsorshipStreak}Q` : ''}
+                      </span>
+                    ) : sponsorshipStreak >= 1 ? (
+                      <span
+                        className="pill"
+                        style={{
+                          fontSize: '11px',
+                          padding: '3px 8px',
+                          background: sponsorshipStreak >= 2 ? 'rgba(34, 197, 94, 0.2)' : 'rgba(59, 130, 246, 0.18)',
+                          color: sponsorshipStreak >= 2 ? '#22c55e' : '#60a5fa',
+                          border: sponsorshipStreak >= 2 ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(59, 130, 246, 0.3)',
+                          fontWeight: 700
+                        }}
+                        title={`Institutional Sponsorship: ${sponsorshipStreak} consecutive quarters increasing fund count`}
+                      >
+                        🏛️ {sponsorshipStreak >= 2 ? '🔥 ' : ''}+{sponsorshipStreak}Q Inst
+                      </span>
+                    ) : (
+                      <span
+                        className="pill"
+                        style={{
+                          fontSize: '11px',
+                          padding: '3px 8px',
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          color: 'var(--text-muted)',
+                          border: '1px solid rgba(255, 255, 255, 0.08)',
+                          fontWeight: 500
+                        }}
+                        title="Institutional Sponsorship not synced for this stock yet. Check 'Sync Institutional Sponsorship' on Dashboard."
+                      >
+                        🏛️ Inst: Unsynced
+                      </span>
+                    )
+                  )}
+
+                  {ret1m !== null && ret1m !== undefined && (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        background: 'rgba(59, 130, 246, 0.18)',
+                        color: '#60a5fa',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                        fontWeight: 600
+                      }}
+                      title={`1-Month Return: ${ret1m.toFixed(1)}%`}
+                    >
+                      1M: {ret1m >= 0 ? '+' : ''}{ret1m.toFixed(1)}%
+                    </span>
+                  )}
+
+                  {ret3m !== null && ret3m !== undefined && (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        background: 'rgba(168, 85, 247, 0.18)',
+                        color: '#c084fc',
+                        border: '1px solid rgba(168, 85, 247, 0.3)',
+                        fontWeight: 600
+                      }}
+                      title={`3-Month Return: ${ret3m.toFixed(1)}%`}
+                    >
+                      3M: {ret3m >= 0 ? '+' : ''}{ret3m.toFixed(1)}%
+                    </span>
+                  )}
+
+                  {ret6m !== null && ret6m !== undefined && (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        background: 'rgba(236, 72, 153, 0.18)',
+                        color: '#f472b6',
+                        border: '1px solid rgba(236, 72, 153, 0.3)',
+                        fontWeight: 600
+                      }}
+                      title={`6-Month Return: ${ret6m.toFixed(1)}%`}
+                    >
+                      6M: {ret6m >= 0 ? '+' : ''}{ret6m.toFixed(1)}%
+                    </span>
+                  )}
+
+                  {earningsBadge ? (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        fontWeight: '700',
+                        background: earningsBadge.isUrgent ? 'rgba(239, 68, 68, 0.2)' : 'rgba(168, 85, 247, 0.2)',
+                        color: earningsBadge.isUrgent ? '#f87171' : '#c084fc',
+                        border: `1px solid ${earningsBadge.isUrgent ? 'rgba(239, 68, 68, 0.4)' : 'rgba(168, 85, 247, 0.4)'}`
+                      }}
+                      title={`Next Earnings Date: ${earningsBadge.dateStr}`}
+                    >
+                      {earningsBadge.displayText}
+                    </span>
+                  ) : (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        fontWeight: '500',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        color: 'var(--text-muted)',
+                        border: '1px solid rgba(255, 255, 255, 0.08)'
+                      }}
+                      title="Next Earnings Date: Not Scheduled or Unannounced"
+                    >
+                      Earning: {loadingDetail ? 'Checking...' : 'Unscheduled'}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Chart Telemetry Sub-bar: Growth & Pivot Wall Levels */}
+              {(stockDetail?.fundamentals?.[0] || selectedStock?.high_52w || latestBar?.close) && (
+                <div style={{
+                  padding: '5px 16px',
+                  background: 'rgba(0, 0, 0, 0.25)',
+                  borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                  fontSize: '10.5px',
+                  display: 'flex',
+                  gap: '14px',
+                  alignItems: 'center',
+                  flexWrap: 'wrap'
+                }}>
                   {stockDetail?.fundamentals?.[0] && (
                     <span style={{ color: 'var(--text-secondary)' }}>
                       EPS & Rev Growth: <strong style={{ color: '#34d399' }}>YoY +{Math.round(stockDetail.fundamentals[0].eps_qoq_growth || 20)}%</strong>
@@ -920,7 +1072,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                     Put Wall <strong style={{ color: '#fb7185' }}>${(latestBar?.close * 0.90)?.toFixed(2)}</strong>
                   </span>
                 </div>
-              </div>
+              )}
 
               {/* Main Candlestick Chart Area */}
               <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>

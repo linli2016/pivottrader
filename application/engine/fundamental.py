@@ -6,7 +6,18 @@ class FundamentalEngine:
         self.db_path = db_path
 
     def get_connection(self):
-        return duckdb.connect(self.db_path)
+        import time
+        max_retries = 25
+        for attempt in range(max_retries):
+            try:
+                return duckdb.connect(self.db_path)
+            except Exception as e:
+                err_msg = str(e).lower()
+                is_lock = any(k in err_msg for k in ["lock", "different configuration", "conflict", "held in", "temporarily unavailable"])
+                if is_lock and attempt < max_retries - 1:
+                    time.sleep(0.1 + attempt * 0.02)
+                else:
+                    raise
 
     def filter_by_eps_growth(self, symbols: List[str], min_eps_growth: float = 20.0) -> List[Dict[str, Any]]:
         """

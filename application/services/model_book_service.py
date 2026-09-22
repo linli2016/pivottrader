@@ -187,13 +187,15 @@ class ModelBookService:
         """Returns a thread-safe read-only connection to DuckDB."""
         import time
         db_path = self.get_db_path()
-        max_retries = 6
+        max_retries = 25
         for attempt in range(max_retries):
             try:
                 return duckdb.connect(db_path, read_only=True)
             except Exception as e:
-                if "lock" in str(e).lower() and attempt < max_retries - 1:
-                    time.sleep(0.5)
+                err_msg = str(e).lower()
+                is_lock = any(k in err_msg for k in ["lock", "different configuration", "conflict", "held in", "temporarily unavailable"])
+                if is_lock and attempt < max_retries - 1:
+                    time.sleep(0.05 + attempt * 0.02)
                 else:
                     raise
 
