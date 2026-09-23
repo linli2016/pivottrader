@@ -292,6 +292,43 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertIn("STAGE2", trend_symbols)
 
 
+    def test_minervini_trend_templates(self):
+        # Test STAGE2_1M
+        res_1m = ScanExpressionEngine.validate("STAGE2_1M AND RS_RANK >= 70 AND C >= 5.0 AND DOLLAR_VOL >= 10000000")
+        self.assertTrue(res_1m["valid"])
+        self.assertIn("STAGE2_1M", res_1m["variables"])
+        self.assertIn("b.sma_200_20d_ago", res_1m["sql"])
+        self.assertIn("b.sma_200_80d_ago", res_1m["sql"])
+
+        # Test STAGE2_1_4M
+        res_1_4m = ScanExpressionEngine.validate("STAGE2_1_4M AND RS_RANK >= 70 AND C >= 5.0 AND DOLLAR_VOL >= 10000000")
+        self.assertTrue(res_1_4m["valid"])
+        self.assertIn("STAGE2_1_4M", res_1_4m["variables"])
+        self.assertIn("b.sma_200_80d_ago", res_1_4m["sql"])
+        self.assertIn("b.sma_200_100d_ago", res_1_4m["sql"])
+
+        # Test STAGE2_5M
+        res_5m = ScanExpressionEngine.validate("STAGE2_5M AND RS_RANK >= 70 AND C >= 5.0 AND DOLLAR_VOL >= 10000000")
+        self.assertTrue(res_5m["valid"])
+        self.assertIn("STAGE2_5M", res_5m["variables"])
+        self.assertIn("b.sma_200_100d_ago", res_5m["sql"])
+
+    def test_sma200_lags_catalog(self):
+        cat = ScanExpressionEngine.get_catalog()
+        self.assertIn("SMA_200_80D_AGO", cat)
+        self.assertIn("SMA200_80D", cat)
+        self.assertIn("SMA_200_100D_AGO", cat)
+        self.assertIn("SMA200_100D", cat)
+        self.assertIn("STAGE2_1M", cat)
+        self.assertIn("STAGE2_1_4M", cat)
+        self.assertIn("STAGE2_5M", cat)
+
+        res = ScanExpressionEngine.validate("SMA200 > SMA200_80D AND SMA200 > SMA200_100D")
+        self.assertTrue(res["valid"])
+        self.assertIn("b.sma_200_80d_ago", res["sql"])
+        self.assertIn("b.sma_200_100d_ago", res["sql"])
+
+
 if __name__ == "__main__":
     unittest.main()
 

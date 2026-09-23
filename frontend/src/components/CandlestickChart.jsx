@@ -55,6 +55,9 @@ function getResponsiveVisibleBars(containerWidth) {
   return Math.max(147, Math.min(252, bars));
 }
 
+// Module-level in-memory cache for stock earnings to avoid repeated network queries
+const earningsCache = new Map();
+
 // Custom Primitive to draw a vertical dashed line for As-of Date
 class VerticalLinePrimitive {
   constructor(time, options = {}) {
@@ -678,11 +681,17 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       setFetchedEarnings([]);
       return;
     }
+    const sym = symbol.toUpperCase();
+    if (earningsCache.has(sym)) {
+      setFetchedEarnings(earningsCache.get(sym));
+      return;
+    }
     let cancelled = false;
-    fetch(`${API_BASE}/api/stocks/${symbol}/earnings`)
+    fetch(`${API_BASE}/api/stocks/${sym}/earnings`)
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
         if (!cancelled && Array.isArray(data)) {
+          earningsCache.set(sym, data);
           setFetchedEarnings(data);
         }
       })

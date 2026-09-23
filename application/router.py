@@ -227,10 +227,10 @@ def get_stock_financials(symbol: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/stocks/{symbol}/earnings")
-def get_stock_earnings(symbol: str):
+def get_stock_earnings(symbol: str, fetch_live: bool = False):
     """Retrieve historical and upcoming earnings dates, estimates, and EPS surprises for a symbol."""
     try:
-        return db_service.get_stock_earnings(symbol)
+        return db_service.get_stock_earnings(symbol, fetch_live=fetch_live)
     except Exception as e:
         logger.error(f"Error in get_stock_earnings({symbol}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

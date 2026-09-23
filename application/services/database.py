@@ -28,6 +28,15 @@ class DatabaseService:
         self.config_service = config_service
         self._market_monitor_cache: Dict[int, Dict[str, Any]] = {}
         self._cache_timestamp: float = 0.0
+        self.ensure_schema()
+
+    def ensure_schema(self):
+        """Ensures that schema structures and column migrations are applied to db_path."""
+        try:
+            from application.database import DatabaseManager
+            DatabaseManager(self.get_db_path())
+        except Exception as e:
+            logger.warning(f"Could not auto-migrate schema in ensure_schema: {e}")
 
     def clear_caches(self):
         """Clears in-memory market monitor and regime caches."""
@@ -1430,44 +1439,83 @@ class DatabaseService:
     def get_stock_prices(self, symbol: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         symbol = symbol.upper()
         with self.get_read_only_conn() as conn:
-            bars = conn.execute("""
-                WITH spy_bars AS (
-                    SELECT date, close as spy_close
-                    FROM daily_bars
-                    WHERE symbol = 'SPY'
-                ),
-                sym_bars AS (
-                    SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65
-                    FROM daily_bars
-                    WHERE symbol = ?
-                ),
-                combined AS (
+            if limit and limit > 0:
+                lookback = limit + 260
+                bars = conn.execute("""
+                    WITH sym_recent AS (
+                        SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65 
+                        FROM daily_bars 
+                        WHERE symbol = ? 
+                        ORDER BY date DESC 
+                        LIMIT ?
+                    ),
+                    sym_bars AS (
+                        SELECT * FROM sym_recent ORDER BY date ASC
+                    ),
+                    spy_bars AS (
+                        SELECT date, close as spy_close 
+                        FROM daily_bars 
+                        WHERE symbol = 'SPY' AND date >= (SELECT MIN(date) FROM sym_bars)
+                    ),
+                    combined AS (
+                        SELECT 
+                            s.*,
+                            ROUND((s.close / NULLIF(b.spy_close, 0)) * 100.0, 4) as rs_line
+                        FROM sym_bars s
+                        LEFT JOIN spy_bars b ON s.date = b.date
+                        ORDER BY s.date ASC
+                    ),
+                    with_rolling AS (
+                        SELECT 
+                            *,
+                            MAX(rs_line) OVER (ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_rs_52w_high,
+                            MAX(close) OVER (ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_close_52w_high
+                        FROM combined
+                    )
                     SELECT 
-                        s.*,
-                        ROUND((s.close / NULLIF(b.spy_close, 0)) * 100.0, 4) as rs_line
-                    FROM sym_bars s
-                    LEFT JOIN spy_bars b ON s.date = b.date
-                    ORDER BY s.date ASC
-                ),
-                with_rolling AS (
+                        date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65,
+                        rs_line,
+                        COALESCE(rs_line >= prev_rs_52w_high AND close < COALESCE(prev_close_52w_high, close), false) as is_rs_blue_dot
+                    FROM with_rolling
+                    ORDER BY date ASC
+                """, [symbol, lookback]).fetchall()
+                if len(bars) > limit:
+                    bars = bars[-limit:]
+            else:
+                bars = conn.execute("""
+                    WITH spy_bars AS (
+                        SELECT date, close as spy_close
+                        FROM daily_bars
+                        WHERE symbol = 'SPY'
+                    ),
+                    sym_bars AS (
+                        SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65
+                        FROM daily_bars
+                        WHERE symbol = ?
+                    ),
+                    combined AS (
+                        SELECT 
+                            s.*,
+                            ROUND((s.close / NULLIF(b.spy_close, 0)) * 100.0, 4) as rs_line
+                        FROM sym_bars s
+                        LEFT JOIN spy_bars b ON s.date = b.date
+                        ORDER BY s.date ASC
+                    ),
+                    with_rolling AS (
+                        SELECT 
+                            *,
+                            MAX(rs_line) OVER (ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_rs_52w_high,
+                            MAX(close) OVER (ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_close_52w_high
+                        FROM combined
+                    )
                     SELECT 
-                        *,
-                        MAX(rs_line) OVER (ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_rs_52w_high,
-                        MAX(close) OVER (ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_close_52w_high
-                    FROM combined
-                )
-                SELECT 
-                    date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65,
-                    rs_line,
-                    COALESCE(rs_line >= prev_rs_52w_high AND close < COALESCE(prev_close_52w_high, close), false) as is_rs_blue_dot
-                FROM with_rolling
-                ORDER BY date ASC
-            """, [symbol]).fetchall()
+                        date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65,
+                        rs_line,
+                        COALESCE(rs_line >= prev_rs_52w_high AND close < COALESCE(prev_close_52w_high, close), false) as is_rs_blue_dot
+                    FROM with_rolling
+                    ORDER BY date ASC
+                """, [symbol]).fetchall()
             
-            # limit output bars if limit is a positive integer
-            if limit and limit > 0 and len(bars) > limit:
-                bars = bars[-limit:]
-                
             bars_list = []
             for row in bars:
                 bars_list.append({
@@ -1487,7 +1535,7 @@ class DatabaseService:
                 })
             return bars_list
 
-    def get_stock_earnings(self, symbol: str) -> List[Dict[str, Any]]:
+    def get_stock_earnings(self, symbol: str, fetch_live: bool = False) -> List[Dict[str, Any]]:
         """Retrieves historical and upcoming earnings report dates, estimates, actuals, and surprise % for a symbol."""
         symbol = symbol.upper()
 
@@ -1514,8 +1562,8 @@ class DatabaseService:
                 "time_of_day": r[4]
             })
 
-        # 2. If records are few or empty, fetch from yfinance and cache in earnings_calendar
-        if len(records) < 4:
+        # 2. If records are few or empty and fetch_live is enabled, fetch from yfinance and cache in earnings_calendar
+        if fetch_live and len(records) < 4:
             try:
                 import yfinance as yf
                 import pandas as pd

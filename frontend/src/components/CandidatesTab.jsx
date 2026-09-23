@@ -130,7 +130,6 @@ export default function CandidatesTab({
   // Stock Browse Mode (Chart Flip) states
   const [browseIndex, setBrowseIndex] = React.useState(0);
   const [browsePrices, setBrowsePrices] = React.useState([]);
-  const [browseDetail, setBrowseDetail] = React.useState(null);
   const [targetWatchlistId, setTargetWatchlistId] = React.useState(null);
   const [loadingBrowsePrices, setLoadingBrowsePrices] = React.useState(false);
   const [showCheatSheet, setShowCheatSheet] = React.useState(false);
@@ -138,6 +137,9 @@ export default function CandidatesTab({
   const [exprValidation, setExprValidation] = React.useState({ valid: true, error: null });
   const [selectedSector, setSelectedSector] = React.useState('ALL');
 
+  const priceCacheRef = React.useRef(new Map());
+  const pendingRequestsRef = React.useRef(new Map());
+  const abortControllerRef = React.useRef(null);
   const textareaRef = React.useRef(null);
   const selectedItemRef = React.useRef(null);
   const chartComponentRef = React.useRef(null);
@@ -269,8 +271,7 @@ export default function CandidatesTab({
   }, [currentCandidate, browsePrices]);
 
   const browseEarningsBadge = React.useMemo(() => {
-
-    const dt = currentCandidate?.next_earnings_date || browseDetail?.next_earnings_date || browseDetail?.metadata?.next_earnings_date;
+    const dt = currentCandidate?.next_earnings_date;
     if (!dt) return null;
     try {
       const today = new Date();
@@ -306,7 +307,7 @@ export default function CandidatesTab({
     } catch (e) {
       return { dateStr: dt, badgeSub: dt, displayText: `Earning ${dt}`, fullDisplay: dt, isUrgent: false };
     }
-  }, [currentCandidate?.next_earnings_date, browseDetail?.next_earnings_date, browseDetail?.metadata?.next_earnings_date]);
+  }, [currentCandidate?.next_earnings_date]);
 
   // Auto-scroll selected candidate stock into view in the Filtered Candidates list
   React.useEffect(() => {
@@ -325,46 +326,103 @@ export default function CandidatesTab({
     }
   }, [watchlists]);
 
-  const fetchBrowsePrices = async (symbol) => {
+  const fetchBrowsePrices = React.useCallback(async (symbol) => {
     if (!symbol) return;
+    const sym = symbol.toUpperCase();
+
+    // 1. Check in-memory cache for instant 0ms load
+    if (priceCacheRef.current.has(sym)) {
+      setBrowsePrices(priceCacheRef.current.get(sym));
+      setLoadingBrowsePrices(false);
+      return;
+    }
+
+    // 2. Abort previous in-flight direct fetch to prevent out-of-order responses and thread stalls
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setLoadingBrowsePrices(true);
     try {
-      const [pRes, dRes] = await Promise.all([
-        fetch(`${API_BASE}/api/stocks/${symbol}/prices`),
-        fetch(`${API_BASE}/api/stocks/${symbol}`)
-      ]);
-      if (pRes.ok) {
-        const data = await pRes.json();
+      let promise;
+      if (pendingRequestsRef.current.has(sym)) {
+        promise = pendingRequestsRef.current.get(sym);
+      } else {
+        promise = (async () => {
+          const res = await fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=750`, {
+            signal: controller.signal
+          });
+          if (res.ok) {
+            return await res.json();
+          }
+          return [];
+        })();
+        pendingRequestsRef.current.set(sym, promise);
+      }
+
+      const data = await promise;
+      if (Array.isArray(data) && data.length > 0) {
+        priceCacheRef.current.set(sym, data);
         setBrowsePrices(data);
       }
-      if (dRes.ok) {
-        const detail = await dRes.json();
-        setBrowseDetail(detail);
-      }
-      // If symbol doesn't have next_earnings_date cached, trigger background financials fetch
-      if (!currentCandidate?.next_earnings_date) {
-        fetch(`${API_BASE}/api/stocks/${symbol}/financials`)
-          .then(res => res.json())
-          .then(fData => {
-            if (fData?.next_earnings_date) {
-              setBrowseDetail(prev => prev ? { ...prev, next_earnings_date: fData.next_earnings_date } : prev);
-            }
-          })
-          .catch(() => {});
-      }
     } catch (e) {
-      console.error("Error fetching browse prices and details:", e);
+      if (e.name !== 'AbortError') {
+        console.error("Error fetching browse prices:", e);
+      }
     } finally {
+      pendingRequestsRef.current.delete(sym);
       setLoadingBrowsePrices(false);
     }
-  };
+  }, [API_BASE]);
 
+  const prefetchSymbols = React.useCallback((symbols) => {
+    if (!symbols || symbols.length === 0) return;
+    symbols.forEach(s => {
+      if (!s) return;
+      const sym = s.toUpperCase();
+      if (!priceCacheRef.current.has(sym) && !pendingRequestsRef.current.has(sym)) {
+        const reqPromise = (async () => {
+          try {
+            const res = await fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=750`);
+            if (res.ok) {
+              const data = await res.json();
+              if (Array.isArray(data) && data.length > 0) {
+                priceCacheRef.current.set(sym, data);
+                return data;
+              }
+            }
+          } catch (err) {
+            // Ignore prefetch network errors
+          } finally {
+            pendingRequestsRef.current.delete(sym);
+          }
+          return [];
+        })();
+        pendingRequestsRef.current.set(sym, reqPromise);
+      }
+    });
+  }, [API_BASE]);
 
   React.useEffect(() => {
     if (currentCandidate) {
       fetchBrowsePrices(currentCandidate.symbol);
     }
-  }, [browseIndex, currentCandidate?.symbol]);
+    // Prefetch surrounding candidate stocks for buttery-smooth keyboard flipping
+    if (displayedCandidates.length > 1) {
+      const symbolsToPrefetch = [];
+      if (browseIndex + 1 < displayedCandidates.length) symbolsToPrefetch.push(displayedCandidates[browseIndex + 1]?.symbol);
+      if (browseIndex + 2 < displayedCandidates.length) symbolsToPrefetch.push(displayedCandidates[browseIndex + 2]?.symbol);
+      if (browseIndex + 3 < displayedCandidates.length) symbolsToPrefetch.push(displayedCandidates[browseIndex + 3]?.symbol);
+      if (browseIndex > 0) symbolsToPrefetch.push(displayedCandidates[browseIndex - 1]?.symbol);
+
+      const timer = setTimeout(() => {
+        prefetchSymbols(symbolsToPrefetch);
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [browseIndex, currentCandidate?.symbol, displayedCandidates, fetchBrowsePrices, prefetchSymbols]);
 
   // Keyboard Arrow Navigation Listener for Browse Mode (Up/Down or Left/Right)
   React.useEffect(() => {

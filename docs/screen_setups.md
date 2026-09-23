@@ -28,18 +28,33 @@ All setups and scans in PivotTrader require candidates to meet the global baseli
 
 ---
 
-## 1. Stage 2 Trend Template (Mark Minervini Baseline)
+## 1. Stage 2 Trend Template (Mark Minervini Baseline & MarketSmith Idea Lists)
 
 ### Rationale
 History shows that virtually all superperformance stocks undergo their major price advances during **Stage 2 (Mark-Up Phase)**. Screening for Stage 2 ensures capital is only allocated to stocks with strong institutional sponsorship.
 
-### Quantitative Criteria
+### Quantitative Criteria (Core 8 Rules)
 1. **Price Above Moving Averages**: Current Stock Price > 50-day SMA, 150-day SMA, and 200-day SMA.
 2. **Moving Average Alignment**: 50-day SMA > 150-day SMA > 200-day SMA.
-3. **200-Day SMA Trend**: 200-day SMA must be trending upward for at least 1 month (22 trading days).
+3. **200-Day SMA Trend**: 200-day SMA must be trending upward (at least 1 month, preferably 4–5 months).
 4. **52-Week High Proximity**: Stock price within 25% of its 52-week high (closer to high is preferred).
 5. **Distance Above 52-Week Low**: Stock price at least 30% above its 52-week low.
 6. **Relative Strength Rank**: Dynamic RS Percentile Rank $\ge 70$ (top 30% of market momentum).
+
+### MarketSmith 3 Trend Template Horizons (Integrated as Setups under Minervini VCP)
+To categorize stocks by trend maturity, MarketSmith provides 3 duration-based variations of the Minervini Trend Template based on the duration of the 200-day moving average upward trend:
+1. **1 Month Trend Template (`STAGE2_1M`)**:
+   - **Focus**: Early Stage 2 turnarounds & aggressive early movers.
+   - **Criterion**: $200\text{ SMA today} > 200\text{ SMA 20 days ago}$ and $200\text{ SMA today} \le 200\text{ SMA 80 days ago}$.
+   - **Expression**: `STAGE2_1M AND RS_RANK >= 70 AND C >= 5.0 AND DOLLAR_VOL >= 10000000`
+2. **1~4 Month Trend Template (`STAGE2_1_4M`)**:
+   - **Focus**: Developing Stage 2 uptrends building constructive first/second bases.
+   - **Criterion**: $200\text{ SMA today} > 200\text{ SMA 20 days ago}$ and $200\text{ SMA today} > 200\text{ SMA 80 days ago}$ and $200\text{ SMA today} \le 200\text{ SMA 100 days ago}$.
+   - **Expression**: `STAGE2_1_4M AND RS_RANK >= 70 AND C >= 5.0 AND DOLLAR_VOL >= 10000000`
+3. **5 Months Trend Template (`STAGE2_5M`)**:
+   - **Focus**: Established institutional market leaders with mature Stage 2 trends.
+   - **Criterion**: $200\text{ SMA today} > 200\text{ SMA 100 days ago}$ ($> 5\text{ months}$ / $100\text{ trading days}$).
+   - **Expression**: `STAGE2_5M AND RS_RANK >= 70 AND C >= 5.0 AND DOLLAR_VOL >= 10000000`
 
 ---
 

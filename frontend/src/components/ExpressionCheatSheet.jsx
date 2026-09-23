@@ -25,6 +25,9 @@ const CHEAT_SHEET_CATEGORIES = [
       { sym: 'AVGC50', label: '50 SMA', desc: '50-day SMA of close' },
       { sym: 'AVGC150', label: '150 SMA', desc: '150-day SMA of close' },
       { sym: 'AVGC200', label: '200 SMA', desc: '200-day SMA of close' },
+      { sym: 'SMA200_20D', label: '200 SMA 20d', desc: '200 SMA 20 trading days (~1m) ago' },
+      { sym: 'SMA200_80D', label: '200 SMA 80d', desc: '200 SMA 80 trading days (~4m) ago' },
+      { sym: 'SMA200_100D', label: '200 SMA 100d', desc: '200 SMA 100 trading days (~5m) ago' },
       { sym: 'XAVGC10', label: '10 EMA', desc: '10-day EMA of close' },
       { sym: 'XAVGC20', label: '20 EMA', desc: '20-day EMA of close' },
       { sym: 'XAVGC50', label: '50 EMA', desc: '50-day EMA of close' },
@@ -41,6 +44,27 @@ const CHEAT_SHEET_CATEGORIES = [
         desc: 'Minervini Stage 2 uptrend template',
         is_alias: true,
         expr: 'SMA_50 IS NOT NULL AND SMA_150 IS NOT NULL AND SMA_200 IS NOT NULL AND C > SMA_50 AND SMA_50 > SMA_150 AND SMA_150 > SMA_200 AND (SMA_200_20D_AGO IS NULL OR SMA_200 > SMA_200_20D_AGO) AND (DIST_52W_HIGH IS NULL OR DIST_52W_HIGH <= 25.0) AND (DIST_52W_LOW IS NULL OR DIST_52W_LOW >= 25.0)'
+      },
+      {
+        sym: 'STAGE2_1M',
+        label: 'Stage 2 (1M)',
+        desc: 'Minervini Stage 2 template (200 SMA rising ~1 month)',
+        is_alias: true,
+        expr: 'STAGE2_1M AND RS_RANK >= 70 AND C >= 5.0 AND DOLLAR_VOL >= 10000000'
+      },
+      {
+        sym: 'STAGE2_1_4M',
+        label: 'Stage 2 (1~4M)',
+        desc: 'Minervini Stage 2 template (200 SMA rising 1~4 months)',
+        is_alias: true,
+        expr: 'STAGE2_1_4M AND RS_RANK >= 70 AND C >= 5.0 AND DOLLAR_VOL >= 10000000'
+      },
+      {
+        sym: 'STAGE2_5M',
+        label: 'Stage 2 (5M+)',
+        desc: 'Minervini Stage 2 template (200 SMA rising > 5 months)',
+        is_alias: true,
+        expr: 'STAGE2_5M AND RS_RANK >= 70 AND C >= 5.0 AND DOLLAR_VOL >= 10000000'
       },
       {
         sym: 'LOW_CHEAT',
