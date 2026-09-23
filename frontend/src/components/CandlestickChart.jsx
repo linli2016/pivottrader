@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
-import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers, CrosshairMode, PriceScaleMode } from 'lightweight-charts';
+import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers, CrosshairMode, PriceScaleMode, LineStyle } from 'lightweight-charts';
+import { getLocalDateStr } from '../utils/dateUtils';
 
 // Helper to calculate Simple Moving Average (SMA)
 function calculateSMA(data, period, key = 'close') {
@@ -115,6 +116,132 @@ class VerticalLinePrimitive {
       ctx.moveTo(pixelX, 0);
       ctx.lineTo(pixelX, bitmapSize.height);
       ctx.stroke();
+      ctx.restore();
+    });
+  }
+}
+
+// Volume Profile (Volume by Price) Primitive — computes VBP from OHLCV bars client-side
+class VolumeProfilePrimitive {
+  constructor() {
+    this._bars = null;   // full OHLCV array
+    this._visible = false;
+    this._chart = null;
+    this._series = null;
+    this._requestUpdate = () => {};
+    this._paneView = {
+      renderer: () => ({
+        draw: (target) => this._draw(target),
+        drawBackground: () => {},
+      }),
+      zOrder: () => 'normal',
+    };
+  }
+
+  attached({ chart, series, requestUpdate }) {
+    this._chart = chart;
+    this._series = series;
+    this._requestUpdate = requestUpdate;
+  }
+
+  detached() {
+    this._chart = null;
+    this._series = null;
+    this._requestUpdate = () => {};
+  }
+
+  update(bars, visible) {
+    this._bars = bars;
+    this._visible = Boolean(visible);
+    if (this._requestUpdate) this._requestUpdate();
+  }
+
+  paneViews() {
+    return [this._paneView];
+  }
+
+  _computeBins(bars, numBins) {
+    if (!bars || bars.length === 0) return null;
+    let priceMin = Infinity, priceMax = -Infinity;
+    for (const b of bars) {
+      if (b.low  < priceMin) priceMin = b.low;
+      if (b.high > priceMax) priceMax = b.high;
+    }
+    if (priceMin >= priceMax) return null;
+
+    const binSize = (priceMax - priceMin) / numBins;
+    const bins = new Float64Array(numBins);
+
+    for (const b of bars) {
+      const vol = Number(b.volume) || 0;
+      if (vol <= 0) continue;
+      const barRange = b.high - b.low;
+      if (barRange <= 0) {
+        const bi = Math.min(numBins - 1, Math.floor((b.close - priceMin) / binSize));
+        bins[bi] += vol;
+        continue;
+      }
+      const firstBin = Math.floor((b.low  - priceMin) / binSize);
+      const lastBin  = Math.min(numBins - 1, Math.floor((b.high - priceMin) / binSize));
+      for (let bi = firstBin; bi <= lastBin; bi++) {
+        const binLow  = priceMin + bi * binSize;
+        const binHigh = binLow + binSize;
+        const overlap = Math.min(b.high, binHigh) - Math.max(b.low, binLow);
+        bins[bi] += vol * (overlap / barRange);
+      }
+    }
+
+    let maxVol = 0, pocIdx = 0;
+    for (let i = 0; i < numBins; i++) {
+      if (bins[i] > maxVol) { maxVol = bins[i]; pocIdx = i; }
+    }
+
+    return { bins, binSize, priceMin, maxVol, pocIdx, numBins };
+  }
+
+  _draw(target) {
+    if (!this._visible || !this._bars || this._bars.length === 0 || !this._series || !this._chart) return;
+
+    // Use only bars visible in the current time range for a responsive profile
+    let barsToUse = this._bars;
+    try {
+      const range = this._chart.timeScale().getVisibleLogicalRange();
+      if (range) {
+        const from = Math.max(0, Math.floor(range.from));
+        const to   = Math.min(this._bars.length - 1, Math.ceil(range.to));
+        if (to > from) barsToUse = this._bars.slice(from, to + 1);
+      }
+    } catch (_) {}
+
+    const NUM_BINS = 80;
+    const computed = this._computeBins(barsToUse, NUM_BINS);
+    if (!computed) return;
+    const { bins, binSize, priceMin, maxVol, pocIdx, numBins } = computed;
+
+    target.useBitmapCoordinateSpace(({ context: ctx, horizontalPixelRatio, verticalPixelRatio, bitmapSize }) => {
+      const vRatio = verticalPixelRatio || horizontalPixelRatio || 1;
+      const hRatio = horizontalPixelRatio || 1;
+      const rightX = bitmapSize.width;
+      const maxBarWidth = Math.min(160 * hRatio, bitmapSize.width * 0.20);
+
+      ctx.save();
+      for (let i = 0; i < numBins; i++) {
+        if (bins[i] <= 0) continue;
+
+        const binTopPrice    = priceMin + i * binSize;
+        const binBottomPrice = binTopPrice + binSize;
+        const yTop    = this._series.priceToCoordinate(binTopPrice);
+        const yBottom = this._series.priceToCoordinate(binBottomPrice);
+        if (yTop === null || yBottom === null || isNaN(yTop) || isNaN(yBottom)) continue;
+
+        const barH = Math.max(1.5 * vRatio, Math.abs((yBottom - yTop) * vRatio) - 1);
+        const barY = Math.min(yTop, yBottom) * vRatio;
+        if (barY > bitmapSize.height || barY + barH < 0) continue;
+
+        const barW = Math.max(2 * hRatio, (bins[i] / maxVol) * maxBarWidth);
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.20)';  // uniform light sky-blue for all bars
+        ctx.fillRect(rightX - barW, barY, barW, barH);
+      }
       ctx.restore();
     });
   }
@@ -447,6 +574,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   const seriesRef = useRef(null);
   const markersPluginRef = useRef(null);
   const verticalLineRef = useRef(null);
+  const volumeProfilePrimitiveRef = useRef(null);
   const legendRef = useRef(null);
   const dataLookupRef = useRef({ timeMap: new Map(), data: [], defaultBar: null, defaultPrevBar: null, symbol: null });
   const lastCancelTimestampRef = useRef(0);
@@ -459,6 +587,17 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   const [savingScreenshot, setSavingScreenshot] = useState(false);
   const [screenshotSuccess, setScreenshotSuccess] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+
+  // Volume Profile visibility state
+  const [showVolumeProfile, setShowVolumeProfile] = useState(true);
+
+  // Synchronize VolumeProfilePrimitive and POC price line whenever data or visibility changes
+  useEffect(() => {
+    if (volumeProfilePrimitiveRef.current) {
+      volumeProfilePrimitiveRef.current.update(data || [], showVolumeProfile);
+    }
+  }, [data, showVolumeProfile]);
+
 
   // TradingView-style Earnings Date Markers State
   const [fetchedEarnings, setFetchedEarnings] = useState([]);
@@ -514,6 +653,9 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       return true;
     }
   });
+
+  // Collapsed toolbar: show extra buttons (measure, earnings, RS, OI, scale)
+  const [showToolbarMore, setShowToolbarMore] = useState(false);
 
   const toggleRsLine = () => {
     setShowRsLine((prev) => {
@@ -982,7 +1124,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       const { defaultBar, defaultPrevBar } = dataLookupRef.current;
       const targetSymbol = overrideParams.symbol || symbol || 'STOCK';
       const targetSetup = overrideParams.setupName || setupName || 'General';
-      const targetDate = overrideParams.asOfDate || asOfDate || defaultBar?.time || (data && data.length > 0 ? data[data.length - 1].time : null) || new Date().toISOString().slice(0, 10);
+      const targetDate = overrideParams.asOfDate || asOfDate || defaultBar?.time || (data && data.length > 0 ? data[data.length - 1].time : null) || getLocalDateStr();
       const dateStr = typeof targetDate === 'string' ? targetDate : (targetDate?.year ? `${targetDate.year}-${String(targetDate.month).padStart(2, '0')}-${String(targetDate.day).padStart(2, '0')}` : String(targetDate));
 
       const curKey = symbol || 'DEFAULT';
@@ -1079,7 +1221,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           mode: CrosshairMode.Normal,
         },
         timeScale: {
-          rightOffset: 3,
+          rightOffset: 18,
           fixRightEdge: false,
         },
         width: chartContainerRef.current.clientWidth || 700,
@@ -1196,6 +1338,10 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       const vertLinePrimitive = new VerticalLinePrimitive(null, { color: 'rgba(56, 189, 248, 0.45)', lineWidth: 1 });
       candlestickSeries.attachPrimitive(vertLinePrimitive);
       verticalLineRef.current = vertLinePrimitive;
+
+      const vpPrimitive = new VolumeProfilePrimitive();
+      candlestickSeries.attachPrimitive(vpPrimitive);
+      volumeProfilePrimitiveRef.current = vpPrimitive;
 
       chartRef.current = chart;
       seriesRef.current = {
@@ -1379,7 +1525,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       // Render default (latest or as-of date) bar stats in legend
       renderLegend(defaultBar, defaultPrevBar, symbol);
 
-      const RIGHT_MARGIN_BARS = 3;
+      const RIGHT_MARGIN_BARS = 18;
       const POST_AS_OF_BARS = 40; // Position the As-of Date bar with ~40 bars on its right to the border
 
       chartRef.current.timeScale().applyOptions({
@@ -1478,7 +1624,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
 
             if (!isUserPannedRef.current && asOf !== -1) {
               const targetTo = asOf + 40;
-              const toIndex = Math.min(currentData.length - 1 + 3, targetTo);
+              const toIndex = Math.min(currentData.length - 1 + 18, targetTo);
               const fromIndex = Math.max(0, toIndex - visibleBars);
               chartRef.current.timeScale().setVisibleLogicalRange({
                 from: fromIndex,
@@ -2039,119 +2185,154 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           </svg>
         </button>
 
-        {/* TradingView Measure Tool Toggle Button */}
-        <button
-          type="button"
-          onClick={() => {
-            const next = !isMeasureModeActive;
-            setIsMeasureModeActive(next);
-            setActiveTool(next ? 'measure' : 'none');
-            setLineDraft(null);
-            setTextInputState(null);
-            if (!next) {
-              setMeasureState(null);
-            }
-          }}
-          title={isMeasureModeActive ? 'Measuring Mode Active (Click to disable, or hold Shift + Click chart)' : 'Measure Distance (Hold Shift + Left Click)'}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '26px',
-            height: '26px',
-            padding: 0,
-            background: isMeasureModeActive ? 'rgba(168, 85, 247, 0.4)' : 'rgba(255, 255, 255, 0.05)',
-            border: isMeasureModeActive ? '1px solid #a855f7' : '1px solid rgba(255, 255, 255, 0.15)',
-            color: isMeasureModeActive ? '#c084fc' : '#94a3b8',
-            borderRadius: '5px',
-            fontSize: '12px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-          }}
-        >
-          📐
-        </button>
+        {/* TradingView Measure Tool Toggle Button — secondary (collapsible) */}
+        {showToolbarMore && (
+          <button
+            type="button"
+            onClick={() => {
+              const next = !isMeasureModeActive;
+              setIsMeasureModeActive(next);
+              setActiveTool(next ? 'measure' : 'none');
+              setLineDraft(null);
+              setTextInputState(null);
+              if (!next) {
+                setMeasureState(null);
+              }
+            }}
+            title={isMeasureModeActive ? 'Measuring Mode Active (Click to disable, or hold Shift + Click chart)' : 'Measure Distance (Hold Shift + Left Click)'}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '26px',
+              height: '26px',
+              padding: 0,
+              background: isMeasureModeActive ? 'rgba(168, 85, 247, 0.4)' : 'rgba(255, 255, 255, 0.05)',
+              border: isMeasureModeActive ? '1px solid #a855f7' : '1px solid rgba(255, 255, 255, 0.15)',
+              color: isMeasureModeActive ? '#c084fc' : '#94a3b8',
+              borderRadius: '5px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            📐
+          </button>
+        )}
 
-        {/* Earnings Dates Toggle Button */}
-        <button
-          type="button"
-          onClick={() => setShowEarnings((prev) => !prev)}
-          title={showEarnings ? 'Hide Earnings Date Icons (E)' : 'Show Earnings Date Icons (E)'}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '26px',
-            height: '26px',
-            padding: 0,
-            background: showEarnings ? 'rgba(13, 148, 136, 0.35)' : 'rgba(255, 255, 255, 0.05)',
-            border: showEarnings ? '1px solid #14b8a6' : '1px solid rgba(255, 255, 255, 0.15)',
-            color: showEarnings ? '#2dd4bf' : '#94a3b8',
-            borderRadius: '5px',
-            fontSize: '11px',
-            fontWeight: 800,
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-          }}
-        >
-          E
-        </button>
+        {showToolbarMore && (
+          /* Earnings Dates Toggle Button */
+          <button
+            type="button"
+            onClick={() => setShowEarnings((prev) => !prev)}
+            title={showEarnings ? 'Hide Earnings Date Icons (E)' : 'Show Earnings Date Icons (E)'}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '26px',
+              height: '26px',
+              padding: 0,
+              background: showEarnings ? 'rgba(13, 148, 136, 0.35)' : 'rgba(255, 255, 255, 0.05)',
+              border: showEarnings ? '1px solid #14b8a6' : '1px solid rgba(255, 255, 255, 0.15)',
+              color: showEarnings ? '#2dd4bf' : '#94a3b8',
+              borderRadius: '5px',
+              fontSize: '11px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            E
+          </button>
+        )}
 
-        {/* RS Line & Blue Dot Toggle Button */}
-        <button
-          type="button"
-          onClick={toggleRsLine}
-          title={showRsLine ? 'Hide Relative Strength Line & Blue Dots (vs SPY)' : 'Show Relative Strength Line & Blue Dots (vs SPY)'}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '0 6px',
-            height: '26px',
-            background: showRsLine ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.05)',
-            border: showRsLine ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.15)',
-            color: showRsLine ? '#38bdf8' : 'var(--text-secondary)',
-            borderRadius: '5px',
-            fontSize: '10px',
-            fontWeight: 700,
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-            letterSpacing: '0.5px',
-          }}
-        >
-          RS
-        </button>
+        {showToolbarMore && (
+          /* RS Line & Blue Dot Toggle Button */
+          <button
+            type="button"
+            onClick={toggleRsLine}
+            title={showRsLine ? 'Hide Relative Strength Line & Blue Dots (vs SPY)' : 'Show Relative Strength Line & Blue Dots (vs SPY)'}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0 6px',
+              height: '26px',
+              background: showRsLine ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.05)',
+              border: showRsLine ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.15)',
+              color: showRsLine ? '#38bdf8' : 'var(--text-secondary)',
+              borderRadius: '5px',
+              fontSize: '10px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              letterSpacing: '0.5px',
+            }}
+          >
+            RS
+          </button>
+        )}
 
-        {/* Price Scale Mode Toggle (Arithmetic / Linear vs Logarithmic) */}
+        {showToolbarMore && (
+          /* Volume Profile (Volume by Price) Toggle Button */
+          <button
+            type="button"
+            onClick={() => setShowVolumeProfile(!showVolumeProfile)}
+            title={showVolumeProfile ? 'Hide Volume Profile (Volume by Price)' : 'Show Volume Profile (Volume by Price)'}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0 6px',
+              height: '26px',
+              background: showVolumeProfile ? 'rgba(56, 189, 248, 0.20)' : 'rgba(255, 255, 255, 0.05)',
+              border: showVolumeProfile ? '1px solid rgba(56, 189, 248, 0.7)' : '1px solid rgba(255, 255, 255, 0.15)',
+              color: showVolumeProfile ? '#38bdf8' : 'var(--text-secondary)',
+              borderRadius: '5px',
+              fontSize: '10px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              letterSpacing: '0.5px',
+            }}
+          >
+            VP
+          </button>
+        )}
 
-        <button
-          type="button"
-          onClick={toggleScaleMode}
-          title={isLogScale ? "Price Scale: Logarithmic (Click to switch to Linear / Arithmetic)" : "Price Scale: Arithmetic / Linear (Click to switch to Logarithmic)"}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '0 6px',
-            height: '26px',
-            background: !isLogScale ? 'rgba(59, 130, 246, 0.25)' : 'rgba(168, 85, 247, 0.25)',
-            border: !isLogScale ? '1px solid #3b82f6' : '1px solid #a855f7',
-            color: !isLogScale ? '#60a5fa' : '#c084fc',
-            borderRadius: '5px',
-            fontSize: '10px',
-            fontWeight: 700,
-            cursor: 'pointer',
-            transition: 'all 0.15s ease',
-            letterSpacing: '0.5px',
-          }}
-        >
-          {isLogScale ? 'L' : 'A'}
-        </button>
+        {showToolbarMore && (
+          /* Price Scale Mode Toggle (Arithmetic / Linear vs Logarithmic) */
+          <button
+            type="button"
+            onClick={toggleScaleMode}
+            title={isLogScale ? 'Price Scale: Logarithmic (Click to switch to Linear / Arithmetic)' : 'Price Scale: Arithmetic / Linear (Click to switch to Logarithmic)'}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0 6px',
+              height: '26px',
+              background: !isLogScale ? 'rgba(59, 130, 246, 0.25)' : 'rgba(168, 85, 247, 0.25)',
+              border: !isLogScale ? '1px solid #3b82f6' : '1px solid #a855f7',
+              color: !isLogScale ? '#60a5fa' : '#c084fc',
+              borderRadius: '5px',
+              fontSize: '10px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              letterSpacing: '0.5px',
+            }}
+          >
+            {isLogScale ? 'L' : 'A'}
+          </button>
+        )}
 
-        {/* Undo and Clear buttons if drawings exist for current symbol */}
+        {/* Undo and Clear buttons — always visible when drawings exist */}
         {currentDrawings.length > 0 && (
           <>
+            <div style={{ width: '1px', height: '14px', background: 'rgba(255,255,255,0.12)', margin: '0 1px' }} />
             <button
               type="button"
               onClick={handleUndo}
@@ -2203,6 +2384,47 @@ const CandlestickChart = forwardRef(function CandlestickChart({
             </button>
           </>
         )}
+
+        {/* Thin separator before the ··· toggle */}
+        <div style={{ width: '1px', height: '14px', background: 'rgba(255,255,255,0.12)', margin: '0 1px' }} />
+
+        {/* ··· More / Collapse toggle — dot becomes coloured when any secondary toggle is active */}
+        <button
+          type="button"
+          onClick={() => setShowToolbarMore((v) => !v)}
+          title={showToolbarMore ? 'Collapse toolbar' : 'Expand toolbar (Measure, Earnings, RS, OI, Scale)'}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '26px',
+            height: '26px',
+            padding: 0,
+            background: showToolbarMore
+              ? 'rgba(255,255,255,0.10)'
+              : (isMeasureModeActive || !showEarnings || !showRsLine || showVolumeProfile || isLogScale)
+                ? 'rgba(56, 189, 248, 0.12)'
+                : 'rgba(255, 255, 255, 0.05)',
+            border: showToolbarMore
+              ? '1px solid rgba(255,255,255,0.3)'
+              : (isMeasureModeActive || !showEarnings || !showRsLine || showVolumeProfile || isLogScale)
+                ? '1px solid rgba(56,189,248,0.4)'
+                : '1px solid rgba(255, 255, 255, 0.15)',
+            color: showToolbarMore
+              ? '#e2e8f0'
+              : (isMeasureModeActive || !showEarnings || !showRsLine || showVolumeProfile || isLogScale)
+                ? '#38bdf8'
+                : '#94a3b8',
+            borderRadius: '5px',
+            fontSize: '13px',
+            fontWeight: 700,
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            letterSpacing: '1px',
+          }}
+        >
+          {showToolbarMore ? '✕' : '···'}
+        </button>
 
         {/* Divider if screenshot button is shown */}
         {showScreenshotButton && (

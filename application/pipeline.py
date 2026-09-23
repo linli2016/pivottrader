@@ -344,8 +344,9 @@ def main():
             if not ext_bars.empty:
                 print(f"Upserting {len(ext_bars)} daily bars with current prices into DuckDB...")
                 db.upsert_daily_bars(ext_bars)
-                # Auto-heal any overnight stock split anomalies in live quotes
-                heal_split_anomalies(db, price_provider, full_lookback_date, target_symbols=active_symbols, recent_days=5)
+                # Auto-heal overnight stock split anomalies only if explicitly requested (--fix-splits)
+                if getattr(args, "fix_splits", False):
+                    heal_split_anomalies(db, price_provider, full_lookback_date, target_symbols=active_symbols, recent_days=5)
             else:
                 print("Notice: No quotes returned.")
         elif args.skip_prices:
@@ -454,8 +455,9 @@ def main():
                     else:
                         print("No incremental bars fetched.")
 
-                    # Auto-heal any stock splits in recent window (last 30 trading days) for existing symbols
-                    heal_split_anomalies(db, price_provider, full_lookback_date, target_symbols=fresh_existing, recent_days=30)
+                    # Auto-heal stock splits in recent window only if explicitly requested (--fix-splits)
+                    if getattr(args, "fix_splits", False):
+                        heal_split_anomalies(db, price_provider, full_lookback_date, target_symbols=fresh_existing, recent_days=30)
 
         # 6. Relative Strength Scoring & Ranking
         mom_engine = MomentumEngine(db_path)

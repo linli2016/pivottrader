@@ -1,6 +1,7 @@
 import React from 'react';
 import CandlestickChart from './CandlestickChart';
 import ExpressionCheatSheet from './ExpressionCheatSheet';
+import { getLocalDateStr } from '../utils/dateUtils';
 
 const SETUP_COLORS = {
   power_play: '#38bdf8',
@@ -556,7 +557,7 @@ export default function CandidatesTab({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `PivotTrader_Watchlist_${new Date().toISOString().slice(0, 10)}.txt`;
+    link.download = `PivotTrader_Watchlist_${getLocalDateStr()}.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import ScoreMoversCard from './ScoreMoversCard';
+import { getLocalDateStr } from '../utils/dateUtils';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
@@ -302,7 +303,7 @@ export default function DashboardTab({
           sync_sponsorship: false,
           include_premarket: false,
           include_extended: false,
-          fix_splits: true
+          fix_splits: false
         })
       });
       if (fetchSyncStatus) fetchSyncStatus();
@@ -387,12 +388,12 @@ export default function DashboardTab({
     return crossAssets.filter(item => !hiddenSymbols.has(item.symbol));
   }, [crossAssets, hiddenSymbols]);
 
-  // Determine if DuckDB data is stale compared to expected trading date
+  // Determine if DuckDB data is stale compared to expected trading date (using local date)
   const isDataStale = useMemo(() => {
     if (asOfDate) return false;
     if (!latestDate || latestDate === 'Latest Available') return false;
     const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
+    const todayStr = getLocalDateStr(today);
     const dayOfWeek = today.getDay(); // 0 = Sun, 6 = Sat
 
     if (dayOfWeek >= 1 && dayOfWeek <= 5) {
@@ -403,7 +404,7 @@ export default function DashboardTab({
       const daysToFriday = dayOfWeek === 0 ? 2 : 1;
       const friday = new Date(today);
       friday.setDate(today.getDate() - daysToFriday);
-      const fridayStr = friday.toISOString().slice(0, 10);
+      const fridayStr = getLocalDateStr(friday);
       return latestDate < fridayStr;
     }
   }, [latestDate, asOfDate]);
@@ -963,7 +964,7 @@ export default function DashboardTab({
               type="date"
               value={asOfDate}
               onChange={(e) => setAsOfDate(e.target.value)}
-              max={availableDates && availableDates.length > 0 ? availableDates[0] : new Date().toISOString().slice(0, 10)}
+              max={availableDates && availableDates.length > 0 ? availableDates[0] : getLocalDateStr()}
               style={{
                 background: 'rgba(0, 0, 0, 0.5)',
                 color: 'var(--text-primary)',

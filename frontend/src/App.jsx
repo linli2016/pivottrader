@@ -73,7 +73,7 @@ function App() {
   const [syncPremarket, setSyncPremarket] = useState(false);
   const [syncHistoryYears, setSyncHistoryYears] = useState(5);
   const [syncForceFull, setSyncForceFull] = useState(false);
-  const [syncFixSplits, setSyncFixSplits] = useState(true);
+  const [syncFixSplits, setSyncFixSplits] = useState(false);
   const [syncStatus, setSyncStatus] = useState({
     status: 'idle',
     start_time: null,

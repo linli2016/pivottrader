@@ -7,6 +7,7 @@ from typing import Dict, Any, List, Optional
 from collections import defaultdict
 from .config import config_service
 from application.engine.market_regime import get_qullamaggie_market_summary, get_qullamaggie_daily_lookup, clear_qullamaggie_cache
+from application.engine.expression import ScanExpressionEngine
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +171,6 @@ class DatabaseService:
 
             if raw_expr:
                 try:
-                    from application.engine.expression import ScanExpressionEngine
                     sql_clause, used_variables, has_lags, expr_order_by, expr_limit, expr_qualify = ScanExpressionEngine.transpile_to_sql(raw_expr, table_alias="db")
                     if sql_clause and sql_clause.strip() != "true":
                         where_clauses.append(sql_clause)
@@ -220,7 +220,7 @@ class DatabaseService:
                 require_ipo_base = "IPO_BASE" in used_variables
                 require_pivot_tightness = "PIVOT_SPREAD" in used_variables or "PIVOT_CLUSTERING" in used_variables
                 enable_vcp_pattern = "VCP" in used_variables
-                enable_low_cheat = "LOW_CHEAT" in used_variables
+                enable_low_cheat = "LOW_CHEAT_SETUP" in used_variables
                 enable_cheat = "CHEAT" in used_variables
                 require_low_cheat = enable_low_cheat
             else:
@@ -241,14 +241,8 @@ class DatabaseService:
                     params.append(float(min_dollar_vol))
 
                 # Stage 2 Trend Template
-                if f.get("enforce_stage2") and not bool(f.get("require_momentum", False)):
-                    where_clauses.append(
-                        "db.sma_50 IS NOT NULL AND db.sma_150 IS NOT NULL AND db.sma_200 IS NOT NULL "
-                        "AND db.close > db.sma_50 AND db.sma_50 > db.sma_150 AND db.sma_150 > db.sma_200 "
-                        "AND (db.sma_200_20d_ago IS NULL OR db.sma_200 > db.sma_200_20d_ago) "
-                        "AND (db.dist_from_52w_high IS NULL OR db.dist_from_52w_high <= 25.0) "
-                        "AND (db.surge_off_low_pct IS NULL OR db.surge_off_low_pct >= 30.0)"
-                    )
+                if f.get("enforce_stage2"):
+                    where_clauses.append(ScanExpressionEngine.get_alias_sql("STAGE2", table_alias="db"))
 
                 # Relative Strength Rank
                 if f.get("enable_rs"):
@@ -510,13 +504,7 @@ class DatabaseService:
                     db.low_cheat_risk_pct,
                     db.low_cheat_base_depth,
                     db.sma_200_20d_ago,
-                    (
-                        db.sma_50 IS NOT NULL AND db.sma_150 IS NOT NULL AND db.sma_200 IS NOT NULL 
-                        AND db.close > db.sma_50 AND db.sma_50 > db.sma_150 AND db.sma_150 > db.sma_200 
-                        AND (db.sma_200_20d_ago IS NULL OR db.sma_200 > db.sma_200_20d_ago) 
-                        AND (db.dist_from_52w_high IS NULL OR db.dist_from_52w_high <= 25.0) 
-                        AND (db.surge_off_low_pct IS NULL OR db.surge_off_low_pct >= 30.0)
-                    ) as is_stage2,
+                    ({ScanExpressionEngine.get_alias_sql('STAGE2', table_alias='db')}) as is_stage2,
                     db.ema_50,
                     db.dist_ema50_pct,
                     s.active,

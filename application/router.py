@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks, Response
 from pydantic import BaseModel, Field, AliasChoices, ConfigDict
 from typing import Optional, Dict, Any, List
 
-from application.services import config_service, db_service, sync_service, chart_service, model_book_service, setup_service, saved_trades_service
+from application.services import config_service, db_service, sync_service, chart_service, model_book_service, setup_service, saved_trades_service, options_service
 from application.services.theme_service import ThemeService
 from application.services.group_radar_service import GroupRadarService
 from application.services.leaderboard_service import LeaderboardService
@@ -242,6 +242,15 @@ def get_stock_peers(symbol: str, limit: int = 6):
         return db_service.get_industry_peers(symbol, limit)
     except Exception as e:
         logger.error(f"Error in get_stock_peers({symbol}): {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/stocks/{symbol}/options-profile")
+def get_stock_options_profile(symbol: str, expiration: Optional[str] = "near_term"):
+    """Retrieve Options Open Interest (OI) profile, Call Wall, and Put Wall."""
+    try:
+        return options_service.get_options_profile(symbol, expiration)
+    except Exception as e:
+        logger.error(f"Error in get_stock_options_profile({symbol}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/config")

@@ -26,7 +26,7 @@ export default function SyncDataTab({
   setSyncHistoryYears,
   syncForceFull = false,
   setSyncForceFull,
-  syncFixSplits = true,
+  syncFixSplits = false,
   setSyncFixSplits,
   handleTriggerRepairSplits,
   syncStatus,

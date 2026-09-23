@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import CandlestickChart from './CandlestickChart';
+import { getLocalDateStr } from '../utils/dateUtils';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
@@ -86,7 +87,7 @@ export default function ModelBookTab({
 
   // Year-by-Year & Quick Date Presets
   const datePresets = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalDateStr();
 
     // Generate recent 5 full calendar years (e.g. 2025, 2024, 2023, 2022, 2021)
     const yearPresets = Array.from({ length: 5 }, (_, i) => {
@@ -123,7 +124,7 @@ export default function ModelBookTab({
   const defaultDates = useMemo(() => {
     const today = new Date();
     const start = `${currentYear}-01-01`;
-    const end = today.toISOString().split('T')[0];
+    const end = getLocalDateStr(today);
     return { start, end };
   }, [currentYear]);
 
@@ -772,7 +773,7 @@ export default function ModelBookTab({
     } else {
       const d = new Date(currDate + 'T00:00:00');
       d.setDate(d.getDate() + delta);
-      handleUpdateTriggerDate(selectedSavedTrade.id, d.toISOString().split('T')[0]);
+      handleUpdateTriggerDate(selectedSavedTrade.id, getLocalDateStr(d));
     }
   };
 

@@ -162,6 +162,117 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertFalse(res["valid"])
         self.assertIn("TOP() requires at least 2 arguments", res["error"])
 
+    def test_alias_stage2_expansion(self):
+        res = ScanExpressionEngine.validate("STAGE2")
+        self.assertTrue(res["valid"])
+        self.assertIn("STAGE2", res["variables"])
+        self.assertIn("SMA_50", res["variables"])
+        self.assertIn("SMA_150", res["variables"])
+        self.assertIn("SMA_200", res["variables"])
+        self.assertIn("SMA_200_20D_AGO", res["variables"])
+        self.assertIn("DIST_52W_HIGH", res["variables"])
+        self.assertIn("SURGE_OFF_LOW", res["variables"])
+        sql = res["sql"]
+        self.assertIn("b.sma_50 IS NOT NULL", sql)
+        self.assertIn("b.close > b.sma_50", sql)
+        self.assertIn("b.sma_50 > b.sma_150", sql)
+        self.assertIn("b.sma_150 > b.sma_200", sql)
+        self.assertIn("b.sma_200_20d_ago IS NULL", sql)
+
+    def test_alias_low_cheat(self):
+        res = ScanExpressionEngine.validate("LOW_CHEAT")
+        self.assertTrue(res["valid"])
+        self.assertIn("LOW_CHEAT", res["variables"])
+        self.assertIn("SMA_50", res["variables"])
+        self.assertIn("SMA_150", res["variables"])
+        self.assertIn("SMA_200", res["variables"])
+        # Must NOT require C > SMA_50
+        self.assertNotIn("b.close > b.sma_50", res["sql"])
+        # Must retain macro trend template
+        self.assertIn("b.sma_50 > b.sma_150", res["sql"])
+        self.assertIn("b.sma_150 > b.sma_200", res["sql"])
+
+    def test_alias_breakout_and_episodic_pivot(self):
+        res_bo = ScanExpressionEngine.validate("BREAKOUT")
+        self.assertTrue(res_bo["valid"])
+        self.assertIn("BREAKOUT", res_bo["variables"])
+        self.assertIn("RUNUP", res_bo["variables"])
+        self.assertIn("b.pp_runup_pct", res_bo["sql"])
+
+        res_ep = ScanExpressionEngine.validate("EPISODIC_PIVOT")
+        self.assertTrue(res_ep["valid"])
+        self.assertIn("EPISODIC_PIVOT", res_ep["variables"])
+        self.assertIn("GAP_PCT", res_ep["variables"])
+        self.assertIn("REL_VOL", res_ep["variables"])
+
+        res_ipo = ScanExpressionEngine.validate("IPO_BASE")
+        self.assertTrue(res_ipo["valid"])
+        self.assertIn("IPO_BASE", res_ipo["variables"])
+        self.assertIn("IPO_DAYS", res_ipo["variables"])
+
+    def test_is_null_and_is_not_null_syntax(self):
+        # IS NOT NULL / IS NULL
+        res1 = ScanExpressionEngine.validate("SMA_50 IS NOT NULL AND SMA_200_20D_AGO IS NULL")
+        self.assertTrue(res1["valid"])
+        self.assertIn("b.sma_50 IS NOT NULL", res1["sql"])
+        self.assertIn("b.sma_200_20d_ago IS NULL", res1["sql"])
+
+        # != NULL and == NULL
+        res2 = ScanExpressionEngine.validate("SMA_50 != NULL AND SMA_200_20D_AGO == NULL")
+        self.assertTrue(res2["valid"])
+        self.assertIn("b.sma_50 IS NOT NULL", res2["sql"])
+        self.assertIn("b.sma_200_20d_ago IS NULL", res2["sql"])
+
+    def test_composite_expression_with_stage2(self):
+        expr = "C >= 15 AND STAGE2 AND V > 100000"
+        res = ScanExpressionEngine.validate(expr)
+        self.assertTrue(res["valid"])
+        self.assertIn("STAGE2", res["variables"])
+        self.assertIn("C", res["variables"])
+        self.assertIn("V", res["variables"])
+        self.assertIn("b.close >= 15", res["sql"])
+        self.assertIn("b.volume > 100000", res["sql"])
+        self.assertIn("b.sma_50 IS NOT NULL", res["sql"])
+
+    def test_alias_negation(self):
+        expr = "NOT STAGE2"
+        res = ScanExpressionEngine.validate(expr)
+        self.assertTrue(res["valid"])
+        self.assertIn("NOT", res["sql"])
+
+    def test_circular_alias_detection(self):
+        from application.engine.expression import ALIAS_CATALOG
+        # Temporarily inject circular alias
+        ALIAS_CATALOG["_TEST_CIRC_A"] = {"expr": "_TEST_CIRC_B > 1", "type": "boolean", "label": "A"}
+        ALIAS_CATALOG["_TEST_CIRC_B"] = {"expr": "_TEST_CIRC_A > 1", "type": "boolean", "label": "B"}
+        try:
+            with self.assertRaises(ExpressionError):
+                ScanExpressionEngine.expand_aliases("_TEST_CIRC_A")
+        finally:
+            del ALIAS_CATALOG["_TEST_CIRC_A"]
+            del ALIAS_CATALOG["_TEST_CIRC_B"]
+
+    def test_get_alias_sql_table_aliases(self):
+        sql_b = ScanExpressionEngine.get_alias_sql("STAGE2", table_alias="b")
+        self.assertIn("b.close > b.sma_50", sql_b)
+
+        sql_db = ScanExpressionEngine.get_alias_sql("STAGE2", table_alias="db")
+        self.assertIn("db.close > db.sma_50", sql_db)
+
+        sql_none = ScanExpressionEngine.get_alias_sql("STAGE2", table_alias="")
+        self.assertIn("close > sma_50", sql_none)
+
+    def test_catalog_and_category_metadata(self):
+        cat = ScanExpressionEngine.get_catalog()
+        self.assertIn("STAGE2", cat)
+        self.assertTrue(cat["STAGE2"]["is_alias"])
+        self.assertIn("expr", cat["STAGE2"])
+
+        grouped = ScanExpressionEngine.get_variables_by_category()
+        trend_symbols = [item["symbol"] for item in grouped["trend"]]
+        self.assertIn("STAGE2", trend_symbols)
+
+
 if __name__ == "__main__":
     unittest.main()
 

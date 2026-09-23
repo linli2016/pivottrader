@@ -1,26 +1,3 @@
-Ran command: `git status`
-Ran command: `grep -ri "kova" .`
-Used tool: manage_task
-Viewed LearnTab.jsx:1-200
-Ran command: `grep -rn -i "wall" frontend/ application/`
-Used tool: search_web
-Used tool: search_web
-Used tool: search_web
-Used tool: search_web
-Used tool: search_web
-Viewed WatchlistsTab.jsx:1040-1085
-Used tool: search_web
-Used tool: search_web
-Used tool: search_web
-Used tool: search_web
-Used tool: search_web
-Used tool: read_url_content
-Viewed content.md:1-14
-Used tool: search_web
-Used tool: search_web
-Used tool: search_web
-Used tool: search_web
-
 In **KovaView**, the horizontal bars along the right side of the stock chart represent the **Options Open Interest (OI) / Gamma Exposure (GEX) Profile by Strike Price**.
 
 Unlike a standard volume profile (which tracks shares traded at each price), these bars plot institutional options market positioning across strike prices.

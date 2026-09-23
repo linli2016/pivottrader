@@ -307,7 +307,21 @@ class YFinanceProvider(AbstractDataProvider):
             try:
                 # yf.download performs multi-threaded requests
                 df = yf.download(batch, start=start_date, group_by='ticker', threads=True, progress=False, actions=True)
-                if df.empty:
+                
+                # Fetch official regular market quotes for the batch from Yahoo Finance quote endpoint
+                # (provides real official Close/Open/High/Low/Volume for today's session even when chart endpoint returns None)
+                quotes_map = {}
+                try:
+                    from yfinance.data import YfData
+                    data_mgr = YfData()
+                    params = {"symbols": ",".join(batch), "formatted": "false"}
+                    q_data = data_mgr.get_raw_json("https://query1.finance.yahoo.com/v7/finance/quote", params=params)
+                    if q_data and "quoteResponse" in q_data:
+                        quotes_map = {q["symbol"]: q for q in q_data["quoteResponse"].get("result", []) if "symbol" in q}
+                except Exception:
+                    pass
+
+                if df.empty and not quotes_map:
                     continue
                 
                 # Process batch DataFrame regardless of batch size
@@ -317,39 +331,85 @@ class YFinanceProvider(AbstractDataProvider):
                 for sym in batch_syms:
                     if is_multi:
                         if sym not in df.columns.levels[0]:
-                            continue
-                        sym_df = df[sym].copy().reset_index()
+                            sym_df = pd.DataFrame()
+                        else:
+                            sym_df = df[sym].copy().reset_index()
                     else:
                         if "Close" not in df.columns:
-                            continue
-                        sym_df = df.copy().reset_index()
+                            sym_df = pd.DataFrame()
+                        else:
+                            sym_df = df.copy().reset_index()
 
-                    sym_df["symbol"] = sym
-                    if "Stock Splits" not in sym_df.columns:
-                        sym_df["Stock Splits"] = 0.0
-                    sym_df = sym_df.rename(columns={
-                        "Date": "date", "Open": "open", "High": "high", 
-                        "Low": "low", "Close": "close", "Volume": "volume",
-                        "Stock Splits": "stock_splits"
-                    })
-                    sym_df["date"] = pd.to_datetime(sym_df["date"]).dt.date
+                    if not sym_df.empty:
+                        sym_df["symbol"] = sym
+                        if "Stock Splits" not in sym_df.columns:
+                            sym_df["Stock Splits"] = 0.0
+                        sym_df = sym_df.rename(columns={
+                            "Date": "date", "Open": "open", "High": "high", 
+                            "Low": "low", "Close": "close", "Volume": "volume",
+                            "Stock Splits": "stock_splits"
+                        })
+                        sym_df["date"] = pd.to_datetime(sym_df["date"]).dt.date
 
-                    for col in ["open", "high", "low", "close"]:
-                        if col in sym_df.columns:
-                            sym_df[col] = pd.to_numeric(sym_df[col], errors="coerce").astype(float)
+                        for col in ["open", "high", "low", "close"]:
+                            if col in sym_df.columns:
+                                sym_df[col] = pd.to_numeric(sym_df[col], errors="coerce").astype(float)
 
-                    if "volume" in sym_df.columns:
-                        sym_df["volume"] = pd.to_numeric(sym_df["volume"], errors="coerce").fillna(0)
+                        if "volume" in sym_df.columns:
+                            sym_df["volume"] = pd.to_numeric(sym_df["volume"], errors="coerce").fillna(0)
 
-                    if "stock_splits" in sym_df.columns:
-                        sym_df["stock_splits"] = pd.to_numeric(sym_df["stock_splits"], errors="coerce").fillna(0.0).astype(float)
+                        if "stock_splits" in sym_df.columns:
+                            sym_df["stock_splits"] = pd.to_numeric(sym_df["stock_splits"], errors="coerce").fillna(0.0).astype(float)
 
-                    sym_df = self._adjust_unadjusted_splits(sym_df, symbol=sym)
+                        sym_df = self._adjust_unadjusted_splits(sym_df, symbol=sym)
 
-                    sym_df = sym_df.dropna(subset=["close"])
-                    # Filter out future placeholder bars
+                    # Patch missing / NaN close or zero volume on the latest row using official regularMarket quote
                     today_dt = pd.Timestamp.now().date()
-                    sym_df = sym_df[sym_df["date"] <= today_dt]
+                    if sym in quotes_map:
+                        q = quotes_map[sym]
+                        reg_p = q.get("regularMarketPrice")
+                        if reg_p is not None and float(reg_p) > 0:
+                            if not sym_df.empty:
+                                last_idx = sym_df.index[-1]
+                                if pd.isna(sym_df.loc[last_idx, "close"]) or sym_df.loc[last_idx, "volume"] == 0:
+                                    sym_df.loc[last_idx, "close"] = float(reg_p)
+                                    if pd.isna(sym_df.loc[last_idx, "open"]) or sym_df.loc[last_idx, "open"] == 0:
+                                        sym_df.loc[last_idx, "open"] = float(q.get("regularMarketOpen") or reg_p)
+                                    if pd.isna(sym_df.loc[last_idx, "high"]) or sym_df.loc[last_idx, "high"] == 0:
+                                        sym_df.loc[last_idx, "high"] = float(q.get("regularMarketDayHigh") or max(float(sym_df.loc[last_idx, "open"]), float(reg_p)))
+                                    if pd.isna(sym_df.loc[last_idx, "low"]) or sym_df.loc[last_idx, "low"] == 0:
+                                        sym_df.loc[last_idx, "low"] = float(q.get("regularMarketDayLow") or min(float(sym_df.loc[last_idx, "open"]), float(reg_p)))
+                                    if pd.isna(sym_df.loc[last_idx, "volume"]) or sym_df.loc[last_idx, "volume"] == 0:
+                                        sym_df.loc[last_idx, "volume"] = int(q.get("regularMarketVolume") or 0)
+
+                            # If today's regular trading session took place but was not in sym_df, append it
+                            reg_time = q.get("regularMarketTime")
+                            if sym_df.empty or sym_df["date"].max() < today_dt:
+                                is_today_session = False
+                                if reg_time:
+                                    import datetime as _dt
+                                    if _dt.datetime.fromtimestamp(reg_time).date() == today_dt:
+                                        is_today_session = True
+                                if is_today_session:
+                                    r_open = float(q.get("regularMarketOpen") or reg_p)
+                                    r_high = float(q.get("regularMarketDayHigh") or max(float(reg_p), r_open))
+                                    r_low = float(q.get("regularMarketDayLow") or min(float(reg_p), r_open))
+                                    r_vol = int(q.get("regularMarketVolume") or 0)
+                                    new_row = pd.DataFrame([{
+                                        "symbol": sym,
+                                        "date": today_dt,
+                                        "open": r_open,
+                                        "high": r_high,
+                                        "low": r_low,
+                                        "close": float(reg_p),
+                                        "volume": r_vol,
+                                        "stock_splits": 0.0
+                                    }])
+                                    sym_df = pd.concat([sym_df, new_row], ignore_index=True)
+
+                    if not sym_df.empty:
+                        sym_df = sym_df.dropna(subset=["close"])
+                        sym_df = sym_df[sym_df["date"] <= today_dt]
 
                     if not sym_df.empty:
                         if "volume" in sym_df.columns:
@@ -553,41 +613,43 @@ class YFinanceProvider(AbstractDataProvider):
         next_trade_dt = get_next_trading_day(today_dt)
         next_trade_str = next_trade_dt.strftime("%Y-%m-%d")
 
-        # 1. Weekend Check: Sat/Sun -> POST_MARKET staging for next trading day
+        # 1. Weekend Check: Sat/Sun -> Market closed, latest completed session is last trade date
         if weekday in (5, 6):
             day_name = now_et.strftime("%A")
             last_trade_dt = get_previous_trading_day(today_dt)
+            last_trade_str = last_trade_dt.strftime("%Y-%m-%d")
             return {
-                "state": "POST_MARKET",
-                "reason": f"Today is {day_name} (weekend). Staging latest after-hours quotes as opening prices for next session ({next_trade_str}).",
+                "state": "CLOSED",
+                "reason": f"Today is {day_name} (weekend). Market is closed. Latest regular trading session was {last_trade_str}.",
                 "current_time_et": time_str,
-                "trading_date": today_str,
-                "target_date": next_trade_str,
-                "base_date": last_trade_dt.strftime("%Y-%m-%d"),
-                "market_state": "POST"
+                "trading_date": last_trade_str,
+                "target_date": last_trade_str,
+                "base_date": last_trade_str,
+                "market_state": "CLOSED"
             }
 
-        # 2. Holiday Check: Weekday holiday -> POST_MARKET staging for next trading day
+        # 2. Holiday Check: Weekday holiday -> Market closed, latest completed session is last trade date
         if is_us_market_holiday(today_dt):
             last_trade_dt = get_previous_trading_day(today_dt)
+            last_trade_str = last_trade_dt.strftime("%Y-%m-%d")
             return {
-                "state": "POST_MARKET",
-                "reason": f"Today is a US market holiday. Staging latest after-hours quotes as opening prices for next session ({next_trade_str}).",
+                "state": "CLOSED",
+                "reason": f"Today is a US market holiday. Market is closed. Latest regular trading session was {last_trade_str}.",
                 "current_time_et": time_str,
-                "trading_date": today_str,
-                "target_date": next_trade_str,
-                "base_date": last_trade_dt.strftime("%Y-%m-%d"),
-                "market_state": "POST"
+                "trading_date": last_trade_str,
+                "target_date": last_trade_str,
+                "base_date": last_trade_str,
+                "market_state": "CLOSED"
             }
 
         # 3. Post-Market / Evening Check (16:00 ET onwards on active trading day)
         if cur_time >= time(16, 0):
             return {
                 "state": "POST_MARKET",
-                "reason": f"Post-market session active ({now_et.strftime('%H:%M %Z')}). After-hours quotes are staged for next trading session ({next_trade_str}).",
+                "reason": f"Post-market session active ({now_et.strftime('%H:%M %Z')}). Latest regular trading session: {today_str}.",
                 "current_time_et": time_str,
                 "trading_date": today_str,
-                "target_date": next_trade_str,
+                "target_date": today_str,
                 "base_date": today_str,
                 "market_state": "POST"
             }
@@ -708,18 +770,9 @@ class YFinanceProvider(AbstractDataProvider):
             if session_state == "POST_MARKET":
                 post_price = q.get("postMarketPrice")
                 reg_price = q.get("regularMarketPrice")
-                prev_c = float(q.get("regularMarketPreviousClose") or reg_price or 0.0)
 
-                if post_price and float(post_price) > 0:
-                    p_val = float(post_price)
-                    vol = int(q.get("postMarketVolume") or 0)
-                elif reg_price and float(reg_price) > 0:
-                    p_val = float(reg_price)
-                    vol = int(q.get("regularMarketVolume") or 0)
-                else:
-                    continue
-
-                if base_date and base_date != target_date and reg_price and float(reg_price) > 0:
+                # Prefer official regular market session for target_date (today)
+                if reg_price and float(reg_price) > 0:
                     reg_p = float(reg_price)
                     r_open = float(q.get("regularMarketOpen") or reg_p)
                     r_high = float(q.get("regularMarketDayHigh") or max(reg_p, r_open))
@@ -727,7 +780,7 @@ class YFinanceProvider(AbstractDataProvider):
                     r_vol = int(q.get("regularMarketVolume") or 0)
                     records.append({
                         "symbol": sym,
-                        "date": base_date,
+                        "date": target_date,
                         "open": r_open,
                         "high": r_high,
                         "low": r_low,
@@ -735,17 +788,19 @@ class YFinanceProvider(AbstractDataProvider):
                         "volume": r_vol,
                         "vol_50d_ma": 0
                     })
-
-                records.append({
-                    "symbol": sym,
-                    "date": target_date,
-                    "open": p_val,
-                    "high": max(p_val, float(reg_price or p_val)),
-                    "low": min(p_val, float(reg_price or p_val)),
-                    "close": p_val,
-                    "volume": vol,
-                    "vol_50d_ma": 0
-                })
+                elif post_price and float(post_price) > 0:
+                    p_val = float(post_price)
+                    vol = int(q.get("postMarketVolume") or 0)
+                    records.append({
+                        "symbol": sym,
+                        "date": target_date,
+                        "open": p_val,
+                        "high": p_val,
+                        "low": p_val,
+                        "close": p_val,
+                        "volume": vol,
+                        "vol_50d_ma": 0
+                    })
 
             elif session_state == "PRE_MARKET":
                 pm_price = q.get("preMarketPrice")

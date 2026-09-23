@@ -154,6 +154,13 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "averages",
         "description": "50-day simple moving average"
     },
+    "SMA_50": {
+        "sql": "b.sma_50",
+        "type": "numeric",
+        "label": "50 SMA",
+        "category": "averages",
+        "description": "50-day simple moving average"
+    },
     "AVGC150": {
         "sql": "b.sma_150",
         "type": "numeric",
@@ -162,6 +169,13 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "description": "150-day simple moving average"
     },
     "SMA150": {
+        "sql": "b.sma_150",
+        "type": "numeric",
+        "label": "150 SMA",
+        "category": "averages",
+        "description": "150-day simple moving average"
+    },
+    "SMA_150": {
         "sql": "b.sma_150",
         "type": "numeric",
         "label": "150 SMA",
@@ -182,6 +196,27 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "averages",
         "description": "200-day simple moving average"
     },
+    "SMA_200": {
+        "sql": "b.sma_200",
+        "type": "numeric",
+        "label": "200 SMA",
+        "category": "averages",
+        "description": "200-day simple moving average"
+    },
+    "SMA_200_20D_AGO": {
+        "sql": "b.sma_200_20d_ago",
+        "type": "numeric",
+        "label": "200 SMA 20d Ago",
+        "category": "averages",
+        "description": "200-day simple moving average 20 trading days ago"
+    },
+    "SMA200_20D": {
+        "sql": "b.sma_200_20d_ago",
+        "type": "numeric",
+        "label": "200 SMA 20d Ago",
+        "category": "averages",
+        "description": "200-day simple moving average 20 trading days ago"
+    },
     "XAVGC10": {
         "sql": "b.ema_10",
         "type": "numeric",
@@ -190,6 +225,13 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "description": "10-day exponential moving average"
     },
     "EMA10": {
+        "sql": "b.ema_10",
+        "type": "numeric",
+        "label": "10 EMA",
+        "category": "averages",
+        "description": "10-day exponential moving average"
+    },
+    "EMA_10": {
         "sql": "b.ema_10",
         "type": "numeric",
         "label": "10 EMA",
@@ -210,6 +252,13 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "averages",
         "description": "20-day exponential moving average"
     },
+    "EMA_20": {
+        "sql": "b.ema_20",
+        "type": "numeric",
+        "label": "20 EMA",
+        "category": "averages",
+        "description": "20-day exponential moving average"
+    },
     "XAVGC50": {
         "sql": "b.ema_50",
         "type": "numeric",
@@ -218,6 +267,13 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "description": "50-day exponential moving average"
     },
     "EMA50": {
+        "sql": "b.ema_50",
+        "type": "numeric",
+        "label": "50 EMA",
+        "category": "averages",
+        "description": "50-day exponential moving average"
+    },
+    "EMA_50": {
         "sql": "b.ema_50",
         "type": "numeric",
         "label": "50 EMA",
@@ -288,13 +344,6 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "label": "TI65",
         "category": "trend",
         "description": "Stockbee Trend Intensity (Close / 65 SMA)"
-    },
-    "STAGE2": {
-        "sql": "(b.sma_50 IS NOT NULL AND b.sma_150 IS NOT NULL AND b.sma_200 IS NOT NULL AND b.close > b.sma_50 AND b.sma_50 > b.sma_150 AND b.sma_150 > b.sma_200 AND (b.sma_200_20d_ago IS NULL OR b.sma_200 > b.sma_200_20d_ago) AND (b.dist_from_52w_high IS NULL OR b.dist_from_52w_high <= 25.0) AND (b.surge_off_low_pct IS NULL OR b.surge_off_low_pct >= 30.0))",
-        "type": "boolean",
-        "label": "Stage 2 Uptrend",
-        "category": "trend",
-        "description": "Minervini Stage 2 Trend Template (Close > 50 > 150 > 200 SMA & within 25% of 52w high)"
     },
     "IS_52W_HIGH": {
         "sql": "COALESCE(b.is_52w_high, false)",
@@ -490,20 +539,6 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "pattern",
         "description": "Consolidation days spent in flag"
     },
-    "BREAKOUT": {
-        "sql": "(COALESCE(b.pp_runup_pct, 0) >= 30.0 OR COALESCE(b.ret_1m, 0) >= 15.0 OR COALESCE(b.ret_3m, 0) >= 30.0)",
-        "type": "boolean",
-        "label": "Breakout",
-        "category": "pattern",
-        "description": "Qullamaggie Breakout / High Tight Flag pattern qualified"
-    },
-    "EPISODIC_PIVOT": {
-        "sql": "(COALESCE(b.gap_pct, 0) >= 10.0 AND COALESCE(b.rel_vol_50d, 0) >= 2.5)",
-        "type": "boolean",
-        "label": "Episodic Pivot",
-        "category": "pattern",
-        "description": "Massive gap (>=10%) and heavy relative volume (>=2.5x)"
-    },
     "GAP_PCT": {
         "sql": "b.gap_pct",
         "type": "numeric",
@@ -518,12 +553,12 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "pattern",
         "description": "Volume multiple relative to 50d average volume"
     },
-    "LOW_CHEAT": {
+    "LOW_CHEAT_SETUP": {
         "sql": "COALESCE(b.low_cheat_is_setup, false)",
         "type": "boolean",
-        "label": "Low Cheat",
+        "label": "Low Cheat Setup Flag",
         "category": "pattern",
-        "description": "Minervini Low Cheat early reversal setup in lower base"
+        "description": "Precomputed Minervini Low Cheat setup flag"
     },
     "CHEAT": {
         "sql": "COALESCE(b.low_cheat_is_setup, false)",
@@ -594,13 +629,6 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "label": "VCP Contraction",
         "category": "pattern",
         "description": "Minervini Volatility Contraction Pattern (2-4 progressive contractions)"
-    },
-    "IPO_BASE": {
-        "sql": "(b.ipo_days_count IS NOT NULL AND b.ipo_days_count >= 10 AND b.ipo_days_count <= 350 AND b.ipo_drawdown_from_high <= 25.0 AND b.ipo_base_depth <= 35.0)",
-        "type": "boolean",
-        "label": "IPO Base",
-        "category": "pattern",
-        "description": "Accumulation base in recent IPOs (< 350 trading days)"
     },
     "IPO_DAYS": {
         "sql": "b.ipo_days_count",
@@ -678,16 +706,144 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
 }
 
 
+# Composite Expression Aliases Catalog
+# Defines reusable composite filters and setups constructed from primitive variables.
+ALIAS_CATALOG: Dict[str, Dict[str, Any]] = {
+    "STAGE2": {
+        "expr": (
+            "SMA_50 IS NOT NULL AND SMA_150 IS NOT NULL AND SMA_200 IS NOT NULL "
+            "AND C > SMA_50 AND SMA_50 > SMA_150 AND SMA_150 > SMA_200 "
+            "AND (SMA_200_20D_AGO IS NULL OR SMA_200 > SMA_200_20D_AGO) "
+            "AND (DIST_52W_HIGH IS NULL OR DIST_52W_HIGH <= 25.0) "
+            "AND (SURGE_OFF_LOW IS NULL OR SURGE_OFF_LOW >= 25.0)"
+        ),
+        "type": "boolean",
+        "label": "Stage 2 Uptrend",
+        "category": "trend",
+        "description": "Minervini Stage 2 Trend Template (Close > 50 > 150 > 200 SMA & within 25% of 52w high)"
+    },
+    "LOW_CHEAT": {
+        "expr": (
+            "SMA_50 IS NOT NULL AND SMA_150 IS NOT NULL AND SMA_200 IS NOT NULL "
+            "AND SMA_50 > SMA_150 AND SMA_150 > SMA_200 "
+            "AND (SMA_200_20D_AGO IS NULL OR SMA_200 > SMA_200_20D_AGO) "
+            "AND (DIST_52W_HIGH IS NULL OR DIST_52W_HIGH <= 25.0) "
+            "AND (SURGE_OFF_LOW IS NULL OR SURGE_OFF_LOW >= 25.0)"
+        ),
+        "type": "boolean",
+        "label": "Low Cheat",
+        "category": "trend",
+        "description": "Stage 2 Trend Template without C > 50 SMA (Low Cheat early base setup)"
+    },
+    "BREAKOUT": {
+        "expr": "COALESCE(RUNUP, 0) >= 30.0 OR COALESCE(RET_1M, 0) >= 15.0 OR COALESCE(RET_3M, 0) >= 30.0",
+        "type": "boolean",
+        "label": "Breakout",
+        "category": "pattern",
+        "description": "Qullamaggie Breakout / High Tight Flag pattern qualified"
+    },
+    "EPISODIC_PIVOT": {
+        "expr": "COALESCE(GAP_PCT, 0) >= 10.0 AND COALESCE(REL_VOL, 0) >= 2.5",
+        "type": "boolean",
+        "label": "Episodic Pivot",
+        "category": "pattern",
+        "description": "Massive gap (>=10%) and heavy relative volume (>=2.5x)"
+    },
+    "IPO_BASE": {
+        "expr": "IPO_DAYS IS NOT NULL AND IPO_DAYS >= 10 AND IPO_DAYS <= 350 AND IPO_DRAWDOWN <= 25.0 AND IPO_DEPTH <= 35.0",
+        "type": "boolean",
+        "label": "IPO Base",
+        "category": "pattern",
+        "description": "Accumulation base in recent IPOs (< 350 trading days)"
+    }
+}
+
+
 class ScanExpressionEngine:
     """
     Parser, validator, and DuckDB SQL transpiler for TC2000 PCF scan expressions.
-    Supports case-insensitive math, comparisons, logical operations, and pattern primitives.
+    Supports case-insensitive math, comparisons, logical operations, pattern primitives,
+    and composite expression aliases.
     """
+
+    _alias_sql_cache: Dict[Tuple[str, str], str] = {}
+
+    @classmethod
+    def get_alias_catalog(cls) -> Dict[str, Dict[str, Any]]:
+        """Returns dictionary of all supported composite expression aliases."""
+        return ALIAS_CATALOG
+
+    @classmethod
+    def get_alias_sql(cls, alias_name: str, table_alias: str = "b") -> str:
+        """
+        Returns transpiled SQL for a known alias, caching result for speed.
+        Supports empty string '' for un-prefixed column names.
+        """
+        alias_key = alias_name.upper()
+        cache_key = (alias_key, table_alias)
+        if cache_key in cls._alias_sql_cache:
+            return cls._alias_sql_cache[cache_key]
+
+        if alias_key not in ALIAS_CATALOG:
+            raise ExpressionError(f"Unknown alias '{alias_name}'.")
+
+        sql, _, _, _, _, _ = cls.transpile_to_sql(
+            ALIAS_CATALOG[alias_key]["expr"],
+            table_alias=table_alias if table_alias else "b"
+        )
+        if not table_alias:
+            sql = re.sub(r'\bb\.', '', sql)
+        cls._alias_sql_cache[cache_key] = sql
+        return sql
+
+    @classmethod
+    def expand_aliases(cls, expr: str, max_depth: int = 10) -> Tuple[str, Set[str]]:
+        """
+        Recursively expands all expression aliases to their underlying expressions.
+        Returns: (expanded_expression, set_of_expanded_aliases)
+        Raises: ExpressionError if a circular alias reference is detected.
+        """
+        used_aliases: Set[str] = set()
+        current_expr = expr
+
+        for _ in range(max_depth):
+            expanded = False
+
+            def _replace_alias(match):
+                nonlocal expanded
+                token = match.group(0)
+                token_upper = token.upper()
+                if token_upper in ALIAS_CATALOG:
+                    used_aliases.add(token_upper)
+                    expanded = True
+                    return f"({ALIAS_CATALOG[token_upper]['expr']})"
+                return token
+
+            # Matches word tokens that are identifiers
+            current_expr = re.sub(r'\b[A-Za-z_][A-Za-z0-9_]*\b', _replace_alias, current_expr)
+            if not expanded:
+                break
+        else:
+            raise ExpressionError("Circular alias reference detected during alias expansion.")
+
+        return current_expr, used_aliases
 
     @classmethod
     def get_catalog(cls) -> Dict[str, Dict[str, Any]]:
-        """Returns the full dictionary of supported variables and metadata."""
-        return VARIABLE_CATALOG
+        """Returns the full dictionary of supported variables and metadata, including aliases."""
+        combined = dict(VARIABLE_CATALOG)
+        for alias_name, meta in ALIAS_CATALOG.items():
+            if alias_name not in combined:
+                combined[alias_name] = {
+                    "sql": cls.get_alias_sql(alias_name, table_alias="b"),
+                    "type": meta.get("type", "boolean"),
+                    "label": meta.get("label", alias_name),
+                    "category": meta.get("category", "trend"),
+                    "description": meta.get("description", ""),
+                    "is_alias": True,
+                    "expr": meta.get("expr", "")
+                }
+        return combined
 
     @classmethod
     def get_variables_by_category(cls) -> Dict[str, List[Dict[str, Any]]]:
@@ -702,10 +858,11 @@ class ScanExpressionEngine:
             "fundamental": []
         }
         seen_sql = set()
-        for var_name, meta in VARIABLE_CATALOG.items():
+        catalog = cls.get_catalog()
+        for var_name, meta in catalog.items():
             # Skip redundant alias keys in cheat-sheet display (e.g. CLOSE vs C)
             dedup_key = (meta.get("category"), meta.get("sql"))
-            if dedup_key in seen_sql and len(var_name) > 4:
+            if dedup_key in seen_sql and len(var_name) > 4 and not meta.get("is_alias"):
                 continue
             seen_sql.add(dedup_key)
             cat = meta.get("category", "price")
@@ -721,14 +878,22 @@ class ScanExpressionEngine:
     def normalize_expression(cls, expr: str) -> str:
         """
         Normalizes a TC2000-style formula string for safe Python AST parsing:
-        1. Replace case-insensitive AND, OR, NOT with lowercase Python equivalents.
-        2. Replace <> with !=.
-        3. Replace single '=' with '==' (when not part of <=, >=, !=, ==).
+        1. Replace IS NOT NULL, != NULL, <> NULL with 'is not None'.
+        2. Replace IS NULL, == NULL, = NULL with 'is None'.
+        3. Replace <> with !=.
+        4. Replace single '=' with '==' (when not part of <=, >=, !=, ==).
+        5. Replace case-insensitive AND, OR, NOT with lowercase Python equivalents.
         """
         if not expr or not expr.strip():
             return ""
 
         s = expr.strip()
+
+        # Normalize IS NOT NULL / IS NULL and comparisons with NULL
+        s = re.sub(r'\bIS\s+NOT\s+NULL\b', 'is not None', s, flags=re.IGNORECASE)
+        s = re.sub(r'\bIS\s+NULL\b', 'is None', s, flags=re.IGNORECASE)
+        s = re.sub(r'(!=|<>)\s*NULL\b', 'is not None', s, flags=re.IGNORECASE)
+        s = re.sub(r'(?<![<>!=])={1,2}\s*NULL\b', 'is None', s, flags=re.IGNORECASE)
 
         # Replace <> with !=
         s = s.replace("<>", "!=")
@@ -737,7 +902,6 @@ class ScanExpressionEngine:
         s = re.sub(r'(?<![<>!=])=(?![=])', '==', s)
 
         # Tokenize or replace case-insensitive word operators: AND, OR, NOT
-        # Use word boundaries
         s = re.sub(r'\bAND\b', 'and', s, flags=re.IGNORECASE)
         s = re.sub(r'\bOR\b', 'or', s, flags=re.IGNORECASE)
         s = re.sub(r'\bNOT\b', 'not', s, flags=re.IGNORECASE)
@@ -752,7 +916,8 @@ class ScanExpressionEngine:
         Returns: (parsed_ast, used_variables, has_lags)
         Raises: ExpressionError if syntax is invalid or unknown variable is used.
         """
-        normalized = cls.normalize_expression(expr)
+        expanded_expr, used_aliases = cls.expand_aliases(expr)
+        normalized = cls.normalize_expression(expanded_expr)
         if not normalized:
             raise ExpressionError("Expression cannot be empty.")
 
@@ -770,7 +935,7 @@ class ScanExpressionEngine:
             ast.BoolOp, ast.And, ast.Or,
             ast.UnaryOp, ast.Not, ast.USub, ast.UAdd,
             ast.BinOp, ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow,
-            ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
+            ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.Is, ast.IsNot,
             ast.Name, ast.Load,
             ast.Constant,
             ast.Call
@@ -805,7 +970,7 @@ class ScanExpressionEngine:
                 if var_upper in allowed_functions:
                     continue
 
-                if var_upper not in VARIABLE_CATALOG:
+                if var_upper not in VARIABLE_CATALOG and var_upper not in ALIAS_CATALOG:
                     # Check for general Cn or Vn pattern (e.g. C3, V2)
                     lag_match = re.match(r'^([COHLV])(\d+)$', var_upper)
                     if lag_match:
@@ -816,9 +981,10 @@ class ScanExpressionEngine:
                     raise ExpressionError(f"Unknown variable '{node.id}'. Check variable reference for valid symbols.")
 
                 used_variables.add(var_upper)
-                if VARIABLE_CATALOG[var_upper].get("is_lag"):
+                if var_upper in VARIABLE_CATALOG and VARIABLE_CATALOG[var_upper].get("is_lag"):
                     has_lags = True
 
+        used_variables.update(used_aliases)
         return tree, used_variables, has_lags
 
     @classmethod
@@ -857,6 +1023,10 @@ class ScanExpressionEngine:
                         col_sql = re.sub(r'\bb\.', f"{table_alias}.", col_sql)
                     order_by_sql = f"{col_sql} {order_dir}"
                     order_by_vars.add(order_var)
+                elif order_var in ALIAS_CATALOG:
+                    col_sql = cls.get_alias_sql(order_var, table_alias=table_alias)
+                    order_by_sql = f"{col_sql} {order_dir}"
+                    order_by_vars.add(order_var)
                 else:
                     raise ExpressionError(f"Unknown variable in ORDER BY: '{order_var}'. Check variable catalog.")
             if limit_match:
@@ -864,7 +1034,9 @@ class ScanExpressionEngine:
         else:
             core_expr = expr.strip()
 
-        tree, used_variables, has_lags = cls.validate_and_parse(core_expr)
+        expanded_expr, used_aliases = cls.expand_aliases(core_expr)
+        tree, used_variables, has_lags = cls.validate_and_parse(expanded_expr)
+        used_variables.update(used_aliases)
         used_variables.update(order_by_vars)
 
         def _node_to_sql(node: ast.AST) -> str:
@@ -912,7 +1084,9 @@ class ScanExpressionEngine:
                         ast.Lt: "<",
                         ast.LtE: "<=",
                         ast.Gt: ">",
-                        ast.GtE: ">="
+                        ast.GtE: ">=",
+                        ast.Is: "IS",
+                        ast.IsNot: "IS NOT"
                     }.get(type(op), "=")
                     cmp_parts.append(f"{prev_operand} {op_symbol} {curr_operand}")
                     prev_operand = curr_operand
@@ -945,6 +1119,9 @@ class ScanExpressionEngine:
                         sql_expr = re.sub(r'\bb\.', f"{table_alias}.", sql_expr)
                     # If this is a standalone boolean variable in a logical condition, return it directly
                     return sql_expr
+
+                if var_upper in ALIAS_CATALOG:
+                    return cls.get_alias_sql(var_upper, table_alias=table_alias)
 
                 # Check general lag variable e.g. C3, V2
                 lag_match = re.match(r'^([COHLV])(\d+)$', var_upper)
