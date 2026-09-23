@@ -522,7 +522,8 @@ class DatabaseService:
                     f.inst_ownership_pct,
                     f.sponsorship_streak,
                     db.days_since_52w_high,
-                    db.pp_runup_days
+                    db.pp_runup_days,
+                    db.stage2_days
                 FROM {from_table}
                 LEFT JOIN latest_fundamentals f ON db.symbol = f.symbol AND f.rn = 1
                 JOIN symbols s ON db.symbol = s.symbol
@@ -638,7 +639,8 @@ class DatabaseService:
                     "inst_ownership_pct": row[70] if len(row) > 70 else None,
                     "sponsorship_streak": int(row[71]) if len(row) > 71 and row[71] is not None else 0,
                     "days_since_52w_high": int(row[72]) if len(row) > 72 and row[72] is not None else None,
-                    "pp_runup_days": int(row[73]) if len(row) > 73 and row[73] is not None else 0
+                    "pp_runup_days": int(row[73]) if len(row) > 73 and row[73] is not None else 0,
+                    "stage2_days": int(row[74]) if len(row) > 74 and row[74] is not None else 0
                 })
 
             if not candidates:

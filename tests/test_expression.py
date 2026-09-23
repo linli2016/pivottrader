@@ -293,29 +293,26 @@ class TestScanExpressionEngine(unittest.TestCase):
 
 
     def test_minervini_trend_templates(self):
-        # Test combined 1M Trend
-        res_1m = ScanExpressionEngine.validate("STAGE2 AND SMA_200 <= SMA_200_80D_AGO AND RS_RANK >= 70 AND C >= 5.0 AND DOLLAR_VOL >= 10000000")
+        # Test combined 1M Trend via STAGE2_DAYS
+        res_1m = ScanExpressionEngine.validate("STAGE2 AND STAGE2_DAYS <= 25 AND RS_RANK >= 70 AND C >= 5.0 AND DOLLAR_VOL >= 10000000")
         self.assertTrue(res_1m["valid"])
         self.assertIn("STAGE2", res_1m["variables"])
-        self.assertIn("SMA_200_80D_AGO", res_1m["variables"])
-        self.assertIn("b.sma_200_20d_ago", res_1m["sql"])
-        self.assertIn("b.sma_200_80d_ago", res_1m["sql"])
+        self.assertIn("STAGE2_DAYS", res_1m["variables"])
+        self.assertIn("b.stage2_days", res_1m["sql"])
 
-        # Test combined 1~4M Trend
-        res_1_4m = ScanExpressionEngine.validate("STAGE2 AND SMA_200 > SMA_200_80D_AGO AND SMA_200 <= SMA_200_100D_AGO AND RS_RANK >= 70 AND C >= 5.0 AND DOLLAR_VOL >= 10000000")
+        # Test combined 1~4M Trend via STAGE2_DAYS
+        res_1_4m = ScanExpressionEngine.validate("STAGE2 AND STAGE2_DAYS > 25 AND STAGE2_DAYS <= 80 AND RS_RANK >= 70 AND C >= 5.0 AND DOLLAR_VOL >= 10000000")
         self.assertTrue(res_1_4m["valid"])
         self.assertIn("STAGE2", res_1_4m["variables"])
-        self.assertIn("SMA_200_80D_AGO", res_1_4m["variables"])
-        self.assertIn("SMA_200_100D_AGO", res_1_4m["variables"])
-        self.assertIn("b.sma_200_80d_ago", res_1_4m["sql"])
-        self.assertIn("b.sma_200_100d_ago", res_1_4m["sql"])
+        self.assertIn("STAGE2_DAYS", res_1_4m["variables"])
+        self.assertIn("b.stage2_days", res_1_4m["sql"])
 
-        # Test combined 5M Trend
-        res_5m = ScanExpressionEngine.validate("STAGE2 AND SMA_200 > SMA_200_100D_AGO AND RS_RANK >= 70 AND C >= 5.0 AND DOLLAR_VOL >= 10000000")
+        # Test combined 5M Trend via STAGE2_DAYS / S2_DAYS alias
+        res_5m = ScanExpressionEngine.validate("STAGE2 AND S2_DAYS > 80 AND RS_RANK >= 70 AND C >= 5.0 AND DOLLAR_VOL >= 10000000")
         self.assertTrue(res_5m["valid"])
         self.assertIn("STAGE2", res_5m["variables"])
-        self.assertIn("SMA_200_100D_AGO", res_5m["variables"])
-        self.assertIn("b.sma_200_100d_ago", res_5m["sql"])
+        self.assertIn("S2_DAYS", res_5m["variables"])
+        self.assertIn("b.stage2_days", res_5m["sql"])
 
     def test_sma200_lags_catalog(self):
         cat = ScanExpressionEngine.get_catalog()
@@ -323,6 +320,8 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertIn("SMA200_80D", cat)
         self.assertIn("SMA_200_100D_AGO", cat)
         self.assertIn("SMA200_100D", cat)
+        self.assertIn("STAGE2_DAYS", cat)
+        self.assertIn("S2_DAYS", cat)
         self.assertNotIn("STAGE2_1M", cat)
         self.assertNotIn("STAGE2_1_4M", cat)
         self.assertNotIn("STAGE2_5M", cat)

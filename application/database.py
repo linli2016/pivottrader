@@ -155,6 +155,7 @@ class DatabaseManager:
                     low_cheat_stop_loss DOUBLE,
                     low_cheat_risk_pct DOUBLE,
                     low_cheat_base_depth DOUBLE,
+                    stage2_days INTEGER,
                     PRIMARY KEY (symbol, date)
                 );
             """)
@@ -216,6 +217,7 @@ class DatabaseManager:
                 ("low_cheat_stop_loss", "DOUBLE"),
                 ("low_cheat_risk_pct", "DOUBLE"),
                 ("low_cheat_base_depth", "DOUBLE"),
+                ("stage2_days", "INTEGER"),
             ]
             for col_name, col_type in new_cols:
                 try:

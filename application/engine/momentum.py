@@ -199,6 +199,27 @@ class MomentumEngine:
                     ROUND(volume / NULLIF(vol_50d_ma, 0), 2) as rel_vol_50d
                 FROM price_lags_base
             ),
+            stage2_islands AS (
+                SELECT
+                    *,
+                    (sma_50 IS NOT NULL AND sma_150 IS NOT NULL AND sma_200 IS NOT NULL 
+                     AND sma_50 > sma_150 AND sma_150 > sma_200) as is_stage2_stack,
+                    SUM(CASE WHEN NOT (sma_50 IS NOT NULL AND sma_150 IS NOT NULL AND sma_200 IS NOT NULL 
+                                       AND sma_50 > sma_150 AND sma_150 > sma_200) 
+                             THEN 1 ELSE 0 END) 
+                        OVER (PARTITION BY symbol ORDER BY date) as s2_grp
+                FROM price_lags_derived
+            ),
+            stage2_streaks AS (
+                SELECT
+                    *,
+                    CASE 
+                        WHEN is_stage2_stack THEN 
+                            ROW_NUMBER() OVER (PARTITION BY symbol, s2_grp ORDER BY date)
+                        ELSE 0 
+                    END as stage2_days
+                FROM stage2_islands
+            ),
             weighted_scores AS (
                 SELECT
                     r_id,
@@ -213,6 +234,7 @@ class MomentumEngine:
                     sma_200_20d_ago,
                     sma_200_80d_ago,
                     sma_200_100d_ago,
+                    stage2_days,
                     ti_65,
                     high_52w,
                     days_since_52w_high,
@@ -231,7 +253,7 @@ class MomentumEngine:
                     (COALESCE(ret_6m, 0) * 0.2) + 
                     (COALESCE(ret_9m, 0) * 0.2) + 
                     (COALESCE(ret_12m, 0) * 0.2) as rs_score
-                FROM price_lags_derived
+                FROM stage2_streaks
             ),
             percentile_ranks AS (
                 SELECT
@@ -246,6 +268,7 @@ class MomentumEngine:
                     sma_200_20d_ago,
                     sma_200_80d_ago,
                     sma_200_100d_ago,
+                    stage2_days,
                     ti_65,
                     high_52w,
                     days_since_52w_high,
@@ -272,6 +295,7 @@ class MomentumEngine:
                 sma_200_20d_ago = src.sma_200_20d_ago,
                 sma_200_80d_ago = src.sma_200_80d_ago,
                 sma_200_100d_ago = src.sma_200_100d_ago,
+                stage2_days = src.stage2_days,
                 ti_65 = src.ti_65,
                 high_52w = src.high_52w,
                 days_since_52w_high = src.days_since_52w_high,

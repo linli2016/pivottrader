@@ -338,6 +338,20 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
     },
 
     # ---------------- Trend, RS & Momentum ----------------
+    "STAGE2_DAYS": {
+        "sql": "COALESCE(b.stage2_days, 0)",
+        "type": "numeric",
+        "label": "Days in Stage 2",
+        "category": "trend",
+        "description": "Consecutive trading days in Stage 2 moving average alignment (50 SMA > 150 SMA > 200 SMA)"
+    },
+    "S2_DAYS": {
+        "sql": "COALESCE(b.stage2_days, 0)",
+        "type": "numeric",
+        "label": "Days in Stage 2",
+        "category": "trend",
+        "description": "Consecutive trading days in Stage 2 moving average alignment (50 SMA > 150 SMA > 200 SMA)"
+    },
     "RS_RANK": {
         "sql": "b.rs_rank",
         "type": "numeric",
