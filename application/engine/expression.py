@@ -757,48 +757,6 @@ ALIAS_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "trend",
         "description": "Minervini Stage 2 Trend Template (Close > 50 > 150 > 200 SMA, within 25% of 52w high & >= 25% above 52w low)"
     },
-    "STAGE2_1M": {
-        "expr": (
-            "SMA_50 IS NOT NULL AND SMA_150 IS NOT NULL AND SMA_200 IS NOT NULL "
-            "AND C > SMA_50 AND SMA_50 > SMA_150 AND SMA_150 > SMA_200 "
-            "AND (SMA_200_20D_AGO IS NULL OR SMA_200 > SMA_200_20D_AGO) "
-            "AND (SMA_200_80D_AGO IS NULL OR SMA_200 <= SMA_200_80D_AGO) "
-            "AND (DIST_52W_HIGH IS NULL OR DIST_52W_HIGH <= 25.0) "
-            "AND (DIST_52W_LOW IS NULL OR DIST_52W_LOW >= 25.0)"
-        ),
-        "type": "boolean",
-        "label": "Stage 2 (1 Month)",
-        "category": "trend",
-        "description": "Minervini Stage 2 Trend Template - 1 Month (200 SMA trending up for ~1 month / early turnaround)"
-    },
-    "STAGE2_1_4M": {
-        "expr": (
-            "SMA_50 IS NOT NULL AND SMA_150 IS NOT NULL AND SMA_200 IS NOT NULL "
-            "AND C > SMA_50 AND SMA_50 > SMA_150 AND SMA_150 > SMA_200 "
-            "AND (SMA_200_20D_AGO IS NULL OR SMA_200 > SMA_200_20D_AGO) "
-            "AND (SMA_200_80D_AGO IS NULL OR SMA_200 > SMA_200_80D_AGO) "
-            "AND (SMA_200_100D_AGO IS NULL OR SMA_200 <= SMA_200_100D_AGO) "
-            "AND (DIST_52W_HIGH IS NULL OR DIST_52W_HIGH <= 25.0) "
-            "AND (DIST_52W_LOW IS NULL OR DIST_52W_LOW >= 25.0)"
-        ),
-        "type": "boolean",
-        "label": "Stage 2 (1~4 Months)",
-        "category": "trend",
-        "description": "Minervini Stage 2 Trend Template - 1~4 Months (200 SMA trending up for 1 to 4 months / developing trend)"
-    },
-    "STAGE2_5M": {
-        "expr": (
-            "SMA_50 IS NOT NULL AND SMA_150 IS NOT NULL AND SMA_200 IS NOT NULL "
-            "AND C > SMA_50 AND SMA_50 > SMA_150 AND SMA_150 > SMA_200 "
-            "AND (SMA_200_100D_AGO IS NOT NULL AND SMA_200 > SMA_200_100D_AGO) "
-            "AND (DIST_52W_HIGH IS NULL OR DIST_52W_HIGH <= 25.0) "
-            "AND (DIST_52W_LOW IS NULL OR DIST_52W_LOW >= 25.0)"
-        ),
-        "type": "boolean",
-        "label": "Stage 2 (5+ Months)",
-        "category": "trend",
-        "description": "Minervini Stage 2 Trend Template - 5 Months (200 SMA trending up for > 5 months / established trend)"
-    },
     "LOW_CHEAT": {
         "expr": (
             "SMA_50 IS NOT NULL AND SMA_150 IS NOT NULL AND SMA_200 IS NOT NULL "

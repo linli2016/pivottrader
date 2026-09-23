@@ -4,17 +4,36 @@ import ExpressionCheatSheet from './ExpressionCheatSheet';
 import { getLocalDateStr } from '../utils/dateUtils';
 
 const SETUP_COLORS = {
+  // Folders
+  daily: '#38bdf8',
+  weekly: '#a855f7',
+  others: '#94a3b8',
+  // Daily Setups
   power_play: '#38bdf8',
   breakout: '#f59e0b',
   breakouts: '#f59e0b',
+  qm_breakouts: '#f59e0b',
+  standard: '#f59e0b',
   episodic_pivot: '#ec4899',
-  momentum: '#a855f7',
   parabolic: '#ef4444',
-  ipo_base: '#06b6d4',
-  vcp: '#10b981',
-  low_cheat: '#f97316',
-  cheat: '#eab308',
   cup_and_handle: '#10b981',
+  cheat: '#eab308',
+  low_cheat: '#f97316',
+  // Weekly Setups
+  momentum: '#a855f7',
+  leaders: '#a855f7',
+  gainers: '#ec4899',
+  '1m': '#38bdf8',
+  '3m': '#818cf8',
+  '6m': '#06b6d4',
+  ipo_base: '#06b6d4',
+  trend_1m: '#34d399',
+  trend_1_4m: '#10b981',
+  trend_5m: '#059669',
+  // Others
+  stage2: '#10b981',
+  all: '#64748b',
+  vcp: '#10b981',
 };
 
 export default function CandidatesTab({
@@ -27,8 +46,12 @@ export default function CandidatesTab({
   tradingDates = [],
   selectedDate = 'latest',
   setSelectedDate = () => { },
-  setupsConfig = { setups: [], filters: {} },
-  activeSetupKey = 'breakouts',
+  setupsConfig = { folders: [], setups: [], filters: {} },
+  activeFolderId = 'daily',
+  onSelectFolder = () => { },
+  activeScreenerId = 'power_play',
+  onSelectScreener = () => { },
+  activeSetupKey = 'power_play',
   onSelectSetup = () => { },
   activeExpression = '',
   onExpressionChange = () => { },
@@ -239,16 +262,30 @@ export default function CandidatesTab({
 
   const currentCandidate = displayedCandidates[browseIndex] || null;
 
-  const currentSetup = React.useMemo(() => {
-    return (setupsConfig?.setups || []).find(s => s.id === activeSetupKey) || null;
-  }, [setupsConfig, activeSetupKey]);
+  const curFolder = React.useMemo(() => {
+    return (setupsConfig?.folders || []).find(f => f.id === activeFolderId) || (setupsConfig?.folders || [])[0] || null;
+  }, [setupsConfig, activeFolderId]);
+
+  const curScreener = React.useMemo(() => {
+    if (curFolder?.screeners) {
+      const match = curFolder.screeners.find(s => s.id === activeScreenerId);
+      if (match) return match;
+    }
+    // Search across all folders
+    for (const f of (setupsConfig?.folders || [])) {
+      const match = f.screeners?.find(s => s.id === activeScreenerId);
+      if (match) return match;
+    }
+    // Fallback search in legacy setups
+    return (setupsConfig?.setups || []).find(s => s.id === activeScreenerId || s.id === activeSetupKey) || null;
+  }, [setupsConfig, curFolder, activeScreenerId, activeSetupKey]);
+
+  const currentSetup = curScreener;
 
   const activeSetupName = React.useMemo(() => {
-    if (currentSetup?.sub_setups && activeExpression) {
-      const activeSub = currentSetup.sub_setups.find(s => s.expression?.trim() === activeExpression?.trim());
-      if (activeSub?.label || activeSub?.name) return activeSub.label || activeSub.name;
+    if (curScreener?.name || curScreener?.label) {
+      return curScreener.name || curScreener.label;
     }
-    if (currentSetup?.name) return currentSetup.name;
     if (currentCandidate?.pp_is_setup) return 'Power Play';
     if (currentCandidate?.breakout_is_setup) return 'QM Breakout';
     if (currentCandidate?.ep_is_setup) return 'Episodic Pivot';
@@ -258,7 +295,7 @@ export default function CandidatesTab({
     if (currentCandidate?.low_cheat_is_setup) return 'Low Cheat';
     if (currentCandidate?.ipo_days_count !== undefined && currentCandidate?.ipo_days_count <= 350) return 'IPO Base';
     return 'General';
-  }, [currentSetup, currentCandidate, activeSetupKey, activeExpression]);
+  }, [curScreener, currentCandidate]);
 
   const currentHasBlueDot = React.useMemo(() => {
     if (currentCandidate?.is_rs_blue_dot) return true;
@@ -628,41 +665,87 @@ export default function CandidatesTab({
       <div className="glass-card" style={{ marginBottom: '10px', padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
         {/* Top Integrated Header: Strategy Buttons + Right Action Controls */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          {/* Strategy Selector (Left Side: Setup Buttons) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            {(setupsConfig?.setups || []).map((setup) => {
-              const isSelected = activeSetupKey === setup.id;
-              const color = SETUP_COLORS[setup.id] || '#38bdf8';
-              return (
-                <button
-                  key={setup.id}
-                  type="button"
-                  onClick={() => {
-                    if (setup.default_sub_id && setup.sub_setups?.length > 0) {
-                      const defSub = setup.sub_setups.find(s => s.id === setup.default_sub_id);
-                      onSelectSetup(setup.id, defSub?.expression || setup.expression);
-                    } else {
-                      onSelectSetup(setup.id, setup.expression);
-                    }
-                  }}
-                  title={setup.description || ''}
-                  style={{
-                    padding: '5px 12px',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    border: isSelected ? `1px solid ${color}` : '1px solid rgba(255, 255, 255, 0.12)',
-                    background: isSelected ? `${color}33` : 'rgba(15, 23, 42, 0.5)',
-                    color: isSelected ? color : 'var(--text-secondary)',
-                    boxShadow: isSelected ? `0 2px 8px ${color}40` : 'none'
-                  }}
-                >
-                  {setup.icon ? `${setup.icon} ` : ''}{setup.name}
-                </button>
-              );
-            })}
+          {/* Level 1: Folder Selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: '2px' }}>
+              Folder:
+            </span>
+            {(setupsConfig?.folders && setupsConfig.folders.length > 0) ? (
+              setupsConfig.folders.map((folder) => {
+                const isSelected = activeFolderId === folder.id;
+                const color = SETUP_COLORS[folder.id] || '#38bdf8';
+                const screenerCount = folder.screeners?.length || 0;
+                return (
+                  <button
+                    key={folder.id}
+                    type="button"
+                    onClick={() => onSelectFolder(folder.id)}
+                    title={folder.description || ''}
+                    style={{
+                      padding: '5px 12px',
+                      fontSize: '12px',
+                      fontWeight: isSelected ? '700' : '600',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      border: isSelected ? `1.5px solid ${color}` : '1px solid rgba(255, 255, 255, 0.12)',
+                      background: isSelected ? `${color}25` : 'rgba(15, 23, 42, 0.55)',
+                      color: isSelected ? color : 'var(--text-secondary)',
+                      boxShadow: isSelected ? `0 2px 8px ${color}35` : 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <span>{folder.icon ? `${folder.icon} ` : ''}{folder.name}</span>
+                    <span style={{
+                      fontSize: '10px',
+                      fontWeight: '700',
+                      padding: '1px 5px',
+                      borderRadius: '10px',
+                      background: isSelected ? `${color}35` : 'rgba(255, 255, 255, 0.08)',
+                      color: isSelected ? color : 'var(--text-muted)',
+                    }}>
+                      {screenerCount}
+                    </span>
+                  </button>
+                );
+              })
+            ) : (
+              (setupsConfig?.setups || []).map((setup) => {
+                const isSelected = activeSetupKey === setup.id;
+                const color = SETUP_COLORS[setup.id] || '#38bdf8';
+                return (
+                  <button
+                    key={setup.id}
+                    type="button"
+                    onClick={() => {
+                      if (setup.default_sub_id && setup.sub_setups?.length > 0) {
+                        const defSub = setup.sub_setups.find(s => s.id === setup.default_sub_id);
+                        onSelectSetup(setup.id, defSub?.expression || setup.expression);
+                      } else {
+                        onSelectSetup(setup.id, setup.expression);
+                      }
+                    }}
+                    title={setup.description || ''}
+                    style={{
+                      padding: '5px 12px',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      border: isSelected ? `1px solid ${color}` : '1px solid rgba(255, 255, 255, 0.12)',
+                      background: isSelected ? `${color}33` : 'rgba(15, 23, 42, 0.5)',
+                      color: isSelected ? color : 'var(--text-secondary)',
+                      boxShadow: isSelected ? `0 2px 8px ${color}40` : 'none'
+                    }}
+                  >
+                    {setup.icon ? `${setup.icon} ` : ''}{setup.name}
+                  </button>
+                );
+              })
+            )}
           </div>
 
           {/* Right Action Controls: Standalone Date Picker & Rules/Sliders Toggle */}
@@ -792,64 +875,117 @@ export default function CandidatesTab({
           </div>
         </div>
 
-        {/* Dynamic Sub-Bar for Any Setup defining sub_setups (e.g., Breakouts, Momentum, VCP) */}
-        {currentSetup?.sub_setups && currentSetup.sub_setups.length > 0 && (
+        {/* Level 2: Screener Subview Bar (Permanently visible for active folder) */}
+        {curFolder?.screeners && curFolder.screeners.length > 0 ? (
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             gap: '12px',
             flexWrap: 'wrap',
-            padding: '8px 12px',
-            background: activeSetupKey === 'momentum' ? 'rgba(168, 85, 247, 0.08)' : (activeSetupKey === 'vcp' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(56, 189, 248, 0.08)'),
-            border: activeSetupKey === 'momentum' ? '1px solid rgba(168, 85, 247, 0.25)' : (activeSetupKey === 'vcp' ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)'),
+            padding: '7px 12px',
+            background: activeFolderId === 'daily' 
+              ? 'rgba(56, 189, 248, 0.08)' 
+              : activeFolderId === 'weekly' 
+                ? 'rgba(168, 85, 247, 0.08)' 
+                : 'rgba(148, 163, 184, 0.08)',
+            border: activeFolderId === 'daily' 
+              ? '1px solid rgba(56, 189, 248, 0.25)' 
+              : activeFolderId === 'weekly' 
+                ? '1px solid rgba(168, 85, 247, 0.25)' 
+                : '1px solid rgba(148, 163, 184, 0.25)',
             borderRadius: '8px',
             marginTop: '2px'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{
-                fontSize: '12px',
-                fontWeight: '700',
-                color: activeSetupKey === 'momentum' ? '#c084fc' : (activeSetupKey === 'vcp' ? '#34d399' : '#38bdf8'),
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}>
-                {currentSetup.sub_title || `${currentSetup.name} Presets:`}
-              </span>
-              {currentSetup.sub_setups.map(sub => {
-                const isActive = activeExpression?.trim() === sub.expression?.trim();
-                const activeThemeColor = activeSetupKey === 'momentum' ? '#a855f7' : (activeSetupKey === 'vcp' ? '#10b981' : '#38bdf8');
-                const activeBg = activeSetupKey === 'momentum' ? 'rgba(168, 85, 247, 0.3)' : (activeSetupKey === 'vcp' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(56, 189, 248, 0.3)');
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              {curFolder.screeners.map((screener) => {
+                const isActive = activeScreenerId === screener.id || (activeExpression && screener.expression?.trim() === activeExpression?.trim());
+                const screenerColor = SETUP_COLORS[screener.id] || (activeFolderId === 'daily' ? '#38bdf8' : (activeFolderId === 'weekly' ? '#a855f7' : '#94a3b8'));
 
                 return (
                   <button
-                    key={sub.id}
-                    type="button"
-                    onClick={() => {
-                      if (sub.expression) {
-                        onExpressionChange(sub.expression);
-                      }
-                    }}
-                    title={sub.expression || ''}
-                    style={{
-                      padding: '4px 12px',
-                      fontSize: '11.5px',
-                      fontWeight: isActive ? '700' : '500',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                      border: isActive ? `1px solid ${activeThemeColor}` : '1px solid rgba(255, 255, 255, 0.1)',
-                      background: isActive ? activeBg : 'rgba(15, 23, 42, 0.4)',
-                      color: isActive ? '#ffffff' : 'var(--text-secondary)'
-                    }}
-                  >
-                    {sub.label || sub.name}
-                  </button>
+                    key={screener.id}
+                      onClick={() => onSelectScreener(screener.id, screener.expression)}
+                      title={screener.description || screener.expression || ''}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11.5px',
+                        fontWeight: isActive ? '700' : '500',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        border: isActive ? `1px solid ${screenerColor}` : '1px solid rgba(255, 255, 255, 0.1)',
+                        background: isActive ? `${screenerColor}33` : 'rgba(15, 23, 42, 0.45)',
+                        color: isActive ? '#ffffff' : 'var(--text-secondary)',
+                        boxShadow: isActive ? `0 2px 6px ${screenerColor}30` : 'none'
+                      }}
+                    >
+                      {screener.icon ? `${screener.icon} ` : ''}{screener.name || screener.label}
+                    </button>
                 );
               })}
             </div>
           </div>
+        ) : (
+          /* Legacy fallback sub-bar */
+          currentSetup?.sub_setups && currentSetup.sub_setups.length > 0 && (
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '12px',
+              flexWrap: 'wrap',
+              padding: '8px 12px',
+              background: activeSetupKey === 'momentum' ? 'rgba(168, 85, 247, 0.08)' : (activeSetupKey === 'vcp' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(56, 189, 248, 0.08)'),
+              border: activeSetupKey === 'momentum' ? '1px solid rgba(168, 85, 247, 0.25)' : (activeSetupKey === 'vcp' ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)'),
+              borderRadius: '8px',
+              marginTop: '2px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  color: activeSetupKey === 'momentum' ? '#c084fc' : (activeSetupKey === 'vcp' ? '#34d399' : '#38bdf8'),
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}>
+                  {currentSetup.sub_title || `${currentSetup.name} Presets:`}
+                </span>
+                {currentSetup.sub_setups.map(sub => {
+                  const isActive = activeExpression?.trim() === sub.expression?.trim();
+                  const activeThemeColor = activeSetupKey === 'momentum' ? '#a855f7' : (activeSetupKey === 'vcp' ? '#10b981' : '#38bdf8');
+                  const activeBg = activeSetupKey === 'momentum' ? 'rgba(168, 85, 247, 0.3)' : (activeSetupKey === 'vcp' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(56, 189, 248, 0.3)');
+
+                  return (
+                    <button
+                      key={sub.id}
+                      type="button"
+                      onClick={() => {
+                        if (sub.expression) {
+                          onExpressionChange(sub.expression);
+                        }
+                      }}
+                      title={sub.expression || ''}
+                      style={{
+                        padding: '4px 12px',
+                        fontSize: '11.5px',
+                        fontWeight: isActive ? '700' : '500',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        border: isActive ? `1px solid ${activeThemeColor}` : '1px solid rgba(255, 255, 255, 0.1)',
+                        background: isActive ? activeBg : 'rgba(15, 23, 42, 0.4)',
+                        color: isActive ? '#ffffff' : 'var(--text-secondary)'
+                      }}
+                    >
+                      {sub.label || sub.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )
         )}
 
         {/* Expression Input Bar */}

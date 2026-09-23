@@ -94,8 +94,11 @@ function App() {
   const [loadingSql, setLoadingSql] = useState(false);
 
   // Centralized setups configuration and filter states
-  const [setupsConfig, setSetupsConfig] = useState({ setups: [], filters: {} });
-  const [activeSetupKey, setActiveSetupKey] = useState('breakouts');
+  const [setupsConfig, setSetupsConfig] = useState({ folders: [], setups: [], filters: {} });
+  const [activeFolderId, setActiveFolderId] = useState('daily');
+  const [activeScreenerId, setActiveScreenerId] = useState('power_play');
+  const [folderMemory, setFolderMemory] = useState({ daily: 'power_play', weekly: 'leaders', others: 'stage2' });
+  const [activeSetupKey, setActiveSetupKey] = useState('power_play');
   const [activeExpression, setActiveExpression] = useState('');
 
   // Full inspector state
@@ -128,13 +131,27 @@ function App() {
       if (res.ok) {
         const data = await res.json();
         setSetupsConfig(data);
-        const defaultSetup = (data.setups || []).find(s => s.id === 'breakouts' || s.id === 'breakout') || (data.setups || [])[0];
-        if (defaultSetup) {
-          setActiveSetupKey(defaultSetup.id);
-          const defaultSub = (defaultSetup.default_sub_id && defaultSetup.sub_setups?.length > 0)
-            ? defaultSetup.sub_setups.find(s => s.id === defaultSetup.default_sub_id)
-            : null;
-          setActiveExpression(defaultSub?.expression || defaultSetup.expression || '');
+        if (data.folders && data.folders.length > 0) {
+          const defaultFolder = data.folders.find(f => f.id === 'daily') || data.folders[0];
+          const defScreenerId = defaultFolder.default_screener_id || defaultFolder.screeners?.[0]?.id;
+          const defaultScreener = defaultFolder.screeners?.find(s => s.id === defScreenerId) || defaultFolder.screeners?.[0];
+          
+          setActiveFolderId(defaultFolder.id);
+          if (defaultScreener) {
+            setActiveScreenerId(defaultScreener.id);
+            setActiveSetupKey(defaultScreener.id);
+            setActiveExpression(defaultScreener.expression || '');
+          }
+        } else {
+          const defaultSetup = (data.setups || []).find(s => s.id === 'breakouts' || s.id === 'breakout') || (data.setups || [])[0];
+          if (defaultSetup) {
+            setActiveSetupKey(defaultSetup.id);
+            setActiveScreenerId(defaultSetup.id);
+            const defaultSub = (defaultSetup.default_sub_id && defaultSetup.sub_setups?.length > 0)
+              ? defaultSetup.sub_setups.find(s => s.id === defaultSetup.default_sub_id)
+              : null;
+            setActiveExpression(defaultSub?.expression || defaultSetup.expression || '');
+          }
         }
         return data;
       }
@@ -144,21 +161,50 @@ function App() {
     return null;
   };
 
-  const handleSelectSetup = (setupKey, expressionOverride = null) => {
-    setActiveSetupKey(setupKey);
-    const setup = (setupsConfig?.setups || []).find(s => s.id === setupKey);
-    if (setup) {
-      if (expressionOverride !== null) {
-        setActiveExpression(expressionOverride);
-      } else if (setup.default_sub_id && setup.sub_setups?.length > 0) {
-        const defSub = setup.sub_setups.find(s => s.id === setup.default_sub_id);
-        setActiveExpression(defSub?.expression || setup.expression || '');
-      } else {
-        setActiveExpression(setup.expression || '');
-      }
-    } else if (expressionOverride !== null) {
-      setActiveExpression(expressionOverride);
+  const handleSelectFolder = (folderId) => {
+    setActiveFolderId(folderId);
+    const folder = (setupsConfig?.folders || []).find(f => f.id === folderId);
+    if (!folder || !folder.screeners || folder.screeners.length === 0) return;
+
+    const rememberedId = folderMemory[folderId] || folder.default_screener_id || folder.screeners[0].id;
+    const screener = folder.screeners.find(s => s.id === rememberedId) || folder.screeners[0];
+    if (screener) {
+      setActiveScreenerId(screener.id);
+      setActiveSetupKey(screener.id);
+      setActiveExpression(screener.expression || '');
     }
+  };
+
+  const handleSelectScreener = (screenerId, expressionOverride = null) => {
+    setActiveScreenerId(screenerId);
+    setActiveSetupKey(screenerId);
+    setFolderMemory(prev => ({
+      ...prev,
+      [activeFolderId]: screenerId
+    }));
+
+    // Find screener in current folder or all folders
+    const curFolder = (setupsConfig?.folders || []).find(f => f.id === activeFolderId);
+    let screener = curFolder?.screeners?.find(s => s.id === screenerId);
+    if (!screener) {
+      for (const f of (setupsConfig?.folders || [])) {
+        screener = f.screeners?.find(s => s.id === screenerId);
+        if (screener) {
+          setActiveFolderId(f.id);
+          break;
+        }
+      }
+    }
+
+    if (expressionOverride !== null) {
+      setActiveExpression(expressionOverride);
+    } else if (screener?.expression) {
+      setActiveExpression(screener.expression);
+    }
+  };
+
+  const handleSelectSetup = (setupKey, expressionOverride = null) => {
+    handleSelectScreener(setupKey, expressionOverride);
   };
 
   const handleExpressionChange = (newExpr) => {
@@ -166,13 +212,25 @@ function App() {
   };
 
   const handleResetExpression = () => {
-    const setup = (setupsConfig?.setups || []).find(s => s.id === activeSetupKey);
-    if (setup) {
-      if (setup.default_sub_id && setup.sub_setups?.length > 0) {
-        const defSub = setup.sub_setups.find(s => s.id === setup.default_sub_id);
-        setActiveExpression(defSub?.expression || setup.expression || '');
-      } else if (setup.expression) {
-        setActiveExpression(setup.expression);
+    const curFolder = (setupsConfig?.folders || []).find(f => f.id === activeFolderId);
+    let screener = curFolder?.screeners?.find(s => s.id === activeScreenerId);
+    if (!screener) {
+      for (const f of (setupsConfig?.folders || [])) {
+        screener = f.screeners?.find(s => s.id === activeScreenerId);
+        if (screener) break;
+      }
+    }
+    if (screener?.expression) {
+      setActiveExpression(screener.expression);
+    } else {
+      const setup = (setupsConfig?.setups || []).find(s => s.id === activeSetupKey);
+      if (setup) {
+        if (setup.default_sub_id && setup.sub_setups?.length > 0) {
+          const defSub = setup.sub_setups.find(s => s.id === setup.default_sub_id);
+          setActiveExpression(defSub?.expression || setup.expression || '');
+        } else if (setup.expression) {
+          setActiveExpression(setup.expression);
+        }
       }
     }
   };
@@ -731,6 +789,10 @@ function App() {
             selectedDate={selectedDate}
             setSelectedDate={setSelectedDate}
             setupsConfig={setupsConfig}
+            activeFolderId={activeFolderId}
+            onSelectFolder={handleSelectFolder}
+            activeScreenerId={activeScreenerId}
+            onSelectScreener={handleSelectScreener}
             activeSetupKey={activeSetupKey}
             onSelectSetup={handleSelectSetup}
             activeExpression={activeExpression}

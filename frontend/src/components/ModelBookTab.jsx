@@ -4,26 +4,76 @@ import { getLocalDateStr } from '../utils/dateUtils';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
+const SETUP_COLORS = {
+  // Folders
+  daily: '#38bdf8',
+  weekly: '#a855f7',
+  others: '#94a3b8',
+  // Daily Setups
+  power_play: '#38bdf8',
+  breakout: '#f59e0b',
+  breakouts: '#f59e0b',
+  qm_breakouts: '#f59e0b',
+  standard: '#f59e0b',
+  episodic_pivot: '#ec4899',
+  parabolic: '#ef4444',
+  cup_and_handle: '#10b981',
+  cheat: '#eab308',
+  low_cheat: '#f97316',
+  // Weekly Setups
+  momentum: '#a855f7',
+  leaders: '#a855f7',
+  gainers: '#ec4899',
+  '1m': '#38bdf8',
+  '3m': '#818cf8',
+  '6m': '#06b6d4',
+  ipo_base: '#06b6d4',
+  trend_1m: '#34d399',
+  trend_1_4m: '#10b981',
+  trend_5m: '#059669',
+  // Others
+  stage2: '#10b981',
+  all: '#64748b',
+  vcp: '#10b981',
+};
+
 const SETUP_CANONICAL_NAMES = {
   power_play: 'Power Play',
-  breakout: 'Breakouts & HTF',
-  breakouts: 'Breakouts & HTF',
+  breakout: 'QM Breakouts',
+  breakouts: 'QM Breakouts',
+  qm_breakouts: 'QM Breakouts',
+  standard: 'QM Breakouts',
   episodic_pivot: 'Episodic Pivot',
-  momentum: 'My Universe',
   parabolic: 'Parabolic Short',
+  cup_and_handle: 'Cup and Handle',
+  cheat: 'Cheat / 3-C',
+  low_cheat: 'Low Cheat',
+  momentum: 'Momentum Universe',
+  leaders: 'Leaders',
+  gainers: 'All Gainers',
+  '1m': '1M Gainers',
+  '3m': '3M Gainers',
+  '6m': '6M Gainers',
+  all: 'All Gainers + Stage 2',
   ipo_base: 'IPO Base',
+  stage2: 'Stage 2',
+  trend_1m: '1 Month Trend',
+  trend_1_4m: '1~4 Month Trend',
+  trend_5m: '5 Months Trend',
   vcp: 'Minervini VCP',
-  low_cheat: 'Minervini Low Cheat'
 };
 
 export default function ModelBookTab({
   onSelectStock = null,
   watchlists: _watchlists = [],
   fetchWatchlists: _fetchWatchlists = () => {},
-  setupsConfig = { setups: [], filters: {} }
+  setupsConfig = { folders: [], setups: [], filters: {} }
 }) {
   // Screening Parameters
-  const [setupType, setSetupType] = useState('breakouts');
+  const [activeFolderId, setActiveFolderId] = useState('daily');
+  const [activeScreenerId, setActiveScreenerId] = useState('power_play');
+  const [folderMemory, setFolderMemory] = useState({ daily: 'power_play', weekly: 'leaders', others: 'stage2' });
+  const [setupType, setSetupType] = useState('power_play');
   const [selectedSubSetupId, setSelectedSubSetupId] = useState('htf');
   const modelBookChartRef = useRef(null);
   const selectedCandidateRowRef = useRef(null);
@@ -42,6 +92,7 @@ export default function ModelBookTab({
       return setupsConfig.setups;
     }
     return [
+      { id: 'power_play', name: 'Power Play', icon: '⚡', description: '100%+ Move within 8 weeks, <=25% Pullback, tight flag consolidation.' },
       { id: 'breakouts', name: 'Breakouts & HTF', icon: '🎯', description: 'Consolidations and High Tight Flags (Power Plays) ready to break out along rising moving averages.' },
       { id: 'episodic_pivot', name: 'Episodic Pivot', icon: '⚡', description: 'Massive gap-up (10%+) on heavy relative volume driven by catalyst or earnings.' },
       { id: 'momentum', name: 'My Universe', icon: '🌌', description: 'Filters out a broad universe of stocks for further screening across Stage 2 and Momentum Gainers.' },
@@ -50,6 +101,35 @@ export default function ModelBookTab({
       { id: 'vcp', name: 'Minervini VCP', icon: '📐', description: 'Volatility Contraction Pattern with drying volume along Stage 2 uptrend.' }
     ];
   }, [setupsConfig]);
+
+  const curFolder = useMemo(() => {
+    return (setupsConfig?.folders || []).find(f => f.id === activeFolderId) || (setupsConfig?.folders || [])[0] || null;
+  }, [setupsConfig, activeFolderId]);
+
+  const curScreener = useMemo(() => {
+    if (curFolder?.screeners) {
+      const match = curFolder.screeners.find(s => s.id === activeScreenerId);
+      if (match) return match;
+    }
+    for (const f of (setupsConfig?.folders || [])) {
+      const match = f.screeners?.find(s => s.id === activeScreenerId);
+      if (match) return match;
+    }
+    return (setupsConfig?.setups || []).find(s => s.id === activeScreenerId || s.id === setupType) || null;
+  }, [setupsConfig, curFolder, activeScreenerId, setupType]);
+
+  const allScreeners = useMemo(() => {
+    if (setupsConfig?.folders && setupsConfig.folders.length > 0) {
+      const list = [];
+      setupsConfig.folders.forEach(f => {
+        (f.screeners || []).forEach(sc => {
+          list.push(sc);
+        });
+      });
+      return list;
+    }
+    return setupOptions;
+  }, [setupsConfig, setupOptions]);
 
   const activeSetup = useMemo(() => {
     return setupOptions.find(s => s.id === setupType) || setupOptions[0];
@@ -81,7 +161,7 @@ export default function ModelBookTab({
     return activeSetup.sub_setups.find(s => isSubActive(s)) || activeSetup.sub_setups[0];
   }, [activeSetup, isSubActive]);
 
-  const currentSetupDisplayName = activeSubSetup?.name || SETUP_CANONICAL_NAMES[setupType] || activeSetup?.name || 'Setup';
+  const currentSetupDisplayName = curScreener?.name || curScreener?.label || activeSubSetup?.name || SETUP_CANONICAL_NAMES[setupType] || activeSetup?.name || 'Setup';
   
   const currentYear = useMemo(() => new Date().getFullYear(), []);
 
@@ -415,8 +495,35 @@ export default function ModelBookTab({
     }
   };
 
+  const handleSelectFolder = (folderId) => {
+    setActiveFolderId(folderId);
+    const folder = (setupsConfig?.folders || []).find(f => f.id === folderId);
+    if (!folder || !folder.screeners || folder.screeners.length === 0) return;
+
+    const rememberedId = folderMemory[folderId] || folder.default_screener_id || folder.screeners[0].id;
+    const screener = folder.screeners.find(s => s.id === rememberedId) || folder.screeners[0];
+    if (screener) {
+      setActiveScreenerId(screener.id);
+      setSetupType(screener.id);
+      setSelectedSubSetupId(null);
+      handleRunScan(screener.id, null, { start: startDate, end: endDate });
+    }
+  };
+
+  const handleSelectScreener = (screenerId) => {
+    setActiveScreenerId(screenerId);
+    setSetupType(screenerId);
+    setSelectedSubSetupId(null);
+    setFolderMemory(prev => ({
+      ...prev,
+      [activeFolderId]: screenerId
+    }));
+    handleRunScan(screenerId, null, { start: startDate, end: endDate });
+  };
+
   const handleSelectSetup = (newId) => {
     setSetupType(newId);
+    setActiveScreenerId(newId);
     const newSetup = setupOptions.find(s => s.id === newId);
     const defaultSub = newSetup?.default_sub_id || newSetup?.sub_setups?.[0]?.id || null;
     setSelectedSubSetupId(defaultSub);
@@ -1085,90 +1192,178 @@ export default function ModelBookTab({
         <>
           {/* 2. Controls & Configuration Toolbar */}
           <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '16px 20px' }}>
-        {/* Setup Selection Pills */}
-        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-          <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', minWidth: '85px' }}>
-            Setup Pattern:
+        {/* Level 1: Folder Selector */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: '2px' }}>
+            Folder:
           </span>
-          {setupOptions.map(s => (
-            <button
-              key={s.id}
-              onClick={() => handleSelectSetup(s.id)}
-              style={{
-                padding: '6px 14px',
-                borderRadius: '20px',
-                border: setupType === s.id ? '1px solid var(--accent-color)' : '1px solid var(--border-color)',
-                backgroundColor: setupType === s.id ? 'var(--accent-light)' : 'rgba(255, 255, 255, 0.03)',
-                color: setupType === s.id ? 'var(--accent-color)' : 'var(--text-secondary)',
-                fontSize: '12.5px',
-                fontWeight: setupType === s.id ? '600' : '400',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-              title={s.description || s.desc}
-            >
-              <span>{s.icon || '📌'}</span>
-              <span>{s.name || s.label}</span>
-            </button>
-          ))}
+          {(setupsConfig?.folders && setupsConfig.folders.length > 0) ? (
+            setupsConfig.folders.map((folder) => {
+              const isSelected = activeFolderId === folder.id;
+              const color = SETUP_COLORS[folder.id] || '#38bdf8';
+              const screenerCount = folder.screeners?.length || 0;
+              return (
+                <button
+                  key={folder.id}
+                  type="button"
+                  onClick={() => handleSelectFolder(folder.id)}
+                  title={folder.description || ''}
+                  style={{
+                    padding: '5px 12px',
+                    fontSize: '12px',
+                    fontWeight: isSelected ? '700' : '600',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    border: isSelected ? `1.5px solid ${color}` : '1px solid rgba(255, 255, 255, 0.12)',
+                    background: isSelected ? `${color}25` : 'rgba(15, 23, 42, 0.55)',
+                    color: isSelected ? color : 'var(--text-secondary)',
+                    boxShadow: isSelected ? `0 2px 8px ${color}35` : 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <span>{folder.icon ? `${folder.icon} ` : ''}{folder.name}</span>
+                  <span style={{
+                    fontSize: '10px',
+                    fontWeight: '700',
+                    padding: '1px 5px',
+                    borderRadius: '10px',
+                    background: isSelected ? `${color}35` : 'rgba(255, 255, 255, 0.08)',
+                    color: isSelected ? color : 'var(--text-muted)',
+                  }}>
+                    {screenerCount}
+                  </span>
+                </button>
+              );
+            })
+          ) : (
+            setupOptions.map(s => (
+              <button
+                key={s.id}
+                onClick={() => handleSelectSetup(s.id)}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '20px',
+                  border: setupType === s.id ? '1px solid var(--accent-color)' : '1px solid var(--border-color)',
+                  backgroundColor: setupType === s.id ? 'var(--accent-light)' : 'rgba(255, 255, 255, 0.03)',
+                  color: setupType === s.id ? 'var(--accent-color)' : 'var(--text-secondary)',
+                  fontSize: '12.5px',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <span>{s.icon || '📌'}</span>
+                <span>{s.name || s.label}</span>
+              </button>
+            ))
+          )}
         </div>
 
-        {/* Dynamic Sub-Bar for Setups defining sub_setups (e.g., Breakouts, Momentum) */}
-        {activeSetup?.sub_setups && activeSetup.sub_setups.length > 0 && (
+        {/* Level 2: Screener Subview Bar (Permanently visible for active folder) */}
+        {curFolder?.screeners && curFolder.screeners.length > 0 ? (
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '12px',
+            gap: '6px',
             flexWrap: 'wrap',
-            padding: '8px 14px',
-            background: setupType === 'momentum' ? 'rgba(168, 85, 247, 0.08)' : 'rgba(56, 189, 248, 0.08)',
-            border: setupType === 'momentum' ? '1px solid rgba(168, 85, 247, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)',
+            padding: '7px 12px',
+            background: activeFolderId === 'daily' 
+              ? 'rgba(56, 189, 248, 0.08)' 
+              : activeFolderId === 'weekly' 
+                ? 'rgba(168, 85, 247, 0.08)' 
+                : 'rgba(148, 163, 184, 0.08)',
+            border: activeFolderId === 'daily' 
+              ? '1px solid rgba(56, 189, 248, 0.25)' 
+              : activeFolderId === 'weekly' 
+                ? '1px solid rgba(168, 85, 247, 0.25)' 
+                : '1px solid rgba(148, 163, 184, 0.25)',
             borderRadius: '8px'
           }}>
-            <span style={{
-              fontSize: '12px',
-              fontWeight: '700',
-              color: setupType === 'momentum' ? '#c084fc' : '#38bdf8',
+            {curFolder.screeners.map((screener) => {
+              const isSelected = activeScreenerId === screener.id || setupType === screener.id;
+              const screenerColor = SETUP_COLORS[screener.id] || (activeFolderId === 'daily' ? '#38bdf8' : (activeFolderId === 'weekly' ? '#a855f7' : '#94a3b8'));
+
+              return (
+                <button
+                  key={screener.id}
+                  type="button"
+                  onClick={() => handleSelectScreener(screener.id)}
+                  title={screener.description || ''}
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: '11.5px',
+                    fontWeight: isSelected ? '700' : '500',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    border: isSelected ? `1px solid ${screenerColor}` : '1px solid rgba(255, 255, 255, 0.1)',
+                    background: isSelected ? `${screenerColor}33` : 'rgba(15, 23, 42, 0.45)',
+                    color: isSelected ? '#ffffff' : 'var(--text-secondary)',
+                    boxShadow: isSelected ? `0 2px 6px ${screenerColor}30` : 'none'
+                  }}
+                >
+                  {screener.icon ? `${screener.icon} ` : ''}{screener.name || screener.label}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          activeSetup?.sub_setups && activeSetup.sub_setups.length > 0 && (
+            <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '4px'
+              gap: '12px',
+              flexWrap: 'wrap',
+              padding: '8px 14px',
+              background: setupType === 'momentum' ? 'rgba(168, 85, 247, 0.08)' : 'rgba(56, 189, 248, 0.08)',
+              border: setupType === 'momentum' ? '1px solid rgba(168, 85, 247, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)',
+              borderRadius: '8px'
             }}>
-              {activeSetup.sub_title || `${activeSetup.name} Mode:`}
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              {activeSetup.sub_setups.map(sub => {
-                const isActive = isSubActive(sub);
-                const activeThemeColor = setupType === 'momentum' ? '#a855f7' : '#38bdf8';
-                const activeBg = setupType === 'momentum' ? 'rgba(168, 85, 247, 0.3)' : 'rgba(56, 189, 248, 0.3)';
+              <span style={{
+                fontSize: '12px',
+                fontWeight: '700',
+                color: setupType === 'momentum' ? '#c084fc' : '#38bdf8',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                {activeSetup.sub_title || `${activeSetup.name} Mode:`}
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {activeSetup.sub_setups.map(sub => {
+                  const isActive = isSubActive(sub);
+                  const activeThemeColor = setupType === 'momentum' ? '#a855f7' : '#38bdf8';
+                  const activeBg = setupType === 'momentum' ? 'rgba(168, 85, 247, 0.3)' : 'rgba(56, 189, 248, 0.3)';
 
-                return (
-                  <button
-                    key={sub.id}
-                    type="button"
-                    onClick={() => handleSelectSubSetup(sub)}
-                    style={{
-                      padding: '4px 12px',
-                      fontSize: '11.5px',
-                      fontWeight: isActive ? '700' : '500',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                      backgroundColor: isActive ? activeBg : 'rgba(255, 255, 255, 0.04)',
-                      color: isActive ? '#fff' : 'var(--text-secondary)',
-                      border: isActive ? `1px solid ${activeThemeColor}` : '1px solid var(--border-color)',
-                      boxShadow: isActive ? `0 0 10px ${activeBg}` : 'none'
-                    }}
-                    title={sub.description || sub.label || sub.name}
-                  >
-                    {sub.label || sub.name}
-                  </button>
-                );
-              })}
+                  return (
+                    <button
+                      key={sub.id}
+                      type="button"
+                      onClick={() => handleSelectSubSetup(sub)}
+                      style={{
+                        padding: '4px 12px',
+                        fontSize: '11.5px',
+                        fontWeight: isActive ? '700' : '500',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        backgroundColor: isActive ? activeBg : 'rgba(255, 255, 255, 0.04)',
+                        color: isActive ? '#fff' : 'var(--text-secondary)',
+                        border: isActive ? `1px solid ${activeThemeColor}` : '1px solid var(--border-color)',
+                        boxShadow: isActive ? `0 0 10px ${activeBg}` : 'none'
+                      }}
+                    >
+                      {sub.label || sub.name}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )
         )}
 
         {/* Active Setup Criteria Preview */}
@@ -2243,11 +2438,11 @@ export default function ModelBookTab({
             }}
           >
             <option value="ALL">All Setups ({savedTrades.length})</option>
-            {setupOptions.map(opt => {
+            {allScreeners.map(opt => {
               const count = savedTrades.filter(t => t.setup_type === opt.id).length;
               return (
                 <option key={opt.id} value={opt.id}>
-                  {opt.icon || '📌'} {opt.name} ({count})
+                  {opt.icon || '📌'} {opt.name || opt.label} ({count})
                 </option>
               );
             })}
@@ -2291,7 +2486,7 @@ export default function ModelBookTab({
                         outline: 'none'
                       }}
                     >
-                      {setupOptions.map(opt => (
+                      {allScreeners.map(opt => (
                         <option key={opt.id} value={opt.id} style={{ backgroundColor: '#181b22', color: 'var(--text-primary)' }}>
                           {opt.icon || '📌'} {opt.name || opt.label}
                         </option>

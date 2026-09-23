@@ -78,13 +78,43 @@ class SetupService:
 
         setups_list.sort(key=lambda s: s.get("display_order", 99))
 
+        # Convert folders dict/list to an ordered list based on display_order
+        folders_raw = raw_setups_data.get("folders", {}) if isinstance(raw_setups_data, dict) else {}
+        folders_list: List[Dict[str, Any]] = []
+        if isinstance(folders_raw, dict):
+            for f_key, f_val in folders_raw.items():
+                if isinstance(f_val, dict):
+                    f_val.setdefault("id", f_key)
+                    f_val.setdefault("display_order", 99)
+                    screeners_raw = f_val.get("screeners", [])
+                    norm_screeners = []
+                    if isinstance(screeners_raw, list):
+                        for sc in screeners_raw:
+                            if isinstance(sc, dict):
+                                norm_screeners.append(sc)
+                    elif isinstance(screeners_raw, dict):
+                        for sc_k, sc_v in screeners_raw.items():
+                            if isinstance(sc_v, dict):
+                                sc_v.setdefault("id", sc_k)
+                                norm_screeners.append(sc_v)
+                    f_val["screeners"] = norm_screeners
+                    folders_list.append(f_val)
+        elif isinstance(folders_raw, list):
+            for f_val in folders_raw:
+                if isinstance(f_val, dict):
+                    f_val.setdefault("display_order", 99)
+                    folders_list.append(f_val)
+
+        folders_list.sort(key=lambda f: f.get("display_order", 99))
+
         self._cached_config = {
             "base_setup": {},
+            "folders": folders_list,
             "setups": setups_list,
             "filters": {}
         }
         self._last_mtime = os.path.getmtime(resolved_setups_path) if os.path.exists(resolved_setups_path) else 0.0
-        logger.info(f"Loaded {len(setups_list)} setups from {resolved_setups_path}")
+        logger.info(f"Loaded {len(folders_list)} folders and {len(setups_list)} setups from {resolved_setups_path}")
         return self._cached_config
 
     def get_setups_config(self) -> Dict[str, Any]:
@@ -96,11 +126,15 @@ class SetupService:
         return self._cached_config
 
     def get_setup_by_id(self, setup_id: str) -> Dict[str, Any]:
-        """Returns the specific setup configuration by its ID."""
+        """Returns the specific setup configuration by its ID, searching setups and folders."""
         config = self.get_setups_config()
         for s in config.get("setups", []):
             if s.get("id") == setup_id:
                 return s
+        for f in config.get("folders", []):
+            for sc in f.get("screeners", []):
+                if sc.get("id") == setup_id:
+                    return sc
         return {}
 
     def validate_expression(self, expr: str) -> Dict[str, Any]:

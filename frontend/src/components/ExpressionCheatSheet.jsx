@@ -46,27 +46,6 @@ const CHEAT_SHEET_CATEGORIES = [
         expr: 'SMA_50 IS NOT NULL AND SMA_150 IS NOT NULL AND SMA_200 IS NOT NULL AND C > SMA_50 AND SMA_50 > SMA_150 AND SMA_150 > SMA_200 AND (SMA_200_20D_AGO IS NULL OR SMA_200 > SMA_200_20D_AGO) AND (DIST_52W_HIGH IS NULL OR DIST_52W_HIGH <= 25.0) AND (DIST_52W_LOW IS NULL OR DIST_52W_LOW >= 25.0)'
       },
       {
-        sym: 'STAGE2_1M',
-        label: 'Stage 2 (1M)',
-        desc: 'Minervini Stage 2 template (200 SMA rising ~1 month)',
-        is_alias: true,
-        expr: 'STAGE2_1M AND RS_RANK >= 70 AND C >= 5.0 AND DOLLAR_VOL >= 10000000'
-      },
-      {
-        sym: 'STAGE2_1_4M',
-        label: 'Stage 2 (1~4M)',
-        desc: 'Minervini Stage 2 template (200 SMA rising 1~4 months)',
-        is_alias: true,
-        expr: 'STAGE2_1_4M AND RS_RANK >= 70 AND C >= 5.0 AND DOLLAR_VOL >= 10000000'
-      },
-      {
-        sym: 'STAGE2_5M',
-        label: 'Stage 2 (5M+)',
-        desc: 'Minervini Stage 2 template (200 SMA rising > 5 months)',
-        is_alias: true,
-        expr: 'STAGE2_5M AND RS_RANK >= 70 AND C >= 5.0 AND DOLLAR_VOL >= 10000000'
-      },
-      {
         sym: 'LOW_CHEAT',
         label: 'Low Cheat',
         desc: 'Stage 2 template without C > 50 SMA (early base setup)',

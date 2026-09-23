@@ -100,6 +100,25 @@ SUB_SETUP_SIMULATION_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "6m": {
         "qm_subview": "6m",
     },
+    # Trend Template subviews
+    "trend_1m": {
+        "vcp_subview": "trend_1m",
+        "enforce_stage2": True,
+        "enable_rs": True,
+        "min_rs_percentile": 70.0,
+    },
+    "trend_1_4m": {
+        "vcp_subview": "trend_1_4m",
+        "enforce_stage2": True,
+        "enable_rs": True,
+        "min_rs_percentile": 70.0,
+    },
+    "trend_5m": {
+        "vcp_subview": "trend_5m",
+        "enforce_stage2": True,
+        "enable_rs": True,
+        "min_rs_percentile": 70.0,
+    },
 }
 
 SETUP_SIMULATION_DEFAULTS: Dict[str, Dict[str, Any]] = {
@@ -231,6 +250,38 @@ class ModelBookService:
         # Backward compatibility for max_drawdown_limit
         if stop_loss_pct is None and max_drawdown_limit is not None:
             stop_loss_pct = float(max_drawdown_limit)
+
+        # Map folder screener IDs to canonical setup_type and sub_setup_id
+        SCREENER_TO_SETUP_MAP = {
+            "power_play": ("power_play", "htf"),
+            "htf": ("power_play", "htf"),
+            "qm_breakouts": ("breakout", "standard"),
+            "standard": ("breakout", "standard"),
+            "breakout": ("breakout", "standard"),
+            "breakouts": ("breakout", "standard"),
+            "episodic_pivot": ("episodic_pivot", None),
+            "parabolic": ("parabolic", None),
+            "cup_and_handle": ("vcp", "cup_and_handle"),
+            "cheat": ("vcp", "cheat"),
+            "low_cheat": ("low_cheat", "low_cheat"),
+            "leaders": ("momentum", "leaders"),
+            "gainers": ("momentum", "gainers"),
+            "1m": ("momentum", "1m"),
+            "3m": ("momentum", "3m"),
+            "6m": ("momentum", "6m"),
+            "all": ("momentum", "all"),
+            "all_gainers": ("momentum", "all"),
+            "ipo_base": ("ipo_base", None),
+            "trend_1m": ("vcp", "trend_1m"),
+            "trend_1_4m": ("vcp", "trend_1_4m"),
+            "trend_5m": ("vcp", "trend_5m"),
+            "stage2": ("momentum", "stage2"),
+        }
+        if setup_type in SCREENER_TO_SETUP_MAP:
+            mapped_setup, mapped_sub = SCREENER_TO_SETUP_MAP[setup_type]
+            if not sub_setup_id and mapped_sub:
+                sub_setup_id = mapped_sub
+            setup_type = mapped_setup
 
         # 0. Build effective simulation parameters:
         # Base universal defaults -> Setup defaults -> Sub-setup defaults -> Passed filters overrides
