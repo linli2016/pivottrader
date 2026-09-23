@@ -40,21 +40,21 @@ const CHEAT_SHEET_CATEGORIES = [
         label: 'Stage 2',
         desc: 'Minervini Stage 2 uptrend template',
         is_alias: true,
-        expr: 'SMA_50 IS NOT NULL AND SMA_150 IS NOT NULL AND SMA_200 IS NOT NULL AND C > SMA_50 AND SMA_50 > SMA_150 AND SMA_150 > SMA_200 AND (SMA_200_20D_AGO IS NULL OR SMA_200 > SMA_200_20D_AGO) AND (DIST_52W_HIGH IS NULL OR DIST_52W_HIGH <= 25.0) AND (SURGE_OFF_LOW IS NULL OR SURGE_OFF_LOW >= 30.0)'
+        expr: 'SMA_50 IS NOT NULL AND SMA_150 IS NOT NULL AND SMA_200 IS NOT NULL AND C > SMA_50 AND SMA_50 > SMA_150 AND SMA_150 > SMA_200 AND (SMA_200_20D_AGO IS NULL OR SMA_200 > SMA_200_20D_AGO) AND (DIST_52W_HIGH IS NULL OR DIST_52W_HIGH <= 25.0) AND (DIST_52W_LOW IS NULL OR DIST_52W_LOW >= 25.0)'
       },
       {
         sym: 'LOW_CHEAT',
         label: 'Low Cheat',
         desc: 'Stage 2 template without C > 50 SMA (early base setup)',
         is_alias: true,
-        expr: 'SMA_50 IS NOT NULL AND SMA_150 IS NOT NULL AND SMA_200 IS NOT NULL AND SMA_50 > SMA_150 AND SMA_150 > SMA_200 AND (SMA_200_20D_AGO IS NULL OR SMA_200 > SMA_200_20D_AGO) AND (DIST_52W_HIGH IS NULL OR DIST_52W_HIGH <= 25.0) AND (SURGE_OFF_LOW IS NULL OR SURGE_OFF_LOW >= 30.0)'
+        expr: 'SMA_50 IS NOT NULL AND SMA_150 IS NOT NULL AND SMA_200 IS NOT NULL AND SMA_50 > SMA_150 AND SMA_150 > SMA_200 AND (SMA_200_20D_AGO IS NULL OR SMA_200 > SMA_200_20D_AGO) AND (DIST_52W_HIGH IS NULL OR DIST_52W_HIGH <= 25.0) AND (DIST_52W_LOW IS NULL OR DIST_52W_LOW >= 25.0)'
       },
       { sym: 'RS_RANK', label: 'RS Rank', desc: 'IBD-style RS percentile (0-99)' },
       { sym: 'TI65', label: 'TI65', desc: 'Stockbee Trend Intensity (C / 65 SMA)' },
       { sym: 'IS_52W_HIGH', label: '52w High', desc: 'At or near 52-week high' },
       { sym: 'DIST_52W_HIGH', label: 'Dist 52wH %', desc: 'Distance below 52w high' },
+      { sym: 'DIST_52W_LOW', label: 'Dist 52wL %', desc: 'Distance above 52w low' },
       { sym: 'DAYS_52W_HIGH', label: 'Days 52wH', desc: 'Trading days elapsed since 52w high' },
-      { sym: 'SURGE_OFF_LOW', label: 'Surge Low %', desc: '% surge off 52w low' },
       { sym: 'RET_1M', label: '1M Return %', desc: '1-month percentage gain' },
       { sym: 'RET_3M', label: '3M Return %', desc: '3-month percentage gain' },
       { sym: 'RET_6M', label: '6M Return %', desc: '6-month percentage gain' },
@@ -102,7 +102,7 @@ const CHEAT_SHEET_CATEGORIES = [
         label: 'Low Cheat',
         desc: 'Stage 2 template without C > 50 SMA (early base setup)',
         is_alias: true,
-        expr: 'SMA_50 IS NOT NULL AND SMA_150 IS NOT NULL AND SMA_200 IS NOT NULL AND SMA_50 > SMA_150 AND SMA_150 > SMA_200 AND (SMA_200_20D_AGO IS NULL OR SMA_200 > SMA_200_20D_AGO) AND (DIST_52W_HIGH IS NULL OR DIST_52W_HIGH <= 25.0) AND (SURGE_OFF_LOW IS NULL OR SURGE_OFF_LOW >= 30.0)'
+        expr: 'SMA_50 IS NOT NULL AND SMA_150 IS NOT NULL AND SMA_200 IS NOT NULL AND SMA_50 > SMA_150 AND SMA_150 > SMA_200 AND (SMA_200_20D_AGO IS NULL OR SMA_200 > SMA_200_20D_AGO) AND (DIST_52W_HIGH IS NULL OR DIST_52W_HIGH <= 25.0) AND (DIST_52W_LOW IS NULL OR DIST_52W_LOW >= 25.0)'
       },
       { sym: 'CHEAT', label: 'Cheat (3-C)', desc: 'Cup Completion Cheat in mid-upper base' },
       { sym: 'BASE_DEPTH', label: 'Base Depth %', desc: 'Base correction depth' },
@@ -156,7 +156,6 @@ const CHEAT_SHEET_CATEGORIES = [
 
 export default function ExpressionCheatSheet({ onInsert = () => { }, onClose = null }) {
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [hoveredVar, setHoveredVar] = useState(null);
   const [backendMeta, setBackendMeta] = useState({});
 
   useEffect(() => {
@@ -303,13 +302,11 @@ export default function ExpressionCheatSheet({ onInsert = () => { }, onClose = n
                       e.currentTarget.style.borderColor = cat.color;
                       e.currentTarget.style.background = `${cat.color}22`;
                       e.currentTarget.style.color = cat.color;
-                      setHoveredVar({ ...v, is_alias: isAlias, expr });
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.borderColor = isAlias ? 'rgba(56, 189, 248, 0.35)' : 'rgba(255, 255, 255, 0.12)';
                       e.currentTarget.style.background = 'rgba(30, 41, 59, 0.8)';
                       e.currentTarget.style.color = '#f8fafc';
-                      setHoveredVar(null);
                     }}
                   >
                     <span>{v.sym}</span>
@@ -338,64 +335,6 @@ export default function ExpressionCheatSheet({ onInsert = () => { }, onClose = n
           </div>
         ))}
       </div>
-
-      {/* Dynamic Hover Inspector / Formula Card */}
-      {hoveredVar && (
-        <div style={{
-          marginTop: '4px',
-          padding: '8px 12px',
-          background: 'rgba(15, 23, 42, 0.98)',
-          border: hoveredVar.is_alias ? '1px solid rgba(56, 189, 248, 0.4)' : '1px solid rgba(255, 255, 255, 0.1)',
-          borderRadius: '6px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '4px',
-          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: '700', color: '#f8fafc', fontFamily: 'monospace', fontSize: '12px' }}>
-              {hoveredVar.sym}
-            </span>
-            {hoveredVar.label && (
-              <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>
-                ({hoveredVar.label})
-              </span>
-            )}
-            {hoveredVar.is_alias && (
-              <span style={{
-                fontSize: '9.5px',
-                background: 'rgba(56, 189, 248, 0.25)',
-                color: '#38bdf8',
-                padding: '1px 6px',
-                borderRadius: '3px',
-                fontWeight: '700'
-              }}>
-                COMPOSITE ALIAS
-              </span>
-            )}
-            <span style={{ color: '#94a3b8', fontSize: '11px' }}>
-              — {hoveredVar.desc}
-            </span>
-          </div>
-          {hoveredVar.expr && (
-            <div style={{
-              marginTop: '2px',
-              padding: '6px 8px',
-              borderRadius: '4px',
-              background: 'rgba(0, 0, 0, 0.55)',
-              border: '1px solid rgba(56, 189, 248, 0.25)',
-              fontFamily: 'monospace',
-              fontSize: '11px',
-              color: '#7dd3fc',
-              lineHeight: 1.4,
-              wordBreak: 'break-word'
-            }}>
-              <span style={{ color: '#94a3b8', fontWeight: '600', marginRight: '6px' }}>Expr:</span>
-              {hoveredVar.expr}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

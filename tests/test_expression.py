@@ -171,13 +171,32 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertIn("SMA_200", res["variables"])
         self.assertIn("SMA_200_20D_AGO", res["variables"])
         self.assertIn("DIST_52W_HIGH", res["variables"])
-        self.assertIn("SURGE_OFF_LOW", res["variables"])
+        self.assertIn("DIST_52W_LOW", res["variables"])
         sql = res["sql"]
         self.assertIn("b.sma_50 IS NOT NULL", sql)
         self.assertIn("b.close > b.sma_50", sql)
         self.assertIn("b.sma_50 > b.sma_150", sql)
         self.assertIn("b.sma_150 > b.sma_200", sql)
         self.assertIn("b.sma_200_20d_ago IS NULL", sql)
+        self.assertIn("b.dist_from_52w_low >= 25.0", sql)
+
+    def test_dist_52w_low_and_surge_off_low(self):
+        # DIST_52W_LOW direct expression
+        res_low = ScanExpressionEngine.validate("DIST_52W_LOW >= 25.0")
+        self.assertTrue(res_low["valid"])
+        self.assertIn("DIST_52W_LOW", res_low["variables"])
+        self.assertEqual(res_low["sql"], "(b.dist_from_52w_low >= 25.0)")
+
+        # Backward compatibility with SURGE_OFF_LOW
+        res_surge = ScanExpressionEngine.validate("SURGE_OFF_LOW >= 25.0")
+        self.assertTrue(res_surge["valid"])
+        self.assertIn("SURGE_OFF_LOW", res_surge["variables"])
+        self.assertEqual(res_surge["sql"], "(b.dist_from_52w_low >= 25.0)")
+
+        # Both present in catalog
+        cat = ScanExpressionEngine.get_catalog()
+        self.assertIn("DIST_52W_LOW", cat)
+        self.assertIn("SURGE_OFF_LOW", cat)
 
     def test_alias_low_cheat(self):
         res = ScanExpressionEngine.validate("LOW_CHEAT")

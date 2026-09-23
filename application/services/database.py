@@ -311,7 +311,7 @@ class DatabaseService:
                             where_clauses.append("(db.volume / NULLIF(db.vol_50d_ma, 0)) <= ?")
                             params.append(max_pp_vol)
                     else:
-                        where_clauses.append("(COALESCE(db.ret_1m, 0) >= 15.0 OR COALESCE(db.ret_3m, 0) >= 30.0 OR COALESCE(db.surge_off_low_pct, 0) >= 40.0)")
+                        where_clauses.append("(COALESCE(db.ret_1m, 0) >= 15.0 OR COALESCE(db.ret_3m, 0) >= 30.0 OR COALESCE(db.dist_from_52w_low, 0) >= 40.0)")
 
                 # IPO Base Overlay
                 if require_ipo_base:
@@ -470,7 +470,7 @@ class DatabaseService:
                     COALESCE(db.is_52w_high, false) as rs_rank_is_new_high,
                     db.high_52w,
                     db.dist_from_52w_high,
-                    db.surge_off_low_pct,
+                    db.dist_from_52w_low,
                     db.is_52w_high,
                     db.ret_1m,
                     db.ema_10,
@@ -585,6 +585,7 @@ class DatabaseService:
                     "rs_rank_is_new_high": bool(row[27]) if row[27] is not None else False,
                     "high_52w": row[28],
                     "dist_from_52w_high": row[29],
+                    "dist_from_52w_low": row[30],
                     "surge_off_low_pct": row[30],
                     "is_52w_high": bool(row[31]) if row[31] is not None else False,
                     "ret_1m": row[32],
@@ -1112,7 +1113,7 @@ class DatabaseService:
                         sma_50 = c.get("sma_50")
                         ema_10 = c.get("ema_10")
                         ema_20 = c.get("ema_20")
-                        surge = c.get("surge_off_low_pct")
+                        surge = c.get("dist_from_52w_low") if c.get("dist_from_52w_low") is not None else c.get("surge_off_low_pct")
 
                         if (
                             close is not None and close >= target_min_price
@@ -1132,7 +1133,7 @@ class DatabaseService:
                                 leaders_candidates.append(c)
 
                     leaders_candidates.sort(
-                        key=lambda x: (x.get("rs_rank") or 0, x.get("surge_off_low_pct") or 0),
+                        key=lambda x: (x.get("rs_rank") or 0, x.get("dist_from_52w_low") or x.get("surge_off_low_pct") or 0),
                         reverse=True
                     )
                     candidates = leaders_candidates

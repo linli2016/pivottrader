@@ -585,7 +585,7 @@ class ModelBookService:
                   AND sma_50 IS NOT NULL AND sma_150 IS NOT NULL AND sma_200 IS NOT NULL
                   AND close > sma_50 AND sma_50 > sma_150 AND sma_150 > sma_200
                   AND (dist_from_52w_high IS NULL OR dist_from_52w_high <= 25.0)
-                  AND (surge_off_low_pct IS NULL OR surge_off_low_pct >= 30.0)
+                  AND (dist_from_52w_low IS NULL OR dist_from_52w_low >= 30.0)
             """
 
         rs_sql = ""
@@ -609,7 +609,7 @@ class ModelBookService:
                     d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
                     d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
                     d.adr_20d, d.rs_score, d.rs_rank,
-                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
+                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.dist_from_52w_low,
                     s.name, s.sector, s.industry, s.asset_type,
                     ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date) as rn,
                     LEAD(d.date, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_date,
@@ -688,7 +688,7 @@ class ModelBookService:
                     d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
                     d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
                     d.adr_20d, d.rs_score, d.rs_rank,
-                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
+                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.dist_from_52w_low,
                     d.pivot_spread_pct, d.pivot_close_clustering_pct,
                     s.name, s.sector, s.industry, s.asset_type,
                     ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date) as rn,
@@ -753,7 +753,7 @@ class ModelBookService:
                     d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
                     d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
                     d.adr_20d, d.rel_vol_50d, d.gap_pct, d.rs_score, d.rs_rank,
-                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
+                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.dist_from_52w_low,
                     s.name, s.sector, s.industry,
                     LAG(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as prev_close,
                     LEAD(d.date, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_date,
@@ -805,7 +805,7 @@ class ModelBookService:
                     d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
                     d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
                     d.adr_20d, d.rs_score, d.rs_rank, d.ipo_days_count,
-                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
+                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.dist_from_52w_low,
                     s.name, s.sector, s.industry,
                     ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date) as ipo_days_calc,
                     MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) as all_time_high_prior,
@@ -861,7 +861,7 @@ class ModelBookService:
                 SELECT 
                     d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
                     d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
-                    d.adr_20d, d.rs_score, d.rs_rank, d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
+                    d.adr_20d, d.rs_score, d.rs_rank, d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.dist_from_52w_low,
                     s.name, s.sector, s.industry,
                     MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as high_52w,
                     MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 10 PRECEDING AND 1 PRECEDING) as high_10d,
@@ -918,7 +918,7 @@ class ModelBookService:
                     d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
                     d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
                     d.adr_20d, d.rs_score, d.rs_rank, d.dist_ema10_pct, d.parabolic_runup_pct,
-                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
+                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.dist_from_52w_low,
                     s.name, s.sector, s.industry,
                     MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN {window_days} PRECEDING AND 1 PRECEDING) as min_low_window,
                     LEAD(d.date, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_date,
@@ -968,7 +968,7 @@ class ModelBookService:
                     d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
                     d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
                     d.adr_20d, d.rs_score, d.rs_rank, d.ipo_days_count,
-                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.surge_off_low_pct,
+                    d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.dist_from_52w_low,
                     s.name, s.sector, s.industry, s.asset_type,
                     ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date) as rn,
                     LEAD(d.date, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_date,
@@ -1044,7 +1044,7 @@ class ModelBookService:
                                   AND close > sma_50 AND sma_50 > sma_150 AND sma_150 > sma_200 
                                   AND (sma_200_20d_ago IS NULL OR sma_200 > sma_200_20d_ago) 
                                   AND (dist_from_52w_high IS NULL OR dist_from_52w_high <= 25.0) 
-                                  AND (surge_off_low_pct IS NULL OR surge_off_low_pct >= 30.0))"""
+                                  AND (dist_from_52w_low IS NULL OR dist_from_52w_low >= 30.0))"""
             elif qm_subview == 'leaders':
                 sub_sql = """AND (
                                   close >= 10.0
@@ -1052,7 +1052,7 @@ class ModelBookService:
                                   AND rs_rank IS NOT NULL AND rs_rank >= 90
                                   AND sma_50 IS NOT NULL AND close > sma_50
                                   AND (ema_10 IS NULL OR ema_20 IS NULL OR ema_10 > ema_20)
-                                  AND surge_off_low_pct IS NOT NULL AND surge_off_low_pct >= 70.0
+                                  AND dist_from_52w_low IS NOT NULL AND dist_from_52w_low >= 70.0
                               )"""
             elif qm_subview == 'all':
                 sub_sql = """AND (
@@ -1062,7 +1062,7 @@ class ModelBookService:
                                    AND close > sma_50 AND sma_50 > sma_150 AND sma_150 > sma_200 
                                    AND (sma_200_20d_ago IS NULL OR sma_200 > sma_200_20d_ago) 
                                    AND (dist_from_52w_high IS NULL OR dist_from_52w_high <= 25.0) 
-                                   AND (surge_off_low_pct IS NULL OR surge_off_low_pct >= 30.0))
+                                   AND (dist_from_52w_low IS NULL OR dist_from_52w_low >= 30.0))
                               )"""
             else:
                 sub_sql = ""
@@ -1073,7 +1073,7 @@ class ModelBookService:
                     d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
                     d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
                     d.adr_20d, d.rs_score, d.rs_rank,
-                    d.sma_50, d.sma_150, d.sma_200, d.sma_200_20d_ago, d.dist_from_52w_high, d.surge_off_low_pct,
+                    d.sma_50, d.sma_150, d.sma_200, d.sma_200_20d_ago, d.dist_from_52w_high, d.dist_from_52w_low,
                     d.ema_10, d.ema_20,
                     d.ret_1m, d.ret_3m, d.ret_6m,
                     s.name, s.sector, s.industry,

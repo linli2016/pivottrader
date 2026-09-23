@@ -79,7 +79,7 @@ setups:
     description: "Filters a broad universe of liquid stocks for further screening across Stage 2 and Momentum Gainers."
     sub_title: "Momentum View:"
     default_sub_id: "leaders"
-    expression: "STAGE2 AND RS_RANK >= 90 AND ADR20 >= 4.0 AND C >= 10.0 AND C > XAVGC50 AND XAVGC10 > XAVGC20 AND SURGE_OFF_LOW >= 70.0 AND DAYS_52W_HIGH >= 10"
+    expression: "STAGE2 AND RS_RANK >= 90 AND ADR20 >= 4.0 AND C >= 10.0 AND C > XAVGC50 AND XAVGC10 > XAVGC20 AND DIST_52W_LOW >= 70.0 AND DAYS_52W_HIGH >= 10"
     sub_setups:
       - id: "all"
         name: "All"
@@ -92,7 +92,7 @@ setups:
       - id: "leaders"
         name: "Leaders"
         label: "🚀 Leaders"
-        expression: "STAGE2 AND RS_RANK >= 90 AND ADR20 >= 4.0 AND C >= 10.0 AND C > XAVGC50 AND XAVGC10 > XAVGC20 AND SURGE_OFF_LOW >= 70.0 AND DAYS_52W_HIGH >= 10"
+        expression: "STAGE2 AND RS_RANK >= 90 AND ADR20 >= 4.0 AND C >= 10.0 AND C > XAVGC50 AND XAVGC10 > XAVGC20 AND DIST_52W_LOW >= 70.0 AND DAYS_52W_HIGH >= 10"
       - id: "gainers"
         name: "All Gainers"
         label: "🏆 All Gainers (Top 50s)"

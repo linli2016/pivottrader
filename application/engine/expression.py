@@ -373,6 +373,13 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "trend",
         "description": "Percentage distance below 52-week high"
     },
+    "DIST_52W_LOW": {
+        "sql": "b.dist_from_52w_low",
+        "type": "numeric",
+        "label": "Dist 52w Low %",
+        "category": "trend",
+        "description": "Percentage distance above 52-week low"
+    },
     "DAYS_52W_HIGH": {
         "sql": "b.days_since_52w_high",
         "type": "numeric",
@@ -393,13 +400,6 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "label": "Days Since 52w High",
         "category": "trend",
         "description": "Trading days elapsed since 52-week high"
-    },
-    "SURGE_OFF_LOW": {
-        "sql": "b.surge_off_low_pct",
-        "type": "numeric",
-        "label": "Surge Off Low %",
-        "category": "trend",
-        "description": "Percentage gain off 52-week low"
     },
     "RET_1M": {
         "sql": "b.ret_1m",
@@ -715,12 +715,12 @@ ALIAS_CATALOG: Dict[str, Dict[str, Any]] = {
             "AND C > SMA_50 AND SMA_50 > SMA_150 AND SMA_150 > SMA_200 "
             "AND (SMA_200_20D_AGO IS NULL OR SMA_200 > SMA_200_20D_AGO) "
             "AND (DIST_52W_HIGH IS NULL OR DIST_52W_HIGH <= 25.0) "
-            "AND (SURGE_OFF_LOW IS NULL OR SURGE_OFF_LOW >= 25.0)"
+            "AND (DIST_52W_LOW IS NULL OR DIST_52W_LOW >= 25.0)"
         ),
         "type": "boolean",
         "label": "Stage 2 Uptrend",
         "category": "trend",
-        "description": "Minervini Stage 2 Trend Template (Close > 50 > 150 > 200 SMA & within 25% of 52w high)"
+        "description": "Minervini Stage 2 Trend Template (Close > 50 > 150 > 200 SMA, within 25% of 52w high & >= 25% above 52w low)"
     },
     "LOW_CHEAT": {
         "expr": (
@@ -728,7 +728,7 @@ ALIAS_CATALOG: Dict[str, Dict[str, Any]] = {
             "AND SMA_50 > SMA_150 AND SMA_150 > SMA_200 "
             "AND (SMA_200_20D_AGO IS NULL OR SMA_200 > SMA_200_20D_AGO) "
             "AND (DIST_52W_HIGH IS NULL OR DIST_52W_HIGH <= 25.0) "
-            "AND (SURGE_OFF_LOW IS NULL OR SURGE_OFF_LOW >= 25.0)"
+            "AND (DIST_52W_LOW IS NULL OR DIST_52W_LOW >= 25.0)"
         ),
         "type": "boolean",
         "label": "Low Cheat",
