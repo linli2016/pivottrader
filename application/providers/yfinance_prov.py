@@ -167,6 +167,16 @@ class YFinanceProvider(AbstractDataProvider):
                     # 4. Heuristic SPAC filters
                     if any(term in name.upper() for term in ["ACQUISITION CORP", "ACQUISITION CORP.", "SPAC", "BLANK CHECK", "ACQUISITION II"]):
                         continue
+
+                    mc_val = None
+                    mc_str = item.get("marketCap", "")
+                    if mc_str:
+                        try:
+                            v = float(mc_str)
+                            if v > 0:
+                                mc_val = v
+                        except Exception:
+                            pass
                         
                     clean_data.append({
                         "symbol": sym,
@@ -175,7 +185,8 @@ class YFinanceProvider(AbstractDataProvider):
                         "asset_type": "Common Stock",
                         "active": True,
                         "sector": get_tactical_sector(industry),
-                        "industry": industry
+                        "industry": industry,
+                        "market_cap": mc_val
                     })
                 return clean_data
             except Exception as e:

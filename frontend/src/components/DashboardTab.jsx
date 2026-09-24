@@ -81,6 +81,16 @@ const formatAssetPrice = (item) => {
   return num.toFixed(2);
 };
 
+const formatCapFlow = (val, showSign = true) => {
+  if (val === null || val === undefined || isNaN(val)) return '$0B';
+  const absVal = Math.abs(val);
+  const sign = showSign ? (val < 0 ? '-' : '+') : '';
+  if (absVal >= 1e12) return `${sign}$${(absVal / 1e12).toFixed(2)}T`;
+  if (absVal >= 1e9) return `${sign}$${(absVal / 1e9).toFixed(1)}B`;
+  if (absVal >= 1e6) return `${sign}$${(absVal / 1e6).toFixed(1)}M`;
+  return `${sign}$${absVal.toLocaleString()}`;
+};
+
 const renderSparkline = (item) => {
   const chg = item.change_pct;
   const isUp = chg !== null && chg !== undefined && chg > 0;
@@ -170,7 +180,7 @@ export default function DashboardTab({
 
   // Market Breadth Analytics state
   const [activeBreadthChart, setActiveBreadthChart] = useState('daily'); // 'daily', 'trend', 'heatmap'
-  const [isBreadthTableOpen, setIsBreadthTableOpen] = useState(false);
+  const [isBreadthTableOpen, setIsBreadthTableOpen] = useState(true);
   const [breadthPage, setBreadthPage] = useState(1);
   const [breadthPageSize, setBreadthPageSize] = useState(65);
   const [isCustomizing, setIsCustomizing] = useState(false);
@@ -421,6 +431,85 @@ export default function DashboardTab({
   const losersCount = typeof summaryData?.latest_losers_4pct === 'number' ? summaryData.latest_losers_4pct : 0;
   const total4pct = gainersCount + losersCount;
   const biasPct = total4pct > 0 ? Math.round((gainersCount / total4pct) * 100) : 50;
+
+  // Market Participation & Capital Flow calculations
+  const advCount = summaryData?.latest_advancers ?? 0;
+  const decCount = summaryData?.latest_decliners ?? 0;
+  const uncCount = summaryData?.latest_unchanged ?? 0;
+  const totalStocks = summaryData?.latest_total_active || (advCount + decCount + uncCount) || 1;
+  const advPct = summaryData?.latest_advance_pct ?? (totalStocks > 0 ? (advCount / totalStocks) * 100 : 50);
+  const decPct = summaryData?.latest_decline_pct ?? (totalStocks > 0 ? (decCount / totalStocks) * 100 : 50);
+  const uncPct = Math.max(0, 100 - advPct - decPct);
+
+  const capInc = summaryData?.latest_cap_increased ?? 0;
+  const capDec = summaryData?.latest_cap_decreased ?? 0;
+  const netCap = summaryData?.latest_net_cap_flow ?? (capInc - capDec);
+  const totalCapFlow = capInc + capDec;
+  const capAdvPct = totalCapFlow > 0 ? (capInc / totalCapFlow) * 100 : 50;
+  const capDecPct = totalCapFlow > 0 ? (capDec / totalCapFlow) * 100 : 50;
+
+  const upDollarVol = summaryData?.latest_up_dollar_vol ?? 0;
+  const downDollarVol = summaryData?.latest_down_dollar_vol ?? 0;
+  const totalVol = upDollarVol + downDollarVol;
+  const upVolPct = totalVol > 0 ? (upDollarVol / totalVol) * 100 : 50;
+  const downVolPct = totalVol > 0 ? (downDollarVol / totalVol) * 100 : 50;
+
+  const qqqChange = summaryData?.benchmarks?.QQQ?.change_pct ?? kq?.change_pct ?? 0;
+
+  const situation = useMemo(() => {
+    if (totalStocks <= 1) {
+      return {
+        badge: "⚪ GATHERING MARKET DATA",
+        color: "#94a3b8",
+        bg: "rgba(148, 163, 184, 0.12)",
+        border: "rgba(148, 163, 184, 0.25)",
+        detail: "Calculating market breadth participation and capital flow across the universe."
+      };
+    }
+    if (qqqChange >= 0 && decPct >= 58 && netCap < 0) {
+      return {
+        badge: "⚠️ DIVERGENCE: STEALTH DISTRIBUTION",
+        color: "#fb7185",
+        bg: "rgba(244, 63, 94, 0.16)",
+        border: "rgba(244, 63, 94, 0.35)",
+        detail: `Major indices closed positive (+${qqqChange.toFixed(2)}%), but ${decPct.toFixed(1)}% of all stocks declined with ${formatCapFlow(netCap)} net institutional capital contraction. Mega-caps are masking broad-market selling.`
+      };
+    }
+    if (capAdvPct >= 65 && advPct >= 55) {
+      return {
+        badge: "🟢 BROAD ACCUMULATION & CAPITAL INFLOW",
+        color: "#34d399",
+        bg: "rgba(16, 185, 129, 0.16)",
+        border: "rgba(16, 185, 129, 0.35)",
+        detail: `Broad-based buying pressure: ${advPct.toFixed(1)}% of stocks advancing with ${formatCapFlow(netCap)} net institutional capital expansion across sectors.`
+      };
+    }
+    if (capAdvPct <= 35 && decPct >= 55) {
+      return {
+        badge: "🔴 SYSTEMIC CAPITAL CONTRACTION",
+        color: "#fb7185",
+        bg: "rgba(244, 63, 94, 0.16)",
+        border: "rgba(244, 63, 94, 0.35)",
+        detail: `Heavy distribution across the market: ${decPct.toFixed(1)}% of stocks down and ${formatCapFlow(netCap)} capital withdrawn from equities.`
+      };
+    }
+    if (qqqChange < 0 && advPct >= 55) {
+      return {
+        badge: "🔄 POSITIVE BREADTH DIVERGENCE",
+        color: "#38bdf8",
+        bg: "rgba(56, 189, 248, 0.16)",
+        border: "rgba(56, 189, 248, 0.35)",
+        detail: `Indices pulled back, but underlying breadth remained resilient with ${advPct.toFixed(1)}% of stocks advancing.`
+      };
+    }
+    return {
+      badge: "🟡 BALANCED / ROTATIONAL REGIME",
+      color: "#f59e0b",
+      bg: "rgba(245, 158, 11, 0.16)",
+      border: "rgba(245, 158, 11, 0.35)",
+      detail: `Selective market rotation: ${advPct.toFixed(1)}% advancing vs ${decPct.toFixed(1)}% declining with ${formatCapFlow(netCap)} net capital flow.`
+    };
+  }, [totalStocks, qqqChange, decPct, netCap, capAdvPct, advPct]);
 
   const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -811,7 +900,10 @@ export default function DashboardTab({
             <thead>
               <tr>
                 <th style={{ textAlign: 'left' }}>Date</th>
-                <th style={{ textAlign: 'center' }}>KQ Regime</th>
+                <th style={{ textAlign: 'center' }}>REGIME</th>
+                <th style={{ textAlign: 'center', color: '#38bdf8' }}>A / D (Up/Down)</th>
+                <th style={{ textAlign: 'right', color: '#a855f7' }}>Net Cap Flow</th>
+                <th style={{ textAlign: 'right' }}>Cap %</th>
                 <th style={{ textAlign: 'right', color: '#34d399' }}>4% ▲</th>
                 <th style={{ textAlign: 'right', color: '#fb7185' }}>4% ▼</th>
                 <th style={{ textAlign: 'right' }}>Net 4%</th>
@@ -832,29 +924,66 @@ export default function DashboardTab({
               {paginatedData.map((row, idx) => {
                 const isStrongUp = row.gainers_4pct >= 300 || row.ratio_4pct >= 2.0;
                 const isStrongDown = row.losers_4pct >= 300 || row.ratio_4pct <= 0.5;
+                const regime = row.regime || row.sb_regime || (
+                  row.up_25pct_3m !== undefined && row.down_25pct_3m !== undefined
+                    ? (row.up_25pct_3m > row.down_25pct_3m ? 'BULLISH' : row.up_25pct_3m < row.down_25pct_3m ? 'BEARISH' : 'NEUTRAL')
+                    : row.kq_regime
+                );
 
                 return (
                   <tr key={idx}>
                     <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{row.date}</td>
                     <td style={{ textAlign: 'center' }}>
-                      {row.kq_regime === 'BULLISH' && (
-                        <span className="pill" style={{ background: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.35)', fontSize: '10px', padding: '2px 8px', fontWeight: 700 }}>
+                      {regime === 'BULLISH' && (
+                        <span
+                          className="pill"
+                          title={`Stockbee Market Monitor: BULLISH (25% ▲ 3M: ${row.up_25pct_3m ?? '-'} > 25% ▼ 3M: ${row.down_25pct_3m ?? '-'})`}
+                          style={{ background: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.35)', fontSize: '10px', padding: '2px 8px', fontWeight: 700 }}
+                        >
                           🟢 BULLISH
                         </span>
                       )}
-                      {row.kq_regime === 'CAUTION' && (
-                        <span className="pill" style={{ background: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.35)', fontSize: '10px', padding: '2px 8px', fontWeight: 700 }}>
-                          🟡 CAUTION
-                        </span>
-                      )}
-                      {row.kq_regime === 'BEARISH' && (
-                        <span className="pill" style={{ background: 'rgba(244, 63, 94, 0.18)', color: '#fb7185', border: '1px solid rgba(244, 63, 94, 0.35)', fontSize: '10px', padding: '2px 8px', fontWeight: 700 }}>
+                      {regime === 'BEARISH' && (
+                        <span
+                          className="pill"
+                          title={`Stockbee Market Monitor: BEARISH (25% ▲ 3M: ${row.up_25pct_3m ?? '-'} < 25% ▼ 3M: ${row.down_25pct_3m ?? '-'})`}
+                          style={{ background: 'rgba(244, 63, 94, 0.18)', color: '#fb7185', border: '1px solid rgba(244, 63, 94, 0.35)', fontSize: '10px', padding: '2px 8px', fontWeight: 700 }}
+                        >
                           🔴 BEARISH
                         </span>
                       )}
-                      {!['BULLISH', 'CAUTION', 'BEARISH'].includes(row.kq_regime) && (
+                      {regime === 'CAUTION' && (
+                        <span
+                          className="pill"
+                          title="Stockbee Market Monitor: CAUTION"
+                          style={{ background: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.35)', fontSize: '10px', padding: '2px 8px', fontWeight: 700 }}
+                        >
+                          🟡 CAUTION
+                        </span>
+                      )}
+                      {regime === 'NEUTRAL' && (
+                        <span
+                          className="pill"
+                          title="Stockbee Market Monitor: NEUTRAL"
+                          style={{ background: 'rgba(148, 163, 184, 0.18)', color: '#94a3b8', border: '1px solid rgba(148, 163, 184, 0.35)', fontSize: '10px', padding: '2px 8px', fontWeight: 700 }}
+                        >
+                          ⚪ NEUTRAL
+                        </span>
+                      )}
+                      {!['BULLISH', 'BEARISH', 'CAUTION', 'NEUTRAL'].includes(regime) && (
                         <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>-</span>
                       )}
+                    </td>
+                    <td style={{ textAlign: 'center', fontSize: '11px', whiteSpace: 'nowrap' }}>
+                      <span style={{ color: '#34d399', fontWeight: 600 }}>{row.advancers?.toLocaleString() || '-'}</span>
+                      <span style={{ color: 'var(--text-muted)', margin: '0 3px' }}>/</span>
+                      <span style={{ color: '#fb7185', fontWeight: 600 }}>{row.decliners?.toLocaleString() || '-'}</span>
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: (row.net_cap_flow || 0) >= 0 ? '#34d399' : '#fb7185', fontFamily: 'var(--font-mono)', fontSize: '11.5px', whiteSpace: 'nowrap' }}>
+                      {row.net_cap_flow !== undefined ? formatCapFlow(row.net_cap_flow) : '-'}
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 600, color: (row.cap_advance_pct || 50) >= 50 ? '#34d399' : '#fb7185', fontSize: '11px' }}>
+                      {row.cap_advance_pct !== undefined ? `${row.cap_advance_pct.toFixed(0)}%` : '-'}
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: isStrongUp ? 700 : 500, color: isStrongUp ? '#34d399' : 'var(--text-primary)', backgroundColor: row.gainers_4pct >= 500 ? 'rgba(16, 185, 129, 0.15)' : 'transparent' }}>
                       {row.gainers_4pct.toLocaleString()}
@@ -1441,6 +1570,206 @@ export default function DashboardTab({
               <span style={{ color: '#fb7185' }}>{summaryData?.latest_down_25pct_1m ?? 0}</span>
             </div>
             <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>20d Trend Health</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 1b. Market Participation & Capital Flow Gauge */}
+      <div
+        className="glass-card"
+        style={{
+          marginBottom: '20px',
+          padding: '22px 26px',
+          borderLeft: `5px solid ${situation.color}`,
+          background: 'linear-gradient(135deg, rgba(17, 24, 39, 0.95) 0%, rgba(15, 23, 42, 0.9) 100%)'
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span className="cockpit-card-tag">MARKET PARTICIPATION & CAPITAL FLOW</span>
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  padding: '3px 10px',
+                  borderRadius: '12px',
+                  color: situation.color,
+                  backgroundColor: situation.bg,
+                  border: `1px solid ${situation.border}`,
+                  letterSpacing: '0.04em'
+                }}
+              >
+                {situation.badge}
+              </span>
+            </div>
+            <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#ffffff', margin: '4px 0 0 0' }}>
+              ⚖️ Advance / Decline & Market Capital Flow Gauge
+            </h3>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
+                Net Capital Flow
+              </div>
+              <div
+                style={{
+                  fontSize: '17px',
+                  fontWeight: 800,
+                  color: netCap >= 0 ? '#34d399' : '#fb7185',
+                  fontFamily: 'var(--font-mono)'
+                }}
+              >
+                {formatCapFlow(netCap)}
+              </div>
+            </div>
+            <div style={{ height: '32px', width: '1px', background: 'rgba(255, 255, 255, 0.12)' }} />
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
+                Net Advance / Decline
+              </div>
+              <div
+                style={{
+                  fontSize: '17px',
+                  fontWeight: 800,
+                  color: advCount >= decCount ? '#34d399' : '#fb7185',
+                  fontFamily: 'var(--font-mono)'
+                }}
+              >
+                {advCount - decCount >= 0 ? `+${(advCount - decCount).toLocaleString()}` : (advCount - decCount).toLocaleString()}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Situation Detail Text */}
+        <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.5', margin: '0 0 16px 0', maxWidth: '1200px' }}>
+          {situation.detail}
+        </p>
+
+        {/* Dual Progress Bars: Stock Count vs Market Cap Flow */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '16px' }}>
+          {/* Card A: Equal-Weighted Stock Count (A/D) */}
+          <div style={{ background: 'rgba(0, 0, 0, 0.35)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '16px 18px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Equal-Weighted Breadth (Stock Count)
+              </span>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                {totalStocks.toLocaleString()} Total Stocks
+              </span>
+            </div>
+
+            {/* Segmented Progress Bar */}
+            <div style={{ height: '14px', borderRadius: '7px', display: 'flex', overflow: 'hidden', background: 'rgba(255, 255, 255, 0.06)', marginBottom: '10px' }}>
+              <div
+                style={{
+                  width: `${advPct}%`,
+                  background: 'linear-gradient(90deg, #059669, #10b981)',
+                  transition: 'width 0.4s ease'
+                }}
+                title={`Advancing: ${advCount.toLocaleString()} (${advPct.toFixed(1)}%)`}
+              />
+              <div
+                style={{
+                  width: `${uncPct}%`,
+                  background: '#64748b',
+                  transition: 'width 0.4s ease'
+                }}
+                title={`Unchanged: ${uncCount.toLocaleString()} (${uncPct.toFixed(1)}%)`}
+              />
+              <div
+                style={{
+                  width: `${decPct}%`,
+                  background: 'linear-gradient(90deg, #f43f5e, #e11d48)',
+                  transition: 'width 0.4s ease'
+                }}
+                title={`Declining: ${decCount.toLocaleString()} (${decPct.toFixed(1)}%)`}
+              />
+            </div>
+
+            {/* Detail Stats */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }} />
+                <span style={{ color: '#34d399', fontWeight: 700 }}>
+                  {advCount.toLocaleString()} Up ({advPct.toFixed(1)}%)
+                </span>
+              </div>
+              {uncCount > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#64748b' }} />
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    {uncCount.toLocaleString()} Flat
+                  </span>
+                </div>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f43f5e' }} />
+                <span style={{ color: '#fb7185', fontWeight: 700 }}>
+                  {decCount.toLocaleString()} Down ({decPct.toFixed(1)}%)
+                </span>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.06)', display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)' }}>
+              <span>A / D Ratio: <strong style={{ color: advPct >= 50 ? '#34d399' : '#fb7185' }}>{(advCount / Math.max(decCount, 1)).toFixed(2)} : 1</strong></span>
+              <span>Net Spread: <strong style={{ color: advCount >= decCount ? '#34d399' : '#fb7185' }}>{advCount - decCount >= 0 ? `+${(advCount - decCount).toLocaleString()}` : (advCount - decCount).toLocaleString()}</strong></span>
+            </div>
+          </div>
+
+          {/* Card B: Capital-Weighted Money Flow ($) */}
+          <div style={{ background: 'rgba(0, 0, 0, 0.35)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '16px 18px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Capital-Weighted Money Flow (Market Cap Δ)
+              </span>
+              <span style={{ fontSize: '11px', color: netCap >= 0 ? '#34d399' : '#fb7185', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
+                {netCap >= 0 ? `+${formatCapFlow(netCap, false)} Net Expansion` : `${formatCapFlow(netCap, true)} Net Contraction`}
+              </span>
+            </div>
+
+            {/* Segmented Progress Bar */}
+            <div style={{ height: '14px', borderRadius: '7px', display: 'flex', overflow: 'hidden', background: 'rgba(255, 255, 255, 0.06)', marginBottom: '10px' }}>
+              <div
+                style={{
+                  width: `${capAdvPct}%`,
+                  background: 'linear-gradient(90deg, #059669, #10b981)',
+                  transition: 'width 0.4s ease'
+                }}
+                title={`Capital Gained: ${formatCapFlow(capInc, true)} (${capAdvPct.toFixed(1)}%)`}
+              />
+              <div
+                style={{
+                  width: `${capDecPct}%`,
+                  background: 'linear-gradient(90deg, #f43f5e, #e11d48)',
+                  transition: 'width 0.4s ease'
+                }}
+                title={`Capital Lost: ${formatCapFlow(-capDec, true)} (${capDecPct.toFixed(1)}%)`}
+              />
+            </div>
+
+            {/* Detail Stats */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }} />
+                <span style={{ color: '#34d399', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
+                  +{formatCapFlow(capInc, false)} ({capAdvPct.toFixed(1)}%)
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f43f5e' }} />
+                <span style={{ color: '#fb7185', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
+                  -{formatCapFlow(capDec, false)} ({capDecPct.toFixed(1)}%)
+                </span>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.06)', display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)' }}>
+              <span>Capital Advance Ratio: <strong style={{ color: capAdvPct >= 50 ? '#34d399' : '#fb7185' }}>{(capInc / Math.max(capDec, 1)).toFixed(2)} : 1</strong></span>
+              <span>Traded Turnover: <strong style={{ color: '#ffffff' }}>{upVolPct.toFixed(0)}% Up-Vol</strong> vs <strong style={{ color: '#ffffff' }}>{downVolPct.toFixed(0)}% Down-Vol</strong></span>
+            </div>
           </div>
         </div>
       </div>

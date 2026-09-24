@@ -22,7 +22,7 @@ folders:
         name: "QM Breakouts"
         icon: "🎯"
         description: "30%+ prior move, tight 10/20 EMA surf, pivot clustering <= 3%."
-        expression: "C >= 5.0 AND DOLLAR_VOL >= 3000000 AND BREAKOUT AND ADR20 >= 4.0 AND PIVOT_SPREAD <= 8.0 AND PIVOT_CLUSTERING <= 3.0"
+        expression: "C >= 5.0 AND DOLLAR_VOL >= 3000000 AND (COALESCE(RUNUP, 0) >= 30.0 OR COALESCE(RET_1M, 0) >= 15.0 OR COALESCE(RET_3M, 0) >= 30.0) AND ADR20 >= 4.0 AND PIVOT_SPREAD <= 8.0 AND PIVOT_CLUSTERING <= 3.0 AND PULLBACK <= 30.0 AND DAYS_SINCE_PEAK >= 10 AND DAYS_SINCE_PEAK <= 40 AND C > EMA_20 AND EMA_10 > EMA_20"
       - id: "episodic_pivot"
         name: "Episodic Pivot"
         icon: "💥"
@@ -142,7 +142,7 @@ setups:
     display_order: 1
     description: "Consolidations and High Tight Flags (Power Plays) ready to break out along rising moving averages."
     sub_title: "Breakout Mode:"
-    expression: "C >= 5.0 AND DOLLAR_VOL >= 3000000 AND BREAKOUT AND ADR20 >= 4.0 AND PIVOT_SPREAD <= 8.0 AND PIVOT_CLUSTERING <= 3.0"
+    expression: "C >= 5.0 AND DOLLAR_VOL >= 3000000 AND (COALESCE(RUNUP, 0) >= 30.0 OR COALESCE(RET_1M, 0) >= 15.0 OR COALESCE(RET_3M, 0) >= 30.0) AND ADR20 >= 4.0 AND PIVOT_SPREAD <= 8.0 AND PIVOT_CLUSTERING <= 3.0 AND PULLBACK <= 30.0 AND DAYS_SINCE_PEAK >= 10 AND DAYS_SINCE_PEAK <= 40 AND C > EMA_20 AND EMA_10 > EMA_20"
     sub_setups:
       - id: "htf"
         name: "Power Play / HTF"
@@ -151,7 +151,7 @@ setups:
       - id: "standard"
         name: "QM Breakouts"
         label: "🎯 QM Breakouts (30%+ Move)"
-        expression: "C >= 5.0 AND DOLLAR_VOL >= 3000000 AND BREAKOUT AND ADR20 >= 4.0 AND PIVOT_SPREAD <= 8.0 AND PIVOT_CLUSTERING <= 3.0"
+        expression: "C >= 5.0 AND DOLLAR_VOL >= 3000000 AND (COALESCE(RUNUP, 0) >= 30.0 OR COALESCE(RET_1M, 0) >= 15.0 OR COALESCE(RET_3M, 0) >= 30.0) AND ADR20 >= 4.0 AND PIVOT_SPREAD <= 8.0 AND PIVOT_CLUSTERING <= 3.0 AND PULLBACK <= 30.0 AND DAYS_SINCE_PEAK >= 10 AND DAYS_SINCE_PEAK <= 40 AND C > EMA_20 AND EMA_10 > EMA_20"
 
   episodic_pivot:
     id: "episodic_pivot"

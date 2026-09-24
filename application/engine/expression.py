@@ -784,13 +784,6 @@ ALIAS_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "trend",
         "description": "Stage 2 Trend Template without C > 50 SMA (Low Cheat early base setup)"
     },
-    "BREAKOUT": {
-        "expr": "COALESCE(RUNUP, 0) >= 30.0 OR COALESCE(RET_1M, 0) >= 15.0 OR COALESCE(RET_3M, 0) >= 30.0",
-        "type": "boolean",
-        "label": "Breakout",
-        "category": "pattern",
-        "description": "Qullamaggie Breakout / High Tight Flag pattern qualified"
-    },
     "EPISODIC_PIVOT": {
         "expr": "COALESCE(GAP_PCT, 0) >= 10.0 AND COALESCE(REL_VOL, 0) >= 2.5",
         "type": "boolean",

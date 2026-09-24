@@ -209,7 +209,6 @@ class DatabaseService:
                 has_precomputed_low_cheat = False
 
             require_power_play = False
-            require_breakout = False
             require_episodic_pivot = False
             require_momentum = False
             require_parabolic = False
@@ -222,7 +221,6 @@ class DatabaseService:
 
             if raw_expr:
                 require_power_play = any(v in used_variables for v in ("POWER_PLAY", "PP_RUNUP", "RUNUP", "RUNUP_PCT", "RUNUP_DAYS", "PULLBACK", "PULLBACK_PCT", "DAYS_SINCE_PEAK", "BASE_DAYS"))
-                require_breakout = "BREAKOUT" in used_variables
                 require_episodic_pivot = "EPISODIC_PIVOT" in used_variables
                 require_momentum = False
                 require_parabolic = "PARABOLIC_SHORT" in used_variables
@@ -290,7 +288,6 @@ class DatabaseService:
 
                 # Pattern Flags
                 require_power_play = bool(f.get("require_power_play", False))
-                require_breakout = bool(f.get("require_breakout", False))
                 require_episodic_pivot = bool(f.get("require_episodic_pivot", False))
                 require_momentum = bool(f.get("require_momentum", False))
                 require_parabolic = bool(f.get("require_parabolic", False))
@@ -652,7 +649,7 @@ class DatabaseService:
             # 2. Pre-computed setups do NOT exist on this date (historical date) and a pattern is active, OR
             # 3. Candidates list is small (<= 200) and a pattern is active.
             needs_dynamic_history = bool(
-                require_breakout or enable_cheat or (
+                enable_cheat or (
                     require_low_cheat and not has_precomputed_low_cheat
                 ) or (
                     require_parabolic and int(f.get("parabolic_window_days", 10)) != 10
@@ -670,7 +667,6 @@ class DatabaseService:
             if needs_dynamic_history and candidates:
                 try:
                     from application.engine.setups.power_play import detect_power_play
-                    from application.engine.setups.breakout import detect_breakout
                     from application.engine.setups.vcp import detect_vcp
                     from application.engine.setups.parabolic_extension import detect_parabolic_extension
                     from application.engine.setups.episodic_pivot import detect_episodic_pivot
@@ -693,16 +689,6 @@ class DatabaseService:
                     sym_history = defaultdict(list)
                     for sym, dt, op, h, l, cl, vol in history_rows:
                         sym_history[sym].append((op, h, l, cl, vol, dt))
-
-                    # Breakout filter parameters
-                    min_breakout_runup = float(f.get("min_breakout_runup", 30.0))
-                    runup_window_weeks = float(f.get("runup_window_weeks", 12.0))
-                    min_breakout_days = int(f.get("min_breakout_days", 10))
-                    max_breakout_days = int(f.get("max_breakout_days", 40))
-                    max_breakout_drawdown = float(f.get("max_breakout_drawdown", 30.0)) if f.get("max_breakout_drawdown") is not None else None
-                    enable_ema_surfing = bool(f.get("enable_ema_surfing", False))
-                    breakout_subview = str(f.get("breakout_subview", "htf"))
-                    enable_htf_mode = bool(f.get("enable_htf_mode", True) if f.get("breakout_subview") is None else (f.get("enable_htf_mode", False) or breakout_subview == "htf"))
 
                     for c in candidates:
                         symbol = c["symbol"]
@@ -754,31 +740,6 @@ class DatabaseService:
                                     c["pivot_close_clustering_pct"] = round((peak_c3 - low_c3) / cl_list[-1] * 100.0, 2)
                                 if c.get("pivot_vol_ratio") is None and c.get("vol_50d_ma") and c["vol_50d_ma"] > 0:
                                     c["pivot_vol_ratio"] = round(vol_list[-1] / c["vol_50d_ma"], 2)
-
-                            # Breakout Evaluation
-                            if require_breakout:
-                                b_res = detect_breakout(
-                                    h_list, l_list, cl_list, dt_list,
-                                    ema_10_val=c.get("ema_10"),
-                                    ema_20_val=c.get("ema_20"),
-                                    enable_runup=True,
-                                    min_runup_pct=min_breakout_runup,
-                                    runup_window_weeks=runup_window_weeks,
-                                    enable_days=True,
-                                    min_consolidation_days=min_breakout_days,
-                                    max_consolidation_days=max_breakout_days,
-                                    max_drawdown_pct=max_breakout_drawdown,
-                                    enable_ema_surfing=enable_ema_surfing,
-                                    enable_htf_mode=enable_htf_mode,
-                                    breakout_subview=breakout_subview
-                                )
-                                c["breakout_is_setup"] = b_res.get("breakout_is_setup", False)
-                                c["breakout_runup_pct"] = b_res.get("breakout_runup_pct", 0.0)
-                                c["breakout_drawdown_pct"] = b_res.get("breakout_drawdown_pct", 0.0)
-                                c["breakout_consolidation_days"] = b_res.get("breakout_consolidation_days", 0)
-                                c["breakout_peak_high"] = b_res.get("breakout_peak_high", 0.0)
-                                c["is_htf"] = b_res.get("is_htf", False)
-                                c["ema_surfing"] = b_res.get("ema_surfing", False)
 
                             # Power Play Evaluation
                             if require_power_play:
@@ -998,10 +959,6 @@ class DatabaseService:
                         c.get("parabolic_runup_pct") is not None and c["parabolic_runup_pct"] >= min_runup
                     )
                 ]
-
-            # Filter candidates by breakout if enabled
-            if require_breakout:
-                candidates = [c for c in candidates if c.get("breakout_is_setup")]
 
             # If pivot tightness was not precomputed on this date, apply in-memory filter
             if require_pivot_tightness and not has_precomputed_setups:
@@ -1250,7 +1207,7 @@ class DatabaseService:
         symbol = symbol.upper()
         with self.get_read_only_conn() as conn:
             # Metadata
-            meta = conn.execute("SELECT symbol, exchange, name, asset_type, active, ipo_date, sector, industry, next_earnings_date FROM symbols WHERE symbol = ?", [symbol]).fetchone()
+            meta = conn.execute("SELECT symbol, exchange, name, asset_type, active, ipo_date, sector, industry, next_earnings_date, market_cap FROM symbols WHERE symbol = ?", [symbol]).fetchone()
             if not meta:
                 return {}
                 
@@ -1269,6 +1226,7 @@ class DatabaseService:
                 "sector": meta[6] if len(meta) > 6 else None,
                 "industry": meta[7] if len(meta) > 7 else None,
                 "next_earnings_date": meta[8] if len(meta) > 8 else None,
+                "market_cap": meta[9] if len(meta) > 9 else None,
                 "description": company_desc
             }
             
@@ -1434,6 +1392,7 @@ class DatabaseService:
                 "vcp_footprint": vcp_footprint,
                 "low_cheat_footprint": low_cheat_footprint,
                 "cheat_footprint": cheat_footprint,
+                "market_cap": meta_dict.get("market_cap"),
                 "next_earnings_date": meta_dict.get("next_earnings_date")
             }
 
@@ -1914,7 +1873,7 @@ class DatabaseService:
 
         lookback_needed = (limit if limit and limit > 0 else 252) + 120
         date_filter_qqq = f"AND date <= '{as_of_date}'" if as_of_date else "AND date <= CURRENT_DATE"
-        date_filter_bars = f"AND date <= '{as_of_date}'" if as_of_date else "AND date <= CURRENT_DATE"
+        date_filter_bars = f"AND db.date <= '{as_of_date}'" if as_of_date else "AND db.date <= CURRENT_DATE"
         date_filter_bm = f"AND date <= '{as_of_date}'" if as_of_date else "AND date <= CURRENT_DATE"
 
         query = f"""
@@ -1924,15 +1883,19 @@ class DatabaseService:
                 )
             ),
             filtered_bars AS (
-                SELECT symbol, date, close
-                FROM daily_bars, cutoff
-                WHERE date >= min_date {date_filter_bars}
+                SELECT db.symbol, db.date, db.close, db.volume, s.market_cap
+                FROM daily_bars db
+                JOIN cutoff c ON db.date >= c.min_date
+                LEFT JOIN symbols s ON db.symbol = s.symbol
+                WHERE 1=1 {date_filter_bars}
             ),
             daily_gains AS (
                 SELECT 
                     symbol,
                     date,
                     close,
+                    volume,
+                    market_cap,
                     LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) as prev_close,
                     LAG(close, 20) OVER (PARTITION BY symbol ORDER BY date) as close_20d_ago,
                     LAG(close, 65) OVER (PARTITION BY symbol ORDER BY date) as close_65d_ago
@@ -1941,8 +1904,20 @@ class DatabaseService:
             daily_counts AS (
                 SELECT 
                     date,
+                    COUNT(CASE WHEN prev_close > 0 AND close > prev_close THEN 1 END) as advancers,
+                    COUNT(CASE WHEN prev_close > 0 AND close < prev_close THEN 1 END) as decliners,
+                    COUNT(CASE WHEN prev_close > 0 AND close = prev_close THEN 1 END) as unchanged,
+                    COUNT(CASE WHEN prev_close > 0 THEN 1 END) as total_active,
                     COUNT(CASE WHEN prev_close > 0 AND ((close - prev_close)/prev_close)*100 >= 4.0 THEN 1 END) as gainers_4pct,
                     COUNT(CASE WHEN prev_close > 0 AND ((close - prev_close)/prev_close)*100 <= -4.0 THEN 1 END) as losers_4pct,
+                    SUM(CASE WHEN prev_close > 0 AND close > prev_close AND market_cap IS NOT NULL 
+                             THEN market_cap * ((close - prev_close) / prev_close) ELSE 0 END) as cap_increased,
+                    SUM(CASE WHEN prev_close > 0 AND close < prev_close AND market_cap IS NOT NULL 
+                             THEN market_cap * ((prev_close - close) / prev_close) ELSE 0 END) as cap_decreased,
+                    SUM(CASE WHEN prev_close > 0 AND close > prev_close 
+                             THEN close * COALESCE(volume, 0) ELSE 0 END) as up_dollar_vol,
+                    SUM(CASE WHEN prev_close > 0 AND close < prev_close 
+                             THEN close * COALESCE(volume, 0) ELSE 0 END) as down_dollar_vol,
                     COUNT(CASE WHEN close_20d_ago > 0 AND ((close - close_20d_ago)/close_20d_ago)*100 >= 25.0 THEN 1 END) as up_25pct_1m,
                     COUNT(CASE WHEN close_20d_ago > 0 AND ((close - close_20d_ago)/close_20d_ago)*100 <= -25.0 THEN 1 END) as down_25pct_1m,
                     COUNT(CASE WHEN close_65d_ago > 0 AND ((close - close_65d_ago)/close_65d_ago)*100 >= 25.0 THEN 1 END) as up_25pct_3m,
@@ -2011,8 +1986,43 @@ class DatabaseService:
             for row in df_desc.itertuples(index=False):
                 d_str = str(row.date_str)
                 kq_info = kq_lookup.get(d_str, {})
+                adv = int(getattr(row, "advancers", 0) or 0)
+                dec = int(getattr(row, "decliners", 0) or 0)
+                unc = int(getattr(row, "unchanged", 0) or 0)
+                tot = int(getattr(row, "total_active", 0) or 0) or (adv + dec + unc) or 1
+                cap_inc = float(getattr(row, "cap_increased", 0.0) or 0.0)
+                cap_dec = float(getattr(row, "cap_decreased", 0.0) or 0.0)
+                up_vol = float(getattr(row, "up_dollar_vol", 0.0) or 0.0)
+                down_vol = float(getattr(row, "down_dollar_vol", 0.0) or 0.0)
+                tot_vol = up_vol + down_vol
+                tot_cap_flow = cap_inc + cap_dec
+
+                up_3m = int(row.up_25pct_3m)
+                down_3m = int(row.down_25pct_3m)
+                if up_3m > down_3m:
+                    sb_regime = "BULLISH"
+                elif up_3m < down_3m:
+                    sb_regime = "BEARISH"
+                else:
+                    sb_regime = "NEUTRAL"
+
                 daily_list.append({
                     "date": d_str,
+                    "advancers": adv,
+                    "decliners": dec,
+                    "unchanged": unc,
+                    "total_active": tot,
+                    "advance_ratio": round(adv / max(dec, 1), 2),
+                    "net_advancers": adv - dec,
+                    "advance_pct": round(adv / max(tot, 1) * 100.0, 1),
+                    "decline_pct": round(dec / max(tot, 1) * 100.0, 1),
+                    "cap_increased": cap_inc,
+                    "cap_decreased": cap_dec,
+                    "net_cap_flow": cap_inc - cap_dec,
+                    "cap_advance_pct": round(cap_inc / max(tot_cap_flow, 1.0) * 100.0, 1) if tot_cap_flow > 0 else 50.0,
+                    "up_dollar_vol": up_vol,
+                    "down_dollar_vol": down_vol,
+                    "up_vol_pct": round(up_vol / max(tot_vol, 1.0) * 100.0, 1) if tot_vol > 0 else 50.0,
                     "gainers_4pct": int(row.gainers_4pct),
                     "losers_4pct": int(row.losers_4pct),
                     "net_4pct": int(row.net_4pct),
@@ -2021,13 +2031,15 @@ class DatabaseService:
                     "ratio_10d": float(row.ratio_10d),
                     "up_25pct_1m": int(row.up_25pct_1m),
                     "down_25pct_1m": int(row.down_25pct_1m),
-                    "up_25pct_3m": int(row.up_25pct_3m),
-                    "down_25pct_3m": int(row.down_25pct_3m),
+                    "up_25pct_3m": up_3m,
+                    "down_25pct_3m": down_3m,
                     "up_50pct_1m": int(row.up_50pct_1m),
                     "up_50pct_3m": int(row.up_50pct_3m),
                     "down_50pct_3m": int(row.down_50pct_3m),
                     "ema_13_up": float(row.ema_13_up),
                     "ema_13_down": float(row.ema_13_down),
+                    "regime": sb_regime,
+                    "sb_regime": sb_regime,
                     "kq_regime": kq_info.get("regime", "UNKNOWN"),
                     "kq_label": kq_info.get("label", "-"),
                     "kq_badge": kq_info.get("badge", "-"),
@@ -2073,6 +2085,21 @@ class DatabaseService:
 
             summary = {
                 "latest_date": latest.get("date"),
+                "latest_advancers": latest.get("advancers", 0),
+                "latest_decliners": latest.get("decliners", 0),
+                "latest_unchanged": latest.get("unchanged", 0),
+                "latest_total_active": latest.get("total_active", 0),
+                "latest_advance_ratio": latest.get("advance_ratio", 1.0),
+                "latest_net_advancers": latest.get("net_advancers", 0),
+                "latest_advance_pct": latest.get("advance_pct", 50.0),
+                "latest_decline_pct": latest.get("decline_pct", 50.0),
+                "latest_cap_increased": latest.get("cap_increased", 0.0),
+                "latest_cap_decreased": latest.get("cap_decreased", 0.0),
+                "latest_net_cap_flow": latest.get("net_cap_flow", 0.0),
+                "latest_cap_advance_pct": latest.get("cap_advance_pct", 50.0),
+                "latest_up_dollar_vol": latest.get("up_dollar_vol", 0.0),
+                "latest_down_dollar_vol": latest.get("down_dollar_vol", 0.0),
+                "latest_up_vol_pct": latest.get("up_vol_pct", 50.0),
                 "latest_gainers_4pct": latest.get("gainers_4pct"),
                 "latest_losers_4pct": latest.get("losers_4pct"),
                 "latest_ratio_4pct": latest.get("ratio_4pct"),
@@ -2083,7 +2110,8 @@ class DatabaseService:
                 "latest_down_25pct_1m": latest.get("down_25pct_1m"),
                 "latest_up_25pct_3m": latest.get("up_25pct_3m"),
                 "latest_down_25pct_3m": latest.get("down_25pct_3m"),
-                "regime": regime,
+                "latest_regime": latest.get("regime", "NEUTRAL"),
+                "regime": latest.get("regime", regime),
                 "benchmarks": benchmarks,
                 "cross_asset": cross_asset,
                 "kq_evaluation": kq_summary

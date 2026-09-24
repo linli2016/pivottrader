@@ -211,12 +211,11 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertIn("b.sma_50 > b.sma_150", res["sql"])
         self.assertIn("b.sma_150 > b.sma_200", res["sql"])
 
-    def test_alias_breakout_and_episodic_pivot(self):
+    def test_alias_episodic_pivot_and_ipo_base(self):
+        # BREAKOUT alias has been removed
         res_bo = ScanExpressionEngine.validate("BREAKOUT")
-        self.assertTrue(res_bo["valid"])
-        self.assertIn("BREAKOUT", res_bo["variables"])
-        self.assertIn("RUNUP", res_bo["variables"])
-        self.assertIn("b.pp_runup_pct", res_bo["sql"])
+        self.assertFalse(res_bo["valid"])
+        self.assertIn("Unknown variable 'BREAKOUT'", res_bo.get("error", ""))
 
         res_ep = ScanExpressionEngine.validate("EPISODIC_PIVOT")
         self.assertTrue(res_ep["valid"])

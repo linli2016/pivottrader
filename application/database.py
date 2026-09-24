@@ -86,6 +86,10 @@ class DatabaseManager:
                 conn.execute("ALTER TABLE symbols ADD COLUMN delisted_date VARCHAR;")
             except Exception:
                 pass
+            try:
+                conn.execute("ALTER TABLE symbols ADD COLUMN market_cap DOUBLE;")
+            except Exception:
+                pass
             
             # 2. Historical Daily Bars Table
             conn.execute("""
@@ -311,7 +315,7 @@ class DatabaseManager:
         df = pd.DataFrame(symbols_data)
         
         # Ensure correct column ordering and existence
-        columns = ["symbol", "exchange", "name", "asset_type", "active", "ipo_date", "sector", "industry", "next_earnings_date"]
+        columns = ["symbol", "exchange", "name", "asset_type", "active", "ipo_date", "sector", "industry", "next_earnings_date", "market_cap"]
         for col in columns:
             if col not in df.columns:
                 df[col] = None if col != "active" else True
@@ -322,8 +326,8 @@ class DatabaseManager:
             # Using DuckDB's pandas integration
             conn.execute("CREATE OR REPLACE TEMP TABLE temp_symbols AS SELECT * FROM df")
             conn.execute("""
-                INSERT INTO symbols (symbol, exchange, name, asset_type, active, ipo_date, sector, industry, next_earnings_date, last_updated)
-                SELECT symbol, exchange, name, asset_type, active, CAST(ipo_date AS VARCHAR), CAST(sector AS VARCHAR), CAST(industry AS VARCHAR), CAST(next_earnings_date AS VARCHAR), CURRENT_TIMESTAMP as last_updated
+                INSERT INTO symbols (symbol, exchange, name, asset_type, active, ipo_date, sector, industry, next_earnings_date, market_cap, last_updated)
+                SELECT symbol, exchange, name, asset_type, active, CAST(ipo_date AS VARCHAR), CAST(sector AS VARCHAR), CAST(industry AS VARCHAR), CAST(next_earnings_date AS VARCHAR), CAST(market_cap AS DOUBLE), CURRENT_TIMESTAMP as last_updated
                 FROM temp_symbols
                 ON CONFLICT (symbol) DO UPDATE SET
                     name = EXCLUDED.name,
@@ -335,6 +339,7 @@ class DatabaseManager:
                     sector = COALESCE(EXCLUDED.sector, symbols.sector),
                     industry = COALESCE(EXCLUDED.industry, symbols.industry),
                     next_earnings_date = COALESCE(EXCLUDED.next_earnings_date, symbols.next_earnings_date),
+                    market_cap = COALESCE(EXCLUDED.market_cap, symbols.market_cap),
                     last_updated = EXCLUDED.last_updated
             """)
             conn.execute("DROP TABLE temp_symbols")

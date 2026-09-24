@@ -85,13 +85,6 @@ const CHEAT_SHEET_CATEGORIES = [
     title: 'Pattern Primitives',
     color: '#ec4899',
     variables: [
-      {
-        sym: 'BREAKOUT',
-        label: 'Breakout',
-        desc: 'QM Breakout candidate',
-        is_alias: true,
-        expr: 'COALESCE(RUNUP, 0) >= 30.0 OR COALESCE(RET_1M, 0) >= 15.0 OR COALESCE(RET_3M, 0) >= 30.0'
-      },
       { sym: 'RUNUP', label: 'Runup %', desc: 'Explosive prior runup % in prior 8 weeks' },
       { sym: 'RUNUP_DAYS', label: 'Runup Days', desc: 'Trading days duration of prior runup (<= 40d)' },
       { sym: 'PULLBACK', label: 'Pullback %', desc: 'Maximum base pullback depth from peak' },
