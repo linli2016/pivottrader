@@ -2477,6 +2477,30 @@ class DatabaseService:
             row = conn.execute("SELECT id, name, created_at FROM watchlists WHERE name = ?", [name]).fetchone()
             return {"id": row[0], "name": row[1], "created_at": str(row[2]), "item_count": 0}
 
+    def update_watchlist(self, watchlist_id: int, name: str) -> Dict[str, Any]:
+        cleaned = name.strip()
+        if not cleaned:
+            raise ValueError("Watchlist name cannot be empty")
+        with self.get_write_conn() as conn:
+            existing = conn.execute(
+                "SELECT id FROM watchlists WHERE name = ? AND id != ?",
+                [cleaned, watchlist_id]
+            ).fetchone()
+            if existing:
+                raise ValueError(f"Watchlist with name '{cleaned}' already exists")
+            conn.execute("UPDATE watchlists SET name = ? WHERE id = ?", [cleaned, watchlist_id])
+            row = conn.execute("SELECT id, name, created_at FROM watchlists WHERE id = ?", [watchlist_id]).fetchone()
+            if not row:
+                raise ValueError(f"Watchlist with id {watchlist_id} not found")
+            count_row = conn.execute("SELECT COUNT(*) FROM watchlist_items WHERE watchlist_id = ?", [watchlist_id]).fetchone()
+            item_count = count_row[0] if count_row else 0
+            return {
+                "id": row[0],
+                "name": row[1],
+                "created_at": str(row[2]) if row[2] else None,
+                "item_count": item_count
+            }
+
     def delete_watchlist(self, watchlist_id: int) -> bool:
         with self.get_write_conn() as conn:
             conn.execute("DELETE FROM watchlist_items WHERE watchlist_id = ?", [watchlist_id])

@@ -48,6 +48,9 @@ class SyncTriggerSchema(BaseModel):
 class WatchlistCreateSchema(BaseModel):
     name: str
 
+class WatchlistUpdateSchema(BaseModel):
+    name: str
+
 class WatchlistItemAddSchema(BaseModel):
     symbol: Optional[str] = None
     symbols: Optional[List[str]] = None
@@ -475,6 +478,17 @@ def create_watchlist(payload: WatchlistCreateSchema):
         return db_service.create_watchlist(payload.name)
     except Exception as e:
         logger.error(f"Error in create_watchlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/api/watchlists/{watchlist_id}")
+def update_watchlist(watchlist_id: int, payload: WatchlistUpdateSchema):
+    """Rename a watchlist."""
+    try:
+        return db_service.update_watchlist(watchlist_id, payload.name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error in update_watchlist({watchlist_id}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/api/watchlists/{watchlist_id}")

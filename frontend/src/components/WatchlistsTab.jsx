@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import CandlestickChart from './CandlestickChart';
 import VcpFootprintCard from './VcpFootprintCard';
 import LowCheatFootprintCard from './LowCheatFootprintCard';
+import { getLocalDateStr } from '../utils/dateUtils';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
@@ -145,7 +146,13 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   const [isAddingSymbol, setIsAddingSymbol] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newWatchlistName, setNewWatchlistName] = useState('');
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [renameInput, setRenameInput] = useState('');
+  const [isRenaming, setIsRenaming] = useState(false);
   const [showDropdownMenu, setShowDropdownMenu] = useState(false);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedSymbols, setSelectedSymbols] = useState(new Set());
+  const [isDeletingItems, setIsDeletingItems] = useState(false);
 
   // Initialize selected watchlist (prefer 'Mag 7' if present, otherwise first available)
   useEffect(() => {
@@ -296,21 +303,106 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   // Remove symbol from active watchlist
   const handleRemoveSymbol = async (sym, e) => {
     e?.stopPropagation();
-    if (!selectedWatchlistId) return;
+    if (!selectedWatchlistId || !sym) return;
     try {
       const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items/${sym}`, {
         method: 'DELETE',
       });
       if (res.ok) {
         setItems((prev) => prev.filter((i) => i.symbol !== sym));
+        setSelectedSymbols((prev) => {
+          const next = new Set(prev);
+          next.delete(sym);
+          return next;
+        });
         if (selectedStock?.symbol === sym) {
           const remaining = items.filter((i) => i.symbol !== sym);
           setSelectedStock(remaining.length > 0 ? remaining[0] : null);
         }
         if (fetchWatchlists) fetchWatchlists();
+      } else {
+        alert(`Failed to remove ${sym} from watchlist.`);
       }
     } catch (err) {
       console.error('Error removing item:', err);
+      alert(`Error removing ${sym}: ${err.message}`);
+    }
+  };
+
+  // Batch remove selected symbols
+  const handleRemoveBatch = async () => {
+    if (!selectedWatchlistId || selectedSymbols.size === 0) return;
+    const symList = Array.from(selectedSymbols);
+    if (!window.confirm(`Remove ${symList.length} selected stocks from "${activeWatchlist?.name || 'Watchlist'}"?`)) return;
+
+    setIsDeletingItems(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items/remove-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbols: symList }),
+      });
+      if (res.ok) {
+        setItems((prev) => prev.filter((i) => !selectedSymbols.has(i.symbol)));
+        if (selectedStock && selectedSymbols.has(selectedStock.symbol)) {
+          const remaining = items.filter((i) => !selectedSymbols.has(i.symbol));
+          setSelectedStock(remaining.length > 0 ? remaining[0] : null);
+        }
+        setSelectedSymbols(new Set());
+        if (fetchWatchlists) fetchWatchlists();
+      } else {
+        alert('Failed to remove selected stocks.');
+      }
+    } catch (err) {
+      alert(`Error removing stocks: ${err.message}`);
+    } finally {
+      setIsDeletingItems(false);
+    }
+  };
+
+  // Clean up all symbols from active watchlist
+  const handleCleanUpWatchlist = async () => {
+    if (!selectedWatchlistId || items.length === 0) return;
+    const currentW = watchlists.find((w) => w.id === selectedWatchlistId);
+    if (!window.confirm(`Are you sure you want to clean up "${currentW?.name || 'this watchlist'}"?\n\nThis will remove all ${items.length} stocks from the list.`)) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setItems([]);
+        setSelectedStock(null);
+        setSelectedSymbols(new Set());
+        setShowDropdownMenu(false);
+        if (fetchWatchlists) fetchWatchlists();
+      } else {
+        alert('Failed to clean up watchlist.');
+      }
+    } catch (err) {
+      alert(`Error cleaning up watchlist: ${err.message}`);
+    }
+  };
+
+  // Toggle selection for batch operations
+  const toggleSelectStock = (sym, e) => {
+    e?.stopPropagation();
+    setSelectedSymbols((prev) => {
+      const next = new Set(prev);
+      if (next.has(sym)) {
+        next.delete(sym);
+      } else {
+        next.add(sym);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedSymbols.size === filteredItems.length && filteredItems.length > 0) {
+      setSelectedSymbols(new Set());
+    } else {
+      setSelectedSymbols(new Set(filteredItems.map((i) => i.symbol)));
     }
   };
 
@@ -336,11 +428,41 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     }
   };
 
+  // Rename active watchlist
+  const handleRenameWatchlist = async (e) => {
+    e?.preventDefault();
+    const newName = renameInput.trim();
+    if (!newName || !selectedWatchlistId) return;
+    if (newName === activeWatchlist?.name) {
+      setShowRenameModal(false);
+      return;
+    }
+    setIsRenaming(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName }),
+      });
+      if (res.ok) {
+        setShowRenameModal(false);
+        if (fetchWatchlists) await fetchWatchlists();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.detail || 'Failed to rename watchlist.');
+      }
+    } catch (err) {
+      alert(`Error renaming watchlist: ${err.message}`);
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
   // Delete current watchlist
   const handleDeleteWatchlist = async () => {
     if (!selectedWatchlistId) return;
     const currentW = watchlists.find((w) => w.id === selectedWatchlistId);
-    if (!window.confirm(`Are you sure you want to delete "${currentW?.name || 'Watchlist'}"?`)) return;
+    if (!window.confirm(`Are you sure you want to delete "${currentW?.name || 'Watchlist'}"? This action cannot be undone.`)) return;
 
     try {
       const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}`, {
@@ -351,10 +473,35 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         const remaining = watchlists.filter((w) => w.id !== selectedWatchlistId);
         setSelectedWatchlistId(remaining.length > 0 ? remaining[0].id : null);
         setShowDropdownMenu(false);
+      } else {
+        alert('Failed to delete watchlist.');
       }
     } catch (err) {
       alert(`Error deleting watchlist: ${err.message}`);
     }
+  };
+
+  // Export to TradingView (.txt), identical to CandidatesTab / Screen page
+  const handleExportTradingView = () => {
+    if (!items || items.length === 0) {
+      alert("No stocks to export in this watchlist!");
+      return;
+    }
+    const content = items.map((c) => {
+      const exchange = c.exchange ? `${c.exchange}:` : '';
+      return `${exchange}${c.symbol}`;
+    }).join('\n');
+
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const safeName = (activeWatchlist?.name || 'Watchlist').replace(/[^a-zA-Z0-9_-]/g, '_');
+    link.download = `PivotTrader_${safeName}_${getLocalDateStr()}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Filtered items list
@@ -532,7 +679,34 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
               Watchlist
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {/* Export to TradingView Button */}
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={handleExportTradingView}
+                disabled={items.length === 0}
+                title="Export to TradingView watchlist (.txt)"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '26px',
+                  height: '26px',
+                  padding: 0,
+                  borderRadius: '6px',
+                  cursor: items.length > 0 ? 'pointer' : 'not-allowed',
+                  opacity: items.length > 0 ? 1 : 0.4,
+                  flexShrink: 0
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+              </button>
+
+              {/* Create New Watchlist Button */}
               <button
                 onClick={() => setShowCreateModal(true)}
                 title="Create New Watchlist"
@@ -542,7 +716,8 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                   color: 'var(--text-secondary)',
                   cursor: 'pointer',
                   fontSize: '14px',
-                  padding: '4px 6px'
+                  padding: '4px 6px',
+                  lineHeight: 1
                 }}
               >
                 ➕
@@ -559,12 +734,12 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
             justifyContent: 'space-between',
             position: 'relative'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
               <div style={{
                 width: '18px', height: '18px', borderRadius: '50%',
                 background: '#000000', color: '#ffffff',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '10px', fontWeight: 900
+                fontSize: '10px', fontWeight: 900, flexShrink: 0
               }}>
                 {(activeWatchlist?.name || 'W')[0].toUpperCase()}
               </div>
@@ -579,7 +754,10 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                   fontSize: '13px',
                   cursor: 'pointer',
                   outline: 'none',
-                  maxWidth: '140px'
+                  maxWidth: '130px',
+                  textOverflow: 'ellipsis',
+                  overflow: 'hidden',
+                  whiteSpace: 'nowrap'
                 }}
               >
                 {watchlists.map((w) => (
@@ -590,7 +768,28 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
               </select>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
+              <button
+                onClick={() => {
+                  setRenameInput(activeWatchlist?.name || '');
+                  setShowRenameModal(true);
+                }}
+                title="Rename Watchlist"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  padding: '2px 4px',
+                  borderRadius: '4px'
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+              >
+                ✏️
+              </button>
+
               <button
                 onClick={() => setShowDropdownMenu(!showDropdownMenu)}
                 title="Watchlist Options"
@@ -602,106 +801,280 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                   fontSize: '14px',
                   padding: '2px 4px'
                 }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
               >
                 ≡
               </button>
             </div>
 
-            {/* Dropdown Menu */}
+            {/* Dropdown Menu Backdrop & Menu */}
             {showDropdownMenu && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '38px',
-                  right: '12px',
-                  background: 'var(--card-bg)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
-                  padding: '6px 0',
-                  zIndex: 100,
-                  minWidth: '150px'
-                }}
-              >
-                <button
-                  onClick={() => {
-                    setShowCreateModal(true);
-                    setShowDropdownMenu(false);
-                  }}
+              <>
+                <div
+                  style={{ position: 'fixed', inset: 0, zIndex: 99 }}
+                  onClick={() => setShowDropdownMenu(false)}
+                />
+                <div
                   style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    background: 'transparent',
-                    border: 'none',
-                    padding: '6px 12px',
-                    fontSize: '12px',
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer'
+                    position: 'absolute',
+                    top: '38px',
+                    right: '12px',
+                    background: 'var(--card-bg)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+                    padding: '6px 0',
+                    zIndex: 100,
+                    minWidth: '185px'
                   }}
                 >
-                  + New Watchlist
-                </button>
-                {activeWatchlist && activeWatchlist.name !== 'Default' && (
                   <button
-                    onClick={handleDeleteWatchlist}
+                    onClick={() => {
+                      setShowCreateModal(true);
+                      setShowDropdownMenu(false);
+                    }}
                     style={{
                       width: '100%',
                       textAlign: 'left',
                       background: 'transparent',
                       border: 'none',
-                      padding: '6px 12px',
+                      padding: '7px 12px',
+                      fontSize: '12px',
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <span>➕</span> New Watchlist
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setRenameInput(activeWatchlist?.name || '');
+                      setShowRenameModal(true);
+                      setShowDropdownMenu(false);
+                    }}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      background: 'transparent',
+                      border: 'none',
+                      padding: '7px 12px',
+                      fontSize: '12px',
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <span>✏️</span> Rename Watchlist
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowDropdownMenu(false);
+                      handleExportTradingView();
+                    }}
+                    disabled={items.length === 0}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      background: 'transparent',
+                      border: 'none',
+                      padding: '7px 12px',
+                      fontSize: '12px',
+                      color: items.length > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
+                      cursor: items.length > 0 ? 'pointer' : 'not-allowed',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                    onMouseEnter={(e) => items.length > 0 && (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <span>↗️</span> Export to TradingView (.txt)
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowDropdownMenu(false);
+                      handleCleanUpWatchlist();
+                    }}
+                    disabled={items.length === 0}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      background: 'transparent',
+                      border: 'none',
+                      padding: '7px 12px',
+                      fontSize: '12px',
+                      color: items.length > 0 ? '#f59e0b' : 'var(--text-muted)',
+                      cursor: items.length > 0 ? 'pointer' : 'not-allowed',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                    onMouseEnter={(e) => items.length > 0 && (e.currentTarget.style.background = 'rgba(245, 158, 11, 0.1)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <span>🧹</span> Clean Up Watchlist
+                  </button>
+
+                  <div style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0' }} />
+
+                  <button
+                    onClick={() => {
+                      setShowDropdownMenu(false);
+                      handleDeleteWatchlist();
+                    }}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      background: 'transparent',
+                      border: 'none',
+                      padding: '7px 12px',
                       fontSize: '12px',
                       color: '#fb7185',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
                     }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(251, 113, 133, 0.1)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                   >
-                    🗑️ Delete Watchlist
+                    <span>🗑️</span> Delete Watchlist
                   </button>
-                )}
-              </div>
+                </div>
+              </>
             )}
           </div>
 
-          {/* Quick Add Symbol Input Bar */}
-          <form onSubmit={handleAddSymbol} style={{
+          {/* Quick Add Symbol & Selection Controls Bar */}
+          <div style={{
             padding: '6px 10px',
             borderBottom: '1px solid var(--border-color)',
             display: 'flex',
+            flexDirection: 'column',
             gap: '6px'
           }}>
-            <input
-              type="text"
-              placeholder="+ Add symbol (e.g. PLTR)"
-              value={newSymbolInput}
-              onChange={(e) => setNewSymbolInput(e.target.value.toUpperCase())}
-              style={{
-                flex: 1,
-                background: 'rgba(0, 0, 0, 0.35)',
-                border: '1px solid var(--border-color)',
+            <form onSubmit={handleAddSymbol} style={{ display: 'flex', gap: '6px' }}>
+              <input
+                type="text"
+                placeholder="+ Add symbol (e.g. PLTR)"
+                value={newSymbolInput}
+                onChange={(e) => setNewSymbolInput(e.target.value.toUpperCase())}
+                style={{
+                  flex: 1,
+                  background: 'rgba(0, 0, 0, 0.35)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  padding: '4px 8px',
+                  fontSize: '11.5px',
+                  color: '#ffffff',
+                  outline: 'none',
+                  minWidth: 0
+                }}
+              />
+              <button
+                type="submit"
+                disabled={isAddingSymbol || !newSymbolInput.trim()}
+                style={{
+                  background: 'rgba(16, 185, 129, 0.15)',
+                  border: '1px solid rgba(16, 185, 129, 0.4)',
+                  color: '#10b981',
+                  borderRadius: '4px',
+                  padding: '4px 8px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  cursor: isAddingSymbol || !newSymbolInput.trim() ? 'not-allowed' : 'pointer',
+                  opacity: isAddingSymbol || !newSymbolInput.trim() ? 0.5 : 1
+                }}
+              >
+                Add
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSelectMode(!isSelectMode);
+                  if (isSelectMode) setSelectedSymbols(new Set());
+                }}
+                title={isSelectMode ? 'Exit Selection Mode' : 'Select multiple stocks'}
+                style={{
+                  background: isSelectMode ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                  border: isSelectMode ? '1px solid #38bdf8' : '1px solid var(--border-color)',
+                  color: isSelectMode ? '#38bdf8' : 'var(--text-secondary)',
+                  borderRadius: '4px',
+                  padding: '4px 7px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                {isSelectMode ? 'Done' : 'Select'}
+              </button>
+            </form>
+
+            {/* Batch Action Banner when in Selection Mode */}
+            {isSelectMode && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '4px 6px',
+                background: 'rgba(56, 189, 248, 0.08)',
+                border: '1px solid rgba(56, 189, 248, 0.25)',
                 borderRadius: '4px',
-                padding: '4px 8px',
-                fontSize: '11.5px',
-                color: '#ffffff',
-                outline: 'none'
-              }}
-            />
-            <button
-              type="submit"
-              disabled={isAddingSymbol || !newSymbolInput.trim()}
-              style={{
-                background: 'rgba(16, 185, 129, 0.15)',
-                border: '1px solid rgba(16, 185, 129, 0.4)',
-                color: '#10b981',
-                borderRadius: '4px',
-                padding: '4px 10px',
-                fontSize: '11px',
-                fontWeight: 700,
-                cursor: 'pointer'
-              }}
-            >
-              Add
-            </button>
-          </form>
+                fontSize: '11px'
+              }}>
+                <span style={{ color: '#38bdf8', fontWeight: 600 }}>
+                  {selectedSymbols.size} of {filteredItems.length} selected
+                </span>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    type="button"
+                    onClick={toggleSelectAll}
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '3px',
+                      color: 'var(--text-secondary)',
+                      padding: '2px 6px',
+                      fontSize: '10px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {selectedSymbols.size === filteredItems.length && filteredItems.length > 0 ? 'None' : 'All'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={selectedSymbols.size === 0 || isDeletingItems}
+                    onClick={handleRemoveBatch}
+                    style={{
+                      background: selectedSymbols.size > 0 ? 'rgba(239, 68, 68, 0.2)' : 'transparent',
+                      border: selectedSymbols.size > 0 ? '1px solid rgba(239, 68, 68, 0.5)' : '1px solid rgba(255, 255, 255, 0.1)',
+                      borderRadius: '3px',
+                      color: selectedSymbols.size > 0 ? '#fb7185' : 'var(--text-muted)',
+                      padding: '2px 6px',
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      cursor: selectedSymbols.size > 0 ? 'pointer' : 'not-allowed'
+                    }}
+                  >
+                    {isDeletingItems ? 'Removing...' : `🗑️ Remove (${selectedSymbols.size})`}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Symbol List Table */}
           <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto' }}>
@@ -716,22 +1089,33 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                   zIndex: 2,
                   fontSize: '10.5px'
                 }}>
+                  {isSelectMode && (
+                    <th style={{ width: '24px', textAlign: 'center', padding: '6px 4px' }}>
+                      <input
+                        type="checkbox"
+                        checked={filteredItems.length > 0 && selectedSymbols.size === filteredItems.length}
+                        onChange={toggleSelectAll}
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </th>
+                  )}
                   <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600 }}>Ticker</th>
                   <th style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 600 }}>Chg%</th>
                   <th style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 600 }}>Rel Vol</th>
                   <th style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 600 }}>RS</th>
+                  <th style={{ width: '22px', textAlign: 'center', padding: '6px 2px' }}></th>
                 </tr>
               </thead>
               <tbody>
                 {loadingItems ? (
                   <tr>
-                    <td colSpan={4} style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--text-muted)' }}>
+                    <td colSpan={isSelectMode ? 6 : 5} style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--text-muted)' }}>
                       ⏳ Loading symbols...
                     </td>
                   </tr>
                 ) : filteredItems.length === 0 ? (
                   <tr>
-                    <td colSpan={4} style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--text-muted)' }}>
+                    <td colSpan={isSelectMode ? 6 : 5} style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--text-muted)' }}>
                       No stocks in this list.<br />
                       Type a ticker above to add.
                     </td>
@@ -746,15 +1130,36 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                     return (
                       <tr
                         key={item.symbol}
-                        onClick={() => setSelectedStock(item)}
+                        onClick={() => {
+                          if (isSelectMode) {
+                            toggleSelectStock(item.symbol);
+                          } else {
+                            setSelectedStock(item);
+                          }
+                        }}
                         style={{
                           borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
                           cursor: 'pointer',
-                          background: isSelected ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
+                          background: isSelected
+                            ? 'rgba(16, 185, 129, 0.12)'
+                            : selectedSymbols.has(item.symbol)
+                            ? 'rgba(56, 189, 248, 0.12)'
+                            : 'transparent',
                           transition: 'background-color 0.12s ease'
                         }}
                         className="watchlist-item-row"
                       >
+                        {isSelectMode && (
+                          <td style={{ textAlign: 'center', padding: '7px 4px' }} onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selectedSymbols.has(item.symbol)}
+                              onChange={(e) => toggleSelectStock(item.symbol, e)}
+                              style={{ cursor: 'pointer' }}
+                            />
+                          </td>
+                        )}
+
                         {/* Ticker */}
                         <td style={{ padding: '7px 8px' }}>
                           <span style={{ fontWeight: 800, color: isSelected ? '#10b981' : 'var(--text-primary)', fontSize: '12px' }}>
@@ -794,6 +1199,42 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                           }}>
                             {rsVal !== null && rsVal !== undefined ? rsVal : '—'}
                           </span>
+                        </td>
+
+                        {/* Single Row Remove Action */}
+                        <td style={{ textAlign: 'center', padding: '7px 2px' }} onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={(e) => handleRemoveSymbol(item.symbol, e)}
+                            title={`Remove ${item.symbol} from watchlist`}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'var(--text-muted)',
+                              cursor: 'pointer',
+                              padding: '2px 4px',
+                              fontSize: '11px',
+                              lineHeight: 1,
+                              borderRadius: '3px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              opacity: 0.5,
+                              transition: 'all 0.15s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.color = '#fb7185';
+                              e.currentTarget.style.background = 'rgba(251, 113, 133, 0.15)';
+                              e.currentTarget.style.opacity = '1';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.color = 'var(--text-muted)';
+                              e.currentTarget.style.background = 'transparent';
+                              e.currentTarget.style.opacity = '0.5';
+                            }}
+                          >
+                            ✕
+                          </button>
                         </td>
                       </tr>
                     );
@@ -859,6 +1300,40 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                       </span>
                     )}
                   </div>
+
+                  {/* Remove Stock from active Watchlist Button */}
+                  <button
+                    type="button"
+                    onClick={(e) => handleRemoveSymbol(selectedStock.symbol, e)}
+                    title={`Remove ${selectedStock.symbol} from "${activeWatchlist?.name || 'Watchlist'}"`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      background: 'rgba(251, 113, 133, 0.08)',
+                      border: '1px solid rgba(251, 113, 133, 0.25)',
+                      borderRadius: '5px',
+                      color: 'var(--text-secondary)',
+                      padding: '3px 8px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = '#fb7185';
+                      e.currentTarget.style.borderColor = 'rgba(251, 113, 133, 0.6)';
+                      e.currentTarget.style.background = 'rgba(251, 113, 133, 0.18)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = 'var(--text-secondary)';
+                      e.currentTarget.style.borderColor = 'rgba(251, 113, 133, 0.25)';
+                      e.currentTarget.style.background = 'rgba(251, 113, 133, 0.08)';
+                    }}
+                  >
+                    <span style={{ fontSize: '11px' }}>✕</span>
+                    <span>Remove from List</span>
+                  </button>
                 </div>
 
                 {/* Row 2: Badges / Pills Group (identical to Stock Screen result) */}
@@ -1559,6 +2034,65 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                   style={{ fontSize: '12px', fontWeight: 700 }}
                 >
                   Create
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Rename Watchlist Modal */}
+      {showRenameModal && (
+        <div className="drawer-backdrop" onClick={() => setShowRenameModal(false)}>
+          <div
+            className="glass-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '400px',
+              margin: 'auto',
+              border: '1px solid var(--border-color)',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.8)',
+              padding: '20px'
+            }}
+          >
+            <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px', color: '#ffffff' }}>
+              Rename Watchlist
+            </h3>
+            <form onSubmit={handleRenameWatchlist} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div className="form-group">
+                <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Watchlist Name</label>
+                <input
+                  type="text"
+                  placeholder="Enter new name"
+                  value={renameInput}
+                  onChange={(e) => setRenameInput(e.target.value)}
+                  autoFocus
+                  style={{
+                    background: 'rgba(0, 0, 0, 0.4)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    padding: '8px 12px',
+                    color: '#ffffff',
+                    fontSize: '13px'
+                  }}
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setShowRenameModal(false)}
+                  style={{ fontSize: '12px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={!renameInput.trim() || isRenaming}
+                  style={{ fontSize: '12px', fontWeight: 700 }}
+                >
+                  {isRenaming ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </form>

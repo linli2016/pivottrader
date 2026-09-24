@@ -10,7 +10,6 @@ import WatchlistsTab from './components/WatchlistsTab';
 import SetupsAndRulesTab from './components/SetupsAndRulesTab';
 import ModelBookTab from './components/ModelBookTab';
 import LearnTab from './components/LearnTab';
-import SyncDataTab from './components/SyncDataTab';
 import LeaderboardTab from './components/LeaderboardTab';
 
 
@@ -18,12 +17,21 @@ const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:80
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [dashboardSubpage, setDashboardSubpage] = useState('cockpit');
   const [candidates, setCandidates] = useState([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [summary, setSummary] = useState(null);
   const [watchlists, setWatchlists] = useState([]);
   const [tradingDates, setTradingDates] = useState([]);
   const [selectedDate, setSelectedDate] = useState(() => new Date().toLocaleDateString('en-CA'));
+
+  // If sync-data is selected from any legacy trigger, route to Dashboard -> Market Ingest subpage
+  useEffect(() => {
+    if (activeTab === 'sync-data') {
+      setActiveTab('dashboard');
+      setDashboardSubpage('ingest');
+    }
+  }, [activeTab]);
 
   const fetchWatchlists = async () => {
     try {
@@ -541,14 +549,21 @@ function App() {
             <div className="nav-section-title">Overview</div>
             <ul className="nav-menu">
               <li
-                className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
-                onClick={() => setActiveTab('dashboard')}
-                title="Dashboard & Daily Routine"
+                className={`nav-item ${activeTab === 'dashboard' || activeTab === 'sync-data' || activeTab === 'market-monitor' ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveTab('dashboard');
+                  setDashboardSubpage('cockpit');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                title="Dashboard (Trading Cockpit & Market Ingest)"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">📊</span>
                   <span className="nav-label">Dashboard</span>
                 </div>
+                {syncStatus.status === 'running' && (
+                  <span className="nav-badge emerald spin-icon" style={{ fontSize: '10px' }} title="Market Ingest running in background">⟳</span>
+                )}
               </li>
             </ul>
           </div>
@@ -556,21 +571,6 @@ function App() {
           <div className="nav-section">
             <div className="nav-section-title">Daily Routine</div>
             <ul className="nav-menu">
-              {/* 0. Market Ingest */}
-              <li
-                className={`nav-item ${activeTab === 'sync-data' ? 'active' : ''}`}
-                onClick={() => setActiveTab('sync-data')}
-                title="0. Market Ingest (DuckDB Pipelines & Live Quotes)"
-              >
-                <div className="nav-item-content">
-                  <span className="nav-icon">🔄</span>
-                  <span className="nav-label">0. Market Ingest</span>
-                </div>
-                {syncStatus.status === 'running' && (
-                  <span className="nav-badge emerald spin-icon" style={{ fontSize: '10px' }}>⟳</span>
-                )}
-              </li>
-
               {/* 1. Leaderboard */}
               <li
                 className={`nav-item ${activeTab === 'leaderboard' ? 'active' : ''}`}
@@ -713,7 +713,7 @@ function App() {
 
       {/* Main Content Area */}
       <div className="main-content custom-scrollbar">
-        {(activeTab === 'dashboard' || activeTab === 'market-monitor') && (
+        {(activeTab === 'dashboard' || activeTab === 'market-monitor' || activeTab === 'sync-data') && (
           <DashboardTab
             summary={summary}
             syncStatus={syncStatus}
@@ -725,11 +725,8 @@ function App() {
             handleSelectStock={handleSelectStock}
             onSelectSetup={handleSelectSetup}
             tradingDates={tradingDates}
-          />
-        )}
-
-        {activeTab === 'sync-data' && (
-          <SyncDataTab
+            subpage={dashboardSubpage}
+            onSubpageChange={setDashboardSubpage}
             syncPrices={syncPrices}
             setSyncPrices={setSyncPrices}
             syncFundamentals={syncFundamentals}
@@ -747,10 +744,6 @@ function App() {
             syncFixSplits={syncFixSplits}
             setSyncFixSplits={setSyncFixSplits}
             handleTriggerRepairSplits={handleTriggerRepairSplits}
-            syncStatus={syncStatus}
-            handleTriggerSync={handleTriggerSync}
-            summary={summary}
-            setActiveTab={setActiveTab}
           />
         )}
 

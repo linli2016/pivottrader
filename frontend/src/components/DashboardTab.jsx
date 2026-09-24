@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import ScoreMoversCard from './ScoreMoversCard';
+import SyncDataTab from './SyncDataTab';
 import { getLocalDateStr } from '../utils/dateUtils';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
@@ -147,7 +148,38 @@ export default function DashboardTab({
   handleSelectStock,
   onSelectSetup,
   tradingDates = [],
+  // Subpage controls
+  subpage,
+  onSubpageChange,
+  // Market Ingest props
+  syncPrices,
+  setSyncPrices,
+  syncFundamentals,
+  setSyncFundamentals,
+  syncSponsorship,
+  setSyncSponsorship,
+  syncSponsorshipUniverse,
+  setSyncSponsorshipUniverse,
+  syncPremarket,
+  setSyncPremarket,
+  syncHistoryYears,
+  setSyncHistoryYears,
+  syncForceFull,
+  setSyncForceFull,
+  syncFixSplits,
+  setSyncFixSplits,
+  handleTriggerRepairSplits,
 }) {
+  const [internalSubpage, setInternalSubpage] = useState('cockpit');
+  const activeSubpage = subpage !== undefined ? subpage : internalSubpage;
+  const handleSubpageChange = (newSubpage) => {
+    if (onSubpageChange) {
+      onSubpageChange(newSubpage);
+    } else {
+      setInternalSubpage(newSubpage);
+    }
+  };
+
   const [marketData, setMarketData] = useState(null);
   const [loadingMarket, setLoadingMarket] = useState(true);
   const [topGroups, setTopGroups] = useState([]);
@@ -171,6 +203,103 @@ export default function DashboardTab({
         .catch(err => console.error('Error fetching trading dates:', err));
     }
   }, [tradingDates]);
+
+  const todayStr = new Date().toLocaleDateString('en-CA');
+  const latestDbDate = availableDates && availableDates.length > 0 ? availableDates[0] : (summary?.last_price_date || todayStr);
+  const maxSelectableDate = (latestDbDate && latestDbDate > todayStr)
+    ? latestDbDate
+    : new Date(Date.now() + 86400000 * 7).toLocaleDateString('en-CA');
+
+  const curDateStr = (asOfDate && asOfDate !== 'latest') ? asOfDate : latestDbDate;
+
+  const isWeekend = useCallback((dateStr) => {
+    if (!dateStr) return false;
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    const day = dt.getDay();
+    return day === 0 || day === 6;
+  }, []);
+
+  const getPrevWeekday = useCallback((dateStr) => {
+    if (!dateStr) return null;
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    const dayOfWeek = dt.getDay();
+    const daysBack = dayOfWeek === 1 ? 3 : dayOfWeek === 0 ? 2 : dayOfWeek === 6 ? 1 : 1;
+    dt.setDate(dt.getDate() - daysBack);
+    const year = dt.getFullYear();
+    const month = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }, []);
+
+  const getNextWeekday = useCallback((dateStr) => {
+    if (!dateStr) return null;
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    const dayOfWeek = dt.getDay();
+    const daysForward = dayOfWeek === 5 ? 3 : dayOfWeek === 6 ? 2 : dayOfWeek === 0 ? 1 : 1;
+    dt.setDate(dt.getDate() + daysForward);
+    const year = dt.getFullYear();
+    const month = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }, []);
+
+  const prevDate = useMemo(() => {
+    if (!curDateStr) return null;
+    if (availableDates && availableDates.length > 0) {
+      const prevTrading = availableDates.find(d => d < curDateStr && !isWeekend(d));
+      if (prevTrading) return prevTrading;
+    }
+    return getPrevWeekday(curDateStr);
+  }, [curDateStr, availableDates, isWeekend, getPrevWeekday]);
+
+  const nextDate = useMemo(() => {
+    if (!curDateStr) return null;
+    if (availableDates && availableDates.length > 0) {
+      const newerTrading = availableDates.filter(d => d > curDateStr && !isWeekend(d));
+      if (newerTrading.length > 0) {
+        return newerTrading[newerTrading.length - 1];
+      }
+    }
+    return getNextWeekday(curDateStr);
+  }, [curDateStr, availableDates, isWeekend, getNextWeekday]);
+
+  const canGoPrev = Boolean(prevDate);
+  const canGoNext = Boolean(nextDate && (!maxSelectableDate || nextDate <= maxSelectableDate));
+
+  const handlePrevDay = () => {
+    if (canGoPrev && prevDate) {
+      setAsOfDate(prevDate);
+    }
+  };
+
+  const handleNextDay = () => {
+    if (canGoNext && nextDate) {
+      if (nextDate === latestDbDate) {
+        setAsOfDate('');
+      } else {
+        setAsOfDate(nextDate);
+      }
+    }
+  };
+
+  const scrollToIngest = useCallback(() => {
+    const el = document.getElementById('market-ingest-section');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (subpage === 'ingest') {
+      const timer = setTimeout(() => {
+        scrollToIngest();
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [subpage, scrollToIngest]);
 
   // Quick Mini-Calculator State
   const [calcEquity, setCalcEquity] = useState(100000);
@@ -1039,116 +1168,141 @@ export default function DashboardTab({
 
   return (
     <div className="cockpit-dashboard-container">
-      {/* Cockpit Header */}
-      <div className="header-section" style={{ marginBottom: '18px' }}>
-        <div className="header-title">
-          <div className="header-subtitle-tag" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span>RISK COCKPIT</span>
+      {/* Redesigned Cockpit Header */}
+      <div className="cockpit-header-card">
+        <div className="cockpit-header-main">
+          <div className="cockpit-header-eyebrow">
+            <span className="cockpit-header-eyebrow-accent">
+              <span>⚡</span> TRADING COCKPIT
+            </span>
             <span>•</span>
-            <span>PRE-FLIGHT TRADING COMMAND DESK</span>
+            <span>MARKET POSTURE & RISK COMMAND</span>
+          </div>
 
-            {/* Freshness Badge */}
+          <div className="cockpit-header-title-row">
+            <h1 className="cockpit-header-title">Trading Cockpit & Market Posture</h1>
+            {/* Freshness / Mode Badge */}
             {isSyncing ? (
-              <span className="badge" style={{ background: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.45)', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+              <span className="badge" style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.35)', fontSize: '11px', padding: '3px 9px', borderRadius: '16px', display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: 600 }}>
                 <span className="spin-icon">⟳</span> Ingesting Live Data...
               </span>
             ) : asOfDate ? (
-              <span className="badge" style={{ background: 'rgba(168, 85, 247, 0.2)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.45)', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+              <span className="badge" style={{ background: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.35)', fontSize: '11px', padding: '3px 9px', borderRadius: '16px', display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: 600 }}>
                 <span>📅</span> Historical Session: {latestDate || asOfDate}
               </span>
             ) : isDataStale ? (
-              <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.45)', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                <span>⚠️</span> Outdated: As of {latestDate}
+              <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.35)', fontSize: '11px', padding: '3px 9px', borderRadius: '16px', display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: 600 }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#fbbf24', display: 'inline-block' }} /> Outdated: As of {latestDate}
               </span>
             ) : (
-              <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.45)', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                <span>●</span> Synced: As of {latestDate}
+              <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.12)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)', fontSize: '11px', padding: '3px 9px', borderRadius: '16px', display: 'inline-flex', alignItems: 'center', gap: '5px', fontWeight: 600 }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', boxShadow: '0 0 6px #10b981', display: 'inline-block' }} /> Synced: As of {latestDate}
               </span>
             )}
           </div>
-          <h1 style={{ fontSize: '26px', fontWeight: 800, letterSpacing: '-0.02em', margin: '4px 0 6px 0' }}>
-            Trading Cockpit & Market Posture
-          </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', margin: 0 }}>
-            Real-time market regime, exposure guidance, industry rotation flows, and focus momentum setups
+
+          <p className="cockpit-header-desc">
+            Real-time regime indicators, multi-asset radar, group rotations, and focus momentum setups
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* As Of Date Selector */}
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            background: 'rgba(15, 23, 42, 0.7)',
-            padding: '4px 10px',
-            borderRadius: '6px',
-            border: asOfDate ? '1px solid rgba(168, 85, 247, 0.55)' : '1px solid var(--border-color)',
-            boxShadow: asOfDate ? '0 0 12px rgba(168, 85, 247, 0.25)' : 'none'
-          }}>
-            <span style={{ fontSize: '12px', color: asOfDate ? '#c084fc' : 'var(--text-muted)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-              <span>📅</span> As Of:
-            </span>
+        {/* Toolbar Controls */}
+        <div className="cockpit-header-toolbar">
+          {/* Date Navigation & Picker */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={handlePrevDay}
+              disabled={!canGoPrev}
+              title={prevDate ? `Previous Day (${prevDate})` : 'No earlier trading date'}
+              aria-label="Previous Day"
+              style={{
+                width: '28px',
+                height: '28px',
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'rgba(30, 41, 59, 0.9)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '6px',
+                color: canGoPrev ? '#f8fafc' : 'rgba(255, 255, 255, 0.3)',
+                cursor: canGoPrev ? 'pointer' : 'not-allowed',
+                opacity: canGoPrev ? 1 : 0.45,
+                flexShrink: 0,
+                lineHeight: 1
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+            </button>
+
             <input
               type="date"
-              value={asOfDate}
-              onChange={(e) => setAsOfDate(e.target.value)}
-              max={availableDates && availableDates.length > 0 ? availableDates[0] : getLocalDateStr()}
-              style={{
-                background: 'rgba(0, 0, 0, 0.5)',
-                color: 'var(--text-primary)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                padding: '3px 8px',
-                fontSize: '12px',
-                fontFamily: 'inherit',
-                cursor: 'pointer'
+              value={curDateStr}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (!val || val === latestDbDate) {
+                  setAsOfDate('');
+                } else {
+                  setAsOfDate(val);
+                }
               }}
-              title="Select any historical trading date to view cockpit regime, breadth, rotation, and leaders"
+              max={maxSelectableDate}
+              title="Select As-of Date"
+              style={{
+                background: 'rgba(30, 41, 59, 0.9)',
+                color: '#f8fafc',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '6px',
+                padding: '5px 8px',
+                height: '28px',
+                fontSize: '12px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                outline: 'none',
+                colorScheme: 'dark',
+                boxSizing: 'border-box'
+              }}
             />
-            {asOfDate && (
-              <button
-                type="button"
-                onClick={() => setAsOfDate('')}
-                title="Reset to latest available market session"
-                style={{
-                  background: 'rgba(168, 85, 247, 0.25)',
-                  color: '#e9d5ff',
-                  border: '1px solid rgba(168, 85, 247, 0.45)',
-                  borderRadius: '4px',
-                  padding: '2px 8px',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
-              >
-                Reset
-              </button>
-            )}
+
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={handleNextDay}
+              disabled={!canGoNext}
+              title={nextDate ? `Next Day (${nextDate})` : 'No later trading date'}
+              aria-label="Next Day"
+              style={{
+                width: '28px',
+                height: '28px',
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'rgba(30, 41, 59, 0.9)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '6px',
+                color: canGoNext ? '#f8fafc' : 'rgba(255, 255, 255, 0.3)',
+                cursor: canGoNext ? 'pointer' : 'not-allowed',
+                opacity: canGoNext ? 1 : 0.45,
+                flexShrink: 0,
+                lineHeight: 1
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
           </div>
 
           {/* 1-Click Inline Sync Button */}
           <button
-            className="btn btn-primary btn-sm"
+            type="button"
+            className="cockpit-header-btn primary"
             onClick={handleQuickSync}
             disabled={isSyncing || !!asOfDate}
-            title={asOfDate ? "Sync is only applicable for live/latest trading data. Reset to Latest to sync." : "Ingest today's latest regular market prices (official end-of-day bars, no extended-hours data)"}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: isSyncing
-                ? 'rgba(56, 189, 248, 0.3)'
-                : asOfDate
-                ? 'rgba(255, 255, 255, 0.05)'
-                : (isDataStale ? '#f59e0b' : 'var(--accent-color)'),
-              color: asOfDate ? 'var(--text-muted)' : (isDataStale ? '#000' : '#080b11'),
-              fontWeight: 700,
-              border: asOfDate ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
-              cursor: asOfDate ? 'not-allowed' : (isSyncing ? 'wait' : 'pointer'),
-              boxShadow: !asOfDate && isDataStale ? '0 0 14px rgba(245, 158, 11, 0.4)' : 'none',
-              opacity: asOfDate ? 0.6 : 1
-            }}
+            title={asOfDate ? "Sync disabled in historical view. Reset to Latest to sync." : "Ingest today's latest regular market prices into DuckDB"}
           >
             {isSyncing ? (
               <>
@@ -1163,21 +1317,24 @@ export default function DashboardTab({
             )}
           </button>
 
+          {/* Jump to Market Ingest section */}
           <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => setActiveTab && setActiveTab('sync-data')}
-            title="Open Full Data Ingestion Pipelines (Fundamentals, History Lookback, 13F Sponsorship)"
+            type="button"
+            className="cockpit-header-btn secondary"
+            onClick={scrollToIngest}
+            title="Scroll to Market Ingest & Feeds Pipelines section at bottom"
           >
-            ⚙️ Pipelines (Step 0)
+            <span>⚙️</span>
+            <span>Market Ingest</span>
+            {isSyncing ? (
+              <span className="spin-icon" style={{ color: '#38bdf8', fontSize: '11px' }}>⟳</span>
+            ) : isDataStale ? (
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#fbbf24', display: 'inline-block' }} />
+            ) : (
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
+            )}
           </button>
 
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => setActiveTab && setActiveTab('learn')}
-            title="Open Trading System Playbook"
-          >
-            🎓 Learn Playbook
-          </button>
         </div>
       </div>
 
@@ -1237,10 +1394,10 @@ export default function DashboardTab({
           </div>
           <button
             className="btn btn-secondary btn-sm"
-            onClick={() => setActiveTab && setActiveTab('sync-data')}
+            onClick={scrollToIngest}
             style={{ fontSize: '11px', padding: '3px 8px', whiteSpace: 'nowrap' }}
           >
-            View Logs Console →
+            View Ingest Console ↓
           </button>
         </div>
       ) : isDataStale ? (
@@ -1866,7 +2023,7 @@ export default function DashboardTab({
 
         <div className="cockpit-routine-grid">
           {/* Step 0 */}
-          <div className="routine-step-box" onClick={() => setActiveTab && setActiveTab('sync-data')}>
+          <div className="routine-step-box" onClick={scrollToIngest}>
             <div className="routine-step-top">
               <span className="badge badge-outline">STEP 0</span>
               <span className="routine-icon">{isSyncing ? '⟳' : (isDataStale ? '⚠️' : '🔄')}</span>
@@ -1881,12 +2038,15 @@ export default function DashboardTab({
                 if (isDataStale && !isSyncing && !asOfDate) {
                   e.stopPropagation();
                   handleQuickSync();
+                } else {
+                  e.stopPropagation();
+                  scrollToIngest();
                 }
               }}
               disabled={isSyncing || !!asOfDate}
-              title={asOfDate ? "Sync disabled in historical view" : (isDataStale ? "Run Quick Sync for today's market session" : "Open DuckDB pipeline details")}
+              title={asOfDate ? "Sync disabled in historical view" : (isDataStale ? "Run Quick Sync for today's market session" : "Scroll to Market Ingest section")}
             >
-              {isSyncing ? 'Syncing...' : (isDataStale ? '🔄 Sync Now' : 'Pipeline Details →')}
+              {isSyncing ? 'Syncing...' : (isDataStale ? '🔄 Sync Now' : 'Pipeline Feeds ↓')}
             </button>
           </div>
 
@@ -2246,6 +2406,61 @@ export default function DashboardTab({
           </div>
         </div>
       </div>
+      {/* Dedicated Market Ingest & Data Pipelines Section */}
+      <div id="market-ingest-section" style={{ marginTop: '36px', paddingTop: '20px' }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '14px',
+          marginBottom: '20px'
+        }}>
+          <div style={{ flex: 1, height: '1px', background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15))' }} />
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '5px 14px',
+            background: 'rgba(15, 23, 42, 0.8)',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
+            borderRadius: '20px',
+            fontSize: '11px',
+            fontWeight: 700,
+            letterSpacing: '0.08em',
+            color: '#38bdf8',
+            textTransform: 'uppercase'
+          }}>
+            <span>⚡</span>
+            <span>Market Ingest & Data Pipelines</span>
+          </div>
+          <div style={{ flex: 1, height: '1px', background: 'linear-gradient(90deg, rgba(255, 255, 255, 0.15), transparent)' }} />
+        </div>
+
+        <SyncDataTab
+          syncPrices={syncPrices}
+          setSyncPrices={setSyncPrices}
+          syncFundamentals={syncFundamentals}
+          setSyncFundamentals={setSyncFundamentals}
+          syncSponsorship={syncSponsorship}
+          setSyncSponsorship={setSyncSponsorship}
+          syncSponsorshipUniverse={syncSponsorshipUniverse}
+          setSyncSponsorshipUniverse={setSyncSponsorshipUniverse}
+          syncPremarket={syncPremarket}
+          setSyncPremarket={setSyncPremarket}
+          syncHistoryYears={syncHistoryYears}
+          setSyncHistoryYears={setSyncHistoryYears}
+          syncForceFull={syncForceFull}
+          setSyncForceFull={setSyncForceFull}
+          syncFixSplits={syncFixSplits}
+          setSyncFixSplits={setSyncFixSplits}
+          handleTriggerRepairSplits={handleTriggerRepairSplits}
+          syncStatus={syncStatus}
+          handleTriggerSync={handleTriggerSync}
+          summary={summary}
+          setActiveTab={setActiveTab}
+          onNavigateCockpit={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        />
+      </div>
     </div>
   );
 }
+

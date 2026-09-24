@@ -62,6 +62,47 @@ class TestWatchlists(unittest.TestCase):
         self.assertIn("description", detail["metadata"])
         self.assertIn("Apple Inc.", detail["metadata"]["description"])
 
+    def test_watchlist_crud_lifecycle(self):
+        # 1. Create
+        test_wl_name = "Test_Lifecycle_WL"
+        wl = db_service.create_watchlist(test_wl_name)
+        wl_id = wl["id"]
+        self.assertEqual(wl["name"], test_wl_name)
+
+        try:
+            # 2. Add single and batch
+            db_service.add_watchlist_item(wl_id, "AAPL")
+            db_service.add_watchlist_items_batch(wl_id, ["MSFT", "NVDA", "GOOG"])
+            items = db_service.get_watchlist_items(wl_id)
+            symbols = [i["symbol"] for i in items]
+            self.assertIn("AAPL", symbols)
+            self.assertIn("NVDA", symbols)
+
+            # 3. Rename
+            renamed_name = "Test_Lifecycle_WL_Renamed"
+            updated = db_service.update_watchlist(wl_id, renamed_name)
+            self.assertEqual(updated["name"], renamed_name)
+
+            # 4. Remove single
+            db_service.remove_watchlist_item(wl_id, "AAPL")
+            items_after_single = db_service.get_watchlist_items(wl_id)
+            self.assertNotIn("AAPL", [i["symbol"] for i in items_after_single])
+
+            # 5. Remove batch
+            db_service.remove_watchlist_items_batch(wl_id, ["MSFT", "NVDA"])
+            items_after_batch = db_service.get_watchlist_items(wl_id)
+            self.assertNotIn("MSFT", [i["symbol"] for i in items_after_batch])
+            self.assertNotIn("NVDA", [i["symbol"] for i in items_after_batch])
+
+            # 6. Clear all
+            db_service.clear_watchlist_items(wl_id)
+            items_after_clear = db_service.get_watchlist_items(wl_id)
+            self.assertEqual(len(items_after_clear), 0)
+        finally:
+            # 7. Delete
+            deleted = db_service.delete_watchlist(wl_id)
+            self.assertTrue(deleted)
+
 if __name__ == "__main__":
     unittest.main()
 

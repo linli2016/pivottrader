@@ -33,19 +33,34 @@ export default function SyncDataTab({
   handleTriggerSync,
   summary,
   setActiveTab,
+  onNavigateCockpit,
 }) {
   return (
     <div className="sync-data-page">
       {/* Header Section */}
-      <div className="header-section">
+      <div className="header-section" style={{ alignItems: 'flex-start' }}>
         <div className="header-title">
           <div className="header-subtitle-tag">
-            <span>DAILY ROUTINE</span>
+            <span>DASHBOARD</span>
             <span>•</span>
-            <span>STEP 0: MARKET INGEST</span>
+            <span>DATA INGESTION PIPELINES</span>
           </div>
-          <h1>0. Market Ingest</h1>
-          <p>Ingest daily prices, live market quotes, fundamentals (EPS), and 13F institutional sponsorship into DuckDB</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+            <h1 style={{ margin: 0 }}>Market Ingest</h1>
+            {onNavigateCockpit && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={onNavigateCockpit}
+                style={{ fontSize: '11.5px', padding: '3px 10px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                title="Scroll back to top of Trading Cockpit"
+              >
+                <span>↑</span>
+                <span>Top of Cockpit</span>
+              </button>
+            )}
+          </div>
+          <p style={{ margin: '4px 0 0 0' }}>Ingest daily prices, live market quotes, fundamentals (EPS), and 13F institutional sponsorship into DuckDB</p>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
@@ -201,51 +216,6 @@ export default function SyncDataTab({
                 : (syncPremarket ? '⚡ Sync Live Market Quotes' : 'Sync Database Tickers')}
             </button>
           </div>
-        </div>
-      </div>
-
-      {/* Routine Quick Jump Banner */}
-      <div
-        className="glass-card"
-        style={{
-          marginBottom: '24px',
-          padding: '20px 24px',
-          background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(14, 19, 31, 0.85) 100%)',
-          border: '1px solid rgba(16, 185, 129, 0.3)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '16px'
-        }}
-      >
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-            <span className="pill pill-success" style={{ fontSize: '11px', padding: '2px 8px' }}>
-              STEP 0 OF 5
-            </span>
-            <span style={{ fontSize: '14px', fontWeight: 700, color: '#ffffff' }}>
-              Data Ingestion Pre-requisite
-            </span>
-          </div>
-          <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0 }}>
-            Once sync completes, proceed to Step 1: Market Monitor to evaluate market posture, or check the Cockpit Dashboard.
-          </p>
-        </div>
-
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={() => setActiveTab && setActiveTab('dashboard')}
-          >
-            📊 Proceed to Cockpit Dashboard →
-          </button>
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => setActiveTab && setActiveTab('leaderboard')}
-          >
-            🏆 Proceed to 1. Leaderboard →
-          </button>
         </div>
       </div>
 

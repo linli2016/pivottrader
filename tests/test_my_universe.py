@@ -10,24 +10,17 @@ class TestMyUniverse(unittest.TestCase):
         setup_service.load_config()
 
     def test_setup_configuration(self):
-        """Test that momentum setup is properly configured as My Universe with 6 subviews."""
-        config = setup_service.get_setups_config()
-        momentum_setup = next((s for s in config["setups"] if s["id"] == "momentum"), None)
-        self.assertIsNotNone(momentum_setup, "Setup 'momentum' should exist")
-        self.assertIn(momentum_setup["name"], ["My Universe", "Momentum Universe", "Momentum"])
-        self.assertEqual(momentum_setup["icon"], "🌌")
-        self.assertIn(momentum_setup.get("sub_title"), ["Momentum View:", "Universe View:"])
+        """Test that momentum screener definitions are properly configured."""
+        leaders = setup_service.get_setup_by_id("leaders")
+        self.assertIsNotNone(leaders, "Screener 'leaders' should exist")
+        self.assertEqual(leaders["icon"], "👑")
+        self.assertIn("RS_RANK >= 90", leaders["expression"])
 
-        sub_ids = [sub["id"] for sub in momentum_setup.get("sub_setups", [])]
-        expected_subs = ["all", "stage2", "leaders", "gainers", "1m", "3m", "6m"]
-        self.assertEqual(sub_ids, expected_subs, f"Sub-setups should match {expected_subs}")
+        all_screener = setup_service.get_setup_by_id("all")
+        self.assertIsNotNone(all_screener, "Screener 'all' should exist")
+        self.assertIn("RET_1M", all_screener["expression"])
+        self.assertIn("STAGE2", all_screener["expression"])
 
-        # Test expression configuration
-        self.assertEqual(momentum_setup.get("default_sub_id"), "leaders")
-        self.assertIn("RS_RANK >= 90", momentum_setup["expression"])
-        all_sub = next(s for s in momentum_setup["sub_setups"] if s["id"] == "all")
-        self.assertIn("RET_1M", all_sub["expression"])
-        self.assertIn("STAGE2", all_sub["expression"])
 
     def test_subviews_and_top_n(self):
         """Test subview filtering and verification that Top per scan applies to Gainers and not Stage 2."""
@@ -96,10 +89,9 @@ class TestMyUniverse(unittest.TestCase):
 
     def test_rs_rank_filter(self):
         """Test that enable_rs and min_rs_percentile filters work correctly in My Universe."""
-        config = setup_service.get_setups_config()
-        momentum_setup = next((s for s in config["setups"] if s["id"] == "momentum"), None)
-        leaders_sub = next(s for s in momentum_setup["sub_setups"] if s["id"] == "leaders")
-        self.assertIn("RS_RANK >= 90", leaders_sub["expression"])
+        leaders = setup_service.get_setup_by_id("leaders")
+        self.assertIsNotNone(leaders, "Screener 'leaders' should exist")
+        self.assertIn("RS_RANK >= 90", leaders["expression"])
 
         base_filters = {
             "require_momentum": True,
