@@ -129,9 +129,19 @@ DEFAULT_THEMES = [
 ]
 
 
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DATA_DIR = os.path.join(ROOT_DIR, "data")
+DEFAULT_THEMES_PATH = os.path.join(DATA_DIR, "themes.yaml")
+
+
 class ThemeService:
-    def __init__(self, file_path: str = "themes.yaml"):
-        self.file_path = file_path
+    def __init__(self, file_path: Optional[str] = None):
+        if file_path is None:
+            self.file_path = DEFAULT_THEMES_PATH
+        elif file_path == "themes.yaml" and not os.path.exists("themes.yaml") and os.path.exists(DEFAULT_THEMES_PATH):
+            self.file_path = DEFAULT_THEMES_PATH
+        else:
+            self.file_path = file_path
         self._ensure_file_exists()
 
     def _ensure_file_exists(self):
@@ -159,6 +169,7 @@ class ThemeService:
     def save_themes(self, themes: List[Dict[str, Any]]) -> bool:
         """Saves themes to themes.yaml atomically."""
         try:
+            os.makedirs(os.path.dirname(os.path.abspath(self.file_path)), exist_ok=True)
             temp_path = f"{self.file_path}.tmp"
             with open(temp_path, "w", encoding="utf-8") as f:
                 yaml.dump({"themes": themes}, f, sort_keys=False, default_flow_style=False)

@@ -5,8 +5,12 @@ from typing import Dict, Any, List
 
 logger = logging.getLogger("pivottrader.setup_service")
 
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DATA_DIR = os.path.join(ROOT_DIR, "data")
+DEFAULT_SETUPS_PATH = os.path.join(DATA_DIR, "setups.yaml")
+
 class SetupService:
-    def __init__(self, yaml_path: str = "setups.yaml"):
+    def __init__(self, yaml_path: str = DEFAULT_SETUPS_PATH):
         self.yaml_path = yaml_path
         self._cached_config: Dict[str, Any] = {}
         self.load_config()
@@ -15,11 +19,13 @@ class SetupService:
         if os.path.exists(target_path):
             return target_path
 
-        root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        root_dir = ROOT_DIR
+        data_dir = DATA_DIR
         app_dir = os.path.join(root_dir, "application")
         base_name = os.path.basename(target_path)
 
         candidates = [
+            os.path.join(data_dir, base_name),
             os.path.join(root_dir, target_path),
             os.path.join(root_dir, base_name),
             os.path.join(app_dir, base_name),

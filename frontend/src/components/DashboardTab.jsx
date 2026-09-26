@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import ScoreMoversCard from './ScoreMoversCard';
 import SyncDataTab from './SyncDataTab';
+import MarketPulseCard from './MarketPulseCard';
 import { getLocalDateStr } from '../utils/dateUtils';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
@@ -1646,10 +1647,19 @@ export default function DashboardTab({
 
           <div className="posture-metric-item">
             <span className="p-metric-label">Distribution Days (4–5w)</span>
-            <span className="p-metric-val" style={{ color: '#38bdf8' }}>
-              2 / 5
+            <span
+              className="p-metric-val"
+              style={{
+                color: (summaryData?.market_pulse?.distribution_pressure ?? 2) >= 5 ? '#f43f5e' : '#38bdf8'
+              }}
+            >
+              {summaryData?.market_pulse?.distribution_pressure ?? 2} / 5
             </span>
-            <span className="p-metric-sub">Below Warning Threshold</span>
+            <span className="p-metric-sub">
+              {summaryData?.market_pulse?.distribution_trend_label
+                ? `${summaryData.market_pulse.distribution_trend_label}`
+                : 'Below Warning Threshold'}
+            </span>
           </div>
         </div>
 
@@ -1930,6 +1940,9 @@ export default function DashboardTab({
           </div>
         </div>
       </div>
+
+      {/* 1c. Market Pulse Widget (CANSLIM FTD, Distribution Pressure, and MA Breadth Percentiles) */}
+      <MarketPulseCard marketPulse={summaryData?.market_pulse} asOfDate={asOfDate} />
 
       {/* 2. Market Breadth Visualizer & Trend Health */}
       <div className="glass-card" style={{ marginBottom: '20px', padding: '20px 24px' }}>

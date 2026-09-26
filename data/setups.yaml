@@ -22,7 +22,7 @@ folders:
         name: "QM Breakouts"
         icon: "🎯"
         description: "30%+ prior move, tight 10/20 EMA surf, pivot clustering <= 3%."
-        expression: "C >= 5.0 AND DOLLAR_VOL >= 3000000 AND ADR20 >= 4.0 AND (COALESCE(RUNUP, 0) >= 30.0 OR COALESCE(RET_1M, 0) >= 15.0 OR COALESCE(RET_3M, 0) >= 30.0) AND PIVOT_SPREAD <= 8.0 AND PIVOT_CLUSTERING <= 3.0 AND PULLBACK <= 30.0 AND DAYS_SINCE_PEAK >= 10 AND DAYS_SINCE_PEAK <= 40 AND C > EMA_20 AND EMA_10 > EMA_20"
+        expression: "C >= 5.0 AND DOLLAR_VOL >= 3000000 AND ADR20 >= 4.0 AND RS_RANK >= 80 AND (COALESCE(RUNUP, 0) >= 30.0 OR COALESCE(RET_1M, 0) >= 15.0 OR COALESCE(RET_3M, 0) >= 30.0) AND PIVOT_SPREAD <= 8.0 AND PIVOT_CLUSTERING <= 3.0 AND PULLBACK <= 30.0 AND DAYS_SINCE_PEAK >= 10 AND DAYS_SINCE_PEAK <= 40 AND C > EMA_20 AND EMA_10 > EMA_20"
       - id: "episodic_pivot"
         name: "Episodic Pivot"
         icon: "💥"

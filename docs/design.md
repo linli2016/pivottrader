@@ -52,11 +52,14 @@ PivotTrader/
 │   │   ├── components/       # UI Tabs: Dashboard, Candidates, Inspector, Market Monitor, etc.
 │   │   ├── App.jsx           # Master application container and navigation
 │   │   └── index.css         # Glassmorphic dark-theme styles
-│   └── dist/                 # Production static bundle served by FastAPI
+├── data/                     # Data directory (setups, themes, playbook, saved trades, DuckDB)
+│   ├── setups.yaml           # YAML configuration for momentum setups & filter definitions
+│   ├── themes.yaml           # Curated market themes & constituent tickers
+│   ├── setups_and_rules.md   # Interactive trading playbook & execution checklists
+│   ├── saved_model_book.json # Saved model book trade archive
+│   └── pivottrader.duckdb    # Embedded DuckDB database
 ├── config.yaml               # Runtime screener parameters configuration file
-├── setups_and_rules.md       # Interactive trading playbook & execution checklists
 ├── server.py                 # FastAPI backend server with static SPA mounting
-├── data.db                   # Local embedded DuckDB database file (Git ignored)
 ├── requirements.txt          # Python runtime dependencies
 └── README.md                 # Project documentation & quickstart guide
 ```

@@ -42,7 +42,7 @@ export default function SetupsAndRulesTab() {
         body: JSON.stringify({ content }),
       });
       if (res.ok) {
-        setStatusMessage({ type: 'success', text: '✓ Playbook saved successfully to setups_and_rules.md!' });
+        setStatusMessage({ type: 'success', text: '✓ Playbook saved successfully to data/setups_and_rules.md!' });
         setIsEditing(false);
       } else {
         setStatusMessage({ type: 'error', text: 'Failed to save changes.' });
@@ -123,7 +123,7 @@ export default function SetupsAndRulesTab() {
         <div className="glass-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)' }}>
-              EDITING: <code style={{ color: '#34d399' }}>setups_and_rules.md</code>
+              EDITING: <code style={{ color: '#34d399' }}>data/setups_and_rules.md</code>
             </span>
             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
               Supports Standard GitHub Flavored Markdown

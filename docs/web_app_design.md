@@ -39,7 +39,7 @@ graph TD
         DB[(DuckDB: data.db)]
         Pipeline[Background Ingestion: application.pipeline]
         YF[Yahoo Finance / IBKR API]
-        RulesMD[Playbook: setups_and_rules.md]
+        RulesMD[Playbook: data/setups_and_rules.md]
         CfgYAML[Config: config.yaml]
     end
 
@@ -87,8 +87,8 @@ The backend exposes a comprehensive REST API organized across dedicated service 
 | | `POST` | `/api/watchlists/{watchlist_id}/items` | Add a stock symbol to a watchlist. |
 | | `DELETE` | `/api/watchlists/{watchlist_id}/items` | Clear all stock symbols from a watchlist. |
 | | `DELETE` | `/api/watchlists/{watchlist_id}/items/{symbol}` | Remove a single symbol from a watchlist. |
-| **Playbook & Execution** | `GET` | `/api/setups-and-rules` | Retrieve Markdown content of the Setups & Rules playbook (`setups_and_rules.md`). |
-| | `POST` | `/api/setups-and-rules` | Save updated Markdown content to `setups_and_rules.md`. |
+| **Playbook & Execution** | `GET` | `/api/setups-and-rules` | Retrieve Markdown content of the Setups & Rules playbook (`data/setups_and_rules.md`). |
+| | `POST` | `/api/setups-and-rules` | Save updated Markdown content to `data/setups_and_rules.md`. |
 | **System & Ingestion** | `GET` | `/api/config` | Retrieve active screening criteria and provider settings from `config.yaml`. |
 | | `POST` | `/api/config` | Persist runtime parameter updates to `config.yaml`. |
 | | `POST` | `/api/sync/run` | Trigger asynchronous background screening sync with customizable options. |
@@ -139,7 +139,7 @@ The frontend is structured as a Single Page Application (SPA) using **React 18**
    - **Symbol Management:** Add/remove stock tickers with live price quotes and direct links to Stock Inspector.
 
 7. **Setups & Rules Tab (`SetupsAndRulesTab.jsx`):**
-   - **Interactive Playbook:** In-app dual-pane Markdown editor and previewer for `setups_and_rules.md`.
+   - **Interactive Playbook:** In-app dual-pane Markdown editor and previewer for `data/setups_and_rules.md`.
    - **Live Rule Editing:** Edit risk management guidelines, setup checklists, and execution rules directly within the UI.
 
 8. **SQL Console Tab (`SqlConsoleTab.jsx`):**

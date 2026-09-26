@@ -1,3 +1,4 @@
+import os
 import json
 import logging
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Response
@@ -11,6 +12,11 @@ from application.services.leaderboard_service import LeaderboardService
 
 logger = logging.getLogger("pivottrader.api")
 router = APIRouter()
+
+ROUTER_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(ROUTER_DIR)
+DATA_DIR = os.path.join(REPO_ROOT, "data")
+SETUPS_AND_RULES_FILE = os.path.join(DATA_DIR, "setups_and_rules.md")
 
 theme_service = ThemeService()
 group_radar_service = GroupRadarService(theme_service=theme_service)
@@ -321,11 +327,20 @@ def get_market_monitor(limit: int = 252, refresh: bool = False, date: Optional[s
         logger.error(f"Error in get_market_monitor: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/api/market/pulse")
+def get_market_pulse(date: Optional[str] = None, refresh: bool = False):
+    """Retrieve CANSLIM / Deepvue Market Pulse (FTD status, Distribution Days with 5% rally exemption, moving average breadth percentiles)."""
+    try:
+        return db_service.get_market_pulse_data(as_of_date=date, force_refresh=refresh)
+    except Exception as e:
+        logger.error(f"Error in get_market_pulse: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/api/market/cross-asset")
-def get_cross_asset(date: Optional[str] = None):
+def get_cross_asset(date: Optional[str] = None, refresh: bool = False):
     """Retrieve multi-asset cross-asset macro indicators across Equities, Rates, Credit, FX, Commodities, Volatility, and Crypto."""
     try:
-        return db_service.get_cross_asset_data(as_of_date=date)
+        return db_service.get_cross_asset_data(as_of_date=date, force_refresh=refresh)
     except Exception as e:
         logger.error(f"Error in get_cross_asset: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -576,11 +591,18 @@ def delete_watchlist_items_batch_endpoint(watchlist_id: int, payload: WatchlistB
 
 # ----------------- Setups & Rules Playbook Endpoints -----------------
 
+def _resolve_setups_and_rules_path() -> str:
+    if os.path.exists(SETUPS_AND_RULES_FILE):
+        return SETUPS_AND_RULES_FILE
+    legacy_file = os.path.join(REPO_ROOT, "setups_and_rules.md")
+    if os.path.exists(legacy_file):
+        return legacy_file
+    return SETUPS_AND_RULES_FILE
+
 @router.get("/api/setups-and-rules")
 def get_setups_and_rules():
     """Retrieve markdown content of Setups & Rules playbook."""
-    import os
-    filepath = "setups_and_rules.md"
+    filepath = _resolve_setups_and_rules_path()
     if not os.path.exists(filepath):
         return {"content": "# Setups & Rules\n\nNo setups or rules file found yet."}
     with open(filepath, "r", encoding="utf-8") as f:
@@ -589,8 +611,9 @@ def get_setups_and_rules():
 @router.post("/api/setups-and-rules")
 def update_setups_and_rules(payload: RulesUpdateSchema):
     """Update markdown content of Setups & Rules playbook."""
-    filepath = "setups_and_rules.md"
+    filepath = SETUPS_AND_RULES_FILE
     try:
+        os.makedirs(DATA_DIR, exist_ok=True)
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(payload.content)
         return {"status": "success", "message": "Setups & Rules saved successfully."}
