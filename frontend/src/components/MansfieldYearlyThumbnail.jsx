@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 
+// Total outer height of the thumbnail (svgHeight 84 + padding top/bottom 5 + border 2 = 91px)
+export const MANSFIELD_THUMBNAIL_HEIGHT = 91;
+
 // In-memory cache for full historical yearly bars to avoid redundant network round-trips
 const yearlyBarsCache = new Map();
 
@@ -243,7 +246,7 @@ export default function MansfieldYearlyThumbnail({
       ref={containerRef}
       style={{
         position: 'absolute',
-        bottom: bottom || '32px',
+        bottom: bottom || '30px',
         left: '0px',
         zIndex: 20,
         width: `${svgWidth + 6}px`,

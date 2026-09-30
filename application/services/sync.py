@@ -43,6 +43,14 @@ class SyncService:
             cmd.extend(["--history-years", str(history_years)])
         if force_full:
             cmd.append("--force-full")
+
+        # Explicitly release any DuckDB file locks held by the server process before spawning pipeline
+        try:
+            from application.services.database import db_service
+            db_service.close_connection()
+        except Exception:
+            pass
+
         try:
             process = subprocess.Popen(
                 cmd,

@@ -156,11 +156,23 @@ class DatabaseService:
         self._spy_daily_cache: Dict[Any, float] = {}
         self._spy_weekly_cache: Dict[Any, float] = {}
         self._spy_cache_loaded = False
-        self.ensure_schema()
+        self._schema_ensured = False
+
+    def close_connection(self):
+        """Explicitly closes the active DuckDB connection to release file locks for external processes."""
+        with self._conn_lock:
+            if self._conn is not None:
+                try:
+                    self._conn.close()
+                except Exception:
+                    pass
+                self._conn = None
 
     def _get_connection(self):
         with self._conn_lock:
             if self._conn is None:
+                if not self._schema_ensured:
+                    self.ensure_schema()
                 db_path = self.get_db_path()
                 if not os.path.exists(db_path):
                     conn = duckdb.connect(db_path)
@@ -183,9 +195,12 @@ class DatabaseService:
 
     def ensure_schema(self):
         """Ensures that schema structures and column migrations are applied to db_path."""
+        if self._schema_ensured:
+            return
         try:
             from application.database import DatabaseManager
             DatabaseManager(self.get_db_path())
+            self._schema_ensured = True
         except Exception as e:
             logger.warning(f"Could not auto-migrate schema in ensure_schema: {e}")
 

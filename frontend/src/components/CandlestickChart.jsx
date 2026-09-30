@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
 import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers, CrosshairMode, PriceScaleMode, LineStyle } from 'lightweight-charts';
 import { getLocalDateStr } from '../utils/dateUtils';
-import MansfieldYearlyThumbnail, { aggregateBarsToYearly } from './MansfieldYearlyThumbnail';
+import MansfieldYearlyThumbnail, { aggregateBarsToYearly, MANSFIELD_THUMBNAIL_HEIGHT } from './MansfieldYearlyThumbnail';
 
 // Helper to calculate Simple Moving Average (SMA)
 function calculateSMA(data, period, key = 'close') {
@@ -136,6 +136,124 @@ export function aggregateDailyBarsToWeekly(dailyBars) {
   }
 
   return weeklyBars;
+}
+
+/**
+ * Normalizes the Relative Strength (Stock / SPY) line to between -1.0 and +1.0.
+ *
+ * Formula:
+ * Maps the minimum RS value across the series to -1.0 and the maximum RS value to +1.0,
+ * with 0.0 being the exact neutral midpoint of the relative strength range.
+ *
+ * This allows traders to easily judge the relative strength of any stock:
+ * - Values near +1.0: Stock is trading at/near its peak relative strength vs SPY (market leader).
+ * - Values near 0.0: Stock is in the middle of its relative strength range (neutral).
+ * - Values near -1.0: Stock is near its relative strength trough (market laggard).
+ */
+export function attachNormalizedRs(bars) {
+  if (!bars || bars.length === 0) return [];
+
+  let minRs = Infinity;
+  let maxRs = -Infinity;
+  let count = 0;
+
+  for (let i = 0; i < bars.length; i++) {
+    const raw = bars[i]?.rs_line;
+    if (raw !== undefined && raw !== null && !isNaN(raw)) {
+      const num = Number(raw);
+      if (num < minRs) minRs = num;
+      if (num > maxRs) maxRs = num;
+      count++;
+    }
+  }
+
+  const range = maxRs - minRs;
+
+  return bars.map((bar) => {
+    const raw = bar?.rs_line;
+    let normVal = null;
+    if (raw !== undefined && raw !== null && !isNaN(raw) && count > 0) {
+      if (range > 0.00001) {
+        normVal = ((Number(raw) - minRs) / range) * 2.0 - 1.0;
+        normVal = Math.max(-1.0, Math.min(1.0, normVal));
+        normVal = Number(normVal.toFixed(4));
+      } else {
+        normVal = 0.0;
+      }
+    }
+
+    return {
+      ...bar,
+      normalized_rs: normVal,
+    };
+  });
+}
+
+/**
+ * Calculates a Simple Moving Average for a series of { time, value } data points.
+ */
+export function calculateRsSMA(dataPoints, period = 20) {
+  if (!dataPoints || dataPoints.length < period) return [];
+  const result = [];
+  let sum = 0;
+  for (let i = 0; i < dataPoints.length; i++) {
+    sum += dataPoints[i].value;
+    if (i >= period) {
+      sum -= dataPoints[i - period].value;
+    }
+    if (i >= period - 1) {
+      result.push({
+        time: dataPoints[i].time,
+        value: Number((sum / period).toFixed(4)),
+      });
+    }
+  }
+  return result;
+}
+
+/**
+ * Computes responsive scale margins for Price, Volume, and RS panels so that:
+ * 1. The RS line panel height precisely matches the Mansfield Yearly Thumbnail (91px).
+ * 2. The top of the RS line panel aligns with the top of the Mansfield Yearly Thumbnail.
+ * 3. The Volume panel sits right above the RS panel.
+ * 4. The Candlestick Price panel gets the remaining top area.
+ */
+export function getPanelMargins(containerHeight, showRs = true) {
+  const H = typeof containerHeight === 'number' && containerHeight > 150 ? containerHeight : 450;
+  const timeScaleH = 30; // standard time scale height in px
+  const plotH = Math.max(120, H - timeScaleH);
+
+  // Exact outer height of MansfieldYearlyThumbnail: 91px
+  const THUMBNAIL_HEIGHT = MANSFIELD_THUMBNAIL_HEIGHT || 91;
+
+  if (!showRs) {
+    return {
+      price: { top: 0.08, bottom: 0.22 },
+      volume: { top: 0.80, bottom: 0.0 },
+      rs: { top: 0.85, bottom: 0.01 },
+    };
+  }
+
+  // Fraction of plot height occupied by RS panel to equal 91px
+  const rsFraction = Math.min(0.40, Math.max(0.14, THUMBNAIL_HEIGHT / plotH));
+  const rsBottom = 0.005;
+  const rsTop = 1.0 - rsFraction;
+
+  // Volume panel height (~45px) sits immediately above RS panel
+  const volHeightPx = 45;
+  const volFraction = Math.min(0.16, Math.max(0.08, volHeightPx / plotH));
+  const volBottom = rsFraction + 0.015;
+  const volTop = Math.max(0.35, 1.0 - (volBottom + volFraction));
+
+  // Price panel sits above Volume panel
+  const priceBottom = Math.min(0.68, volBottom + volFraction + 0.02);
+  const priceTop = 0.04;
+
+  return {
+    price: { top: priceTop, bottom: priceBottom },
+    volume: { top: volTop, bottom: volBottom },
+    rs: { top: rsTop, bottom: rsBottom },
+  };
 }
 
 // Calculate responsive visible bars based on container width
@@ -863,13 +981,12 @@ const CandlestickChart = forwardRef(function CandlestickChart({
 
   const isWeekly = chartTimeframe === 'weekly';
 
-  // Compute active chart data: aggregated weekly bars in weekly mode, or original daily bars in daily mode
+  // Compute active chart data: aggregated weekly bars in weekly mode, or original daily bars in daily mode,
+  // enriched with normalized RS [-1.0, +1.0] for easy relative strength evaluation.
   const chartData = React.useMemo(() => {
     if (!data || data.length === 0) return [];
-    if (isWeekly) {
-      return aggregateDailyBarsToWeekly(data);
-    }
-    return data;
+    const baseBars = isWeekly ? aggregateDailyBarsToWeekly(data) : data;
+    return attachNormalizedRs(baseBars);
   }, [data, isWeekly]);
 
   const [savingScreenshot, setSavingScreenshot] = useState(false);
@@ -965,6 +1082,9 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       return true;
     }
   });
+
+  const showRsLineRef = useRef(showRsLine);
+  showRsLineRef.current = showRsLine;
 
   // Collapsed toolbar: show extra buttons (measure, earnings, RS, OI, scale)
   const [showToolbarMore, setShowToolbarMore] = useState(false);
@@ -1423,7 +1543,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     const changeColor = isUp ? '#34d399' : '#f87171';
     const changeSign = isUp ? '+' : '';
     const volFormatted = formatVolume(volume);
-    const hasRs = bar.rs_line !== undefined && bar.rs_line !== null;
+    const hasNormRs = bar.normalized_rs !== undefined && bar.normalized_rs !== null;
+    const hasRs = hasNormRs || (bar.rs_line !== undefined && bar.rs_line !== null);
     const isBlueDot = Boolean(bar.is_rs_blue_dot);
     const isW = chartTimeframeRef.current === 'weekly';
 
@@ -1437,7 +1558,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">C</span><span style="color: ${ohlcColor}; font-weight: 600;">${close.toFixed(2)}</span></span>
         <span style="color: ${changeColor}; font-weight: 700;">${changeSign}${change.toFixed(2)} (${changeSign}${changePct.toFixed(2)}%)</span>
         <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">Vol</span><span style="color: #38bdf8; font-weight: 600;">${volFormatted}</span></span>
-        ${hasRs ? `<span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">RS</span><span style="color: #38bdf8; font-weight: 600;">${Number(bar.rs_line).toFixed(2)}</span></span>` : ''}
+        ${hasRs ? `<span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">RS</span><span style="color: #38bdf8; font-weight: 700;">${hasNormRs ? (bar.normalized_rs >= 0 ? '+' : '') + bar.normalized_rs.toFixed(2) : Number(bar.rs_line).toFixed(2)}</span></span>` : ''}
         ${isBlueDot ? `<span style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 1px 6px; border-radius: 4px; font-size: 10.5px; font-weight: 700;">🔵 RS Blue Dot</span>` : ''}
       </div>
     `;
@@ -1559,6 +1680,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           mode: CrosshairMode.Normal,
         },
         timeScale: {
+          height: 30,
           rightOffset: 18,
           fixRightEdge: false,
         },
@@ -1566,16 +1688,16 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         height: typeof height === 'number' ? height : (chartContainerRef.current.clientHeight || 400),
       });
 
-      // Configure main price scale with arithmetic (linear) scale (mode: 0) by default and bottom margin for volume
+      const initialH = typeof height === 'number' ? height : (chartContainerRef.current?.clientHeight || 450);
+      const initialMargins = getPanelMargins(initialH, showRsLine);
+
+      // Configure main price scale with arithmetic (linear) scale (mode: 0) by default and bottom margin for volume & RS panels
       chart.priceScale('right').applyOptions({
         mode: isLogScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
-        scaleMargins: {
-          top: 0.1,
-          bottom: 0.25,
-        },
+        scaleMargins: initialMargins.price,
       });
 
-      // Add Volume Histogram Series at the bottom 20%
+      // Add Volume Histogram Series in middle panel (right above RS panel)
       const volumeSeries = chart.addSeries(HistogramSeries, {
         priceFormat: { type: 'volume' },
         priceScaleId: 'volume',
@@ -1592,10 +1714,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       });
 
       chart.priceScale('volume').applyOptions({
-        scaleMargins: {
-          top: 0.8,
-          bottom: 0,
-        },
+        scaleMargins: initialMargins.volume,
         visible: false,
       });
 
@@ -1656,25 +1775,77 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         crosshairMarkerVisible: false,
       });
 
-      // RS Line (Stock / SPY Relative Strength Line) - subtle, faded background guide
+      // RS Line (Stock / SPY Relative Strength Line normalized to [-1.0, +1.0] in bottom panel below volume)
       const rsLineSeries = chart.addSeries(LineSeries, {
-        color: 'rgba(56, 189, 248, 0.4)',
+        color: '#38bdf8',
+        lineWidth: 1.5,
+        priceScaleId: 'rs_line',
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: true,
+        title: '',
+        autoscaleInfoProvider: () => ({
+          priceRange: {
+            minValue: -1.05,
+            maxValue: 1.05,
+          },
+        }),
+        priceFormat: {
+          type: 'custom',
+          formatter: (val) => {
+            if (val === undefined || val === null || isNaN(val)) return '';
+            return (val >= 0 ? '+' : '') + Number(val).toFixed(2);
+          },
+        },
+      });
+
+      const rsMa20Series = chart.addSeries(LineSeries, {
+        color: 'rgba(250, 204, 21, 0.8)',
         lineWidth: 1,
+        lineStyle: LineStyle.Solid,
         priceScaleId: 'rs_line',
         priceLineVisible: false,
         lastValueVisible: false,
         crosshairMarkerVisible: false,
+        autoscaleInfoProvider: () => ({
+          priceRange: {
+            minValue: -1.05,
+            maxValue: 1.05,
+          },
+        }),
         title: '',
       });
 
       chart.priceScale('rs_line').applyOptions({
-        scaleMargins: {
-          top: 0.25,
-          bottom: 0.25,
-        },
+        scaleMargins: initialMargins.rs,
         visible: false,
       });
 
+      // Price line reference guides for Normalized RS Panel [-1.0, +1.0]
+      rsLineSeries.createPriceLine({
+        price: 0.0,
+        color: 'rgba(255, 255, 255, 0.25)',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dotted,
+        axisLabelVisible: false,
+        title: '0.0',
+      });
+      rsLineSeries.createPriceLine({
+        price: 1.0,
+        color: 'rgba(56, 189, 248, 0.2)',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: false,
+        title: '+1.0',
+      });
+      rsLineSeries.createPriceLine({
+        price: -1.0,
+        color: 'rgba(239, 68, 68, 0.2)',
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: false,
+        title: '-1.0',
+      });
 
       // Attach Markers Plugin and Vertical Line Primitive
       const markersPlugin = createSeriesMarkers(candlestickSeries, []);
@@ -1699,6 +1870,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         sma150Series,
         sma220Series,
         rsLineSeries,
+        rsMa20Series,
       };
 
 
@@ -1730,6 +1902,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           close: candle.close,
           volume: volume,
           rs_line: idx !== undefined ? currentData[idx]?.rs_line : undefined,
+          normalized_rs: idx !== undefined ? currentData[idx]?.normalized_rs : undefined,
           is_rs_blue_dot: idx !== undefined ? currentData[idx]?.is_rs_blue_dot : false,
         };
 
@@ -1761,6 +1934,11 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       height: targetHeight,
       width: targetWidth,
     });
+
+    const currentMargins = getPanelMargins(targetHeight, showRsLineRef.current);
+    chartRef.current.priceScale('right').applyOptions({ scaleMargins: currentMargins.price });
+    chartRef.current.priceScale('volume').applyOptions({ scaleMargins: currentMargins.volume });
+    chartRef.current.priceScale('rs_line').applyOptions({ scaleMargins: currentMargins.rs });
 
     // Populate or update series data whenever chartData prop is available
     if (chartData && chartData.length > 0 && seriesRef.current) {
@@ -1871,16 +2049,24 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         if (rsLineSeries) {
           const rsData = showRsLine
             ? chartData
-                .filter((d) => d.rs_line !== undefined && d.rs_line !== null)
+                .filter((d) => d.normalized_rs !== undefined && d.normalized_rs !== null)
                 .map((d) => ({
                   time: d.time,
-                  value: d.rs_line,
+                  value: d.normalized_rs,
                 }))
             : [];
           if (rsLineSeries.options().visible !== showRsLine) {
             rsLineSeries.applyOptions({ visible: showRsLine });
           }
           rsLineSeries.setData(rsData);
+
+          if (seriesRef.current?.rsMa20Series) {
+            const rsMaData = showRsLine ? calculateRsSMA(rsData, chartTimeframeRef.current === 'weekly' ? 10 : 20) : [];
+            if (seriesRef.current.rsMa20Series.options().visible !== showRsLine) {
+              seriesRef.current.rsMa20Series.applyOptions({ visible: showRsLine });
+            }
+            seriesRef.current.rsMa20Series.setData(rsMaData);
+          }
         }
       }
 
@@ -1986,17 +2172,42 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   useEffect(() => {
     if (!seriesRef.current?.rsLineSeries || !dataLookupRef.current?.data) return;
     const currentData = dataLookupRef.current.data;
+
+    // Dynamically adjust scaleMargins when toggling RS Line panel
+    if (chartRef.current) {
+      const curH = typeof height === 'number' ? height : (chartContainerRef.current?.clientHeight || 450);
+      const margins = getPanelMargins(curH, showRsLine);
+      chartRef.current.priceScale('right').applyOptions({
+        scaleMargins: margins.price,
+      });
+      chartRef.current.priceScale('volume').applyOptions({
+        scaleMargins: margins.volume,
+      });
+      chartRef.current.priceScale('rs_line').applyOptions({
+        scaleMargins: margins.rs,
+      });
+    }
+
     if (showRsLine) {
       const rsData = currentData
-        .filter((d) => d.rs_line !== undefined && d.rs_line !== null)
+        .filter((d) => d.normalized_rs !== undefined && d.normalized_rs !== null)
         .map((d) => ({
           time: d.time,
-          value: d.rs_line,
+          value: d.normalized_rs,
         }));
       if (seriesRef.current.rsLineSeries.options().visible !== true) {
         seriesRef.current.rsLineSeries.applyOptions({ visible: true });
       }
       seriesRef.current.rsLineSeries.setData(rsData);
+
+      if (seriesRef.current?.rsMa20Series) {
+        const rsMaData = calculateRsSMA(rsData, chartTimeframeRef.current === 'weekly' ? 10 : 20);
+        if (seriesRef.current.rsMa20Series.options().visible !== true) {
+          seriesRef.current.rsMa20Series.applyOptions({ visible: true });
+        }
+        seriesRef.current.rsMa20Series.setData(rsMaData);
+      }
+
       if (markersPluginRef.current) {
         const blueDotMarkers = [];
         currentData.forEach((d) => {
@@ -2017,6 +2228,14 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         seriesRef.current.rsLineSeries.applyOptions({ visible: false });
       }
       seriesRef.current.rsLineSeries.setData([]);
+
+      if (seriesRef.current?.rsMa20Series) {
+        if (seriesRef.current.rsMa20Series.options().visible !== false) {
+          seriesRef.current.rsMa20Series.applyOptions({ visible: false });
+        }
+        seriesRef.current.rsMa20Series.setData([]);
+      }
+
       if (markersPluginRef.current) {
         markersPluginRef.current.setMarkers([]);
       }
@@ -2036,6 +2255,10 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         const newHeight = typeof height === 'number' ? height : (containerH > 0 ? containerH : 280);
         if (newWidth > 0 && newHeight > 0) {
           chartRef.current.applyOptions({ width: newWidth, height: newHeight });
+          const margins = getPanelMargins(newHeight, showRsLineRef.current);
+          chartRef.current.priceScale('right').applyOptions({ scaleMargins: margins.price });
+          chartRef.current.priceScale('volume').applyOptions({ scaleMargins: margins.volume });
+          chartRef.current.priceScale('rs_line').applyOptions({ scaleMargins: margins.rs });
           if (dataLookupRef.current?.data?.length > 0) {
             const currentData = dataLookupRef.current.data;
             const asOf = asOfIdxRef.current;
@@ -2758,7 +2981,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           <button
             type="button"
             onClick={toggleRsLine}
-            title={showRsLine ? 'Hide Relative Strength Line & Blue Dots (vs SPY)' : 'Show Relative Strength Line & Blue Dots (vs SPY)'}
+            title={showRsLine ? 'Hide Relative Strength Panel (vs SPY [-1.0 to +1.0]) & Blue Dots' : 'Show Relative Strength Panel (vs SPY [-1.0 to +1.0]) & Blue Dots'}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -3600,8 +3823,24 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           asOfDate={asOfDate}
           currentPrice={asOfIdxRef.current >= 0 && chartData[asOfIdxRef.current]?.close ? chartData[asOfIdxRef.current].close : (chartData[chartData.length - 1]?.close ?? null)}
           isVisible={showMansfieldYearly}
-          bottom="32px"
+          bottom="30px"
         />
+
+        {/* Panel divider separating Volume panel from RS panel, aligned flush with the top of Yearly Thumbnail */}
+        {showRsLine && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: '121px',
+              left: showMansfieldYearly ? '132px' : '0px',
+              right: '0px',
+              height: '1px',
+              background: 'rgba(255, 255, 255, 0.12)',
+              pointerEvents: 'none',
+              zIndex: 6,
+            }}
+          />
+        )}
       </div>
 
       <div
