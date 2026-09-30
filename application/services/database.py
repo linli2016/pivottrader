@@ -10,6 +10,8 @@ from application.engine.market_regime import get_qullamaggie_market_summary, get
 from application.engine.market_pulse import get_market_pulse, clear_market_pulse_cache, calculate_market_pulse_history
 from application.engine.expression import ScanExpressionEngine
 
+import threading
+
 logger = logging.getLogger(__name__)
 
 COMPANY_DESCRIPTIONS: Dict[str, str] = {
@@ -24,12 +26,160 @@ COMPANY_DESCRIPTIONS: Dict[str, str] = {
 }
 
 
+class ReadConnectionContext:
+    """Thread-safe cursor context manager that behaves as a DuckDB connection/cursor."""
+    def __init__(self, service):
+        self.service = service
+        self.cursor = None
+
+    def __enter__(self):
+        self.cursor = self.service._get_cursor()
+        return self.cursor
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.cursor:
+            try:
+                self.cursor.close()
+            except Exception:
+                pass
+            self.cursor = None
+
+    def execute(self, *args, **kwargs):
+        if not self.cursor:
+            self.cursor = self.service._get_cursor()
+        return self.cursor.execute(*args, **kwargs)
+
+    def fetchone(self):
+        return self.cursor.fetchone()
+
+    def fetchall(self):
+        return self.cursor.fetchall()
+
+    def df(self):
+        return self.cursor.df()
+
+    @property
+    def description(self):
+        return self.cursor.description if self.cursor else []
+
+    def register(self, view_name, python_object):
+        if not self.cursor:
+            self.cursor = self.service._get_cursor()
+        return self.cursor.register(view_name, python_object)
+
+    def unregister(self, view_name):
+        if self.cursor:
+            return self.cursor.unregister(view_name)
+
+    def close(self):
+        if self.cursor:
+            try:
+                self.cursor.close()
+            except Exception:
+                pass
+            self.cursor = None
+
+
+class WriteConnectionContext:
+    """Thread-safe write cursor context manager serialized across threads."""
+    def __init__(self, service):
+        self.service = service
+        self.cursor = None
+        self._acquired = False
+
+    def __enter__(self):
+        self.service._write_lock.acquire()
+        self._acquired = True
+        self.cursor = self.service._get_cursor()
+        return self.cursor
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.cursor:
+            try:
+                self.cursor.close()
+            except Exception:
+                pass
+            self.cursor = None
+        if self._acquired:
+            self.service._write_lock.release()
+            self._acquired = False
+
+    def execute(self, *args, **kwargs):
+        if not self._acquired:
+            self.service._write_lock.acquire()
+            self._acquired = True
+        if not self.cursor:
+            self.cursor = self.service._get_cursor()
+        return self.cursor.execute(*args, **kwargs)
+
+    def executemany(self, *args, **kwargs):
+        if not self._acquired:
+            self.service._write_lock.acquire()
+            self._acquired = True
+        if not self.cursor:
+            self.cursor = self.service._get_cursor()
+        return self.cursor.executemany(*args, **kwargs)
+
+    def fetchone(self):
+        return self.cursor.fetchone()
+
+    def fetchall(self):
+        return self.cursor.fetchall()
+
+    def df(self):
+        return self.cursor.df()
+
+    @property
+    def description(self):
+        return self.cursor.description if self.cursor else []
+
+    def close(self):
+        if self.cursor:
+            try:
+                self.cursor.close()
+            except Exception:
+                pass
+            self.cursor = None
+        if self._acquired:
+            self.service._write_lock.release()
+            self._acquired = False
+
+
 class DatabaseService:
     def __init__(self, config_service):
         self.config_service = config_service
         self._market_monitor_cache: Dict[int, Dict[str, Any]] = {}
         self._cache_timestamp: float = 0.0
+        self._conn = None
+        self._conn_lock = threading.RLock()
+        self._write_lock = threading.RLock()
+        self._spy_daily_cache: Dict[Any, float] = {}
+        self._spy_weekly_cache: Dict[Any, float] = {}
+        self._spy_cache_loaded = False
         self.ensure_schema()
+
+    def _get_connection(self):
+        with self._conn_lock:
+            if self._conn is None:
+                db_path = self.get_db_path()
+                if not os.path.exists(db_path):
+                    conn = duckdb.connect(db_path)
+                    conn.close()
+                self._conn = duckdb.connect(db_path)
+            return self._conn
+
+    def _get_cursor(self):
+        try:
+            return self._get_connection().cursor()
+        except Exception:
+            with self._conn_lock:
+                try:
+                    if self._conn is not None:
+                        self._conn.close()
+                except Exception:
+                    pass
+                self._conn = None
+            return self._get_connection().cursor()
 
     def ensure_schema(self):
         """Ensures that schema structures and column migrations are applied to db_path."""
@@ -43,6 +193,9 @@ class DatabaseService:
         """Clears in-memory market monitor and regime caches."""
         self._market_monitor_cache.clear()
         self._cache_timestamp = 0.0
+        self._spy_daily_cache.clear()
+        self._spy_weekly_cache.clear()
+        self._spy_cache_loaded = False
         clear_qullamaggie_cache()
         clear_market_pulse_cache()
         try:
@@ -52,6 +205,39 @@ class DatabaseService:
             LeaderboardService.clear_cache()
         except Exception:
             pass
+
+    def _ensure_spy_cache(self):
+        """Caches SPY daily and weekly closes in memory for ultra-fast 0ms RS line joins."""
+        if not self._spy_cache_loaded:
+            with self._conn_lock:
+                if not self._spy_cache_loaded:
+                    try:
+                        with self.get_read_only_conn() as conn:
+                            # 1. Daily closes for SPY
+                            daily_rows = conn.execute("""
+                                SELECT date, close 
+                                FROM daily_bars 
+                                WHERE symbol = 'SPY' 
+                                ORDER BY date ASC
+                            """).fetchall()
+                            self._spy_daily_cache = {
+                                r[0]: float(r[1]) for r in daily_rows if r[0] and r[1] is not None
+                            }
+                            # 2. Weekly closes for SPY
+                            weekly_rows = conn.execute("""
+                                SELECT date_trunc('week', date)::DATE as week_start,
+                                       LAST(close ORDER BY date ASC) as spy_close
+                                FROM daily_bars
+                                WHERE symbol = 'SPY'
+                                GROUP BY week_start
+                                ORDER BY week_start ASC
+                            """).fetchall()
+                            self._spy_weekly_cache = {
+                                r[0]: float(r[1]) for r in weekly_rows if r[0] and r[1] is not None
+                            }
+                            self._spy_cache_loaded = True
+                    except Exception as e:
+                        logger.warning(f"Could not preload SPY cache: {e}")
 
     def get_available_trading_dates(self) -> List[str]:
         with self.get_read_only_conn() as conn:
@@ -67,46 +253,17 @@ class DatabaseService:
             """).fetchall()
             return [r[0] for r in rows if r[0]]
 
-
     def get_db_path(self) -> str:
         config = self.config_service.load_config_raw()
         return config.get("database", {}).get("db_path", "data.db")
 
     def get_read_only_conn(self):
-        """Establishes a thread-safe read-only connection to DuckDB with retry handling."""
-        import time
-        db_path = self.get_db_path()
-        if not os.path.exists(db_path):
-            # Create it if it doesn't exist, to avoid connection failure
-            conn = duckdb.connect(db_path)
-            conn.close()
-        max_retries = 25
-        for attempt in range(max_retries):
-            try:
-                return duckdb.connect(db_path, read_only=True)
-            except Exception as e:
-                err_msg = str(e).lower()
-                is_lock = any(k in err_msg for k in ["lock", "different configuration", "conflict", "held in", "temporarily unavailable"])
-                if is_lock and attempt < max_retries - 1:
-                    time.sleep(0.05 + attempt * 0.02)
-                else:
-                    raise
+        """Returns a thread-safe read cursor context with zero connection setup overhead."""
+        return ReadConnectionContext(self)
 
     def get_write_conn(self):
-        """Establishes a write connection to DuckDB with retry handling."""
-        import time
-        db_path = self.get_db_path()
-        max_retries = 25
-        for attempt in range(max_retries):
-            try:
-                return duckdb.connect(db_path, read_only=False)
-            except Exception as e:
-                err_msg = str(e).lower()
-                is_lock = any(k in err_msg for k in ["lock", "different configuration", "conflict", "held in", "temporarily unavailable"])
-                if is_lock and attempt < max_retries - 1:
-                    time.sleep(0.1 + attempt * 0.02)
-                else:
-                    raise
+        """Returns a thread-safe write cursor context serialized across threads."""
+        return WriteConnectionContext(self)
 
 
     def get_summary(self) -> Dict[str, Any]:
@@ -1313,11 +1470,13 @@ class DatabaseService:
             ]
             latest_sponsorship = sponsorship_history[0] if sponsorship_history else None
             
-            # Get latest RS, ATR, TI65, and Volume metrics
+            # Get latest RS, ATR, TI65, and Volume metrics (fast lookup with index)
             latest_bar = conn.execute("""
                 SELECT rs_score, rs_rank, atr_20d, ti_65, COALESCE(dollar_vol_50d_ma, close * vol_50d_ma) as dollar_vol_50d_ma, vol_50d_ma, adr_20d, ret_1m, ret_3m, ret_6m, is_52w_high
                 FROM daily_bars
-                WHERE symbol = ? AND date = (SELECT MAX(date) FROM daily_bars)
+                WHERE symbol = ?
+                ORDER BY date DESC
+                LIMIT 1
             """, [symbol]).fetchone()
             
             rs_score = latest_bar[0] if latest_bar else None
@@ -1332,14 +1491,19 @@ class DatabaseService:
             ret_6m = latest_bar[9] if latest_bar and len(latest_bar) > 9 else None
             is_rs_blue_dot = latest_bar[10] if latest_bar and len(latest_bar) > 10 else False
 
-            # Calculate Minervini Setups (VCP, Low Cheat & Cheat)
+            # Calculate Minervini Setups (VCP, Low Cheat & Cheat) - only needs last 120 bars
             from application.engine.setups.vcp import detect_vcp
             from application.engine.setups.low_cheat import detect_low_cheat, detect_cheat
 
             bars_for_setups = conn.execute("""
                 SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, ipo_days_count
-                FROM daily_bars
-                WHERE symbol = ?
+                FROM (
+                    SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, ipo_days_count
+                    FROM daily_bars
+                    WHERE symbol = ?
+                    ORDER BY date DESC
+                    LIMIT 120
+                )
                 ORDER BY date ASC
             """, [symbol]).fetchall()
 
@@ -1410,11 +1574,18 @@ class DatabaseService:
         symbol = symbol.upper()
         tf = (timeframe or "daily").strip().lower()
 
+        if limit is None:
+            limit = 750
+        elif limit <= 0:
+            limit = None
+
+        self._ensure_spy_cache()
+
         if tf == "weekly":
             with self.get_read_only_conn() as conn:
                 if limit and limit > 0:
                     lookback_days = (limit + 60) * 7
-                    bars = conn.execute("""
+                    rows = conn.execute("""
                         WITH sym_recent AS (
                             SELECT date, open, high, low, close, volume, rs_rank, ti_65,
                                    date_trunc('week', date)::DATE as week_start
@@ -1425,231 +1596,145 @@ class DatabaseService:
                         ),
                         sym_ordered AS (
                             SELECT * FROM sym_recent ORDER BY date ASC
-                        ),
-                        spy_recent AS (
-                            SELECT date, close as spy_close, date_trunc('week', date)::DATE as week_start
-                            FROM daily_bars 
-                            WHERE symbol = 'SPY' AND date >= (SELECT MIN(date) FROM sym_ordered)
-                        ),
-                        spy_weekly AS (
-                            SELECT week_start, LAST(spy_close ORDER BY date ASC) as spy_close
-                            FROM spy_recent
-                            GROUP BY week_start
-                        ),
-                        weekly_bars AS (
-                            SELECT 
-                                week_start as date,
-                                FIRST(open ORDER BY date ASC) as open,
-                                MAX(high) as high,
-                                MIN(low) as low,
-                                LAST(close ORDER BY date ASC) as close,
-                                SUM(volume) as volume,
-                                LAST(rs_rank ORDER BY date ASC) as rs_rank,
-                                LAST(ti_65 ORDER BY date ASC) as ti_65
-                            FROM sym_ordered
-                            GROUP BY week_start
-                            ORDER BY week_start ASC
-                        ),
-                        weekly_with_spy AS (
-                            SELECT 
-                                w.*,
-                                s.spy_close,
-                                ROUND((w.close / NULLIF(s.spy_close, 0)) * 100.0, 4) as rs_line,
-                                ROUND(AVG(w.close) OVER (ORDER BY w.date ROWS BETWEEN 9 PRECEDING AND CURRENT ROW), 2) as sma_10w,
-                                ROUND(AVG(w.close) OVER (ORDER BY w.date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW), 2) as sma_30w,
-                                ROUND(AVG(w.close) OVER (ORDER BY w.date ROWS BETWEEN 39 PRECEDING AND CURRENT ROW), 2) as sma_40w
-                            FROM weekly_bars w
-                            LEFT JOIN spy_weekly s ON w.date = s.week_start
-                        ),
-                        with_rolling AS (
-                            SELECT 
-                                *,
-                                MAX(rs_line) OVER (ORDER BY date ROWS BETWEEN 52 PRECEDING AND 1 PRECEDING) as prev_rs_52w_high,
-                                MAX(close) OVER (ORDER BY date ROWS BETWEEN 52 PRECEDING AND 1 PRECEDING) as prev_close_52w_high
-                            FROM weekly_with_spy
                         )
                         SELECT 
-                            date, open, high, low, close, volume, sma_10w, sma_30w, sma_40w, rs_rank, ti_65,
-                            rs_line,
-                            COALESCE(rs_line >= prev_rs_52w_high AND close < COALESCE(prev_close_52w_high, close), false) as is_rs_blue_dot
-                        FROM with_rolling
-                        ORDER BY date ASC
+                            week_start as date,
+                            FIRST(open ORDER BY date ASC) as open,
+                            MAX(high) as high,
+                            MIN(low) as low,
+                            LAST(close ORDER BY date ASC) as close,
+                            SUM(volume) as volume,
+                            LAST(rs_rank ORDER BY date ASC) as rs_rank,
+                            LAST(ti_65 ORDER BY date ASC) as ti_65
+                        FROM sym_ordered
+                        GROUP BY week_start
+                        ORDER BY week_start ASC
                     """, [symbol, lookback_days]).fetchall()
-                    if len(bars) > limit:
-                        bars = bars[-limit:]
                 else:
-                    bars = conn.execute("""
+                    rows = conn.execute("""
                         WITH sym_daily AS (
                             SELECT date, open, high, low, close, volume, rs_rank, ti_65,
                                    date_trunc('week', date)::DATE as week_start
                             FROM daily_bars 
                             WHERE symbol = ?
                         ),
-                        spy_daily AS (
-                            SELECT date, close as spy_close, date_trunc('week', date)::DATE as week_start
-                            FROM daily_bars 
-                            WHERE symbol = 'SPY'
-                        ),
-                        spy_weekly AS (
-                            SELECT week_start, LAST(spy_close ORDER BY date ASC) as spy_close
-                            FROM spy_daily
-                            GROUP BY week_start
-                        ),
-                        weekly_bars AS (
-                            SELECT 
-                                week_start as date,
-                                FIRST(open ORDER BY date ASC) as open,
-                                MAX(high) as high,
-                                MIN(low) as low,
-                                LAST(close ORDER BY date ASC) as close,
-                                SUM(volume) as volume,
-                                LAST(rs_rank ORDER BY date ASC) as rs_rank,
-                                LAST(ti_65 ORDER BY date ASC) as ti_65
-                            FROM sym_daily
-                            GROUP BY week_start
-                            ORDER BY week_start ASC
-                        ),
-                        weekly_with_spy AS (
-                            SELECT 
-                                w.*,
-                                s.spy_close,
-                                ROUND((w.close / NULLIF(s.spy_close, 0)) * 100.0, 4) as rs_line,
-                                ROUND(AVG(w.close) OVER (ORDER BY w.date ROWS BETWEEN 9 PRECEDING AND CURRENT ROW), 2) as sma_10w,
-                                ROUND(AVG(w.close) OVER (ORDER BY w.date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW), 2) as sma_30w,
-                                ROUND(AVG(w.close) OVER (ORDER BY w.date ROWS BETWEEN 39 PRECEDING AND CURRENT ROW), 2) as sma_40w
-                            FROM weekly_bars w
-                            LEFT JOIN spy_weekly s ON w.date = s.week_start
-                        ),
-                        with_rolling AS (
-                            SELECT 
-                                *,
-                                MAX(rs_line) OVER (ORDER BY date ROWS BETWEEN 52 PRECEDING AND 1 PRECEDING) as prev_rs_52w_high,
-                                MAX(close) OVER (ORDER BY date ROWS BETWEEN 52 PRECEDING AND 1 PRECEDING) as prev_close_52w_high
-                            FROM weekly_with_spy
+                        sym_ordered AS (
+                            SELECT * FROM sym_daily ORDER BY date ASC
                         )
                         SELECT 
-                            date, open, high, low, close, volume, sma_10w, sma_30w, sma_40w, rs_rank, ti_65,
-                            rs_line,
-                            COALESCE(rs_line >= prev_rs_52w_high AND close < COALESCE(prev_close_52w_high, close), false) as is_rs_blue_dot
-                        FROM with_rolling
-                        ORDER BY date ASC
+                            week_start as date,
+                            FIRST(open ORDER BY date ASC) as open,
+                            MAX(high) as high,
+                            MIN(low) as low,
+                            LAST(close ORDER BY date ASC) as close,
+                            SUM(volume) as volume,
+                            LAST(rs_rank ORDER BY date ASC) as rs_rank,
+                            LAST(ti_65 ORDER BY date ASC) as ti_65
+                        FROM sym_ordered
+                        GROUP BY week_start
+                        ORDER BY week_start ASC
                     """, [symbol]).fetchall()
 
-                bars_list = []
-                for row in bars:
-                    bars_list.append({
-                        "time": row[0].strftime("%Y-%m-%d") if row[0] else None,
-                        "open": row[1],
-                        "high": row[2],
-                        "low": row[3],
-                        "close": row[4],
-                        "volume": row[5],
-                        "sma_10w": row[6],
-                        "sma_30w": row[7],
-                        "sma_40w": row[8],
-                        "rs_rank": row[9],
-                        "ti_65": row[10],
-                        "rs_line": row[11],
-                        "is_rs_blue_dot": bool(row[12]) if row[12] is not None else False
-                    })
-                return bars_list
+            bars_list = []
+            rs_lines = []
+            closes = []
+            for i, r in enumerate(rows):
+                d, o, h, l, cl, v, rs_r, ti = r
+                sc = self._spy_weekly_cache.get(d)
+                rsl = round((cl / sc * 100.0), 4) if sc else None
 
+                # SMAs: 10w, 30w, 40w
+                window_10 = [rows[j][4] for j in range(max(0, i - 9), i + 1)]
+                sma_10w = round(sum(window_10) / len(window_10), 2) if len(window_10) == 10 else None
+
+                window_30 = [rows[j][4] for j in range(max(0, i - 29), i + 1)]
+                sma_30w = round(sum(window_30) / len(window_30), 2) if len(window_30) == 30 else None
+
+                window_40 = [rows[j][4] for j in range(max(0, i - 39), i + 1)]
+                sma_40w = round(sum(window_40) / len(window_40), 2) if len(window_40) == 40 else None
+
+                prev_rsl_max = max(rs_lines[-52:]) if rs_lines else None
+                prev_c_max = max(closes[-52:]) if closes else None
+                bd = bool(rsl and prev_rsl_max and rsl >= prev_rsl_max and prev_c_max and cl < prev_c_max)
+                rs_lines.append(rsl if rsl is not None else -999999)
+                closes.append(cl)
+
+                bars_list.append({
+                    "symbol": symbol,
+                    "time": d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else (str(d)[:10] if d else None),
+                    "open": float(o) if o is not None else 0.0,
+                    "high": float(h) if h is not None else 0.0,
+                    "low": float(l) if l is not None else 0.0,
+                    "close": float(cl) if cl is not None else 0.0,
+                    "volume": float(v) if v is not None else 0.0,
+                    "sma_10w": sma_10w,
+                    "sma_30w": sma_30w,
+                    "sma_40w": sma_40w,
+                    "rs_rank": rs_r,
+                    "ti_65": ti,
+                    "rs_line": rsl,
+                    "is_rs_blue_dot": bd
+                })
+
+            if limit and len(bars_list) > limit:
+                bars_list = bars_list[-limit:]
+            return bars_list
+
+        # Daily timeframe
         with self.get_read_only_conn() as conn:
             if limit and limit > 0:
                 lookback = limit + 260
-                bars = conn.execute("""
-                    WITH sym_recent AS (
-                        SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65 
-                        FROM daily_bars 
-                        WHERE symbol = ? 
-                        ORDER BY date DESC 
-                        LIMIT ?
-                    ),
-                    sym_bars AS (
-                        SELECT * FROM sym_recent ORDER BY date ASC
-                    ),
-                    spy_bars AS (
-                        SELECT date, close as spy_close 
-                        FROM daily_bars 
-                        WHERE symbol = 'SPY' AND date >= (SELECT MIN(date) FROM sym_bars)
-                    ),
-                    combined AS (
-                        SELECT 
-                            s.*,
-                            ROUND((s.close / NULLIF(b.spy_close, 0)) * 100.0, 4) as rs_line
-                        FROM sym_bars s
-                        LEFT JOIN spy_bars b ON s.date = b.date
-                        ORDER BY s.date ASC
-                    ),
-                    with_rolling AS (
-                        SELECT 
-                            *,
-                            MAX(rs_line) OVER (ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_rs_52w_high,
-                            MAX(close) OVER (ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_close_52w_high
-                        FROM combined
-                    )
-                    SELECT 
-                        date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65,
-                        rs_line,
-                        COALESCE(rs_line >= prev_rs_52w_high AND close < COALESCE(prev_close_52w_high, close), false) as is_rs_blue_dot
-                    FROM with_rolling
-                    ORDER BY date ASC
+                rows = conn.execute("""
+                    SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65
+                    FROM daily_bars
+                    WHERE symbol = ?
+                    ORDER BY date DESC
+                    LIMIT ?
                 """, [symbol, lookback]).fetchall()
-                if len(bars) > limit:
-                    bars = bars[-limit:]
             else:
-                bars = conn.execute("""
-                    WITH spy_bars AS (
-                        SELECT date, close as spy_close
-                        FROM daily_bars
-                        WHERE symbol = 'SPY'
-                    ),
-                    sym_bars AS (
-                        SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65
-                        FROM daily_bars
-                        WHERE symbol = ?
-                    ),
-                    combined AS (
-                        SELECT 
-                            s.*,
-                            ROUND((s.close / NULLIF(b.spy_close, 0)) * 100.0, 4) as rs_line
-                        FROM sym_bars s
-                        LEFT JOIN spy_bars b ON s.date = b.date
-                        ORDER BY s.date ASC
-                    ),
-                    with_rolling AS (
-                        SELECT 
-                            *,
-                            MAX(rs_line) OVER (ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_rs_52w_high,
-                            MAX(close) OVER (ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_close_52w_high
-                        FROM combined
-                    )
-                    SELECT 
-                        date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65,
-                        rs_line,
-                        COALESCE(rs_line >= prev_rs_52w_high AND close < COALESCE(prev_close_52w_high, close), false) as is_rs_blue_dot
-                    FROM with_rolling
+                rows = conn.execute("""
+                    SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65
+                    FROM daily_bars
+                    WHERE symbol = ?
                     ORDER BY date ASC
                 """, [symbol]).fetchall()
-            
-            bars_list = []
-            for row in bars:
-                bars_list.append({
-                    "time": row[0].strftime("%Y-%m-%d") if row[0] else None,
-                    "open": row[1],
-                    "high": row[2],
-                    "low": row[3],
-                    "close": row[4],
-                    "volume": row[5],
-                    "sma_50": row[6],
-                    "sma_150": row[7],
-                    "sma_200": row[8],
-                    "rs_rank": row[9],
-                    "ti_65": row[10],
-                    "rs_line": row[11],
-                    "is_rs_blue_dot": bool(row[12]) if row[12] is not None else False
-                })
-            return bars_list
+
+        if limit and limit > 0:
+            rows.reverse()
+
+        bars_list = []
+        rs_lines = []
+        closes = []
+        for r in rows:
+            d, o, h, l, cl, v, s50, s150, s200, rs_r, ti = r
+            sc = self._spy_daily_cache.get(d)
+            rsl = round((cl / sc * 100.0), 4) if sc else None
+            prev_rsl_max = max(rs_lines[-252:]) if rs_lines else None
+            prev_c_max = max(closes[-252:]) if closes else None
+            bd = bool(rsl and prev_rsl_max and rsl >= prev_rsl_max and prev_c_max and cl < prev_c_max)
+            rs_lines.append(rsl if rsl is not None else -999999)
+            closes.append(cl)
+
+            bars_list.append({
+                "symbol": symbol,
+                "time": d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else (str(d)[:10] if d else None),
+                "open": float(o) if o is not None else 0.0,
+                "high": float(h) if h is not None else 0.0,
+                "low": float(l) if l is not None else 0.0,
+                "close": float(cl) if cl is not None else 0.0,
+                "volume": float(v) if v is not None else 0.0,
+                "sma_50": float(s50) if s50 is not None else None,
+                "sma_150": float(s150) if s150 is not None else None,
+                "sma_200": float(s200) if s200 is not None else None,
+                "rs_rank": rs_r,
+                "ti_65": ti,
+                "rs_line": rsl,
+                "is_rs_blue_dot": bd
+            })
+
+        if limit and len(bars_list) > limit:
+            bars_list = bars_list[-limit:]
+        return bars_list
 
     def get_stock_earnings(self, symbol: str, fetch_live: bool = False) -> List[Dict[str, Any]]:
         """Retrieves historical and upcoming earnings report dates, estimates, actuals, and surprise % for a symbol."""

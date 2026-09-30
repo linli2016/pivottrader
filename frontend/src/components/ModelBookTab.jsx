@@ -400,7 +400,7 @@ export default function ModelBookTab({
     }
     const reqPromise = (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/stocks/${sym}/prices`);
+        const res = await fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=750`);
         if (res.ok) {
           const prices = await res.json();
           priceCacheRef.current.set(sym, prices);

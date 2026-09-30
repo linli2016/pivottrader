@@ -95,6 +95,7 @@ function App() {
   const [activeStockList, setActiveStockList] = useState([]);
   const [stockDetail, setStockDetail] = useState(null);
   const [stockPrices, setStockPrices] = useState([]);
+  const stockCacheRef = useRef(new Map()); // symbol -> { detail, prices }
 
   // SQL console inputs
   const [sqlQuery, setSqlQuery] = useState('SELECT * FROM symbols LIMIT 10;');
@@ -404,23 +405,71 @@ function App() {
     }
   };
 
-  // Select stock for drawer detail
+  // Prefetch adjacent stocks in list for instant 0ms drawer navigation
+  const prefetchAdjacentStocks = (currentSym, list) => {
+    if (!list || list.length <= 1) return;
+    const idx = list.findIndex(s => (s.symbol || s).toUpperCase() === currentSym);
+    if (idx === -1) return;
+    const adjacentSymbols = [];
+    if (idx + 1 < list.length) adjacentSymbols.push((list[idx + 1].symbol || list[idx + 1]).toUpperCase());
+    if (idx - 1 >= 0) adjacentSymbols.push((list[idx - 1].symbol || list[idx - 1]).toUpperCase());
+
+    adjacentSymbols.forEach(async (sym) => {
+      if (sym && !stockCacheRef.current.has(sym)) {
+        try {
+          const [dRes, pRes] = await Promise.all([
+            fetch(`${API_BASE}/api/stocks/${sym}`),
+            fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=750`)
+          ]);
+          if (dRes.ok && pRes.ok) {
+            const [dData, pData] = await Promise.all([dRes.json(), pRes.json()]);
+            stockCacheRef.current.set(sym, { detail: dData, prices: pData });
+          }
+        } catch (_) {}
+      }
+    });
+  };
+
+  // Select stock for drawer detail (with instant 0ms in-memory cache)
   const handleSelectStock = async (stock, list = null) => {
+    if (!stock) return;
+    const sym = (stock.symbol || stock).toUpperCase();
+    const currentList = (list && Array.isArray(list) && list.length > 0) ? list : activeStockList;
+
     setSelectedStock(stock);
     if (list && Array.isArray(list) && list.length > 0) {
       setActiveStockList(list);
     }
+
+    // 1. If in cache, load immediately with zero network delay
+    if (stockCacheRef.current.has(sym)) {
+      const cached = stockCacheRef.current.get(sym);
+      setStockDetail(cached.detail);
+      setStockPrices(cached.prices);
+      prefetchAdjacentStocks(sym, currentList);
+      return;
+    }
+
     try {
-      const [detailRes, prRes] = await Promise.all([
-        fetch(`${API_BASE}/api/stocks/${stock.symbol}`),
-        fetch(`${API_BASE}/api/stocks/${stock.symbol}/prices`)
-      ]);
-      const [detailData, prData] = await Promise.all([
-        detailRes.json(),
-        prRes.json()
-      ]);
-      setStockDetail(detailData);
-      setStockPrices(prData);
+      const prPromise = fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=750`)
+        .then((res) => (res.ok ? res.json() : []))
+        .then((prData) => {
+          setStockPrices(prData);
+          return prData;
+        })
+        .catch(() => []);
+
+      const detailPromise = fetch(`${API_BASE}/api/stocks/${sym}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((detailData) => {
+          setStockDetail(detailData);
+          return detailData;
+        })
+        .catch(() => null);
+
+      const [prData, detailData] = await Promise.all([prPromise, detailPromise]);
+      stockCacheRef.current.set(sym, { detail: detailData, prices: prData });
+      prefetchAdjacentStocks(sym, currentList);
     } catch (e) {
       console.error("Error fetching stock details: ", e);
     }
@@ -436,7 +485,11 @@ function App() {
     setInspectorPrices([]);
 
     try {
-      const res = await fetch(`${API_BASE}/api/stocks/${cleanSym}`);
+      const [res, prRes] = await Promise.all([
+        fetch(`${API_BASE}/api/stocks/${cleanSym}`),
+        fetch(`${API_BASE}/api/stocks/${cleanSym}/prices?limit=750`)
+      ]);
+
       if (res.status === 404) {
         setInspectorError(`Symbol ${cleanSym} not found in database. Please run a sync search or check ticker directory.`);
         setSearchingInspector(false);
@@ -445,9 +498,10 @@ function App() {
       const data = await res.json();
       setInspectorDetail(data);
 
-      const prRes = await fetch(`${API_BASE}/api/stocks/${cleanSym}/prices`);
-      const prData = await prRes.json();
-      setInspectorPrices(prData);
+      if (prRes.ok) {
+        const prData = await prRes.json();
+        setInspectorPrices(prData);
+      }
     } catch (e) {
       setInspectorError(`Error loading details for ${cleanSym}: ${e.message}`);
     } finally {

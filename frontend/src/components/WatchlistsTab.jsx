@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import CandlestickChart from './CandlestickChart';
 import VcpFootprintCard from './VcpFootprintCard';
 import LowCheatFootprintCard from './LowCheatFootprintCard';
@@ -124,6 +124,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   const [financials, setFinancials] = useState(null);
   const [peersData, setPeersData] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const watchlistDataCacheRef = useRef(new Map()); // symbol -> { prices, detail, financials, peersData }
   const [fundTab, setFundTab] = useState('institutions');
   const [profileExpanded, setProfileExpanded] = useState(false);
 
@@ -196,6 +197,35 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     }
   }, [selectedWatchlistId, fetchItems]);
 
+  const prefetchAdjacentWatchlistStocks = useCallback((currentSym, stockList) => {
+    if (!stockList || stockList.length <= 1) return;
+    const idx = stockList.findIndex(s => (s.symbol || '').toUpperCase() === currentSym);
+    if (idx === -1) return;
+    const adjacent = [];
+    if (idx + 1 < stockList.length) adjacent.push((stockList[idx + 1].symbol || '').toUpperCase());
+    if (idx - 1 >= 0) adjacent.push((stockList[idx - 1].symbol || '').toUpperCase());
+
+    adjacent.forEach(async (targetSym) => {
+      if (targetSym && !watchlistDataCacheRef.current.has(targetSym)) {
+        try {
+          const [pRes, dRes, fRes, peRes] = await Promise.all([
+            fetch(`${API_BASE}/api/stocks/${targetSym}/prices?limit=750`),
+            fetch(`${API_BASE}/api/stocks/${targetSym}`),
+            fetch(`${API_BASE}/api/stocks/${targetSym}/financials`),
+            fetch(`${API_BASE}/api/stocks/${targetSym}/peers?limit=6`)
+          ]);
+          const [prices, detail, fin, peers] = await Promise.all([
+            pRes.ok ? pRes.json() : [],
+            dRes.ok ? dRes.json() : null,
+            fRes.ok ? fRes.json() : null,
+            peRes.ok ? peRes.json() : null,
+          ]);
+          watchlistDataCacheRef.current.set(targetSym, { prices, detail, financials: fin, peersData: peers });
+        } catch (_) {}
+      }
+    });
+  }, []);
+
   // Fetch stock chart prices and telemetry when selected stock changes
   useEffect(() => {
     if (!selectedStock?.symbol) {
@@ -207,45 +237,83 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     }
 
     const sym = selectedStock.symbol.toUpperCase();
+
+    // 1. Instant 0ms cache hit
+    if (watchlistDataCacheRef.current.has(sym)) {
+      const cached = watchlistDataCacheRef.current.get(sym);
+      setStockPrices(cached.prices);
+      setStockDetail(cached.detail);
+      setFinancials(cached.financials);
+      setPeersData(cached.peersData);
+      setLoadingPrices(false);
+      setLoadingDetail(false);
+      prefetchAdjacentWatchlistStocks(sym, items);
+      return;
+    }
+
     setLoadingPrices(true);
     setLoadingDetail(true);
 
-    // 1. Fetch Daily Prices for Candlestick Chart
-    fetch(`${API_BASE}/api/stocks/${sym}/prices`)
+    let pricesData = null;
+    let detailData = null;
+    let financialsData = null;
+    let peersDataRes = null;
+
+    // Fetch prices immediately and update chart without waiting for financials/peers
+    const pPrices = fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=750`)
       .then((res) => (res.ok ? res.json() : []))
       .then((prices) => {
+        pricesData = prices;
         setStockPrices(prices);
         setLoadingPrices(false);
+        return prices;
       })
-      .catch((err) => {
-        console.error(`Error loading prices for ${sym}:`, err);
+      .catch(() => {
         setLoadingPrices(false);
+        return [];
       });
 
-    // 2. Fetch Detail & Sponsorship
-    fetch(`${API_BASE}/api/stocks/${sym}`)
+    const pDetail = fetch(`${API_BASE}/api/stocks/${sym}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((detail) => {
+        detailData = detail;
         setStockDetail(detail);
         setLoadingDetail(false);
+        return detail;
       })
-      .catch((err) => {
-        console.error(`Error loading detail for ${sym}:`, err);
+      .catch(() => {
         setLoadingDetail(false);
+        return null;
       });
 
-    // 3. Fetch Financials
-    fetch(`${API_BASE}/api/stocks/${sym}/financials`)
+    const pFin = fetch(`${API_BASE}/api/stocks/${sym}/financials`)
       .then((res) => (res.ok ? res.json() : null))
-      .then((fin) => setFinancials(fin))
-      .catch(() => setFinancials(null));
+      .then((fin) => {
+        financialsData = fin;
+        setFinancials(fin);
+        return fin;
+      })
+      .catch(() => null);
 
-    // 4. Fetch Industry Peers
-    fetch(`${API_BASE}/api/stocks/${sym}/peers?limit=6`)
+    const pPeers = fetch(`${API_BASE}/api/stocks/${sym}/peers?limit=6`)
       .then((res) => (res.ok ? res.json() : null))
-      .then((peers) => setPeersData(peers))
-      .catch(() => setPeersData(null));
-  }, [selectedStock?.symbol]);
+      .then((peers) => {
+        peersDataRes = peers;
+        setPeersData(peers);
+        return peers;
+      })
+      .catch(() => null);
+
+    Promise.all([pPrices, pDetail, pFin, pPeers]).then(() => {
+      watchlistDataCacheRef.current.set(sym, {
+        prices: pricesData || [],
+        detail: detailData,
+        financials: financialsData,
+        peersData: peersDataRes
+      });
+      prefetchAdjacentWatchlistStocks(sym, items);
+    });
+  }, [selectedStock?.symbol, items, prefetchAdjacentWatchlistStocks]);
 
   // Keyboard Navigation: ArrowUp / ArrowDown flips between stocks in list
   useEffect(() => {
@@ -1551,26 +1619,41 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
 
               {/* Main Candlestick Chart Area */}
               <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-                {loadingPrices ? (
+                {loadingPrices && (
+                  <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: '3px',
+                    zIndex: 30,
+                    overflow: 'hidden',
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    borderRadius: '2px 2px 0 0'
+                  }}>
+                    <div className="screener-progress-indicator" />
+                  </div>
+                )}
+                {stockPrices && stockPrices.length > 0 ? (
+                  <CandlestickChart
+                    data={stockPrices}
+                    symbol={selectedStock.symbol}
+                    height="100%"
+                  />
+                ) : loadingPrices ? (
                   <div style={{
                     display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center',
                     color: 'var(--text-muted)', fontSize: '13px'
                   }}>
-                    ⏳ Loading chart candles for {selectedStock.symbol}...
+                    <span className="spin-icon" style={{ marginRight: '8px' }}>⟳</span> Loading chart candles for {selectedStock.symbol}...
                   </div>
-                ) : stockPrices.length === 0 ? (
+                ) : (
                   <div style={{
                     display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center',
                     color: 'var(--text-muted)', fontSize: '13px'
                   }}>
                     No price data available for {selectedStock.symbol}
                   </div>
-                ) : (
-                  <CandlestickChart
-                    data={stockPrices}
-                    symbol={selectedStock.symbol}
-                    height="100%"
-                  />
                 )}
               </div>
             </>

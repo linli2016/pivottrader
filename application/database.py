@@ -229,8 +229,9 @@ class DatabaseManager:
                 except Exception:
                     pass
 
-            # Create index on date for fast date filtering
+            # Create index on date and symbol for fast stock lookups and date filtering
             conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_bars_date ON daily_bars(date);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_bars_sym_date ON daily_bars(symbol, date);")
 
             # 3. Historical Quarterly Fundamentals Table
             conn.execute("""
