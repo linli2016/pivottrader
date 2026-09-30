@@ -45,12 +45,107 @@ function calculateEMA(data, period) {
   return emaData;
 }
 
+// Helper to resolve Monday date string (YYYY-MM-DD) for a given date
+export function getMondayOfWeek(dateStr) {
+  if (!dateStr) return null;
+  let y, m, d;
+  if (typeof dateStr === 'string') {
+    const parts = dateStr.slice(0, 10).split('-');
+    if (parts.length < 3) return dateStr;
+    y = parseInt(parts[0], 10);
+    m = parseInt(parts[1], 10);
+    d = parseInt(parts[2], 10);
+  } else if (dateStr.year) {
+    y = dateStr.year;
+    m = dateStr.month;
+    d = dateStr.day;
+  } else {
+    return String(dateStr);
+  }
+
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const day = dt.getUTCDay(); // 0 is Sun, 1 is Mon, ... 6 is Sat
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(dt);
+  monday.setUTCDate(dt.getUTCDate() + diffToMonday);
+
+  const my = monday.getUTCFullYear();
+  const mm = String(monday.getUTCMonth() + 1).padStart(2, '0');
+  const md = String(monday.getUTCDate()).padStart(2, '0');
+  return `${my}-${mm}-${md}`;
+}
+
+// Helper to aggregate daily OHLCV bars into weekly bars (aligned to Monday of each week)
+export function aggregateDailyBarsToWeekly(dailyBars) {
+  if (!dailyBars || dailyBars.length === 0) return [];
+
+  const weeklyMap = new Map();
+  for (let i = 0; i < dailyBars.length; i++) {
+    const bar = dailyBars[i];
+    const timeStr = typeof bar.time === 'string'
+      ? bar.time
+      : (bar.time?.year ? `${bar.time.year}-${String(bar.time.month).padStart(2, '0')}-${String(bar.time.day).padStart(2, '0')}` : String(bar.time));
+
+    const weekKey = getMondayOfWeek(timeStr);
+    if (!weeklyMap.has(weekKey)) {
+      weeklyMap.set(weekKey, {
+        time: weekKey,
+        open: bar.open,
+        high: bar.high,
+        low: bar.low,
+        close: bar.close,
+        volume: bar.volume || 0,
+        rs_line: bar.rs_line ?? null,
+        is_rs_blue_dot: Boolean(bar.is_rs_blue_dot),
+        dailyDates: [timeStr],
+      });
+    } else {
+      const wBar = weeklyMap.get(weekKey);
+      wBar.high = Math.max(wBar.high, bar.high);
+      wBar.low = Math.min(wBar.low, bar.low);
+      wBar.close = bar.close;
+      wBar.volume += (bar.volume || 0);
+      if (bar.rs_line !== undefined && bar.rs_line !== null) {
+        wBar.rs_line = bar.rs_line;
+      }
+      if (bar.is_rs_blue_dot) {
+        wBar.is_rs_blue_dot = true;
+      }
+      wBar.dailyDates.push(timeStr);
+    }
+  }
+
+  const weeklyBars = Array.from(weeklyMap.values());
+  weeklyBars.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+
+  // Compute 52-week rolling RS Blue Dot on weekly closes if not already flagged
+  for (let i = 0; i < weeklyBars.length; i++) {
+    const startIdx = Math.max(0, i - 52);
+    let maxRs = -Infinity;
+    let maxClose = -Infinity;
+    for (let j = startIdx; j < i; j++) {
+      if (weeklyBars[j].rs_line !== null && weeklyBars[j].rs_line > maxRs) maxRs = weeklyBars[j].rs_line;
+      if (weeklyBars[j].close > maxClose) maxClose = weeklyBars[j].close;
+    }
+    if (i > 5 && weeklyBars[i].rs_line !== null && maxRs > -Infinity) {
+      if (weeklyBars[i].rs_line >= maxRs && weeklyBars[i].close < maxClose) {
+        weeklyBars[i].is_rs_blue_dot = true;
+      }
+    }
+  }
+
+  return weeklyBars;
+}
+
 // Calculate responsive visible bars based on container width
-// 1 trading month ~ 21 trading days (bars).
-// For laptop screens (~700-900px): ~147 bars (7 months).
-// For larger monitors (>1200px): scales smoothly up to ~252 bars (>9-12 months).
-function getResponsiveVisibleBars(containerWidth) {
+// For daily: ~147 bars (7 months) up to ~252 bars (>9-12 months).
+// For weekly: ~65-156 bars (1.5-3 years).
+function getResponsiveVisibleBars(containerWidth, timeframe = 'daily') {
   const w = containerWidth || (typeof window !== 'undefined' ? window.innerWidth : 800);
+  if (timeframe === 'weekly') {
+    const bars = Math.round(w / 8.5);
+    return Math.max(65, Math.min(156, bars));
+  }
   const bars = Math.round(w / 5.4);
   return Math.max(147, Math.min(252, bars));
 }
@@ -449,6 +544,9 @@ function compositeChartScreenshot(rawChartCanvas, {
     for (const item of earnings) {
       const targetDate = item.date;
       let idx = dataLookup?.timeMap?.get(targetDate);
+      if (idx === undefined && dataLookup?.timeframe === 'weekly') {
+        idx = dataLookup?.timeMap?.get(getMondayOfWeek(targetDate));
+      }
       const curData = dataLookup?.data || [];
       if (item.time_of_day === 'amc' && idx !== undefined && idx + 1 < curData.length) {
         idx = idx + 1;
@@ -508,12 +606,14 @@ function compositeChartScreenshot(rawChartCanvas, {
   const changeColor = isUp ? '#34d399' : '#f87171';
   const changeSign = isUp ? '+' : '';
   const volFormatted = formatVolume(volume);
+  const isW = dataLookup?.timeframe === 'weekly';
 
   const fontSize = Math.max(11 * scale, 12);
   ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
 
   const bannerTextParts = [
     { text: symbol ? `${symbol}` : '', color: '#f8fafc', bold: true },
+    { text: isW ? '[1W]' : '[1D]', color: isW ? '#c084fc' : '#38bdf8', bold: true },
     { text: date ? `(${date})` : '', color: '#94a3b8' },
     { text: '  O', color: '#94a3b8' },
     { text: open.toFixed(2), color: ohlcColor },
@@ -570,6 +670,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   onScreenshotSaved = null,
   earnings = null,
   showPriceLine = true,
+  timeframe = null, // 'daily' | 'weekly' | null (controlled or uncontrolled)
+  onTimeframeChange = null,
 }, ref) {
   const rootContainerRef = useRef(null);
   const chartContainerRef = useRef();
@@ -579,13 +681,58 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   const verticalLineRef = useRef(null);
   const volumeProfilePrimitiveRef = useRef(null);
   const legendRef = useRef(null);
-  const dataLookupRef = useRef({ timeMap: new Map(), data: [], defaultBar: null, defaultPrevBar: null, symbol: null });
+  const dataLookupRef = useRef({ timeMap: new Map(), data: [], defaultBar: null, defaultPrevBar: null, symbol: null, timeframe: 'daily' });
   const lastCancelTimestampRef = useRef(0);
   const asOfIdxRef = useRef(-1);
   const isUserPannedRef = useRef(false);
   const userPanCheckTimeoutRef = useRef(null);
   const prevSymbolRef = useRef(null);
   const prevDataRef = useRef(null);
+  const prevTimeframeRef = useRef('daily');
+
+  // Timeframe state: 'daily' vs 'weekly'
+  const [chartTimeframe, setChartTimeframe] = useState(() => {
+    if (timeframe) return timeframe;
+    try {
+      return localStorage.getItem('pt_chart_timeframe') || 'daily';
+    } catch {
+      return 'daily';
+    }
+  });
+
+  const chartTimeframeRef = useRef(chartTimeframe);
+  chartTimeframeRef.current = chartTimeframe;
+
+  useEffect(() => {
+    if (timeframe && (timeframe === 'daily' || timeframe === 'weekly')) {
+      setChartTimeframe(timeframe);
+    }
+  }, [timeframe]);
+
+  const handleTimeframeChange = (newTf) => {
+    if (newTf !== 'daily' && newTf !== 'weekly') return;
+    setChartTimeframe(newTf);
+    try {
+      localStorage.setItem('pt_chart_timeframe', newTf);
+    } catch {}
+    if (onTimeframeChange) {
+      onTimeframeChange(newTf);
+    }
+  };
+
+  const handleTimeframeChangeRef = useRef(handleTimeframeChange);
+  handleTimeframeChangeRef.current = handleTimeframeChange;
+
+  const isWeekly = chartTimeframe === 'weekly';
+
+  // Compute active chart data: aggregated weekly bars in weekly mode, or original daily bars in daily mode
+  const chartData = React.useMemo(() => {
+    if (!data || data.length === 0) return [];
+    if (isWeekly) {
+      return aggregateDailyBarsToWeekly(data);
+    }
+    return data;
+  }, [data, isWeekly]);
 
   const [savingScreenshot, setSavingScreenshot] = useState(false);
   const [screenshotSuccess, setScreenshotSuccess] = useState(false);
@@ -594,12 +741,12 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   // Volume Profile visibility state
   const [showVolumeProfile, setShowVolumeProfile] = useState(true);
 
-  // Synchronize VolumeProfilePrimitive and POC price line whenever data or visibility changes
+  // Synchronize VolumeProfilePrimitive and POC price line whenever chartData or visibility changes
   useEffect(() => {
     if (volumeProfilePrimitiveRef.current) {
-      volumeProfilePrimitiveRef.current.update(data || [], showVolumeProfile);
+      volumeProfilePrimitiveRef.current.update(chartData || [], showVolumeProfile);
     }
-  }, [data, showVolumeProfile]);
+  }, [chartData, showVolumeProfile]);
 
 
   // TradingView-style Earnings Date Markers State
@@ -817,7 +964,10 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     let logical = p.logical;
     if (typeof logical !== 'number' && p.time && dataLookupRef.current?.timeMap) {
       const tKey = typeof p.time === 'string' ? p.time : (p.time?.year ? `${p.time.year}-${String(p.time.month).padStart(2, '0')}-${String(p.time.day).padStart(2, '0')}` : String(p.time));
-      const idx = dataLookupRef.current.timeMap.get(tKey);
+      let idx = dataLookupRef.current.timeMap.get(tKey);
+      if (idx === undefined && isWeekly) {
+        idx = dataLookupRef.current.timeMap.get(getMondayOfWeek(tKey));
+      }
       if (idx !== undefined) {
         logical = idx + (typeof p.offsetFromBar === 'number' ? p.offsetFromBar : 0);
       }
@@ -851,6 +1001,9 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     if (firstDateStr && targetDate < firstDateStr) return null;
 
     let idx = timeMap.get(targetDate);
+    if (idx === undefined && isWeekly) {
+      idx = timeMap.get(getMondayOfWeek(targetDate));
+    }
 
     // If report was After Market Close (amc), the market reaction occurred on the next trading session
     if (item.time_of_day === 'amc') {
@@ -1003,6 +1156,14 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           handleUndoRef.current();
         }
       }
+
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key === 'd' || e.key === 'D') {
+          handleTimeframeChangeRef.current?.('daily');
+        } else if (e.key === 'w' || e.key === 'W') {
+          handleTimeframeChangeRef.current?.('weekly');
+        }
+      }
     };
 
     const handleKeyUp = (e) => {
@@ -1100,10 +1261,12 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     const volFormatted = formatVolume(volume);
     const hasRs = bar.rs_line !== undefined && bar.rs_line !== null;
     const isBlueDot = Boolean(bar.is_rs_blue_dot);
+    const isW = chartTimeframeRef.current === 'weekly';
 
     legendRef.current.innerHTML = `
       <div style="display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.2;">
         ${symbolStr ? `<span style="font-weight: 700; color: #f8fafc; margin-right: 2px;">${symbolStr}</span>` : ''}
+        <span style="background: ${isW ? 'rgba(168, 85, 247, 0.22)' : 'rgba(56, 189, 248, 0.18)'}; color: ${isW ? '#c084fc' : '#38bdf8'}; border: 1px solid ${isW ? 'rgba(168, 85, 247, 0.4)' : 'rgba(56, 189, 248, 0.35)'}; padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;">${isW ? '1W' : '1D'}</span>
         <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">O</span><span style="color: ${ohlcColor}; font-weight: 600;">${open.toFixed(2)}</span></span>
         <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">H</span><span style="color: ${ohlcColor}; font-weight: 600;">${high.toFixed(2)}</span></span>
         <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">L</span><span style="color: ${ohlcColor}; font-weight: 600;">${low.toFixed(2)}</span></span>
@@ -1118,7 +1281,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
 
 
   const handleSaveScreenshot = async (overrideParams = {}) => {
-    if (!chartRef.current || !data || data.length === 0 || savingScreenshot) return;
+    if (!chartRef.current || !chartData || chartData.length === 0 || savingScreenshot) return;
 
     setSavingScreenshot(true);
     setScreenshotSuccess(false);
@@ -1133,7 +1296,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       const { defaultBar, defaultPrevBar } = dataLookupRef.current;
       const targetSymbol = overrideParams.symbol || symbol || 'STOCK';
       const targetSetup = overrideParams.setupName || setupName || 'General';
-      const targetDate = overrideParams.asOfDate || asOfDate || defaultBar?.time || (data && data.length > 0 ? data[data.length - 1].time : null) || getLocalDateStr();
+      const targetDate = overrideParams.asOfDate || asOfDate || defaultBar?.time || (chartData && chartData.length > 0 ? chartData[chartData.length - 1].time : null) || getLocalDateStr();
       const dateStr = typeof targetDate === 'string' ? targetDate : (targetDate?.year ? `${targetDate.year}-${String(targetDate.month).padStart(2, '0')}-${String(targetDate.day).padStart(2, '0')}` : String(targetDate));
 
       const curKey = symbol || 'DEFAULT';
@@ -1154,7 +1317,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         containerHeight: chartContainerRef.current?.clientHeight || 400,
         timeScale: chartRef.current?.timeScale(),
         series: seriesRef.current?.candlestickSeries,
-        dataLookup: dataLookupRef.current,
+        dataLookup: { ...dataLookupRef.current, timeframe: chartTimeframeRef.current },
       });
 
       const dataUrl = compositedCanvas.toDataURL('image/png');
@@ -1320,7 +1483,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       });
 
       const sma220Series = chart.addSeries(LineSeries, {
-        color: '#dfe9df',
+        color: '#ffffff',
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
@@ -1400,6 +1563,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           low: candle.low,
           close: candle.close,
           volume: volume,
+          rs_line: idx !== undefined ? currentData[idx]?.rs_line : undefined,
+          is_rs_blue_dot: idx !== undefined ? currentData[idx]?.is_rs_blue_dot : false,
         };
 
         renderLegend(bar, prevBar, curSymbol);
@@ -1431,11 +1596,12 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       width: targetWidth,
     });
 
-    // Populate or update series data whenever data prop is available
-    if (data && data.length > 0 && seriesRef.current) {
-      const isDataOrSymbolChanged = prevSymbolRef.current !== symbol || prevDataRef.current !== data;
+    // Populate or update series data whenever chartData prop is available
+    if (chartData && chartData.length > 0 && seriesRef.current) {
+      const isDataOrSymbolChanged = prevSymbolRef.current !== symbol || prevDataRef.current !== chartData || prevTimeframeRef.current !== chartTimeframe;
       prevSymbolRef.current = symbol;
-      prevDataRef.current = data;
+      prevDataRef.current = chartData;
+      prevTimeframeRef.current = chartTimeframe;
 
       if (isDataOrSymbolChanged) {
         // Reset measure state and active drawing when stock or data changes
@@ -1458,54 +1624,87 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           rsLineSeries,
         } = seriesRef.current;
 
-        const volumeData = data.map(d => ({
+        const volumeData = chartData.map(d => ({
           time: d.time,
           value: d.volume || 0,
           color: (d.close >= d.open) ? 'rgba(16, 185, 129, 0.5)' : 'rgba(239, 68, 68, 0.5)',
         }));
         volumeSeries.setData(volumeData);
 
-        const ma50VolData = calculateSMA(data, 50, 'volume');
+        const volPeriod = isWeekly ? 10 : 50;
+        const ma50VolData = calculateSMA(chartData, volPeriod, 'volume');
         volumeMa50Series.setData(ma50VolData);
         if (volumeMa50Series.options().visible !== (ma50VolData.length > 0)) {
           volumeMa50Series.applyOptions({ visible: ma50VolData.length > 0 });
         }
 
-        candlestickSeries.setData(data);
+        candlestickSeries.setData(chartData);
 
-        const ema10Data = calculateEMA(data, 10);
-        ema10Series.setData(ema10Data);
-        if (ema10Series.options().visible !== (ema10Data.length > 0)) {
-          ema10Series.applyOptions({ visible: ema10Data.length > 0 });
-        }
+        if (isWeekly) {
+          // On weekly chart: only show 3 SMAs: 10w (yellow), 30w (cyan), and 40w (white).
+          // Hide short-term EMAs (10, 20).
+          ema10Series.setData([]);
+          if (ema10Series.options().visible !== false) {
+            ema10Series.applyOptions({ visible: false });
+          }
+          ema20Series.setData([]);
+          if (ema20Series.options().visible !== false) {
+            ema20Series.applyOptions({ visible: false });
+          }
 
-        const ema20Data = calculateEMA(data, 20);
-        ema20Series.setData(ema20Data);
-        if (ema20Series.options().visible !== (ema20Data.length > 0)) {
-          ema20Series.applyOptions({ visible: ema20Data.length > 0 });
-        }
+          const sma10Data = calculateSMA(chartData, 10);
+          sma50Series.setData(sma10Data);
+          if (sma50Series.options().visible !== (sma10Data.length > 0)) {
+            sma50Series.applyOptions({ visible: sma10Data.length > 0 });
+          }
 
-        const sma50Data = calculateSMA(data, 50);
-        sma50Series.setData(sma50Data);
-        if (sma50Series.options().visible !== (sma50Data.length > 0)) {
-          sma50Series.applyOptions({ visible: sma50Data.length > 0 });
-        }
+          const sma30Data = calculateSMA(chartData, 30);
+          sma150Series.setData(sma30Data);
+          if (sma150Series.options().visible !== (sma30Data.length > 0)) {
+            sma150Series.applyOptions({ visible: sma30Data.length > 0 });
+          }
 
-        const sma150Data = calculateSMA(data, 150);
-        sma150Series.setData(sma150Data);
-        if (sma150Series.options().visible !== (sma150Data.length > 0)) {
-          sma150Series.applyOptions({ visible: sma150Data.length > 0 });
-        }
+          const sma40Data = calculateSMA(chartData, 40);
+          sma220Series.setData(sma40Data);
+          if (sma220Series.options().visible !== (sma40Data.length > 0)) {
+            sma220Series.applyOptions({ visible: sma40Data.length > 0 });
+          }
+        } else {
+          // On daily chart: show 10 EMA, 20 EMA, 50 SMA, 150 SMA, 200/220 SMA
+          const ema10Data = calculateEMA(chartData, 10);
+          ema10Series.setData(ema10Data);
+          if (ema10Series.options().visible !== (ema10Data.length > 0)) {
+            ema10Series.applyOptions({ visible: ema10Data.length > 0 });
+          }
 
-        const sma220Data = calculateSMA(data, 220);
-        sma220Series.setData(sma220Data);
-        if (sma220Series.options().visible !== (sma220Data.length > 0)) {
-          sma220Series.applyOptions({ visible: sma220Data.length > 0 });
+          const ema20Data = calculateEMA(chartData, 20);
+          ema20Series.setData(ema20Data);
+          if (ema20Series.options().visible !== (ema20Data.length > 0)) {
+            ema20Series.applyOptions({ visible: ema20Data.length > 0 });
+          }
+
+          const sma50Data = calculateSMA(chartData, 50);
+          sma50Series.setData(sma50Data);
+          if (sma50Series.options().visible !== (sma50Data.length > 0)) {
+            sma50Series.applyOptions({ visible: sma50Data.length > 0 });
+          }
+
+          const sma150Data = calculateSMA(chartData, 150);
+          sma150Series.setData(sma150Data);
+          if (sma150Series.options().visible !== (sma150Data.length > 0)) {
+            sma150Series.applyOptions({ visible: sma150Data.length > 0 });
+          }
+
+          const sma220Data = calculateSMA(chartData, 220);
+          sma220Series.setData(sma220Data);
+          if (sma220Series.options().visible !== (sma220Data.length > 0)) {
+            sma220Series.applyOptions({ visible: sma220Data.length > 0 });
+          }
         }
 
         if (rsLineSeries) {
           const rsData = showRsLine
-            ? data
+            ? chartData
                 .filter((d) => d.rs_line !== undefined && d.rs_line !== null)
                 .map((d) => ({
                   time: d.time,
@@ -1520,8 +1719,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       }
 
       // Resolve and apply As-of Date vertical line
-      const asOfIdx = resolveAsOfIndex(data, asOfDate);
-      const resolvedTime = asOfIdx !== -1 ? data[asOfIdx].time : null;
+      const asOfIdx = resolveAsOfIndex(chartData, asOfDate);
+      const resolvedTime = asOfIdx !== -1 ? chartData[asOfIdx].time : null;
       asOfIdxRef.current = asOfIdx;
       isUserPannedRef.current = false;
       if (userPanCheckTimeoutRef.current) clearTimeout(userPanCheckTimeoutRef.current);
@@ -1529,7 +1728,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       if (markersPluginRef.current) {
         if (showRsLine) {
           const blueDotMarkers = [];
-          data.forEach((d) => {
+          chartData.forEach((d) => {
             if (d.is_rs_blue_dot) {
               blueDotMarkers.push({
                 time: d.time,
@@ -1555,40 +1754,41 @@ const CandlestickChart = forwardRef(function CandlestickChart({
 
       // Prepare data lookup for fast crosshair legend updates
       const timeMap = new Map();
-      data.forEach((d, i) => {
+      chartData.forEach((d, i) => {
         const tKey = typeof d.time === 'string' ? d.time : (d.time?.year ? `${d.time.year}-${String(d.time.month).padStart(2, '0')}-${String(d.time.day).padStart(2, '0')}` : String(d.time));
         timeMap.set(tKey, i);
       });
 
-      const defaultIdx = (asOfIdx !== -1) ? asOfIdx : (data.length - 1);
-      const defaultBar = defaultIdx >= 0 ? data[defaultIdx] : null;
-      const defaultPrevBar = defaultIdx > 0 ? data[defaultIdx - 1] : null;
+      const defaultIdx = (asOfIdx !== -1) ? asOfIdx : (chartData.length - 1);
+      const defaultBar = defaultIdx >= 0 ? chartData[defaultIdx] : null;
+      const defaultPrevBar = defaultIdx > 0 ? chartData[defaultIdx - 1] : null;
 
       dataLookupRef.current = {
         timeMap,
-        data: data,
+        data: chartData,
         defaultBar,
         defaultPrevBar,
         symbol,
+        timeframe: chartTimeframe,
       };
 
       // Render default (latest or as-of date) bar stats in legend
       renderLegend(defaultBar, defaultPrevBar, symbol);
 
-      const RIGHT_MARGIN_BARS = 18;
-      const POST_AS_OF_BARS = 40; // Position the As-of Date bar with ~40 bars on its right to the border
+      const RIGHT_MARGIN_BARS = isWeekly ? 8 : 18;
+      const POST_AS_OF_BARS = isWeekly ? 12 : 40;
 
       chartRef.current.timeScale().applyOptions({
         rightOffset: RIGHT_MARGIN_BARS,
       });
 
       const applyTargetRange = (containerWidth) => {
-        if (!chartRef.current || !data || data.length === 0) return;
+        if (!chartRef.current || !chartData || chartData.length === 0) return;
         try {
           const cWidth = containerWidth || chartContainerRef.current?.clientWidth || targetWidth;
-          const visibleBars = getResponsiveVisibleBars(cWidth);
+          const visibleBars = getResponsiveVisibleBars(cWidth, chartTimeframe);
 
-          let toIndex = data.length - 1 + RIGHT_MARGIN_BARS;
+          let toIndex = chartData.length - 1 + RIGHT_MARGIN_BARS;
           if (asOfIdx !== -1) {
             const targetTo = asOfIdx + POST_AS_OF_BARS;
             if (targetTo < toIndex) {
@@ -1614,7 +1814,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     } else {
       renderLegend(null, null, symbol);
     }
-  }, [data, height, asOfDate, symbol, setupName]);
+  }, [chartData, height, asOfDate, symbol, setupName, chartTimeframe]);
 
   // Handle immediate toggle of RS Line and Blue Dot markers
   useEffect(() => {
@@ -2143,11 +2343,11 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           borderRadius: '6px',
           padding: '4px 10px',
           boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
-          maxWidth: 'calc(100% - 280px)',
+          maxWidth: 'calc(100% - 330px)',
         }}
       />
 
-      {/* Top-Right Chart Action Overlay (Drawing Tools, Measure & Screenshot Buttons) */}
+      {/* Top-Right Chart Action Overlay (Timeframe Switcher, Drawing Tools, Measure & Screenshot Buttons) */}
       <div
         style={{
           position: 'absolute',
@@ -2166,6 +2366,69 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
         }}
       >
+        {/* Timeframe Switcher: Daily (D) vs Weekly (W) */}
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            background: 'rgba(255, 255, 255, 0.06)',
+            borderRadius: '5px',
+            padding: '1px',
+            gap: '1px',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => handleTimeframeChange('daily')}
+            title="Daily View (Hotkey: D)"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0 7px',
+              height: '24px',
+              background: chartTimeframe === 'daily' ? 'rgba(56, 189, 248, 0.28)' : 'transparent',
+              border: chartTimeframe === 'daily' ? '1px solid #38bdf8' : '1px solid transparent',
+              color: chartTimeframe === 'daily' ? '#38bdf8' : '#94a3b8',
+              borderRadius: '4px',
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              lineHeight: '22px',
+            }}
+          >
+            D
+          </button>
+          <button
+            type="button"
+            onClick={() => handleTimeframeChange('weekly')}
+            title="Weekly Chart (Hotkey: W) — 10w (Yellow), 30w (Cyan), 40w (White) SMA"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0 7px',
+              height: '24px',
+              background: chartTimeframe === 'weekly' ? 'rgba(168, 85, 247, 0.28)' : 'transparent',
+              border: chartTimeframe === 'weekly' ? '1px solid #c084fc' : '1px solid transparent',
+              color: chartTimeframe === 'weekly' ? '#c084fc' : '#94a3b8',
+              borderRadius: '4px',
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              lineHeight: '22px',
+            }}
+          >
+            W
+          </button>
+        </div>
+
+        {/* Separator between Timeframe and Tools */}
+        <div style={{ width: '1px', height: '14px', background: 'rgba(255,255,255,0.12)', margin: '0 1px' }} />
+
         {/* Straight Line Tool (White, 1px) */}
         <button
           type="button"

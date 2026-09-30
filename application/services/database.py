@@ -1406,8 +1406,154 @@ class DatabaseService:
             }
 
 
-    def get_stock_prices(self, symbol: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    def get_stock_prices(self, symbol: str, limit: Optional[int] = None, timeframe: str = "daily") -> List[Dict[str, Any]]:
         symbol = symbol.upper()
+        tf = (timeframe or "daily").strip().lower()
+
+        if tf == "weekly":
+            with self.get_read_only_conn() as conn:
+                if limit and limit > 0:
+                    lookback_days = (limit + 60) * 7
+                    bars = conn.execute("""
+                        WITH sym_recent AS (
+                            SELECT date, open, high, low, close, volume, rs_rank, ti_65,
+                                   date_trunc('week', date)::DATE as week_start
+                            FROM daily_bars 
+                            WHERE symbol = ? 
+                            ORDER BY date DESC 
+                            LIMIT ?
+                        ),
+                        sym_ordered AS (
+                            SELECT * FROM sym_recent ORDER BY date ASC
+                        ),
+                        spy_recent AS (
+                            SELECT date, close as spy_close, date_trunc('week', date)::DATE as week_start
+                            FROM daily_bars 
+                            WHERE symbol = 'SPY' AND date >= (SELECT MIN(date) FROM sym_ordered)
+                        ),
+                        spy_weekly AS (
+                            SELECT week_start, LAST(spy_close ORDER BY date ASC) as spy_close
+                            FROM spy_recent
+                            GROUP BY week_start
+                        ),
+                        weekly_bars AS (
+                            SELECT 
+                                week_start as date,
+                                FIRST(open ORDER BY date ASC) as open,
+                                MAX(high) as high,
+                                MIN(low) as low,
+                                LAST(close ORDER BY date ASC) as close,
+                                SUM(volume) as volume,
+                                LAST(rs_rank ORDER BY date ASC) as rs_rank,
+                                LAST(ti_65 ORDER BY date ASC) as ti_65
+                            FROM sym_ordered
+                            GROUP BY week_start
+                            ORDER BY week_start ASC
+                        ),
+                        weekly_with_spy AS (
+                            SELECT 
+                                w.*,
+                                s.spy_close,
+                                ROUND((w.close / NULLIF(s.spy_close, 0)) * 100.0, 4) as rs_line,
+                                ROUND(AVG(w.close) OVER (ORDER BY w.date ROWS BETWEEN 9 PRECEDING AND CURRENT ROW), 2) as sma_10w,
+                                ROUND(AVG(w.close) OVER (ORDER BY w.date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW), 2) as sma_30w,
+                                ROUND(AVG(w.close) OVER (ORDER BY w.date ROWS BETWEEN 39 PRECEDING AND CURRENT ROW), 2) as sma_40w
+                            FROM weekly_bars w
+                            LEFT JOIN spy_weekly s ON w.date = s.week_start
+                        ),
+                        with_rolling AS (
+                            SELECT 
+                                *,
+                                MAX(rs_line) OVER (ORDER BY date ROWS BETWEEN 52 PRECEDING AND 1 PRECEDING) as prev_rs_52w_high,
+                                MAX(close) OVER (ORDER BY date ROWS BETWEEN 52 PRECEDING AND 1 PRECEDING) as prev_close_52w_high
+                            FROM weekly_with_spy
+                        )
+                        SELECT 
+                            date, open, high, low, close, volume, sma_10w, sma_30w, sma_40w, rs_rank, ti_65,
+                            rs_line,
+                            COALESCE(rs_line >= prev_rs_52w_high AND close < COALESCE(prev_close_52w_high, close), false) as is_rs_blue_dot
+                        FROM with_rolling
+                        ORDER BY date ASC
+                    """, [symbol, lookback_days]).fetchall()
+                    if len(bars) > limit:
+                        bars = bars[-limit:]
+                else:
+                    bars = conn.execute("""
+                        WITH sym_daily AS (
+                            SELECT date, open, high, low, close, volume, rs_rank, ti_65,
+                                   date_trunc('week', date)::DATE as week_start
+                            FROM daily_bars 
+                            WHERE symbol = ?
+                        ),
+                        spy_daily AS (
+                            SELECT date, close as spy_close, date_trunc('week', date)::DATE as week_start
+                            FROM daily_bars 
+                            WHERE symbol = 'SPY'
+                        ),
+                        spy_weekly AS (
+                            SELECT week_start, LAST(spy_close ORDER BY date ASC) as spy_close
+                            FROM spy_daily
+                            GROUP BY week_start
+                        ),
+                        weekly_bars AS (
+                            SELECT 
+                                week_start as date,
+                                FIRST(open ORDER BY date ASC) as open,
+                                MAX(high) as high,
+                                MIN(low) as low,
+                                LAST(close ORDER BY date ASC) as close,
+                                SUM(volume) as volume,
+                                LAST(rs_rank ORDER BY date ASC) as rs_rank,
+                                LAST(ti_65 ORDER BY date ASC) as ti_65
+                            FROM sym_daily
+                            GROUP BY week_start
+                            ORDER BY week_start ASC
+                        ),
+                        weekly_with_spy AS (
+                            SELECT 
+                                w.*,
+                                s.spy_close,
+                                ROUND((w.close / NULLIF(s.spy_close, 0)) * 100.0, 4) as rs_line,
+                                ROUND(AVG(w.close) OVER (ORDER BY w.date ROWS BETWEEN 9 PRECEDING AND CURRENT ROW), 2) as sma_10w,
+                                ROUND(AVG(w.close) OVER (ORDER BY w.date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW), 2) as sma_30w,
+                                ROUND(AVG(w.close) OVER (ORDER BY w.date ROWS BETWEEN 39 PRECEDING AND CURRENT ROW), 2) as sma_40w
+                            FROM weekly_bars w
+                            LEFT JOIN spy_weekly s ON w.date = s.week_start
+                        ),
+                        with_rolling AS (
+                            SELECT 
+                                *,
+                                MAX(rs_line) OVER (ORDER BY date ROWS BETWEEN 52 PRECEDING AND 1 PRECEDING) as prev_rs_52w_high,
+                                MAX(close) OVER (ORDER BY date ROWS BETWEEN 52 PRECEDING AND 1 PRECEDING) as prev_close_52w_high
+                            FROM weekly_with_spy
+                        )
+                        SELECT 
+                            date, open, high, low, close, volume, sma_10w, sma_30w, sma_40w, rs_rank, ti_65,
+                            rs_line,
+                            COALESCE(rs_line >= prev_rs_52w_high AND close < COALESCE(prev_close_52w_high, close), false) as is_rs_blue_dot
+                        FROM with_rolling
+                        ORDER BY date ASC
+                    """, [symbol]).fetchall()
+
+                bars_list = []
+                for row in bars:
+                    bars_list.append({
+                        "time": row[0].strftime("%Y-%m-%d") if row[0] else None,
+                        "open": row[1],
+                        "high": row[2],
+                        "low": row[3],
+                        "close": row[4],
+                        "volume": row[5],
+                        "sma_10w": row[6],
+                        "sma_30w": row[7],
+                        "sma_40w": row[8],
+                        "rs_rank": row[9],
+                        "ti_65": row[10],
+                        "rs_line": row[11],
+                        "is_rs_blue_dot": bool(row[12]) if row[12] is not None else False
+                    })
+                return bars_list
+
         with self.get_read_only_conn() as conn:
             if limit and limit > 0:
                 lookback = limit + 260

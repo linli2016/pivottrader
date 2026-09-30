@@ -213,10 +213,10 @@ def get_stock_detail(symbol: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/stocks/{symbol}/prices")
-def get_stock_prices(symbol: str, limit: Optional[int] = None):
-    """Retrieve historical daily price bars for charting."""
+def get_stock_prices(symbol: str, limit: Optional[int] = None, timeframe: str = "daily"):
+    """Retrieve historical daily or weekly price bars for charting."""
     try:
-        return db_service.get_stock_prices(symbol, limit)
+        return db_service.get_stock_prices(symbol, limit, timeframe=timeframe)
     except Exception as e:
         logger.error(f"Error in get_stock_prices({symbol}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
