@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
 import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers, CrosshairMode, PriceScaleMode, LineStyle } from 'lightweight-charts';
 import { getLocalDateStr } from '../utils/dateUtils';
+import MansfieldYearlyThumbnail, { aggregateBarsToYearly } from './MansfieldYearlyThumbnail';
 
 // Helper to calculate Simple Moving Average (SMA)
 function calculateSMA(data, period, key = 'close') {
@@ -432,6 +433,8 @@ function compositeChartScreenshot(rawChartCanvas, {
   timeScale = null,
   series = null,
   dataLookup = null,
+  showMansfieldYearly = false,
+  yearlyBars = [],
 }) {
   // Target native balanced resolution (~1100px width) for ultra-compact file size (~50-80KB) while preserving sharp detail
   const maxTargetWidth = 1100;
@@ -654,6 +657,141 @@ function compositeChartScreenshot(rawChartCanvas, {
     curX += ctx.measureText(part.text + ' ').width;
   }
 
+  // 4. Draw ultra-compact Mansfield Yearly Bar Chart Thumbnail on Screenshot if enabled
+  if (showMansfieldYearly && yearlyBars && yearlyBars.length > 0) {
+    const displayBars = yearlyBars.length > 9 ? yearlyBars.slice(-9) : yearlyBars;
+    const tWidth = 110 * scale;
+    const tHeight = 68 * scale;
+    const tX = padX;
+    const tY = outHeight - tHeight - (32 * scaleY);
+
+    ctx.save();
+    // Card Background
+    drawCanvasRoundRect(ctx, tX, tY, tWidth, tHeight, 4 * scale);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.96)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+    ctx.lineWidth = 1 * scale;
+    ctx.stroke();
+
+    // Top text: YEARLY and ATH / Blue Sky
+    let ath = -Infinity;
+    for (const b of yearlyBars) {
+      if (b.high > ath) ath = b.high;
+    }
+    const currentPriceVal = close;
+    const isBlueSky = currentPriceVal >= ath - 0.005;
+
+    ctx.font = `800 ${Math.max(7 * scale, 7.5)}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillText('YEARLY', tX + 4 * scale, tY + 8 * scale);
+
+    if (isBlueSky) {
+      ctx.fillStyle = '#34d399';
+      ctx.textAlign = 'right';
+      ctx.fillText('★ BLUE SKY', tX + tWidth - 4 * scale, tY + 8 * scale);
+    } else {
+      const distPct = ath > 0 ? ((currentPriceVal - ath) / ath) * 100 : 0;
+      ctx.fillStyle = '#fbbf24';
+      ctx.textAlign = 'right';
+      ctx.fillText(`ATH $${Math.round(ath)} (${distPct.toFixed(0)}%)`, tX + tWidth - 4 * scale, tY + 8 * scale);
+    }
+    ctx.textAlign = 'left';
+
+    // Mini Chart Plot Area
+    const plotX = tX + 4 * scale;
+    const plotY = tY + 11 * scale;
+    const plotW = tWidth - 26 * scale;
+    const plotH = tHeight - 21 * scale;
+
+    let minP = currentPriceVal;
+    let maxP = currentPriceVal;
+    for (const b of displayBars) {
+      if (b.low < minP) minP = b.low;
+      if (b.high > maxP) maxP = b.high;
+    }
+    const range = (maxP - minP) || 1;
+    const bMin = Math.max(0, minP - range * 0.06);
+    const bMax = maxP + range * 0.06;
+    const effRange = bMax - bMin || 1;
+
+    const getYCoord = (p) => plotY + plotH - ((p - bMin) / effRange) * plotH;
+    const activeY = getYCoord(currentPriceVal);
+
+    // Current price dashed line
+    ctx.beginPath();
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 0.9 * scale;
+    ctx.setLineDash([2 * scale, 2 * scale]);
+    ctx.moveTo(plotX, activeY);
+    ctx.lineTo(plotX + plotW, activeY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Yearly OHLC Bars
+    const slotWidth = plotW / Math.max(1, displayBars.length);
+    const tickLen = Math.max(1.8 * scale, slotWidth * 0.32);
+
+    for (let i = 0; i < displayBars.length; i++) {
+      const b = displayBars[i];
+      const bx = plotX + i * slotWidth + slotWidth / 2;
+      const yH = getYCoord(b.high);
+      const yL = getYCoord(b.low);
+      const yO = getYCoord(b.open);
+      const yC = getYCoord(b.close);
+
+      const isUpYear = b.close >= b.open;
+      const bColor = isUpYear ? '#22c55e' : '#ef4444';
+      ctx.strokeStyle = bColor;
+      ctx.lineWidth = 1 * scale;
+
+      // Stem (Low to High)
+      ctx.beginPath();
+      ctx.moveTo(bx, yH);
+      ctx.lineTo(bx, yL);
+      ctx.stroke();
+
+      // Open tick (left)
+      ctx.beginPath();
+      ctx.moveTo(bx - tickLen, yO);
+      ctx.lineTo(bx, yO);
+      ctx.stroke();
+
+      // Close tick (right)
+      ctx.beginPath();
+      ctx.moveTo(bx, yC);
+      ctx.lineTo(bx + tickLen, yC);
+      ctx.stroke();
+
+      // Overhead highlight if peaks above active breakout price
+      if (b.high > currentPriceVal) {
+        ctx.strokeStyle = '#f87171';
+        ctx.lineWidth = 1.3 * scale;
+        ctx.beginPath();
+        ctx.moveTo(bx, yH);
+        ctx.lineTo(bx, Math.min(activeY, yL));
+        ctx.stroke();
+      }
+
+      // Year text label
+      ctx.font = `600 ${Math.max(6 * scale, 6.5)}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+      ctx.fillStyle = b.high > currentPriceVal ? '#fca5a5' : 'rgba(255, 255, 255, 0.5)';
+      ctx.textAlign = 'center';
+      ctx.fillText(`'${String(b.year).slice(2)}`, bx, tY + tHeight - 2 * scale);
+    }
+    ctx.textAlign = 'left';
+
+    // Price tag on right
+    drawCanvasRoundRect(ctx, plotX + plotW + 2 * scale, Math.max(plotY, activeY - 5 * scale), 19 * scale, 10 * scale, 2 * scale);
+    ctx.fillStyle = '#0284c7';
+    ctx.fill();
+    ctx.font = `700 ${Math.max(6 * scale, 6.5)}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(`$${Math.round(currentPriceVal)}`, plotX + plotW + 3 * scale, Math.max(plotY, activeY - 5 * scale) + 7.5 * scale);
+
+    ctx.restore();
+  }
+
   return exportCanvas;
 }
 
@@ -793,6 +931,30 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       setRangeUpdateTick((t) => t + 1);
     }
   }, [isLogScale]);
+
+  // Stan Weinstein Mansfield Yearly Bar Chart State
+  const [showMansfieldYearly, setShowMansfieldYearly] = useState(() => {
+    try {
+      return localStorage.getItem('pt_show_mansfield_thumbnail') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleMansfieldYearly = () => {
+    setShowMansfieldYearly((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('pt_show_mansfield_thumbnail', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const toggleMansfieldYearlyRef = useRef(toggleMansfieldYearly);
+  toggleMansfieldYearlyRef.current = toggleMansfieldYearly;
+  const showMansfieldYearlyRef = useRef(showMansfieldYearly);
+  showMansfieldYearlyRef.current = showMansfieldYearly;
 
   // Relative Strength (RS) Line & Blue Dot Toggle State
   const [showRsLine, setShowRsLine] = useState(() => {
@@ -1162,6 +1324,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           handleTimeframeChangeRef.current?.('daily');
         } else if (e.key === 'w' || e.key === 'W') {
           handleTimeframeChangeRef.current?.('weekly');
+        } else if (e.key === 'y' || e.key === 'Y') {
+          toggleMansfieldYearlyRef.current?.();
         }
       }
     };
@@ -1318,6 +1482,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         timeScale: chartRef.current?.timeScale(),
         series: seriesRef.current?.candlestickSeries,
         dataLookup: { ...dataLookupRef.current, timeframe: chartTimeframeRef.current },
+        showMansfieldYearly: showMansfieldYearlyRef.current,
+        yearlyBars: aggregateBarsToYearly(chartData),
       });
 
       const dataUrl = compositedCanvas.toDataURL('image/png');
@@ -2424,6 +2590,29 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           >
             W
           </button>
+          <button
+            type="button"
+            onClick={toggleMansfieldYearly}
+            title={showMansfieldYearly ? "Hide Mansfield Yearly Bar Chart (Hotkey: Y)" : "Show Mansfield Yearly Bar Chart (Hotkey: Y) — Stan Weinstein Overhead Supply Check"}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0 7px',
+              height: '24px',
+              background: showMansfieldYearly ? 'rgba(56, 189, 248, 0.28)' : 'transparent',
+              border: showMansfieldYearly ? '1px solid #38bdf8' : '1px solid transparent',
+              color: showMansfieldYearly ? '#38bdf8' : '#94a3b8',
+              borderRadius: '4px',
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              lineHeight: '22px',
+            }}
+          >
+            Y
+          </button>
         </div>
 
         {/* Separator between Timeframe and Tools */}
@@ -3403,6 +3592,16 @@ const CandlestickChart = forwardRef(function CandlestickChart({
             </div>
           </div>
         )}
+
+        {/* Stan Weinstein Mansfield Yearly Bar Chart Thumbnail (Overhead Supply Check) */}
+        <MansfieldYearlyThumbnail
+          data={chartData}
+          symbol={symbol}
+          asOfDate={asOfDate}
+          currentPrice={asOfIdxRef.current >= 0 && chartData[asOfIdxRef.current]?.close ? chartData[asOfIdxRef.current].close : (chartData[chartData.length - 1]?.close ?? null)}
+          isVisible={showMansfieldYearly}
+          bottom="32px"
+        />
       </div>
 
       <div
