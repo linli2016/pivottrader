@@ -330,6 +330,36 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertIn("b.sma_200_80d_ago", res["sql"])
         self.assertIn("b.sma_200_100d_ago", res["sql"])
 
+    def test_nullif_and_close_range(self):
+        # Test NULLIF function directly
+        expr1 = "(C - L) / NULLIF(H - L, 0) >= 0.75"
+        res1 = ScanExpressionEngine.validate(expr1)
+        self.assertTrue(res1["valid"])
+        self.assertIn("NULLIF(", res1["sql"])
+
+        # Test CLOSE_RANGE and RANGE_POS variables
+        expr2 = "CLOSE_RANGE >= 0.75 AND RANGE_POS >= 0.70"
+        res2 = ScanExpressionEngine.validate(expr2)
+        self.assertTrue(res2["valid"])
+        self.assertIn("b.close - b.low", res2["sql"])
+        self.assertIn("NULLIF(b.high - b.low, 0)", res2["sql"])
+
+        # Test complete Unified Quality Breakout expression (Ultra-fast single-bar formula)
+        expr3 = "STAGE2 AND RS_RANK >= 75 AND C >= 5.0 AND DOLLAR_VOL >= 5000000 AND C >= O * 1.025 AND ((IS_52W_HIGH AND REL_VOL >= 1.8 AND CLOSE_RANGE >= 0.75) OR (DIST_52W_HIGH <= 15.0 AND REL_VOL >= 1.5 AND CLOSE_RANGE >= 0.70))"
+        res3 = ScanExpressionEngine.validate(expr3)
+        self.assertTrue(res3["valid"])
+        self.assertFalse(res3["has_lags"])
+        self.assertIn("is_52w_high", res3["sql"])
+        self.assertIn("b.dist_from_52w_high <= 15.0", res3["sql"])
+
+        # Test multiline expression support
+        expr_multiline = """
+        STAGE2 AND RS_RANK >= 75 AND C >= 5.0
+        AND ((IS_52W_HIGH AND REL_VOL >= 1.8)
+             OR (DIST_52W_HIGH <= 15.0 AND REL_VOL >= 1.5))
+        """
+        res_multi = ScanExpressionEngine.validate(expr_multiline)
+        self.assertTrue(res_multi["valid"])
 
 if __name__ == "__main__":
     unittest.main()

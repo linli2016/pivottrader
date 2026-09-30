@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import ScoreMoversCard from './ScoreMoversCard';
 import SyncDataTab from './SyncDataTab';
 import MarketPulseCard from './MarketPulseCard';
 import { getLocalDateStr } from '../utils/dateUtils';
@@ -312,7 +311,7 @@ export default function DashboardTab({
   const [activeBreadthChart, setActiveBreadthChart] = useState('daily'); // 'daily', 'trend', 'heatmap'
   const [isBreadthTableOpen, setIsBreadthTableOpen] = useState(true);
   const [breadthPage, setBreadthPage] = useState(1);
-  const [breadthPageSize, setBreadthPageSize] = useState(65);
+  const [breadthPageSize, setBreadthPageSize] = useState(5);
   const [isCustomizing, setIsCustomizing] = useState(false);
   const [hiddenSymbols, setHiddenSymbols] = useState(new Set());
 
@@ -492,6 +491,7 @@ export default function DashboardTab({
 
   const kq = marketData?.summary?.kq_evaluation;
   const summaryData = marketData?.summary;
+  const compositeLight = summaryData?.composite_light || summaryData?.market_light;
   const latestDate = asOfDate || summaryData?.latest_date || summary?.last_price_date || 'Latest Available';
 
   // Cross-Asset Macro Tape Data
@@ -549,10 +549,10 @@ export default function DashboardTab({
     }
   }, [latestDate, asOfDate]);
 
-  // Light color mapping
-  const lightBadge = kq?.badge || 'YELLOW LIGHT';
-  const lightColor = lightBadge.includes('GREEN') ? '#10b981' : (lightBadge.includes('RED') ? '#f43f5e' : '#f59e0b');
-  const lightGlow = lightBadge.includes('GREEN') ? 'rgba(16, 185, 129, 0.25)' : (lightBadge.includes('RED') ? 'rgba(244, 63, 94, 0.25)' : 'rgba(245, 158, 11, 0.25)');
+  // Composite Market Light mapping (synthesizing Qullamaggie, Weinstein, and Stockbee)
+  const lightBadge = compositeLight?.light || kq?.badge || 'YELLOW LIGHT';
+  const lightColor = compositeLight?.color || (lightBadge.includes('GREEN') ? '#10b981' : (lightBadge.includes('RED') ? '#f43f5e' : '#f59e0b'));
+  const lightGlow = compositeLight?.glow || (lightBadge.includes('GREEN') ? 'rgba(16, 185, 129, 0.25)' : (lightBadge.includes('RED') ? 'rgba(244, 63, 94, 0.25)' : 'rgba(245, 158, 11, 0.25)'));
 
   const dailyData = marketData?.daily_data || [];
 
@@ -910,6 +910,286 @@ export default function DashboardTab({
     );
   };
 
+  // SVG Chart for Stan Weinstein "Weight of the Evidence" Indicators:
+  // Dual-Panel: (1) Cumulative Advance-Decline Line vs SPY Benchmark, (2) Net New 52W Highs/Lows Histogram & 10d MA
+  const renderWeinsteinChart = () => {
+    if (dailyData.length === 0) return null;
+    const chartData = [...dailyData].reverse();
+    const weinsteinVerdict = summaryData?.weinstein_verdict;
+
+    const width = 1000;
+    const height = 340;
+    const paddingLeft = 55;
+    const paddingRight = 55;
+    const paddingTop = 20;
+    const panel1Bottom = 165;
+    const panel1InnerHeight = panel1Bottom - paddingTop; // 145px
+    const panel2Top = 195;
+    const panel2Bottom = 300;
+    const panel2InnerHeight = panel2Bottom - panel2Top; // 105px
+    const panel2BaselineY = panel2Top + panel2InnerHeight / 2; // ~247.5px (zero line)
+
+    const stepX = (width - paddingLeft - paddingRight) / Math.max(chartData.length - 1, 1);
+    const getX = (idx) => paddingLeft + idx * stepX;
+
+    // Panel 1: Cumulative A/D scale
+    const adValues = chartData.map((d) => d.cum_ad ?? 0);
+    const minAd = Math.min(...adValues);
+    const maxAd = Math.max(...adValues);
+    const rangeAd = maxAd === minAd ? 1 : maxAd - minAd;
+    const getYAd = (val) => panel1Bottom - ((val - minAd) / rangeAd) * panel1InnerHeight;
+
+    // Panel 1: SPY Benchmark scale
+    const spyPrices = chartData.map((d) => d.spy_close ?? 0).filter((p) => p > 0);
+    const minSpy = spyPrices.length > 0 ? Math.min(...spyPrices) : 100;
+    const maxSpy = spyPrices.length > 0 ? Math.max(...spyPrices) : 200;
+    const rangeSpy = maxSpy === minSpy ? 1 : maxSpy - minSpy;
+    const getYSpy = (val) => panel1Bottom - ((val - minSpy) / rangeSpy) * panel1InnerHeight;
+
+    // Panel 2: Net New Highs / Lows scale
+    const netNhValues = chartData.map((d) => Math.abs(d.net_new_highs ?? 0));
+    const maxAbsNet = Math.max(...netNhValues, 50);
+    const halfH = (panel2InnerHeight / 2) - 6;
+    const getYNet = (val) => panel2BaselineY - (val / maxAbsNet) * halfH;
+
+    const { all: monthSeparators, visible: visibleSeparators } = getMonthSeparators(chartData, getX);
+
+    // Points for lines
+    const pointsCumAd = chartData.map((d, i) => `${getX(i)},${getYAd(d.cum_ad ?? 0)}`).join(' ');
+    const pointsSpy = chartData.filter((d) => (d.spy_close || 0) > 0).map((d) => `${getX(chartData.indexOf(d))},${getYSpy(d.spy_close)}`).join(' ');
+    const pointsNh10d = chartData.map((d, i) => `${getX(i)},${getYNet(d.net_new_highs_10d ?? 0)}`).join(' ');
+
+    // Area path for A/D
+    const areaAdPath = `M ${getX(0)},${panel1Bottom} ${chartData.map((d, i) => `L ${getX(i)},${getYAd(d.cum_ad ?? 0)}`).join(' ')} L ${getX(chartData.length - 1)},${panel1Bottom} Z`;
+
+    const barW = Math.max((width - paddingLeft - paddingRight) / chartData.length - 1, 1.2);
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', width: '100%' }}>
+        {/* Weinstein Weight of the Evidence Matrix Banner */}
+        <div
+          style={{
+            background: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '12px',
+            padding: '14px 18px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '13px', fontWeight: 800, color: '#f8fafc', letterSpacing: '0.04em' }}>
+                STAN WEINSTEIN STAGE ANALYSIS & EVIDENCE MATRIX
+              </span>
+              <span
+                style={{
+                  background: `${weinsteinVerdict?.badge_color || '#10b981'}22`,
+                  color: weinsteinVerdict?.badge_color || '#10b981',
+                  border: `1px solid ${weinsteinVerdict?.badge_color || '#10b981'}55`,
+                  borderRadius: '999px',
+                  padding: '2px 10px',
+                  fontSize: '11px',
+                  fontWeight: 700
+                }}
+              >
+                {weinsteinVerdict?.stage || 'Stage 2 (Bull Market)'}
+              </span>
+            </div>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: '#94a3b8' }}>
+              Evidence Score: <span style={{ color: weinsteinVerdict?.badge_color || '#10b981', fontWeight: 800 }}>{weinsteinVerdict?.score_label || '3/4 Bullish'}</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '10px' }}>
+            {/* 1. Major Trend */}
+            <div style={{ background: 'rgba(0, 0, 0, 0.35)', borderRadius: '8px', padding: '10px 12px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div style={{ fontSize: '10.5px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>
+                1. Major Trend (SPY vs 30W)
+              </div>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: weinsteinVerdict?.index_is_bullish ? '#34d399' : '#fb7185', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span>{weinsteinVerdict?.index_is_bullish ? '✓' : '✗'}</span>
+                <span>{weinsteinVerdict?.index_status || 'SPY vs 200 SMA'}</span>
+              </div>
+            </div>
+
+            {/* 2. Advance-Decline Line */}
+            <div style={{ background: 'rgba(0, 0, 0, 0.35)', borderRadius: '8px', padding: '10px 12px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div style={{ fontSize: '10.5px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>
+                2. A/D Line Confirmation
+              </div>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: weinsteinVerdict?.ad_is_bullish ? '#34d399' : '#fb7185', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span>{weinsteinVerdict?.ad_is_bullish ? '✓' : '✗'}</span>
+                <span>{weinsteinVerdict?.ad_status || 'A/D Line Trend (20d)'}</span>
+              </div>
+            </div>
+
+            {/* 3. Net 52W Highs/Lows */}
+            <div style={{ background: 'rgba(0, 0, 0, 0.35)', borderRadius: '8px', padding: '10px 12px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div style={{ fontSize: '10.5px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>
+                3. 52W Highs vs Lows
+              </div>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: weinsteinVerdict?.nh_is_bullish ? '#34d399' : '#fb7185', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span>{weinsteinVerdict?.nh_is_bullish ? '✓' : '✗'}</span>
+                <span>{weinsteinVerdict?.nh_status || 'Net Highs'}</span>
+              </div>
+            </div>
+
+            {/* 4. % Above 200 SMA */}
+            <div style={{ background: 'rgba(0, 0, 0, 0.35)', borderRadius: '8px', padding: '10px 12px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div style={{ fontSize: '10.5px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>
+                4. Participation (% &gt; 200d)
+              </div>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: weinsteinVerdict?.ma_is_bullish ? '#34d399' : '#fb7185', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span>{weinsteinVerdict?.ma_is_bullish ? '✓' : '✗'}</span>
+                <span>{weinsteinVerdict?.ma_status || '% > 200 SMA'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Dual Panel SVG Chart */}
+        <div style={{ width: '100%', overflowX: 'auto' }}>
+          <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 'auto', background: 'rgba(0, 0, 0, 0.3)', borderRadius: '8px' }}>
+            <defs>
+              <linearGradient id="weinsteinAdGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.28" />
+                <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.0" />
+              </linearGradient>
+            </defs>
+
+            {/* PANEL 1: CUMULATIVE A/D LINE & SPY */}
+            <text x={paddingLeft} y="15" fill="#94a3b8" fontSize="10.5" fontWeight="700" letterSpacing="0.05em">
+              PANEL 1: CUMULATIVE ADVANCE-DECLINE LINE vs. S&P 500 (SPY)
+            </text>
+
+            {/* Horizontal Grid Lines Panel 1 */}
+            {[0, 0.5, 1].map((ratio, i) => {
+              const y = panel1Bottom - ratio * panel1InnerHeight;
+              const adVal = Math.round(minAd + ratio * rangeAd);
+              const spyVal = (minSpy + ratio * rangeSpy).toFixed(0);
+              return (
+                <g key={`p1-grid-${i}`}>
+                  <line x1={paddingLeft} y1={y} x2={width - paddingRight} y2={y} stroke="rgba(255, 255, 255, 0.05)" strokeDasharray="4 4" />
+                  <text x={paddingLeft - 8} y={y + 4} fill="#06b6d4" fontSize="9.5" textAnchor="end">
+                    {adVal >= 0 ? `+${adVal.toLocaleString()}` : adVal.toLocaleString()}
+                  </text>
+                  <text x={width - paddingRight + 8} y={y + 4} fill="#f59e0b" fontSize="9.5" textAnchor="start">
+                    ${spyVal}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Baseline Panel 1 */}
+            <line x1={paddingLeft} y1={panel1Bottom} x2={width - paddingRight} y2={panel1Bottom} stroke="rgba(255, 255, 255, 0.15)" />
+
+            {/* Month Separators across both panels */}
+            {monthSeparators.map((sep, idx) => {
+              if (sep.isFirst) return null;
+              return (
+                <line
+                  key={`wein-sep-${idx}`}
+                  x1={sep.x}
+                  y1={paddingTop}
+                  x2={sep.x}
+                  y2={panel2Bottom}
+                  stroke={sep.isNewYear ? 'rgba(255, 255, 255, 0.16)' : 'rgba(255, 255, 255, 0.07)'}
+                  strokeDasharray={sep.isNewYear ? 'none' : '3 3'}
+                  strokeWidth={sep.isNewYear ? 1.2 : 1}
+                />
+              );
+            })}
+
+            {/* Shaded Area for Cumulative A/D */}
+            <path d={areaAdPath} fill="url(#weinsteinAdGrad)" />
+
+            {/* Cumulative A/D Polyline */}
+            <polyline fill="none" stroke="#06b6d4" strokeWidth="2.5" points={pointsCumAd} />
+
+            {/* SPY Benchmark Normalized Polyline */}
+            <polyline fill="none" stroke="#f59e0b" strokeWidth="2.0" strokeDasharray="4 3" points={pointsSpy} />
+
+            {/* PANEL 2: NET NEW 52-WEEK HIGHS / LOWS HISTOGRAM */}
+            <text x={paddingLeft} y={panel2Top - 8} fill="#94a3b8" fontSize="10.5" fontWeight="700" letterSpacing="0.05em">
+              PANEL 2: NET NEW 52-WEEK HIGHS vs. LOWS (NH – NL) & 10-DAY MA
+            </text>
+
+            {/* Panel 2 Legend */}
+            <g transform={`translate(${width - paddingRight - 225}, ${panel2Top - 18})`}>
+              <rect x="0" y="2" width="12" height="9" fill="rgba(16, 185, 129, 0.8)" rx="1" />
+              <text x="17" y="10" fill="#94a3b8" fontSize="10.5" fontWeight="600">Net NH Bars</text>
+
+              <line x1="95" y1="6" x2="111" y2="6" stroke="#a855f7" strokeWidth="2.2" />
+              <text x="117" y="10" fill="#a855f7" fontSize="10.5" fontWeight="700">10d MA (NH-NL)</text>
+            </g>
+
+            {/* Panel 2 Baseline at Zero */}
+            <line x1={paddingLeft} y1={panel2BaselineY} x2={width - paddingRight} y2={panel2BaselineY} stroke="rgba(255, 255, 255, 0.3)" strokeDasharray="3 3" />
+            <text x={paddingLeft - 8} y={panel2BaselineY + 3} fill="var(--text-muted)" fontSize="9.5" textAnchor="end">0</text>
+            <text x={paddingLeft - 8} y={panel2Top + 8} fill="#10b981" fontSize="9" textAnchor="end">+{maxAbsNet}</text>
+            <text x={paddingLeft - 8} y={panel2Bottom - 4} fill="#f43f5e" fontSize="9" textAnchor="end">-{maxAbsNet}</text>
+
+            {/* Daily Net New Highs / Lows Histogram Bars with Hover Tooltips */}
+            {chartData.map((d, i) => {
+              const x = getX(i);
+              const net = d.net_new_highs ?? 0;
+              const yBar = getYNet(net);
+              const isPos = net >= 0;
+              const barColor = isPos ? 'rgba(16, 185, 129, 0.8)' : 'rgba(244, 63, 94, 0.8)';
+              return (
+                <g key={`bar-${i}`}>
+                  <title>{`${d.date}: SPY $${d.spy_close ?? '-'} | Cum A/D: ${(d.cum_ad ?? 0).toLocaleString()} | 52W Highs: ${d.new_highs ?? 0} | 52W Lows: ${d.new_lows ?? 0} | Net NH: ${d.net_new_highs ?? 0} (10d MA: ${d.net_new_highs_10d ?? 0})`}</title>
+                  <line x1={x} y1={panel2BaselineY} x2={x} y2={yBar} stroke={barColor} strokeWidth={barW} />
+                </g>
+              );
+            })}
+
+            {/* 10-day MA Polyline */}
+            <polyline fill="none" stroke="#a855f7" strokeWidth="2.2" points={pointsNh10d} />
+
+            {/* Baseline Bottom Panel 2 */}
+            <line x1={paddingLeft} y1={panel2Bottom} x2={width - paddingRight} y2={panel2Bottom} stroke="rgba(255, 255, 255, 0.18)" />
+
+            {/* Month Labels on Date Axis */}
+            {visibleSeparators.map((sep, idx) => (
+              <g key={`wein-lbl-${idx}`}>
+                <line
+                  x1={sep.x}
+                  y1={panel2Bottom}
+                  x2={sep.x}
+                  y2={panel2Bottom + 5}
+                  stroke="rgba(255, 255, 255, 0.3)"
+                  strokeWidth={1}
+                />
+                <text
+                  x={sep.x}
+                  y={panel2Bottom + 18}
+                  fill={sep.isNewYear || sep.isFirst ? 'var(--text-primary)' : 'var(--text-muted)'}
+                  fontSize="10"
+                  fontWeight={sep.isNewYear || sep.isFirst ? 700 : 500}
+                  textAnchor="middle"
+                >
+                  {sep.label}
+                </text>
+              </g>
+            ))}
+
+            {/* Panel 1 Legend */}
+            <g transform={`translate(${width - paddingRight - 225}, 8)`}>
+              <line x1="0" y1="4" x2="16" y2="4" stroke="#06b6d4" strokeWidth="2.5" />
+              <text x="22" y="7" fill="#06b6d4" fontSize="10.5" fontWeight="700">Cumulative A/D</text>
+
+              <line x1="115" y1="4" x2="131" y2="4" stroke="#f59e0b" strokeWidth="2.0" strokeDasharray="4 3" />
+              <text x="137" y="7" fill="#f59e0b" fontSize="10.5" fontWeight="700">SPY (S&P 500)</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+    );
+  };
+
   // EdgeStacker Breadth Heatmap Calendar Grid
   const renderHeatmap = () => {
     if (dailyData.length === 0) return null;
@@ -992,6 +1272,9 @@ export default function DashboardTab({
                   cursor: 'pointer'
                 }}
               >
+                <option value={5}>5 Rows</option>
+                <option value={10}>10 Rows</option>
+                <option value={20}>20 Rows (~1 Mo)</option>
                 <option value={65}>65 Rows (~3 Mo)</option>
                 <option value={120}>120 Rows (~6 Mo)</option>
                 <option value={252}>252 Rows (1 Yr)</option>
@@ -1025,13 +1308,19 @@ export default function DashboardTab({
           </div>
         </div>
 
-        <div style={{ overflowX: 'auto', width: '100%', maxHeight: '450px' }}>
+        <div style={{ overflowX: 'auto', width: '100%' }}>
           <table className="data-table compact-table" style={{ width: '100%' }}>
             <thead>
               <tr>
                 <th style={{ textAlign: 'left' }}>Date</th>
-                <th style={{ textAlign: 'center' }}>REGIME</th>
+                <th style={{ textAlign: 'center' }} title="Consensus 3-Pillar Composite Market Light (Qullamaggie, Weinstein, Stockbee)">
+                  REGIME (MARKET LIGHT)
+                </th>
                 <th style={{ textAlign: 'center', color: '#38bdf8' }}>A / D (Up/Down)</th>
+                <th style={{ textAlign: 'right', color: '#06b6d4' }}>Cum A/D</th>
+                <th style={{ textAlign: 'right', color: '#34d399' }}>52W H</th>
+                <th style={{ textAlign: 'right', color: '#fb7185' }}>52W L</th>
+                <th style={{ textAlign: 'right', color: '#eab308' }}>Net NH</th>
                 <th style={{ textAlign: 'right', color: '#a855f7' }}>Net Cap Flow</th>
                 <th style={{ textAlign: 'right' }}>Cap %</th>
                 <th style={{ textAlign: 'right', color: '#34d399' }}>4% ▲</th>
@@ -1054,17 +1343,50 @@ export default function DashboardTab({
               {paginatedData.map((row, idx) => {
                 const isStrongUp = row.gainers_4pct >= 300 || row.ratio_4pct >= 2.0;
                 const isStrongDown = row.losers_4pct >= 300 || row.ratio_4pct <= 0.5;
-                const regime = row.regime || row.sb_regime || (
-                  row.up_25pct_3m !== undefined && row.down_25pct_3m !== undefined
-                    ? (row.up_25pct_3m > row.down_25pct_3m ? 'BULLISH' : row.up_25pct_3m < row.down_25pct_3m ? 'BEARISH' : 'NEUTRAL')
-                    : row.kq_regime
+
+                // Composite Market Light resolution
+                const cl = row.composite_light;
+                const lightVal = row.market_light || row.regime || cl?.light;
+                const lightCode = row.market_light_code || cl?.light_code || (
+                  lightVal?.includes('GREEN') ? 'GREEN' : (lightVal?.includes('RED') ? 'RED' : (lightVal?.includes('YELLOW') ? 'YELLOW' : null))
                 );
+
+                const lightTooltip = cl
+                  ? `Composite Market Light: ${cl.light} (${row.score_label || (row.composite_score !== undefined ? `${row.composite_score >= 0 ? '+' : ''}${row.composite_score}/3` : '')}) | Qullamaggie: ${cl.pillars?.qullamaggie?.status || '-'} | Weinstein: ${cl.pillars?.weinstein?.status || '-'} | Stockbee: ${cl.pillars?.stockbee?.status || '-'}`
+                  : `Market Light: ${lightVal || row.sb_regime || '-'}`;
 
                 return (
                   <tr key={idx}>
                     <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{row.date}</td>
                     <td style={{ textAlign: 'center' }}>
-                      {regime === 'BULLISH' && (
+                      {lightCode === 'GREEN' && (
+                        <span
+                          className="pill"
+                          title={lightTooltip}
+                          style={{ background: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.35)', fontSize: '10px', padding: '2px 8px', fontWeight: 700, whiteSpace: 'nowrap' }}
+                        >
+                          🟢 GREEN LIGHT
+                        </span>
+                      )}
+                      {lightCode === 'YELLOW' && (
+                        <span
+                          className="pill"
+                          title={lightTooltip}
+                          style={{ background: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.35)', fontSize: '10px', padding: '2px 8px', fontWeight: 700, whiteSpace: 'nowrap' }}
+                        >
+                          🟡 YELLOW LIGHT
+                        </span>
+                      )}
+                      {lightCode === 'RED' && (
+                        <span
+                          className="pill"
+                          title={lightTooltip}
+                          style={{ background: 'rgba(244, 63, 94, 0.18)', color: '#fb7185', border: '1px solid rgba(244, 63, 94, 0.35)', fontSize: '10px', padding: '2px 8px', fontWeight: 700, whiteSpace: 'nowrap' }}
+                        >
+                          🔴 RED LIGHT
+                        </span>
+                      )}
+                      {!lightCode && row.regime === 'BULLISH' && (
                         <span
                           className="pill"
                           title={`Stockbee Market Monitor: BULLISH (25% ▲ 3M: ${row.up_25pct_3m ?? '-'} > 25% ▼ 3M: ${row.down_25pct_3m ?? '-'})`}
@@ -1073,7 +1395,7 @@ export default function DashboardTab({
                           🟢 BULLISH
                         </span>
                       )}
-                      {regime === 'BEARISH' && (
+                      {!lightCode && row.regime === 'BEARISH' && (
                         <span
                           className="pill"
                           title={`Stockbee Market Monitor: BEARISH (25% ▲ 3M: ${row.up_25pct_3m ?? '-'} < 25% ▼ 3M: ${row.down_25pct_3m ?? '-'})`}
@@ -1082,16 +1404,7 @@ export default function DashboardTab({
                           🔴 BEARISH
                         </span>
                       )}
-                      {regime === 'CAUTION' && (
-                        <span
-                          className="pill"
-                          title="Stockbee Market Monitor: CAUTION"
-                          style={{ background: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.35)', fontSize: '10px', padding: '2px 8px', fontWeight: 700 }}
-                        >
-                          🟡 CAUTION
-                        </span>
-                      )}
-                      {regime === 'NEUTRAL' && (
+                      {!lightCode && row.regime === 'NEUTRAL' && (
                         <span
                           className="pill"
                           title="Stockbee Market Monitor: NEUTRAL"
@@ -1100,7 +1413,7 @@ export default function DashboardTab({
                           ⚪ NEUTRAL
                         </span>
                       )}
-                      {!['BULLISH', 'BEARISH', 'CAUTION', 'NEUTRAL'].includes(regime) && (
+                      {!lightCode && !['BULLISH', 'BEARISH', 'NEUTRAL'].includes(row.regime) && (
                         <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>-</span>
                       )}
                     </td>
@@ -1108,6 +1421,18 @@ export default function DashboardTab({
                       <span style={{ color: '#34d399', fontWeight: 600 }}>{row.advancers?.toLocaleString() || '-'}</span>
                       <span style={{ color: 'var(--text-muted)', margin: '0 3px' }}>/</span>
                       <span style={{ color: '#fb7185', fontWeight: 600 }}>{row.decliners?.toLocaleString() || '-'}</span>
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 600, color: (row.cum_ad || 0) >= 0 ? '#06b6d4' : '#94a3b8', fontFamily: 'var(--font-mono)', fontSize: '11px', whiteSpace: 'nowrap' }}>
+                      {row.cum_ad !== undefined ? (row.cum_ad >= 0 ? `+${row.cum_ad.toLocaleString()}` : row.cum_ad.toLocaleString()) : '-'}
+                    </td>
+                    <td style={{ textAlign: 'right', color: '#34d399', fontSize: '11px', fontWeight: 600 }}>
+                      {row.new_highs?.toLocaleString() ?? '-'}
+                    </td>
+                    <td style={{ textAlign: 'right', color: '#fb7185', fontSize: '11px', fontWeight: 600 }}>
+                      {row.new_lows?.toLocaleString() ?? '-'}
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 600, color: (row.net_new_highs || 0) > 0 ? '#34d399' : (row.net_new_highs || 0) < 0 ? '#fb7185' : 'var(--text-secondary)', fontSize: '11px', whiteSpace: 'nowrap' }}>
+                      {row.net_new_highs !== undefined ? (row.net_new_highs > 0 ? `+${row.net_new_highs}` : row.net_new_highs) : '-'}
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 700, color: (row.net_cap_flow || 0) >= 0 ? '#34d399' : '#fb7185', fontFamily: 'var(--font-mono)', fontSize: '11.5px', whiteSpace: 'nowrap' }}>
                       {row.net_cap_flow !== undefined ? formatCapFlow(row.net_cap_flow) : '-'}
@@ -1163,6 +1488,36 @@ export default function DashboardTab({
             </tbody>
           </table>
         </div>
+
+        {/* Bottom Pagination Controls */}
+        {breadthPageSize !== 'all' && totalPages > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255, 255, 255, 0.06)' }}>
+            <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
+              Showing {((breadthPage - 1) * breadthPageSize) + 1}–{Math.min(breadthPage * breadthPageSize, dailyData.length)} of {dailyData.length} sessions
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => setBreadthPage((prev) => Math.max(prev - 1, 1))}
+                disabled={breadthPage === 1}
+                style={{ padding: '4px 10px', fontSize: '11.5px' }}
+              >
+                ← Prev Page
+              </button>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 600, padding: '0 4px' }}>
+                Page {breadthPage} of {totalPages}
+              </span>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => setBreadthPage((prev) => Math.min(prev + 1, totalPages))}
+                disabled={breadthPage >= totalPages}
+                style={{ padding: '4px 10px', fontSize: '11.5px' }}
+              >
+                Next Page →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -1593,21 +1948,140 @@ export default function DashboardTab({
               <span>{lightBadge}</span>
             </div>
             <h2 className="cockpit-posture-title">
-              {kq?.stance || 'EVALUATING MARKET REGIME...'}
+              {compositeLight?.stance || kq?.stance || 'EVALUATING MARKET REGIME...'}
             </h2>
           </div>
 
           <div className="cockpit-exposure-pill">
             <span className="exposure-label">RECOMMENDED EXPOSURE</span>
             <span className="exposure-value" style={{ color: lightColor }}>
-              {kq?.exposure || '25–50% Sizing (Reduced Size)'}
+              {compositeLight?.exposure || kq?.exposure || '25–50% Sizing (Reduced Size)'}
             </span>
           </div>
         </div>
 
         <p className="cockpit-guidance-text">
-          {kq?.guidance || 'Market in consolidation or pulling back toward 10/20 EMA. Slower follow-through; stay selective, trim targets into strength, and maintain tight stops.'}
+          {compositeLight?.guidance || kq?.guidance || 'Market in consolidation or pulling back toward 10/20 EMA. Slower follow-through; stay selective, trim targets into strength, and maintain tight stops.'}
         </p>
+
+        {/* 3-Pillar Regime Consensus Breakdown Strip */}
+        {compositeLight?.pillars && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '8px',
+              padding: '10px 14px',
+              background: 'rgba(0, 0, 0, 0.3)',
+              borderRadius: '8px',
+              border: '1px solid rgba(255, 255, 255, 0.06)',
+              marginBottom: '16px'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginRight: '6px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                3-Pillar Consensus:
+              </span>
+              <span
+                style={{
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  padding: '2px 8px',
+                  borderRadius: '999px',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  color: lightColor
+                }}
+              >
+                {compositeLight.score_label || 'Consensus'}
+              </span>
+            </div>
+
+            {/* Qullamaggie Pillar Pill */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '3px 10px',
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: `1px solid ${compositeLight.pillars.qullamaggie?.color || '#94a3b8'}44`,
+                borderRadius: '6px',
+                fontSize: '11px'
+              }}
+              title={compositeLight.pillars.qullamaggie?.summary}
+            >
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: compositeLight.pillars.qullamaggie?.color || '#94a3b8' }} />
+              <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Qullamaggie:</span>
+              <span style={{ fontWeight: 700, color: compositeLight.pillars.qullamaggie?.color || '#94a3b8' }}>
+                {compositeLight.pillars.qullamaggie?.status}
+              </span>
+            </div>
+
+            {/* Weinstein Pillar Pill */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '3px 10px',
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: `1px solid ${compositeLight.pillars.weinstein?.color || '#94a3b8'}44`,
+                borderRadius: '6px',
+                fontSize: '11px'
+              }}
+              title={compositeLight.pillars.weinstein?.summary}
+            >
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: compositeLight.pillars.weinstein?.color || '#94a3b8' }} />
+              <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Weinstein:</span>
+              <span style={{ fontWeight: 700, color: compositeLight.pillars.weinstein?.color || '#94a3b8' }}>
+                {compositeLight.pillars.weinstein?.status} ({compositeLight.pillars.weinstein?.score}/4)
+              </span>
+            </div>
+
+            {/* Stockbee Pillar Pill */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '3px 10px',
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: `1px solid ${compositeLight.pillars.stockbee?.color || '#94a3b8'}44`,
+                borderRadius: '6px',
+                fontSize: '11px'
+              }}
+              title={compositeLight.pillars.stockbee?.summary}
+            >
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: compositeLight.pillars.stockbee?.color || '#94a3b8' }} />
+              <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Stockbee:</span>
+              <span style={{ fontWeight: 700, color: compositeLight.pillars.stockbee?.color || '#94a3b8' }}>
+                {compositeLight.pillars.stockbee?.status} ({compositeLight.pillars.stockbee?.ratio_4pct?.toFixed(2)}x)
+              </span>
+            </div>
+
+            {/* Safety Override Alert (if any) */}
+            {compositeLight.safety_overrides && compositeLight.safety_overrides.length > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '3px 10px',
+                  background: 'rgba(245, 158, 11, 0.12)',
+                  border: '1px solid rgba(245, 158, 11, 0.4)',
+                  borderRadius: '6px',
+                  fontSize: '10.5px',
+                  color: '#fbbf24',
+                  fontWeight: 600
+                }}
+                title={compositeLight.safety_overrides.join('; ')}
+              >
+                <span>⚠️ Safety Guard: {compositeLight.safety_overrides[0]}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Posture Key Metrics Strip */}
         <div className="cockpit-metrics-strip">
@@ -1977,6 +2451,12 @@ export default function DashboardTab({
               >
                 Breadth Heatmap
               </button>
+              <button
+                className={`segmented-item ${activeBreadthChart === 'weinstein' ? 'active' : ''}`}
+                onClick={() => setActiveBreadthChart('weinstein')}
+              >
+                ⚖️ Weinstein Stage & A/D
+              </button>
             </div>
 
             <button
@@ -2000,6 +2480,7 @@ export default function DashboardTab({
             {activeBreadthChart === 'daily' && renderDailyChart()}
             {activeBreadthChart === 'trend' && renderTrendChart()}
             {activeBreadthChart === 'heatmap' && renderHeatmap()}
+            {activeBreadthChart === 'weinstein' && renderWeinsteinChart()}
 
             {/* Expandable Historical Breadth Table */}
             {isBreadthTableOpen && (
@@ -2010,13 +2491,6 @@ export default function DashboardTab({
           </>
         )}
       </div>
-
-      {/* 2b. Pivot Score Movers */}
-      <ScoreMoversCard
-        latestDate={latestDate}
-        onSelectStock={handleSelectStock}
-        onNavigateLeaderboard={() => setActiveTab && setActiveTab('leaderboard')}
-      />
 
       {/* 3. Daily Routine Pre-Flight Navigator (Steps 0 to 5) */}
       <div className="glass-card cockpit-routine-card" style={{ marginBottom: '20px', padding: '18px 22px' }}>

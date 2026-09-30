@@ -305,6 +305,13 @@ class YFinanceProvider(AbstractDataProvider):
         all_bars = []
         batch_size = 100
         
+        # Instantiate YfData once outside batch loop to maintain persistent session/cookies
+        try:
+            from yfinance.data import YfData
+            data_mgr = YfData()
+        except Exception:
+            data_mgr = None
+
         total = len(symbols)
         for i in range(0, len(symbols), batch_size):
             batch = symbols[i:i+batch_size]
@@ -322,15 +329,49 @@ class YFinanceProvider(AbstractDataProvider):
                 # Fetch official regular market quotes for the batch from Yahoo Finance quote endpoint
                 # (provides real official Close/Open/High/Low/Volume for today's session even when chart endpoint returns None)
                 quotes_map = {}
-                try:
-                    from yfinance.data import YfData
-                    data_mgr = YfData()
-                    params = {"symbols": ",".join(batch), "formatted": "false"}
-                    q_data = data_mgr.get_raw_json("https://query1.finance.yahoo.com/v7/finance/quote", params=params)
-                    if q_data and "quoteResponse" in q_data:
-                        quotes_map = {q["symbol"]: q for q in q_data["quoteResponse"].get("result", []) if "symbol" in q}
-                except Exception:
-                    pass
+                params = {"symbols": ",".join(batch), "formatted": "false"}
+                for attempt in range(3):
+                    try:
+                        if data_mgr:
+                            endpoint = "https://query1.finance.yahoo.com/v7/finance/quote" if attempt % 2 == 0 else "https://query2.finance.yahoo.com/v7/finance/quote"
+                            q_data = data_mgr.get_raw_json(endpoint, params=params)
+                            if q_data and "quoteResponse" in q_data:
+                                quotes_map = {q["symbol"]: q for q in q_data["quoteResponse"].get("result", []) if "symbol" in q}
+                                if quotes_map:
+                                    break
+                    except Exception:
+                        pass
+                    
+                    if not quotes_map and attempt == 2:
+                        # Fallback to direct requests with browser headers
+                        try:
+                            import requests
+                            url = "https://query2.finance.yahoo.com/v7/finance/quote"
+                            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                            resp = requests.get(url, params=params, headers=headers, timeout=6)
+                            if resp.status_code == 200:
+                                res_json = resp.json()
+                                quotes_map = {q["symbol"]: q for q in res_json.get("quoteResponse", {}).get("result", []) if "symbol" in q}
+                        except Exception:
+                            pass
+
+                    if not quotes_map and attempt < 2:
+                        time.sleep(1.0 * (attempt + 1))
+
+                # Extra safeguard for benchmark ETFs if batch failed to retrieve them
+                benchmarks_in_batch = [s for s in batch if s in ("QQQ", "SPY", "IWM") and s not in quotes_map]
+                for b_sym in benchmarks_in_batch:
+                    try:
+                        import requests
+                        url = f"https://query2.finance.yahoo.com/v7/finance/quote?symbols={b_sym}&formatted=false"
+                        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                        b_resp = requests.get(url, headers=headers, timeout=5)
+                        if b_resp.status_code == 200:
+                            b_res = b_resp.json().get("quoteResponse", {}).get("result", [])
+                            if b_res:
+                                quotes_map[b_sym] = b_res[0]
+                    except Exception:
+                        pass
 
                 if df.empty and not quotes_map:
                     continue

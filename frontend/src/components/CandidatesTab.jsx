@@ -382,6 +382,7 @@ export default function CandidatesTab({
     abortControllerRef.current = controller;
 
     setLoadingBrowsePrices(true);
+    setBrowsePrices([]);
     try {
       let promise;
       if (pendingRequestsRef.current.has(sym)) {

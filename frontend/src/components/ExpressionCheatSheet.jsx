@@ -15,6 +15,7 @@ const CHEAT_SHEET_CATEGORIES = [
       { sym: 'V1', label: 'Volume 1d Ago', desc: 'Yesterday volume' },
       { sym: 'AVGV50', label: '50d Vol MA', desc: '50-day average volume' },
       { sym: 'DOLLAR_VOL', label: '50d $ Vol', desc: '50-day average dollar volume' },
+      { sym: 'CLOSE_RANGE', label: 'Close Range Pos', desc: 'Intraday close in candle range (0.0 to 1.0, e.g. >= 0.75)' },
     ]
   },
   {
@@ -150,6 +151,7 @@ const CHEAT_SHEET_CATEGORIES = [
       { sym: '(', label: '(', desc: 'Open parenthesis' },
       { sym: ')', label: ')', desc: 'Close parenthesis' },
       { sym: 'TOP(RET_1M, 50)', label: 'TOP(metric, N)', desc: 'Window filter for top N by metric' },
+      { sym: 'NULLIF(H - L, 0)', label: 'NULLIF(a, b)', desc: 'Returns NULL if a equals b (avoids divide-by-zero)' },
       { sym: 'ORDER BY RET_1M DESC LIMIT 50', label: 'ORDER BY ... LIMIT N', desc: 'Sort & limit candidate scan results' },
     ]
   }

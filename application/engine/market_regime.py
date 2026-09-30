@@ -280,3 +280,194 @@ def get_qullamaggie_daily_lookup(conn, symbol: str = "QQQ") -> Dict[str, Dict[st
     _daily_lookup_cache[symbol] = lookup
     return lookup
 
+
+def calculate_composite_market_light(
+    kq_eval: Optional[Dict[str, Any]] = None,
+    weinstein_verdict: Optional[Dict[str, Any]] = None,
+    stockbee_metrics: Optional[Dict[str, Any]] = None,
+    dist_pressure: int = 0
+) -> Dict[str, Any]:
+    """
+    Synthesizes three legendary momentum & market regime frameworks into a unified Composite Market Light:
+    1. Kristjan Qullamaggie: QQQ Moving Average Stack & Trend Alignment (P > 10 > 20 > 50)
+    2. Stan Weinstein: 4-Pillar Stage Analysis & Macro Evidence Matrix (SPY vs 30W SMA, A/D Line, Net New Highs, % > 200 SMA)
+    3. Pradeep Bonde (Stockbee): 4% Up/Down Thrust & Momentum Velocity (Ratio, 5D net momentum)
+
+    Returns a comprehensive composite evaluation dict:
+    - light: 'GREEN LIGHT' | 'YELLOW LIGHT' | 'RED LIGHT'
+    - light_code: 'GREEN' | 'YELLOW' | 'RED'
+    - color: '#10b981' | '#f59e0b' | '#ef4444'
+    - glow: 'rgba(...)'
+    - composite_score: int (-3 to +3)
+    - stance: str
+    - exposure: str
+    - guidance: str
+    - pillars: Dict[str, Dict[str, Any]] (detailed breakdown of Qullamaggie, Weinstein, Stockbee)
+    - safety_overrides_applied: List[str]
+    """
+    kq = kq_eval or {}
+    weinstein = weinstein_verdict or {}
+    sb = stockbee_metrics or {}
+
+    # --- Pillar 1: Qullamaggie ---
+    kq_badge = str(kq.get("badge", "YELLOW LIGHT")).upper()
+    if "GREEN" in kq_badge:
+        kq_vote = 1
+        kq_status = "BULLISH"
+        kq_color = "#10b981"
+        kq_summary = f"QQQ Trend Intact ({kq.get('stack', 'P > 10 > 20 > 50')})"
+    elif "RED" in kq_badge:
+        kq_vote = -1
+        kq_status = "BEARISH"
+        kq_color = "#ef4444"
+        kq_summary = f"Downtrend / Broken MAs ({kq.get('stack', '-')})"
+    else:
+        kq_vote = 0
+        kq_status = "NEUTRAL"
+        kq_color = "#f59e0b"
+        kq_summary = f"Pullback / Consolidation ({kq.get('stack', '-')})"
+
+    # --- Pillar 2: Stan Weinstein ---
+    w_score = int(weinstein.get("score", 2) or 2)
+    w_stage = str(weinstein.get("stage", "Stage 1 / 3 (Transition / Divergence)"))
+    if w_score >= 3:
+        w_vote = 1
+        w_status = "BULLISH"
+        w_color = "#10b981"
+        w_summary = f"Stage 2 Bull Confirmed ({w_score}/4 Evidence)"
+    elif w_score <= 1:
+        w_vote = -1
+        w_status = "BEARISH"
+        w_color = "#ef4444"
+        w_summary = f"Stage 4 Bear Market ({w_score}/4 Evidence)"
+    else:
+        w_vote = 0
+        w_status = "NEUTRAL"
+        w_color = "#f59e0b"
+        w_summary = f"Stage 1/3 Transition ({w_score}/4 Evidence)"
+
+    # --- Pillar 3: Stockbee 4% Momentum Thrust ---
+    sb_ratio = float(sb.get("latest_ratio_4pct") or sb.get("ratio_4pct") or 1.0)
+    sb_ratio_5d = float(sb.get("latest_ratio_5d") or sb.get("ratio_5d") or 1.0)
+    gainers = int(sb.get("latest_gainers_4pct") or sb.get("gainers_4pct") or 0)
+    losers = int(sb.get("latest_losers_4pct") or sb.get("losers_4pct") or 0)
+    net_5d = int(sb.get("sum_5d_net_4pct") or 0)
+
+    is_sb_bull = (sb_ratio >= 1.5 or (gainers >= 300 and gainers > losers)) and (sb_ratio_5d >= 1.0 or net_5d >= 0)
+    is_sb_bear = (sb_ratio <= 0.67 or (losers >= 300 and losers > gainers)) and (sb_ratio_5d <= 1.0 or net_5d <= 0)
+
+    if is_sb_bull:
+        sb_vote = 1
+        sb_status = "BULLISH"
+        sb_color = "#10b981"
+        sb_summary = f"4% Expansion Thrust (+{gainers} vs -{losers}, {sb_ratio:.2f}x)"
+    elif is_sb_bear:
+        sb_vote = -1
+        sb_status = "BEARISH"
+        sb_color = "#ef4444"
+        sb_summary = f"4% Distribution Contraction (+{gainers} vs -{losers}, {sb_ratio:.2f}x)"
+    else:
+        sb_vote = 0
+        sb_status = "NEUTRAL"
+        sb_color = "#f59e0b"
+        sb_summary = f"Rotational / Balanced (+{gainers} vs -{losers}, {sb_ratio:.2f}x)"
+
+    # Composite Score (-3 to +3)
+    composite_score = kq_vote + w_vote + sb_vote
+    overrides = []
+
+    if composite_score >= 2:
+        light_code = "GREEN"
+        light_badge = "GREEN LIGHT"
+        light_color = "#10b981"
+        light_glow = "rgba(16, 185, 129, 0.25)"
+    elif composite_score <= -2:
+        light_code = "RED"
+        light_badge = "RED LIGHT"
+        light_color = "#f43f5e"
+        light_glow = "rgba(244, 63, 94, 0.25)"
+    else:
+        light_code = "YELLOW"
+        light_badge = "YELLOW LIGHT"
+        light_color = "#f59e0b"
+        light_glow = "rgba(245, 158, 11, 0.25)"
+
+    # Institutional Safety Overrides
+    if dist_pressure >= 5 and light_code == "GREEN":
+        light_code = "YELLOW"
+        light_badge = "YELLOW LIGHT"
+        light_color = "#f59e0b"
+        light_glow = "rgba(245, 158, 11, 0.25)"
+        overrides.append(f"Capped at YELLOW LIGHT: Heavy distribution pressure ({dist_pressure} active distribution marks).")
+
+    if w_vote == -1 and light_code == "GREEN":
+        light_code = "YELLOW"
+        light_badge = "YELLOW LIGHT"
+        light_color = "#f59e0b"
+        light_glow = "rgba(245, 158, 11, 0.25)"
+        overrides.append("Capped at YELLOW LIGHT: Stan Weinstein macro breadth is in Stage 4 Bear breakdown.")
+
+    if is_sb_bear and light_code == "GREEN":
+        light_code = "YELLOW"
+        light_badge = "YELLOW LIGHT"
+        light_color = "#f59e0b"
+        light_glow = "rgba(245, 158, 11, 0.25)"
+        overrides.append("Capped at YELLOW LIGHT: Stockbee 4% breadth expansion is negative.")
+
+    # Formulate Stance, Exposure, and Guidance
+    if light_code == "GREEN":
+        stance = "🟢 OFFENSIVE: EXPANSION MODE"
+        exposure = "75% – 100%+ (Full Size & Margin/Aggressive)"
+        guidance = "All 3 pillars (Qullamaggie trend, Weinstein breadth, and Stockbee thrust) aligned in positive expansion. High probability of sustained follow-through on breakout setups. Press high-conviction winners."
+    elif light_code == "YELLOW":
+        stance = "🟡 SELECTIVE: ROTATIONAL / REDUCED SIZE"
+        exposure = "25% – 50% Sizing (Cautious / Selective)"
+        guidance = "Mixed evidence across frameworks (e.g. index resilient but breadth waning, or pulling back in consolidation). Stay selective, demand tighter bases (VCP), trim targets into strength, and keep stops tight."
+    else:
+        stance = "🔴 DEFENSIVE: CAPITAL PRESERVATION"
+        exposure = "0% – 20% (Cash is King / Risk Off)"
+        guidance = "Broad market in confirmed distribution or Stage 4 decline across consensus indicators. Breakouts have a high failure rate. Protect capital, preserve buying power in cash, or focus on hedge/short setups."
+
+    return {
+        "light": light_badge,
+        "light_code": light_code,
+        "color": light_color,
+        "glow": light_glow,
+        "composite_score": composite_score,
+        "score_label": f"{composite_score:+d} of 3",
+        "stance": stance,
+        "exposure": exposure,
+        "guidance": guidance,
+        "safety_overrides": overrides,
+        "pillars": {
+            "qullamaggie": {
+                "name": "Qullamaggie Trend Alignment",
+                "vote": kq_vote,
+                "status": kq_status,
+                "color": kq_color,
+                "summary": kq_summary,
+                "stack": kq.get("stack", "P > 10 > 20 > 50")
+            },
+            "weinstein": {
+                "name": "Weinstein Stage Analysis",
+                "vote": w_vote,
+                "status": w_status,
+                "color": w_color,
+                "summary": w_summary,
+                "stage": w_stage,
+                "score": w_score
+            },
+            "stockbee": {
+                "name": "Stockbee 4% Breadth Thrust",
+                "vote": sb_vote,
+                "status": sb_status,
+                "color": sb_color,
+                "summary": sb_summary,
+                "ratio_4pct": sb_ratio,
+                "gainers_4pct": gainers,
+                "losers_4pct": losers
+            }
+        }
+    }
+
+

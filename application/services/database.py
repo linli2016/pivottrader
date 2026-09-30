@@ -6,8 +6,8 @@ import logging
 from typing import Dict, Any, List, Optional
 from collections import defaultdict
 from .config import config_service
-from application.engine.market_regime import get_qullamaggie_market_summary, get_qullamaggie_daily_lookup, clear_qullamaggie_cache
-from application.engine.market_pulse import get_market_pulse, clear_market_pulse_cache
+from application.engine.market_regime import get_qullamaggie_market_summary, get_qullamaggie_daily_lookup, clear_qullamaggie_cache, calculate_composite_market_light
+from application.engine.market_pulse import get_market_pulse, clear_market_pulse_cache, calculate_market_pulse_history
 from application.engine.expression import ScanExpressionEngine
 
 logger = logging.getLogger(__name__)
@@ -48,6 +48,8 @@ class DatabaseService:
         try:
             from application.services.cross_asset_service import cross_asset_service
             cross_asset_service.clear_cache()
+            from application.services.leaderboard_service import LeaderboardService
+            LeaderboardService.clear_cache()
         except Exception:
             pass
 
@@ -402,7 +404,7 @@ class DatabaseService:
 
             where_str = "\n                  AND ".join(where_clauses)
 
-            cte_lags = """
+            cte_lags = f"""
                 lagged_bars AS (
                     SELECT 
                         db.*,
@@ -413,8 +415,8 @@ class DatabaseService:
                         LAG(db.low, 1) OVER (PARTITION BY db.symbol ORDER BY db.date) as lag_l1,
                         LAG(db.volume, 1) OVER (PARTITION BY db.symbol ORDER BY db.date) as lag_v1
                     FROM daily_bars db
-                    WHERE db.date >= (SELECT val FROM target_date_const) - INTERVAL 10 DAY
-                      AND db.date <= (SELECT val FROM target_date_const)
+                    WHERE db.date >= CAST('{actual_date_str}' AS DATE) - INTERVAL 10 DAY
+                      AND db.date <= CAST('{actual_date_str}' AS DATE)
                 ),
             """ if has_lags else ""
             from_table = "lagged_bars db" if has_lags else "daily_bars db"
@@ -1890,7 +1892,17 @@ class DatabaseService:
                 )
             ),
             filtered_bars AS (
-                SELECT db.symbol, db.date, db.close, db.volume, s.market_cap
+                SELECT 
+                    db.symbol, 
+                    db.date, 
+                    db.close, 
+                    db.high,
+                    db.low,
+                    db.high_52w,
+                    db.low_52w,
+                    db.is_52w_high,
+                    db.volume, 
+                    s.market_cap
                 FROM daily_bars db
                 JOIN cutoff c ON db.date >= c.min_date
                 LEFT JOIN symbols s ON db.symbol = s.symbol
@@ -1901,6 +1913,11 @@ class DatabaseService:
                     symbol,
                     date,
                     close,
+                    high,
+                    low,
+                    high_52w,
+                    low_52w,
+                    is_52w_high,
                     volume,
                     market_cap,
                     LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) as prev_close,
@@ -1915,6 +1932,8 @@ class DatabaseService:
                     COUNT(CASE WHEN prev_close > 0 AND close < prev_close THEN 1 END) as decliners,
                     COUNT(CASE WHEN prev_close > 0 AND close = prev_close THEN 1 END) as unchanged,
                     COUNT(CASE WHEN prev_close > 0 THEN 1 END) as total_active,
+                    COUNT(CASE WHEN prev_close > 0 AND (is_52w_high = true OR high >= high_52w) THEN 1 END) as new_highs,
+                    COUNT(CASE WHEN prev_close > 0 AND low <= low_52w THEN 1 END) as new_lows,
                     COUNT(CASE WHEN prev_close > 0 AND ((close - prev_close)/prev_close)*100 >= 4.0 THEN 1 END) as gainers_4pct,
                     COUNT(CASE WHEN prev_close > 0 AND ((close - prev_close)/prev_close)*100 <= -4.0 THEN 1 END) as losers_4pct,
                     SUM(CASE WHEN prev_close > 0 AND close > prev_close AND market_cap IS NOT NULL 
@@ -1936,7 +1955,18 @@ class DatabaseService:
                 GROUP BY date
                 ORDER BY date ASC
             )
-            SELECT * FROM daily_counts;
+            SELECT 
+                dc.*,
+                spy.spy_close,
+                spy.spy_sma_50,
+                spy.spy_sma_200
+            FROM daily_counts dc
+            LEFT JOIN (
+                SELECT date, close as spy_close, sma_50 as spy_sma_50, sma_200 as spy_sma_200
+                FROM daily_bars
+                WHERE symbol = 'SPY'
+            ) spy ON dc.date = spy.date
+            ORDER BY dc.date ASC;
         """
         bm_query = f"""
             WITH bm_bars AS (
@@ -1947,7 +1977,7 @@ class DatabaseService:
                     LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) as prev_close,
                     ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
                 FROM daily_bars
-                WHERE symbol IN ('SPY', 'QQQ') {date_filter_bm}
+                WHERE symbol IN ('SPY', 'QQQ', 'IWM') {date_filter_bm}
             )
             SELECT symbol, close, prev_close
             FROM bm_bars
@@ -1968,6 +1998,21 @@ class DatabaseService:
             # Convert date column to string YYYY-MM-DD
             df['date_str'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
 
+            # Stan Weinstein: Cumulative Advance-Decline Line (chronological order)
+            df['net_adv_calc'] = df['advancers'] - df['decliners']
+            df['cum_ad'] = df['net_adv_calc'].cumsum()
+
+            # Stan Weinstein: Net New 52-Week Highs vs Lows
+            df['new_highs'] = df['new_highs'].fillna(0).astype(int)
+            df['new_lows'] = df['new_lows'].fillna(0).astype(int)
+            df['net_new_highs'] = df['new_highs'] - df['new_lows']
+            df['net_new_highs_10d'] = df['net_new_highs'].rolling(window=10, min_periods=1).mean().round(1)
+
+            # SPY benchmark price fill & rounding
+            df['spy_close'] = df['spy_close'].ffill().bfill().round(2)
+            df['spy_sma_50'] = df['spy_sma_50'].ffill().bfill().round(2)
+            df['spy_sma_200'] = df['spy_sma_200'].ffill().bfill().round(2)
+
             # Calculate 13-day EMA of 4% UP and 4% DOWN
             df['ema_13_up'] = df['gainers_4pct'].ewm(span=13, adjust=False).mean().round(1)
             df['ema_13_down'] = df['losers_4pct'].ewm(span=13, adjust=False).mean().round(1)
@@ -1978,10 +2023,42 @@ class DatabaseService:
             sum_5d_up = df['gainers_4pct'].rolling(window=5, min_periods=1).sum()
             sum_5d_down = df['losers_4pct'].rolling(window=5, min_periods=1).sum()
             df['ratio_5d'] = (sum_5d_up / sum_5d_down.replace(0, 1)).round(2)
+            df['sum_5d_net'] = df['net_4pct'].rolling(window=5, min_periods=1).sum().astype(int)
 
             sum_10d_up = df['gainers_4pct'].rolling(window=10, min_periods=1).sum()
             sum_10d_down = df['losers_4pct'].rolling(window=10, min_periods=1).sum()
             df['ratio_10d'] = (sum_10d_up / sum_10d_down.replace(0, 1)).round(2)
+
+            # Stan Weinstein: 4-Pillar Stage Indicators across all dates
+            spy_sma200_shift20 = df['spy_sma_200'].shift(20).bfill()
+            spy_above_200 = df['spy_close'] >= df['spy_sma_200']
+            spy_sma200_rising = df['spy_sma_200'] >= spy_sma200_shift20
+            w_trend = spy_above_200 & spy_sma200_rising
+
+            cum_ad_shift20 = df['cum_ad'].shift(20).bfill()
+            w_ad_rising = df['cum_ad'] >= cum_ad_shift20
+
+            w_nh_expanding = df['net_new_highs_10d'] > 0
+            w_ma_bullish = df['up_25pct_3m'] >= df['down_25pct_3m']
+
+            # If pulse_data provides actual pct_above_200 for latest date, use it
+            pct_above_200 = 50.0
+            if pulse_data and "metrics" in pulse_data:
+                for m in pulse_data["metrics"]:
+                    if m.get("key") == "pct_above_200":
+                        pct_above_200 = float(m.get("current_pct", 50.0))
+            if not df.empty:
+                w_ma_bullish.iloc[-1] = (pct_above_200 >= 50.0)
+
+            df['w_score'] = (
+                w_trend.astype(int) +
+                w_ad_rising.astype(int) +
+                w_nh_expanding.astype(int) +
+                w_ma_bullish.astype(int)
+            )
+
+            dist_pressure = pulse_data.get("distribution_pressure", 0) if pulse_data else 0
+            latest_date_str = str(df['date_str'].iloc[-1]) if not df.empty else ""
 
             # Sort descending for response (latest date first)
             df_desc = df.sort_values(by='date', ascending=False)
@@ -2014,6 +2091,27 @@ class DatabaseService:
                 else:
                     sb_regime = "NEUTRAL"
 
+                # Calculate Composite Market Light for this session
+                w_score_row = int(getattr(row, "w_score", 2) or 2)
+                row_w_verdict = {
+                    "score": w_score_row,
+                    "stage": "Stage 2 (Bull Market)" if w_score_row >= 3 else ("Stage 4 (Bear Market)" if w_score_row <= 1 else "Stage 1 / 3 (Transition / Divergence)")
+                }
+                row_sb_metrics = {
+                    "latest_ratio_4pct": float(row.ratio_4pct),
+                    "latest_ratio_5d": float(row.ratio_5d),
+                    "latest_gainers_4pct": int(row.gainers_4pct),
+                    "latest_losers_4pct": int(row.losers_4pct),
+                    "sum_5d_net_4pct": int(getattr(row, "sum_5d_net", 0) or 0)
+                }
+                row_dist_pressure = dist_pressure if d_str == latest_date_str else 0
+                row_cl = calculate_composite_market_light(
+                    kq_eval=kq_info,
+                    weinstein_verdict=row_w_verdict,
+                    stockbee_metrics=row_sb_metrics,
+                    dist_pressure=row_dist_pressure
+                )
+
                 daily_list.append({
                     "date": d_str,
                     "advancers": adv,
@@ -2031,6 +2129,14 @@ class DatabaseService:
                     "up_dollar_vol": up_vol,
                     "down_dollar_vol": down_vol,
                     "up_vol_pct": round(up_vol / max(tot_vol, 1.0) * 100.0, 1) if tot_vol > 0 else 50.0,
+                    "new_highs": int(getattr(row, "new_highs", 0) or 0),
+                    "new_lows": int(getattr(row, "new_lows", 0) or 0),
+                    "net_new_highs": int(getattr(row, "net_new_highs", 0) or 0),
+                    "net_new_highs_10d": float(getattr(row, "net_new_highs_10d", 0.0) or 0.0),
+                    "cum_ad": int(getattr(row, "cum_ad", 0) or 0),
+                    "spy_close": float(getattr(row, "spy_close", 0.0) or 0.0),
+                    "spy_sma_50": float(getattr(row, "spy_sma_50", 0.0) or 0.0),
+                    "spy_sma_200": float(getattr(row, "spy_sma_200", 0.0) or 0.0),
                     "gainers_4pct": int(row.gainers_4pct),
                     "losers_4pct": int(row.losers_4pct),
                     "net_4pct": int(row.net_4pct),
@@ -2046,7 +2152,13 @@ class DatabaseService:
                     "down_50pct_3m": int(row.down_50pct_3m),
                     "ema_13_up": float(row.ema_13_up),
                     "ema_13_down": float(row.ema_13_down),
-                    "regime": sb_regime,
+                    "regime": row_cl["light"],
+                    "market_light": row_cl["light"],
+                    "market_light_code": row_cl["light_code"],
+                    "market_light_color": row_cl["color"],
+                    "composite_score": row_cl["composite_score"],
+                    "score_label": row_cl["score_label"],
+                    "composite_light": row_cl,
                     "sb_regime": sb_regime,
                     "kq_regime": kq_info.get("regime", "UNKNOWN"),
                     "kq_label": kq_info.get("label", "-"),
@@ -2076,6 +2188,64 @@ class DatabaseService:
             elif latest.get("down_25pct_1m", 0) > latest.get("up_25pct_1m", 0) * 1.5:
                 regime = "Bearish Contraction"
 
+            # Stan Weinstein: 4-Pillar "Weight of the Evidence" Verdict
+            ago20 = daily_list[min(20, len(daily_list) - 1)] if daily_list else {}
+            latest_spy_close = float(latest.get("spy_close", 0.0) or 0.0)
+            latest_spy_sma200 = float(latest.get("spy_sma_200", 0.0) or 0.0)
+            ago20_spy_sma200 = float(ago20.get("spy_sma_200", 0.0) or 0.0)
+            spy_above_200 = latest_spy_close >= latest_spy_sma200 if latest_spy_sma200 > 0 else True
+            spy_sma200_rising = latest_spy_sma200 >= ago20_spy_sma200 if ago20_spy_sma200 > 0 else True
+
+            latest_cum_ad = int(latest.get("cum_ad", 0) or 0)
+            ago20_cum_ad = int(ago20.get("cum_ad", 0) or 0)
+            ad_rising = latest_cum_ad >= ago20_cum_ad
+
+            latest_nh_10d = float(latest.get("net_new_highs_10d", 0.0) or 0.0)
+            nh_expanding = latest_nh_10d > 0
+
+            pct_above_200 = 50.0
+            if pulse_data and "metrics" in pulse_data:
+                for m in pulse_data["metrics"]:
+                    if m.get("key") == "pct_above_200":
+                        pct_above_200 = float(m.get("current_pct", 50.0))
+            ma_breadth_bullish = pct_above_200 >= 50.0
+
+            weinstein_score = sum([
+                bool(spy_above_200 and spy_sma200_rising),
+                bool(ma_breadth_bullish),
+                bool(ad_rising),
+                bool(nh_expanding)
+            ])
+
+            if weinstein_score >= 3:
+                weinstein_stage = "Stage 2 (Bull Market)"
+                weinstein_badge = "#10b981"
+                weinstein_tone = "BULLISH"
+            elif weinstein_score == 2:
+                weinstein_stage = "Stage 1 / 3 (Transition / Divergence)"
+                weinstein_badge = "#f59e0b"
+                weinstein_tone = "NEUTRAL"
+            else:
+                weinstein_stage = "Stage 4 (Bear Market)"
+                weinstein_badge = "#ef4444"
+                weinstein_tone = "BEARISH"
+
+            weinstein_verdict = {
+                "score": weinstein_score,
+                "score_label": f"{weinstein_score}/4 Bullish",
+                "stage": weinstein_stage,
+                "stage_tone": weinstein_tone,
+                "badge_color": weinstein_badge,
+                "index_status": f"SPY {'Above' if spy_above_200 else 'Below'} 200 SMA ({'Rising' if spy_sma200_rising else 'Declining'})",
+                "index_is_bullish": bool(spy_above_200 and spy_sma200_rising),
+                "ad_status": f"A/D Line {'Rising' if ad_rising else 'Declining'} (20d)",
+                "ad_is_bullish": bool(ad_rising),
+                "nh_status": f"Net Highs {'Expanding' if nh_expanding else 'Contracting'} ({latest_nh_10d:+.1f} 10d MA)",
+                "nh_is_bullish": bool(nh_expanding),
+                "ma_status": f"{pct_above_200:.1f}% > 200 SMA ({'Healthy' if ma_breadth_bullish else 'Deteriorating'})",
+                "ma_is_bullish": bool(ma_breadth_bullish)
+            }
+
             # Parse benchmark prices for SPY, QQQ, and IWM from open conn
             benchmarks = {
                 "SPY": {"close": 0, "change_pct": 0},
@@ -2090,6 +2260,32 @@ class DatabaseService:
                     "close": round(b_close, 2),
                     "change_pct": pct
                 }
+
+            # Calculate 3-pillar consensus composite market light
+            dist_pressure = pulse_data.get("distribution_pressure", 0) if pulse_data else 0
+            sb_metrics = {
+                "latest_ratio_4pct": latest.get("ratio_4pct"),
+                "latest_ratio_5d": latest.get("ratio_5d"),
+                "latest_gainers_4pct": latest.get("gainers_4pct"),
+                "latest_losers_4pct": latest.get("losers_4pct"),
+                "sum_5d_net_4pct": sum_5d_net
+            }
+            composite_light = calculate_composite_market_light(
+                kq_eval=kq_summary,
+                weinstein_verdict=weinstein_verdict,
+                stockbee_metrics=sb_metrics,
+                dist_pressure=dist_pressure
+            )
+
+            # Ensure latest daily_list[0] matches final summary composite_light
+            if daily_list:
+                daily_list[0]["composite_light"] = composite_light
+                daily_list[0]["regime"] = composite_light["light"]
+                daily_list[0]["market_light"] = composite_light["light"]
+                daily_list[0]["market_light_code"] = composite_light["light_code"]
+                daily_list[0]["market_light_color"] = composite_light["color"]
+                daily_list[0]["composite_score"] = composite_light["composite_score"]
+                daily_list[0]["score_label"] = composite_light["score_label"]
 
             summary = {
                 "latest_date": latest.get("date"),
@@ -2108,6 +2304,12 @@ class DatabaseService:
                 "latest_up_dollar_vol": latest.get("up_dollar_vol", 0.0),
                 "latest_down_dollar_vol": latest.get("down_dollar_vol", 0.0),
                 "latest_up_vol_pct": latest.get("up_vol_pct", 50.0),
+                "latest_new_highs": latest.get("new_highs", 0),
+                "latest_new_lows": latest.get("new_lows", 0),
+                "latest_net_new_highs": latest.get("net_new_highs", 0),
+                "latest_net_new_highs_10d": latest.get("net_new_highs_10d", 0.0),
+                "latest_cum_ad": latest.get("cum_ad", 0),
+                "weinstein_verdict": weinstein_verdict,
                 "latest_gainers_4pct": latest.get("gainers_4pct"),
                 "latest_losers_4pct": latest.get("losers_4pct"),
                 "latest_ratio_4pct": latest.get("ratio_4pct"),
@@ -2123,7 +2325,9 @@ class DatabaseService:
                 "benchmarks": benchmarks,
                 "cross_asset": cross_asset,
                 "kq_evaluation": kq_summary,
-                "market_pulse": pulse_data
+                "market_pulse": pulse_data,
+                "composite_light": composite_light,
+                "market_light": composite_light
             }
 
             result = {"summary": summary, "daily_data": daily_list}
@@ -2138,6 +2342,11 @@ class DatabaseService:
         """Returns the CANSLIM / Deepvue style Market Pulse data."""
         with self.get_read_only_conn() as conn:
             return get_market_pulse(conn, as_of_date=as_of_date, force_refresh=force_refresh)
+
+    def get_market_pulse_history(self, as_of_date: Optional[str] = None, limit: int = 252) -> List[Dict[str, Any]]:
+        """Returns historical Market Pulse breadth and distribution dynamics."""
+        with self.get_read_only_conn() as conn:
+            return calculate_market_pulse_history(conn, as_of_date=as_of_date, lookback_sessions=limit)
 
     def get_cross_asset_data(
         self,

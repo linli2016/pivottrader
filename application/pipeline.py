@@ -3,6 +3,11 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 
+# Ensure workspace root is in sys.path for direct script execution
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 import math
 from typing import List, Dict, Any, Optional
 

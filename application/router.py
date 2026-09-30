@@ -329,12 +329,22 @@ def get_market_monitor(limit: int = 252, refresh: bool = False, date: Optional[s
 
 @router.get("/api/market/pulse")
 def get_market_pulse(date: Optional[str] = None, refresh: bool = False):
-    """Retrieve CANSLIM / Deepvue Market Pulse (FTD status, Distribution Days with 5% rally exemption, moving average breadth percentiles)."""
+    """Retrieve CANSLIM / Deepvue Market Pulse (FTD status, Distribution Days with 5% rally exemption, moving average breadth percentiles, and history)."""
     try:
         return db_service.get_market_pulse_data(as_of_date=date, force_refresh=refresh)
     except Exception as e:
         logger.error(f"Error in get_market_pulse: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/market/pulse/history")
+def get_market_pulse_history(limit: int = 252, date: Optional[str] = None):
+    """Retrieve historical Market Pulse time series (% above 21d/50d/200d, distribution pressure, benchmark price)."""
+    try:
+        return db_service.get_market_pulse_history(as_of_date=date, limit=limit)
+    except Exception as e:
+        logger.error(f"Error in get_market_pulse_history: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/api/market/cross-asset")
 def get_cross_asset(date: Optional[str] = None, refresh: bool = False):
@@ -386,27 +396,6 @@ def get_leaderboard(
         )
     except Exception as e:
         logger.error(f"Error in get_leaderboard: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/api/score-movers")
-def get_score_movers(
-    date: Optional[str] = None,
-    timeframe: str = "1d",
-    limit: int = 5,
-    min_price: float = 5.0,
-    min_volume: int = 50000
-):
-    """Retrieve Pivot Strength Score biggest gains and drops with sparkline score history."""
-    try:
-        return leaderboard_service.get_score_movers(
-            target_date=date,
-            timeframe=timeframe,
-            limit=limit,
-            min_price=min_price,
-            min_volume=min_volume
-        )
-    except Exception as e:
-        logger.error(f"Error in get_score_movers: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 # ----------------- Group Radar & Themes Endpoints -----------------

@@ -1,4 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import MarketPulseDynamicsChart from './MarketPulseDynamicsChart';
+
+const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
 /**
  * MarketPulseCard:
@@ -6,9 +9,28 @@ import React, { useState } from 'react';
  * 1. Follow-Through Day (FTD) Status
  * 2. Distribution Pressure (25-day rolling count with 1-week delta & 5% rally exemptions)
  * 3. Moving Average Market Breadth (% above 21-day, 50-day, and 200-day MAs with 1-year percentile tracks)
+ * 4. Historical Dynamics Graph (% above MAs, Distribution Pressure bars, Benchmark overlay)
  */
 export default function MarketPulseCard({ marketPulse, asOfDate, isLive = true }) {
   const [showDetails, setShowDetails] = useState(false);
+  const [showGraph, setShowGraph] = useState(true);
+  const [fetchedHistory, setFetchedHistory] = useState([]);
+
+  const pulseHistory = (marketPulse?.history && marketPulse.history.length > 0)
+    ? marketPulse.history
+    : fetchedHistory;
+
+  useEffect(() => {
+    if ((!marketPulse?.history || marketPulse.history.length === 0) && showGraph) {
+      const dateParam = asOfDate ? `?date=${asOfDate}` : '';
+      fetch(`${API_BASE}/api/market/pulse/history${dateParam}`)
+        .then(r => r.json())
+        .then(data => {
+          if (Array.isArray(data)) setFetchedHistory(data);
+        })
+        .catch(err => console.error('Error fetching pulse history:', err));
+    }
+  }, [marketPulse?.history, asOfDate, showGraph]);
 
   if (!marketPulse) {
     return null;
@@ -60,7 +82,31 @@ export default function MarketPulseCard({ marketPulse, asOfDate, isLive = true }
           </h2>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* History Dynamics Graph toggle button */}
+          <button
+            type="button"
+            onClick={() => setShowGraph(prev => !prev)}
+            style={{
+              background: showGraph ? 'rgba(56, 189, 248, 0.16)' : 'rgba(255, 255, 255, 0.05)',
+              border: `1px solid ${showGraph ? 'rgba(56, 189, 248, 0.4)' : 'rgba(255, 255, 255, 0.12)'}`,
+              color: showGraph ? '#38bdf8' : '#94a3b8',
+              borderRadius: '8px',
+              padding: '4px 10px',
+              fontSize: '11px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              transition: 'all 0.2s ease'
+            }}
+            title="Toggle historical market pulse dynamics graph"
+          >
+            <span>📊 {showGraph ? 'Hide Graph' : 'Dynamics Graph'}</span>
+            <span style={{ fontSize: '10px' }}>{showGraph ? '▲' : '▼'}</span>
+          </button>
+
           {/* Details toggle button */}
           <button
             type="button"
@@ -242,6 +288,23 @@ export default function MarketPulseCard({ marketPulse, asOfDate, isLive = true }
           );
         })}
       </div>
+
+      {/* 4b. Historical Market Pulse Dynamics Graph */}
+      {showGraph && (
+        <div
+          style={{
+            marginTop: '18px',
+            paddingTop: '16px',
+            borderTop: '1px solid rgba(255, 255, 255, 0.08)'
+          }}
+        >
+          <MarketPulseDynamicsChart
+            history={pulseHistory}
+            asOfDate={asOfDate}
+            isEmbedded={true}
+          />
+        </div>
+      )}
 
       {/* 5. Sub-footer with universe size & timestamp */}
       <div

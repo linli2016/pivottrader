@@ -101,37 +101,65 @@ class CrossAssetService:
         """Batch downloads latest quotes via Yahoo Finance and FRED."""
         results: Dict[str, Dict[str, Any]] = {}
         
-        # 1. Fetch Yahoo Finance batch
+        # 1. Fetch official real-time quotes via Yahoo Finance quote endpoint
         try:
-            df = yf.download(YF_TICKERS, period='5d', progress=False, timeout=8)
-            if df is not None and not df.empty:
-                close_df = df['Close'] if 'Close' in df.columns else df
+            from yfinance.data import YfData
+            dm = YfData()
+            all_symbols = list(set(YF_MAP.values()) | {'HG=F', 'GC=F'})
+            params = {'symbols': ','.join(all_symbols), 'formatted': 'false'}
+            q_data = dm.get_raw_json('https://query1.finance.yahoo.com/v7/finance/quote', params=params)
+            if q_data and 'quoteResponse' in q_data:
+                quotes_by_sym = {q['symbol']: q for q in q_data['quoteResponse'].get('result', []) if 'symbol' in q}
                 for asset_sym, yf_sym in YF_MAP.items():
-                    if yf_sym in close_df.columns:
-                        series = close_df[yf_sym].dropna()
-                        if len(series) >= 2:
-                            c = float(series.iloc[-1])
-                            p = float(series.iloc[-2])
-                            pct = round(((c - p) / p) * 100, 2) if p > 0 else 0.0
-                            results[asset_sym] = {"price": c, "change_pct": pct}
-                        elif len(series) == 1:
-                            c = float(series.iloc[-1])
-                            results[asset_sym] = {"price": c, "change_pct": 0.0}
+                    if yf_sym in quotes_by_sym:
+                        q = quotes_by_sym[yf_sym]
+                        price = q.get('regularMarketPrice')
+                        chg_pct = q.get('regularMarketChangePercent')
+                        if price is not None:
+                            results[asset_sym] = {
+                                'price': float(price),
+                                'change_pct': round(float(chg_pct), 2) if chg_pct is not None else 0.0
+                            }
 
                 # Calculate Copper / Gold ratio: HG=F / GC=F
-                if 'HG=F' in close_df.columns and 'GC=F' in close_df.columns:
-                    cu = close_df['HG=F'].dropna()
-                    au = close_df['GC=F'].dropna()
-                    if len(cu) >= 2 and len(au) >= 2:
-                        ratio_curr = float(cu.iloc[-1] / au.iloc[-1]) if au.iloc[-1] > 0 else 0.0
-                        ratio_prev = float(cu.iloc[-2] / au.iloc[-2]) if au.iloc[-2] > 0 else 0.0
+                if 'HG=F' in quotes_by_sym and 'GC=F' in quotes_by_sym:
+                    cu_q = quotes_by_sym['HG=F']
+                    au_q = quotes_by_sym['GC=F']
+                    cu_price = cu_q.get('regularMarketPrice')
+                    au_price = au_q.get('regularMarketPrice')
+                    cu_prev = cu_q.get('regularMarketPreviousClose')
+                    au_prev = au_q.get('regularMarketPreviousClose')
+                    if cu_price and au_price and cu_price > 0 and au_price > 0:
+                        ratio_curr = float(cu_price / au_price)
+                        ratio_prev = float(cu_prev / au_prev) if cu_prev and au_prev and au_prev > 0 else ratio_curr
                         ratio_pct = round(((ratio_curr - ratio_prev) / ratio_prev) * 100, 2) if ratio_prev > 0 else 0.0
                         results['CU/AU'] = {
-                            "price": round(ratio_curr, 5),
-                            "change_pct": ratio_pct
+                            'price': round(ratio_curr, 5),
+                            'change_pct': ratio_pct
                         }
         except Exception as e:
-            logger.warning(f"Error in Yahoo Finance cross-asset batch download: {e}")
+            logger.warning(f"Error fetching live quotes from quote endpoint: {e}")
+
+        # Fallback to yf.download for any symbols missing from quote endpoint
+        missing_syms = [s for s in YF_TICKERS if not any(YF_MAP.get(k) == s and k in results for k in YF_MAP)]
+        if missing_syms:
+            try:
+                df = yf.download(missing_syms, period='5d', progress=False, timeout=8)
+                if df is not None and not df.empty:
+                    close_df = df['Close'] if 'Close' in df.columns else df
+                    for asset_sym, yf_sym in YF_MAP.items():
+                        if asset_sym not in results and yf_sym in close_df.columns:
+                            series = close_df[yf_sym].dropna()
+                            if len(series) >= 2:
+                                c = float(series.iloc[-1])
+                                p = float(series.iloc[-2])
+                                pct = round(((c - p) / p) * 100, 2) if p > 0 else 0.0
+                                results[asset_sym] = {"price": c, "change_pct": pct}
+                            elif len(series) == 1:
+                                c = float(series.iloc[-1])
+                                results[asset_sym] = {"price": c, "change_pct": 0.0}
+            except Exception as e:
+                logger.warning(f"Error in Yahoo Finance cross-asset batch download fallback: {e}")
 
         # 2. Fetch FRED series for 2S10S and HY OAS
         # 2a. High Yield Option-Adjusted Spread

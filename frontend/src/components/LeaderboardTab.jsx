@@ -107,8 +107,9 @@ export default function LeaderboardTab({
 
   // Boards Definitions
   const BOARDS = useMemo(() => [
-    { id: 'near_52w_high', label: 'Near 52w high', defaultRs: 90, defaultSort: 'pivot_rs' },
-    { id: 'new_highs', label: 'New highs', defaultRs: 0, defaultSort: 'pivot_rs' },
+    { id: 'near_52w_high', label: 'Near 52w high', defaultRs: 90, defaultSort: 'rs_rank' },
+    { id: 'new_highs', label: 'New highs', defaultRs: 0, defaultSort: 'rs_rank' },
+    { id: 'new_rs_highs', label: 'New RS highs', defaultRs: 0, defaultSort: 'rs_rank' },
     { id: 'gainers', label: 'Gainers', defaultRs: 0, defaultSort: 'change_pct' },
     { id: 'pre_market', label: 'Pre-market', defaultRs: 0, defaultSort: 'gap_pct' },
     { id: 'strongest', label: 'Strongest', defaultRs: 90, defaultSort: 'rs_rank' },
@@ -121,15 +122,14 @@ export default function LeaderboardTab({
   const [minRs, setMinRs] = useState(90); // Default to 90 as per playbook
   const [selectedSector, setSelectedSector] = useState(null);
   const [selectedIndustry, setSelectedIndustry] = useState(null);
+  const [filterRsSubMode, setFilterRsSubMode] = useState('all'); // 'all' | 'blue_dot' | 'ath'
   const [filterSweetSpot, setFilterSweetSpot] = useState(false);
   const [filterHealthyAtr, setFilterHealthyAtr] = useState(false);
   const [filterExpandingVol, setFilterExpandingVol] = useState(false);
-  const [filterPrs90, setFilterPrs90] = useState(false);
-  const [filterAccelerating, setFilterAccelerating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Table Sort State
-  const [sortBy, setSortBy] = useState('pivot_rs');
+  const [sortBy, setSortBy] = useState('rs_rank');
   const [sortOrder, setSortOrder] = useState('desc');
   const [leaderViewMode, setLeaderViewMode] = useState('table'); // 'table' | 'heatmap' | 'board'
 
@@ -139,6 +139,7 @@ export default function LeaderboardTab({
     setSelectedBoard(boardId);
     setSelectedSector(null);
     setSelectedIndustry(null);
+    setFilterRsSubMode('all');
     const targetBoard = BOARDS.find(b => b.id === boardId);
     if (targetBoard) {
       setMinRs(targetBoard.defaultRs);
@@ -293,11 +294,14 @@ export default function LeaderboardTab({
     if (filterExpandingVol) {
       list = list.filter(s => s.status_rvol === 'expanding');
     }
-    if (filterPrs90) {
-      list = list.filter(s => (s.pivot_rs ?? 0) >= 90);
-    }
-    if (filterAccelerating) {
-      list = list.filter(s => (s.rs_shift ?? 0) >= 10);
+
+    // New RS Highs sub-mode filters (Blue Dot or All-Time High)
+    if (selectedBoard === 'new_rs_highs') {
+      if (filterRsSubMode === 'blue_dot') {
+        list = list.filter(s => s.is_rs_blue_dot);
+      } else if (filterRsSubMode === 'ath') {
+        list = list.filter(s => s.is_rs_ath);
+      }
     }
 
     // Sorting
@@ -315,7 +319,7 @@ export default function LeaderboardTab({
     });
 
     return list;
-  }, [data.stocks, searchQuery, filterSweetSpot, filterHealthyAtr, filterExpandingVol, filterPrs90, filterAccelerating, sortBy, sortOrder]);
+  }, [data.stocks, searchQuery, filterSweetSpot, filterHealthyAtr, filterExpandingVol, selectedBoard, filterRsSubMode, sortBy, sortOrder]);
 
   // Group displayed stocks by sector for Board view
   const sectorGroups = useMemo(() => {
@@ -706,43 +710,92 @@ export default function LeaderboardTab({
           </div>
         </div>
 
-        {/* Sweet Spot Count */}
-        <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '9px 12px' }}>
-          <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>In Sweet Spot (30–120d)</div>
-          <div style={{ fontSize: '18px', fontWeight: '700', color: '#10b981', marginTop: '2px' }}>
-            {data.summary.sweet_spot_count ?? '--'}
-            <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: '400', marginLeft: '5px' }}>stocks</span>
-          </div>
-        </div>
+        {/* Conditional Summary Cards: Blue Dot and ATH RS for new_rs_highs board */}
+        {selectedBoard === 'new_rs_highs' ? (
+          <>
+            {/* Blue Dot (Ahead of Price) Card */}
+            <div
+              onClick={() => setFilterRsSubMode(prev => prev === 'blue_dot' ? 'all' : 'blue_dot')}
+              style={{
+                background: filterRsSubMode === 'blue_dot' ? 'rgba(56, 189, 248, 0.2)' : 'var(--card-bg)',
+                border: filterRsSubMode === 'blue_dot' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
+                borderRadius: '8px',
+                padding: '9px 12px',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+              title="Click to toggle filter for RS Blue Dot (RS 52w high ahead of price)"
+            >
+              <div style={{ fontSize: '10.5px', color: '#38bdf8', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                🔵 Ahead of Price (Blue Dot)
+              </div>
+              <div style={{ fontSize: '18px', fontWeight: '700', color: '#38bdf8', marginTop: '2px' }}>
+                {data.summary.blue_dot_count ?? 0}
+                <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: '400', marginLeft: '5px' }}>stocks</span>
+              </div>
+            </div>
 
-        {/* Healthy ATR Count */}
-        <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '9px 12px' }}>
-          <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Healthy ATR (&le; 2 ATR)</div>
-          <div style={{ fontSize: '18px', fontWeight: '700', color: '#10b981', marginTop: '2px' }}>
-            {data.summary.healthy_atr_count ?? '--'}
-            <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: '400', marginLeft: '5px' }}>buyable</span>
-          </div>
-        </div>
+            {/* ATH RS Card */}
+            <div
+              onClick={() => setFilterRsSubMode(prev => prev === 'ath' ? 'all' : 'ath')}
+              style={{
+                background: filterRsSubMode === 'ath' ? 'rgba(245, 158, 11, 0.2)' : 'var(--card-bg)',
+                border: filterRsSubMode === 'ath' ? '1px solid #f59e0b' : '1px solid var(--border-color)',
+                borderRadius: '8px',
+                padding: '9px 12px',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+              title="Click to toggle filter for All-Time High RS leaders"
+            >
+              <div style={{ fontSize: '10.5px', color: '#f59e0b', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                🌟 All-Time RS Highs
+              </div>
+              <div style={{ fontSize: '18px', fontWeight: '700', color: '#f59e0b', marginTop: '2px' }}>
+                {data.summary.ath_rs_count ?? 0}
+                <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: '400', marginLeft: '5px' }}>leaders</span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Sweet Spot Count */}
+            <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '9px 12px' }}>
+              <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>In Sweet Spot (30–120d)</div>
+              <div style={{ fontSize: '18px', fontWeight: '700', color: '#10b981', marginTop: '2px' }}>
+                {data.summary.sweet_spot_count ?? '--'}
+                <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: '400', marginLeft: '5px' }}>stocks</span>
+              </div>
+            </div>
 
-        {/* Pivot RS Leaders Count */}
+            {/* Healthy ATR Count */}
+            <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '9px 12px' }}>
+              <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Healthy ATR (&le; 2 ATR)</div>
+              <div style={{ fontSize: '18px', fontWeight: '700', color: '#10b981', marginTop: '2px' }}>
+                {data.summary.healthy_atr_count ?? '--'}
+                <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: '400', marginLeft: '5px' }}>buyable</span>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* RS >= 90 Leaders Count */}
         <div
-          onClick={() => setFilterPrs90(prev => !prev)}
+          onClick={() => setMinRs(prev => prev === 90 ? 0 : 90)}
           style={{
-            background: filterPrs90 ? 'rgba(16, 185, 129, 0.2)' : 'var(--card-bg)',
-            border: filterPrs90 ? '1px solid #10b981' : '1px solid var(--border-color)',
+            background: minRs >= 90 ? 'rgba(16, 185, 129, 0.2)' : 'var(--card-bg)',
+            border: minRs >= 90 ? '1px solid #10b981' : '1px solid var(--border-color)',
             borderRadius: '8px',
             padding: '9px 12px',
             cursor: 'pointer',
             transition: 'all 0.15s ease'
           }}
-          title="Click to toggle filter for Pivot RS ≥ 90 leaders"
+          title="Click to toggle minimum RS ≥ 90 filter"
         >
-          <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>PRS &ge; 90 Leaders</div>
+          <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>RS &ge; 90 Leaders</div>
           <div style={{ fontSize: '18px', fontWeight: '700', color: '#10b981', marginTop: '2px', display: 'flex', alignItems: 'baseline', gap: '5px' }}>
-            {data.summary.prs_90_count ?? '--'}
-            <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: '400' }}>
-              ({data.summary.accelerating_count ?? 0} &Delta;RS &ge; +10)
-            </span>
+            {data.summary.rs_90_count ?? '--'}
+            <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: '400' }}>stocks</span>
           </div>
         </div>
       </div>
@@ -751,6 +804,59 @@ export default function LeaderboardTab({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', background: 'rgba(255,255,255,0.02)', padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Filter:</span>
+
+          {/* New RS Highs sub-mode pills */}
+          {selectedBoard === 'new_rs_highs' && (
+            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(255,255,255,0.06)', borderRadius: '20px', padding: '2px', border: '1px solid var(--border-color)', marginRight: '4px' }}>
+              <button
+                onClick={() => setFilterRsSubMode('all')}
+                style={{
+                  padding: '3px 9px',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  borderRadius: '16px',
+                  border: 'none',
+                  background: filterRsSubMode === 'all' ? '#10b981' : 'transparent',
+                  color: filterRsSubMode === 'all' ? '#000' : 'var(--text-secondary)',
+                  cursor: 'pointer'
+                }}
+              >
+                All 52W RS ({data.summary.total_candidates ?? 0})
+              </button>
+              <button
+                onClick={() => setFilterRsSubMode('blue_dot')}
+                style={{
+                  padding: '3px 9px',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  borderRadius: '16px',
+                  border: 'none',
+                  background: filterRsSubMode === 'blue_dot' ? '#38bdf8' : 'transparent',
+                  color: filterRsSubMode === 'blue_dot' ? '#000' : 'var(--text-secondary)',
+                  cursor: 'pointer'
+                }}
+                title="RS Blue Dot: 52w RS high made ahead of price breakout"
+              >
+                🔵 Blue Dot ({data.summary.blue_dot_count ?? 0})
+              </button>
+              <button
+                onClick={() => setFilterRsSubMode('ath')}
+                style={{
+                  padding: '3px 9px',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  borderRadius: '16px',
+                  border: 'none',
+                  background: filterRsSubMode === 'ath' ? '#f59e0b' : 'transparent',
+                  color: filterRsSubMode === 'ath' ? '#000' : 'var(--text-secondary)',
+                  cursor: 'pointer'
+                }}
+                title="All-Time High Relative Strength"
+              >
+                🌟 ATH RS ({data.summary.ath_rs_count ?? 0})
+              </button>
+            </div>
+          )}
 
           {/* Sweet Spot Toggle */}
           <button
@@ -810,46 +916,6 @@ export default function LeaderboardTab({
             }}
           >
             <span>🔥</span> RVOL &ge; 1.2x
-          </button>
-
-          {/* PRS >= 90 Toggle */}
-          <button
-            onClick={() => setFilterPrs90(prev => !prev)}
-            style={{
-              padding: '4px 10px',
-              fontSize: '11px',
-              borderRadius: '20px',
-              border: filterPrs90 ? '1px solid #10b981' : '1px solid var(--border-color)',
-              background: filterPrs90 ? 'rgba(16, 185, 129, 0.2)' : 'var(--card-bg)',
-              color: filterPrs90 ? '#10b981' : 'var(--text-secondary)',
-              cursor: 'pointer',
-              fontWeight: filterPrs90 ? '600' : '400',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-          >
-            <span>⭐</span> PRS &ge; 90
-          </button>
-
-          {/* Accelerating Toggle */}
-          <button
-            onClick={() => setFilterAccelerating(prev => !prev)}
-            style={{
-              padding: '4px 10px',
-              fontSize: '11px',
-              borderRadius: '20px',
-              border: filterAccelerating ? '1px solid #10b981' : '1px solid var(--border-color)',
-              background: filterAccelerating ? 'rgba(16, 185, 129, 0.2)' : 'var(--card-bg)',
-              color: filterAccelerating ? '#10b981' : 'var(--text-secondary)',
-              cursor: 'pointer',
-              fontWeight: filterAccelerating ? '600' : '400',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-          >
-            <span>🚀</span> Accelerating (&Delta;RS &ge; +10)
           </button>
 
           {/* Active Sector / Industry Chips */}
@@ -1312,8 +1378,6 @@ export default function LeaderboardTab({
                     setFilterSweetSpot(false);
                     setFilterHealthyAtr(false);
                     setFilterExpandingVol(false);
-                    setFilterPrs90(false);
-                    setFilterAccelerating(false);
                     setSearchQuery('');
                   }}
                   className="btn btn-secondary"
@@ -1370,8 +1434,16 @@ export default function LeaderboardTab({
                           </span>
                         </div>
                         <div>
-                          <div style={{ fontWeight: '700', fontSize: '13px', color: 'var(--text-primary)' }}>
-                            {stock.symbol}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ fontWeight: '700', fontSize: '13px', color: 'var(--text-primary)' }}>
+                              {stock.symbol}
+                            </span>
+                            {stock.is_rs_blue_dot && (
+                              <span style={{ fontSize: '8.5px', color: '#38bdf8' }} title="RS Blue Dot: 52w RS high ahead of price">🔵</span>
+                            )}
+                            {stock.is_rs_ath && (
+                              <span style={{ fontSize: '8.5px', color: '#f59e0b' }} title="All-Time High RS">🌟</span>
+                            )}
                           </div>
                           <div style={{ fontSize: '10px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={stock.name || stock.company_name}>
                             {stock.name || stock.company_name || stock.sector}
@@ -1386,8 +1458,8 @@ export default function LeaderboardTab({
                           </span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', paddingTop: '4px', borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: '10px' }}>
-                          <span style={{ color: 'var(--text-muted)' }}>RS {stock.rs_rank ?? '-'}</span>
-                          <span style={{ color: '#38bdf8' }}>Kova {stock.pivot_rs ?? '-'}</span>
+                          <span style={{ color: stock.rs_rank >= 90 ? '#10b981' : 'var(--text-muted)', fontWeight: stock.rs_rank >= 90 ? '700' : '400' }}>RS {stock.rs_rank ?? '-'}</span>
+                          <span style={{ color: 'var(--text-muted)' }}>RVol {stock.rvol ? `${stock.rvol.toFixed(1)}x` : '-'}</span>
                         </div>
                       </div>
                     );
@@ -1449,8 +1521,16 @@ export default function LeaderboardTab({
                                 #{stock.rank}
                               </span>
                               <div>
-                                <div style={{ fontWeight: '700', fontSize: '12px', color: 'var(--text-primary)' }}>
-                                  {stock.symbol}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span style={{ fontWeight: '700', fontSize: '12px', color: 'var(--text-primary)' }}>
+                                    {stock.symbol}
+                                  </span>
+                                  {stock.is_rs_blue_dot && (
+                                    <span style={{ fontSize: '8.5px', color: '#38bdf8' }} title="RS Blue Dot: 52w RS high ahead of price">🔵</span>
+                                  )}
+                                  {stock.is_rs_ath && (
+                                    <span style={{ fontSize: '8.5px', color: '#f59e0b' }} title="All-Time High RS">🌟</span>
+                                  )}
                                 </div>
                                 <div style={{ fontSize: '10px', color: 'var(--text-muted)', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                   {stock.name || stock.company_name}
@@ -1538,14 +1618,6 @@ export default function LeaderboardTab({
                     </th>
 
                     <th
-                      onClick={() => handleSort('pivot_rs')}
-                      style={{ width: '56px', padding: '7px 2px', textAlign: 'center', cursor: 'pointer', borderBottom: '1px solid var(--border-color)', color: sortBy === 'pivot_rs' ? '#10b981' : 'var(--text-secondary)', fontWeight: '600' }}
-                      title="Kova / Pivot RS (1–99) & Velocity Shift"
-                    >
-                      Kova {sortBy === 'pivot_rs' && (sortOrder === 'asc' ? '▲' : '▼')}
-                    </th>
-
-                    <th
                       onClick={() => handleSort('dist_from_52w_high')}
                       style={{ width: '48px', padding: '7px 4px', textAlign: 'right', cursor: 'pointer', borderBottom: '1px solid var(--border-color)', color: sortBy === 'dist_from_52w_high' ? '#10b981' : 'var(--text-secondary)', fontWeight: '600' }}
                     >
@@ -1623,11 +1695,11 @@ export default function LeaderboardTab({
 
                         {/* Symbol & Name */}
                         <td style={{ padding: '6px 5px', overflow: 'hidden' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                             <span style={{ fontWeight: '700', fontSize: '11.5px', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
                               {stock.symbol}
                             </span>
-                            {stock.is_prs_90 && (
+                            {stock.rs_rank >= 90 && (
                               <span
                                 style={{
                                   fontSize: '9px',
@@ -1639,9 +1711,43 @@ export default function LeaderboardTab({
                                   border: '1px solid rgba(16, 185, 129, 0.4)',
                                   lineHeight: '13px'
                                 }}
-                                title="⭐ Pivot RS 90+ (Top decile momentum)"
+                                title="⭐ Relative Strength 90+ (Top decile momentum)"
                               >
                                 90+
+                              </span>
+                            )}
+                            {stock.is_rs_blue_dot && (
+                              <span
+                                style={{
+                                  fontSize: '9px',
+                                  fontWeight: '700',
+                                  padding: '0 4px',
+                                  borderRadius: '3px',
+                                  background: 'rgba(56, 189, 248, 0.2)',
+                                  color: '#38bdf8',
+                                  border: '1px solid rgba(56, 189, 248, 0.4)',
+                                  lineHeight: '13px'
+                                }}
+                                title="🔵 RS Blue Dot: 52w RS high made ahead of price breakout (institutional accumulation)"
+                              >
+                                🔵 Blue Dot
+                              </span>
+                            )}
+                            {stock.is_rs_ath && (
+                              <span
+                                style={{
+                                  fontSize: '9px',
+                                  fontWeight: '700',
+                                  padding: '0 4px',
+                                  borderRadius: '3px',
+                                  background: 'rgba(245, 158, 11, 0.2)',
+                                  color: '#f59e0b',
+                                  border: '1px solid rgba(245, 158, 11, 0.4)',
+                                  lineHeight: '13px'
+                                }}
+                                title="🌟 All-Time High RS: RS line at all-time high vs SPY"
+                              >
+                                🌟 ATH RS
                               </span>
                             )}
                           </div>
@@ -1744,26 +1850,6 @@ export default function LeaderboardTab({
                         {/* YTD Return */}
                         <td style={{ padding: '6px 3px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: '600', color: stock.ret_ytd > 0 ? '#10b981' : stock.ret_ytd < 0 ? '#f43f5e' : 'var(--text-muted)' }}>
                           {stock.ret_ytd != null ? `${stock.ret_ytd > 0 ? '+' : ''}${stock.ret_ytd.toFixed(2)}%` : '--'}
-                        </td>
-
-                        {/* Kova / Pivot RS & Shift */}
-                        <td style={{ padding: '6px 2px', textAlign: 'center', fontFamily: 'var(--font-mono)' }}>
-                          <span style={{ fontWeight: '700', fontSize: '10.5px', color: stock.pivot_rs >= 90 ? '#10b981' : 'var(--text-primary)' }}>
-                            {stock.pivot_rs ?? '--'}
-                          </span>
-                          {stock.rs_shift >= 10 ? (
-                            <span style={{ fontSize: '9px', color: '#10b981', fontWeight: '700', marginLeft: '2px' }} title={`1M Velocity: +${stock.rs_shift} rank points (Accelerating)`}>
-                              ↑+{stock.rs_shift}
-                            </span>
-                          ) : stock.rs_shift <= -10 ? (
-                            <span style={{ fontSize: '9px', color: '#f43f5e', fontWeight: '700', marginLeft: '2px' }} title={`1M Velocity: ${stock.rs_shift} rank points (Fading)`}>
-                              ↓{stock.rs_shift}
-                            </span>
-                          ) : stock.rs_shift !== 0 && stock.rs_shift != null ? (
-                            <span style={{ fontSize: '9px', color: 'var(--text-muted)', marginLeft: '2px' }} title={`1M Velocity: ${stock.rs_shift > 0 ? `+${stock.rs_shift}` : stock.rs_shift} rank points`}>
-                              {stock.rs_shift > 0 ? `+${stock.rs_shift}` : stock.rs_shift}
-                            </span>
-                          ) : null}
                         </td>
 
                         {/* Off 52w High (52wH) */}
@@ -1887,9 +1973,15 @@ export default function LeaderboardTab({
                               color: stock.rs_rank >= 95 ? '#f59e0b' : stock.rs_rank >= 90 ? '#10b981' : '#38bdf8',
                               border: `1px solid ${stock.rs_rank >= 95 ? 'rgba(245, 158, 11, 0.4)' : stock.rs_rank >= 90 ? 'rgba(16, 185, 129, 0.4)' : 'rgba(56, 189, 248, 0.3)'}`
                             }}
+                            title={stock.rs_line != null ? `IBD RS Rank: ${stock.rs_rank} · RS Line vs SPY: ${stock.rs_line}` : `IBD Relative Strength: ${stock.rs_rank}`}
                           >
                             {stock.rs_rank}
                           </span>
+                          {stock.rs_line != null && (
+                            <div style={{ fontSize: '8.5px', color: '#38bdf8', fontFamily: 'var(--font-mono)', marginTop: '1px' }} title={`RS Line vs SPY: ${stock.rs_line}`}>
+                              {stock.rs_line.toFixed(1)}
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );

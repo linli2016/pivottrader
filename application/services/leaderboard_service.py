@@ -25,6 +25,36 @@ class LeaderboardService:
                 else:
                     raise
 
+    def _resolve_target_date(self, conn, target_date: Optional[str]) -> str:
+        """
+        Safely resolves target_date to a valid YYYY-MM-DD string.
+        Falls back to MAX(date) in daily_bars if target_date is missing, 'latest',
+        'Latest Available', invalid format, or future/unrecognized.
+        """
+        if target_date:
+            cleaned = str(target_date).strip()
+            if cleaned.lower() not in ("latest", "latest available", "undefined", "null", "none", ""):
+                row = conn.execute(
+                    "SELECT MAX(date) FROM daily_bars WHERE date <= TRY_CAST(? AS DATE)",
+                    [cleaned]
+                ).fetchone()
+                if row and row[0]:
+                    d = row[0]
+                    return d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
+
+        # Fall back to latest available trading date
+        row = conn.execute("SELECT MAX(date) FROM daily_bars WHERE date <= CURRENT_DATE").fetchone()
+        if row and row[0]:
+            d = row[0]
+            return d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
+
+        max_any = conn.execute("SELECT MAX(date) FROM daily_bars").fetchone()
+        if max_any and max_any[0]:
+            d = max_any[0]
+            return d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
+
+        return ""
+
     def get_leaderboard(
         self,
         target_date: Optional[str] = None,
@@ -50,25 +80,10 @@ class LeaderboardService:
         """
         try:
             with self._get_connection() as conn:
-                # 1. Resolve actual target date
-                if target_date and str(target_date).strip().lower() != "latest":
-                    target_dt_input = str(target_date).strip()
-                    row = conn.execute(
-                        "SELECT MAX(date) FROM daily_bars WHERE date <= CAST(? AS DATE)",
-                        [target_dt_input]
-                    ).fetchone()
-                    if row and row[0]:
-                        actual_date = row[0]
-                        actual_date_str = actual_date.strftime("%Y-%m-%d") if hasattr(actual_date, "strftime") else str(actual_date)
-                    else:
-                        actual_date_str = target_dt_input
-                else:
-                    max_dt = conn.execute("SELECT MAX(date) FROM daily_bars WHERE date <= CURRENT_DATE").fetchone()[0]
-                    if not max_dt:
-                        max_dt = conn.execute("SELECT MAX(date) FROM daily_bars").fetchone()[0]
-                    if not max_dt:
-                        return {"summary": {}, "sector_distribution": [], "stocks": []}
-                    actual_date_str = max_dt.strftime("%Y-%m-%d") if hasattr(max_dt, "strftime") else str(max_dt)
+                # 1. Resolve actual target date safely
+                actual_date_str = self._resolve_target_date(conn, target_date)
+                if not actual_date_str:
+                    return {"summary": {}, "sector_distribution": [], "stocks": []}
 
                 # Previous date for day change calculation
                 prev_row = conn.execute(
@@ -97,6 +112,8 @@ class LeaderboardService:
                     board_key = "near_52w_high"
                 elif board_key in ("new_highs", "new_high", "new_52w_highs", "new_52w_high"):
                     board_key = "new_highs"
+                elif board_key in ("new_rs_highs", "rs_highs", "rs_high", "new_rs_high"):
+                    board_key = "new_rs_highs"
                 elif board_key in ("gainer", "top_gainers"):
                     board_key = "gainers"
                 elif board_key in ("strong", "rs_leaders"):
@@ -106,7 +123,7 @@ class LeaderboardService:
 
                 # Default min_rs based on board
                 if min_rs is None:
-                    if board_key in ("gainers", "new_highs", "pre_market"):
+                    if board_key in ("gainers", "new_highs", "pre_market", "new_rs_highs"):
                         min_rs = 0
                     else:
                         min_rs = 80
@@ -170,6 +187,9 @@ class LeaderboardService:
 
                 # Configure board query parameters and clauses
                 join_gainers = ""
+                join_rs = ""
+                rs_ctes = ""
+                extra_target_select = "CAST(NULL AS DOUBLE) as rs_line, false as is_rs_52w_high, false as is_rs_blue_dot, false as is_rs_ath,"
                 if board_key == "near_52w_high":
                     board_where = """
                         AND d.dist_from_52w_high IS NOT NULL
@@ -179,14 +199,98 @@ class LeaderboardService:
                         AND COALESCE(d.ema_20, te.ema_20) > COALESCE(d.ema_50, te.ema_50, d.sma_50)
                     """
                     board_params = [float(max_dist_high)]
-                    order_by = "t.pivot_rs DESC, t.rs_rank DESC, t.rvol DESC"
+                    order_by = "t.rs_rank DESC, t.rvol DESC"
                 elif board_key == "new_highs":
                     board_where = """
                         AND (d.is_52w_high = true OR d.high >= d.high_52w OR d.dist_from_52w_high <= 0.2)
                         AND d.close >= 5.0
                     """
                     board_params = []
-                    order_by = "t.pivot_rs DESC, t.rs_rank DESC, t.rvol DESC"
+                    order_by = "t.rs_rank DESC, t.rvol DESC"
+                elif board_key == "new_rs_highs":
+                    rs_ctes = f"""
+                    calendar_dates AS (
+                        SELECT DISTINCT date 
+                        FROM daily_bars 
+                        WHERE date <= CAST('{actual_date_str}' AS DATE) 
+                        ORDER BY date DESC
+                    ),
+                    d0_date AS (SELECT date FROM calendar_dates LIMIT 1),
+                    min_260_date AS (
+                        SELECT MIN(date) as date FROM (SELECT date FROM calendar_dates LIMIT 260)
+                    ),
+                    d0_candidates AS (
+                        SELECT d.symbol, d.date, d.close
+                        FROM daily_bars d
+                        JOIN symbols s ON d.symbol = s.symbol
+                        WHERE d.date = (SELECT date FROM d0_date)
+                          AND d.close >= 5.0
+                          AND (s.asset_type IS NULL OR UPPER(s.asset_type) NOT LIKE '%ETF%')
+                          AND (s.industry IS NULL OR UPPER(s.industry) NOT LIKE '%ETF%')
+                    ),
+                    rs_history AS (
+                        SELECT d.symbol, d.date, d.close, b.close as spy_close,
+                               ROUND((d.close / NULLIF(b.close, 0)) * 100.0, 4) as rs_line
+                        FROM daily_bars d
+                        JOIN daily_bars b ON d.date = b.date AND b.symbol = 'SPY'
+                        WHERE d.symbol IN (SELECT symbol FROM d0_candidates)
+                          AND d.date <= (SELECT date FROM d0_date)
+                          AND d.date >= (SELECT date FROM min_260_date)
+                    ),
+                    rs_rolling AS (
+                        SELECT symbol, date, close, rs_line,
+                               COUNT(rs_line) OVER (
+                                   PARTITION BY symbol 
+                                   ORDER BY date 
+                                   ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING
+                               ) as rs_cnt,
+                               MAX(rs_line) OVER (
+                                   PARTITION BY symbol 
+                                   ORDER BY date 
+                                   ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING
+                               ) as prev_rs_52w_high,
+                               MAX(close) OVER (
+                                   PARTITION BY symbol 
+                                   ORDER BY date 
+                                   ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING
+                               ) as prev_close_52w_high
+                        FROM rs_history
+                    ),
+                    rs_52w_targets AS (
+                        SELECT symbol, date, close, rs_line, prev_rs_52w_high, prev_close_52w_high,
+                               (rs_line >= prev_rs_52w_high) as is_rs_52w_high,
+                               (rs_line >= prev_rs_52w_high AND close < COALESCE(prev_close_52w_high, close)) as is_rs_blue_dot
+                        FROM rs_rolling
+                        WHERE date = (SELECT date FROM d0_date)
+                          AND prev_rs_52w_high IS NOT NULL
+                          AND rs_cnt >= 50
+                          AND rs_line >= prev_rs_52w_high
+                    ),
+                    ath_history AS (
+                        SELECT d.symbol, d.date, (d.close / NULLIF(b.close, 0)) * 100.0 as full_rs
+                        FROM daily_bars d
+                        JOIN daily_bars b ON d.date = b.date AND b.symbol = 'SPY'
+                        WHERE d.symbol IN (SELECT symbol FROM rs_52w_targets)
+                          AND d.date <= (SELECT date FROM d0_date)
+                    ),
+                    ath_calc AS (
+                        SELECT symbol,
+                               MAX(CASE WHEN date < (SELECT date FROM d0_date) THEN full_rs ELSE NULL END) as prev_ath_rs
+                        FROM ath_history
+                        GROUP BY symbol
+                    ),
+                    rs_final_targets AS (
+                        SELECT t.symbol, ROUND(t.rs_line, 2) as rs_line, t.is_rs_52w_high, t.is_rs_blue_dot,
+                               (t.rs_line >= COALESCE(a.prev_ath_rs, t.rs_line)) as is_rs_ath
+                        FROM rs_52w_targets t
+                        LEFT JOIN ath_calc a ON t.symbol = a.symbol
+                    ),
+                    """
+                    join_rs = "JOIN rs_final_targets rst ON d.symbol = rst.symbol"
+                    extra_target_select = "rst.rs_line, rst.is_rs_52w_high, rst.is_rs_blue_dot, rst.is_rs_ath,"
+                    board_where = "AND d.close >= 5.0"
+                    board_params = []
+                    order_by = "t.rs_rank DESC, t.rvol DESC"
                 elif board_key == "gainers":
                     join_gainers = "JOIN daily_bars p_gain ON d.symbol = p_gain.symbol"
                     board_where = """
@@ -205,7 +309,7 @@ class LeaderboardService:
                         AND COALESCE(d.ema_10, te.ema_10) > COALESCE(d.ema_20, te.ema_20)
                     """
                     board_params = []
-                    order_by = "t.rs_rank DESC, t.pivot_rs DESC, t.rvol DESC"
+                    order_by = "t.rs_rank DESC, t.rvol DESC"
                 elif board_key == "pre_market":
                     board_where = """
                         AND COALESCE(d.gap_pct, 0.0) >= 1.0
@@ -219,42 +323,11 @@ class LeaderboardService:
                         AND d.dist_from_52w_high <= ?
                     """
                     board_params = [float(max_dist_high)]
-                    order_by = "t.pivot_rs DESC, t.rs_rank DESC, t.rvol DESC"
+                    order_by = "t.rs_rank DESC, t.rvol DESC"
 
                 # 2. Main query for all qualified stocks
                 query = f"""
-                WITH universe_perf AS (
-                    SELECT 
-                        symbol,
-                        date,
-                        (COALESCE(ret_1m, 0) * 0.50 + COALESCE(ret_3m, 0) * 0.35 + COALESCE(ret_6m, 0) * 0.15) as prs_raw
-                    FROM daily_bars
-                    WHERE date <= CAST(? AS DATE)
-                      AND date >= (SELECT MAX(date) - INTERVAL '40 days' FROM daily_bars WHERE date <= CAST(? AS DATE))
-                ),
-                ranked_prs AS (
-                    SELECT 
-                        symbol,
-                        date,
-                        CAST(PERCENT_RANK() OVER (PARTITION BY date ORDER BY prs_raw) * 98 + 1 AS INTEGER) as prs_rank
-                    FROM universe_perf
-                ),
-                shift_prs AS (
-                    SELECT 
-                        symbol,
-                        date,
-                        prs_rank as pivot_rs,
-                        LAG(prs_rank, 20) OVER (PARTITION BY symbol ORDER BY date) as prs_rank_20d_ago
-                    FROM ranked_prs
-                ),
-                prs_at_target AS (
-                    SELECT 
-                        symbol,
-                        pivot_rs,
-                        (pivot_rs - COALESCE(prs_rank_20d_ago, pivot_rs)) as rs_shift
-                    FROM shift_prs
-                    WHERE date = CAST(? AS DATE)
-                ),
+                WITH {rs_ctes}
                 target_universe AS (
                     SELECT 
                         d.symbol,
@@ -268,8 +341,6 @@ class LeaderboardService:
                         COALESCE(d.rel_vol_50d, 0.0) as rvol,
                         d.rs_rank,
                         d.rs_score,
-                        COALESCE(prs.pivot_rs, d.rs_rank) as pivot_rs,
-                        COALESCE(prs.rs_shift, 0) as rs_shift,
                         d.dist_from_52w_high,
                         d.high_52w,
                         COALESCE(d.ema_10, te.ema_10) as ema_10,
@@ -281,12 +352,13 @@ class LeaderboardService:
                         ROUND(d.ret_1m, 2) as ret_1m,
                         ROUND(d.ret_3m, 2) as ret_3m,
                         ROUND(d.ret_6m, 2) as ret_6m,
-                        COALESCE(d.gap_pct, 0.0) as gap_pct
+                        COALESCE(d.gap_pct, 0.0) as gap_pct,
+                        {extra_target_select}
                     FROM daily_bars d
                     JOIN symbols s ON d.symbol = s.symbol
                     LEFT JOIN temp_emas te ON d.symbol = te.symbol
-                    LEFT JOIN prs_at_target prs ON d.symbol = prs.symbol
                     {join_gainers}
+                    {join_rs}
                     WHERE d.date = CAST(? AS DATE)
                       AND (s.asset_type IS NULL OR UPPER(s.asset_type) NOT LIKE '%ETF%')
                       AND (s.industry IS NULL OR UPPER(s.industry) NOT LIKE '%ETF%')
@@ -348,8 +420,6 @@ class LeaderboardService:
                     t.rvol,
                     t.rs_rank,
                     t.rs_score,
-                    t.pivot_rs,
-                    t.rs_shift,
                     t.dist_from_52w_high,
                     t.high_52w,
                     t.ema_10,
@@ -364,7 +434,11 @@ class LeaderboardService:
                     t.ret_6m,
                     ROUND((t.close - y.ytd_base_close) / NULLIF(y.ytd_base_close, 0) * 100, 2) as ret_ytd,
                     ROUND((t.close - w1.w1_close) / NULLIF(w1.w1_close, 0) * 100, 2) as ret_1w,
-                    t.gap_pct
+                    t.gap_pct,
+                    t.rs_line,
+                    t.is_rs_52w_high,
+                    t.is_rs_blue_dot,
+                    t.is_rs_ath
                 FROM target_universe t
                 LEFT JOIN prev_closes p ON t.symbol = p.symbol
                 LEFT JOIN w1_closes w1 ON t.symbol = w1.symbol
@@ -374,7 +448,7 @@ class LeaderboardService:
                 """
 
                 params = (
-                    [actual_date_str, actual_date_str, actual_date_str, actual_date_str]
+                    [actual_date_str]
                     + board_params
                     + [prev_date_str, w1_date_str, actual_date_str, actual_date_str]
                 )
@@ -389,6 +463,10 @@ class LeaderboardService:
                     "new_highs": {
                         "title": "New highs",
                         "desc_template": "{count} stocks reaching new 52-week highs as of {date}"
+                    },
+                    "new_rs_highs": {
+                        "title": "New RS highs",
+                        "desc_template": "{count} stocks reaching new 52-week Relative Strength highs (vs SPY) as of {date}"
                     },
                     "gainers": {
                         "title": "Gainers",
@@ -422,23 +500,25 @@ class LeaderboardService:
                     rvol = round(float(r[10]), 2) if r[10] is not None else 0.0
                     rs_rank = int(r[11]) if r[11] is not None else 0
                     rs_score = round(float(r[12]), 1) if r[12] is not None else 0.0
-                    pivot_rs = int(r[13]) if r[13] is not None else rs_rank
-                    rs_shift = int(r[14]) if r[14] is not None else 0
-                    dist_52w = round(float(r[15]), 2) if r[15] is not None else 0.0
-                    high_52w = round(float(r[16]), 2) if r[16] is not None else 0.0
-                    ema10 = round(float(r[17]), 2) if r[17] is not None else None
-                    ema20 = round(float(r[18]), 2) if r[18] is not None else None
-                    ema50 = round(float(r[19]), 2) if r[19] is not None else None
-                    atr20d = round(float(r[20]), 2) if r[20] is not None else 0.0
-                    ext_10ema = round(float(r[21]), 2) if r[21] is not None else 0.0
-                    ext_20ema = round(float(r[22]), 2) if r[22] is not None else 0.0
-                    days_at_highs = int(r[23]) if r[23] is not None else 0
-                    ret_1m = round(float(r[24]), 2) if r[24] is not None else None
-                    ret_3m = round(float(r[25]), 2) if r[25] is not None else None
-                    ret_6m = round(float(r[26]), 2) if r[26] is not None else None
-                    ret_ytd = round(float(r[27]), 2) if r[27] is not None else None
-                    ret_1w = round(float(r[28]), 2) if r[28] is not None else None
-                    gap_pct = round(float(r[29]), 2) if r[29] is not None else 0.0
+                    dist_52w = round(float(r[13]), 2) if r[13] is not None else 0.0
+                    high_52w = round(float(r[14]), 2) if r[14] is not None else 0.0
+                    ema10 = round(float(r[15]), 2) if r[15] is not None else None
+                    ema20 = round(float(r[16]), 2) if r[16] is not None else None
+                    ema50 = round(float(r[17]), 2) if r[17] is not None else None
+                    atr20d = round(float(r[18]), 2) if r[18] is not None else 0.0
+                    ext_10ema = round(float(r[19]), 2) if r[19] is not None else 0.0
+                    ext_20ema = round(float(r[20]), 2) if r[20] is not None else 0.0
+                    days_at_highs = int(r[21]) if r[21] is not None else 0
+                    ret_1m = round(float(r[22]), 2) if r[22] is not None else None
+                    ret_3m = round(float(r[23]), 2) if r[23] is not None else None
+                    ret_6m = round(float(r[24]), 2) if r[24] is not None else None
+                    ret_ytd = round(float(r[25]), 2) if r[25] is not None else None
+                    ret_1w = round(float(r[26]), 2) if r[26] is not None else None
+                    gap_pct = round(float(r[27]), 2) if r[27] is not None else 0.0
+                    rs_line = round(float(r[28]), 2) if len(r) > 28 and r[28] is not None else None
+                    is_rs_52w = bool(r[29]) if len(r) > 29 and r[29] is not None else False
+                    is_blue_dot = bool(r[30]) if len(r) > 30 and r[30] is not None else False
+                    is_ath = bool(r[31]) if len(r) > 31 and r[31] is not None else False
 
                     # Status categorizations based on playbook
                     # Days at Highs: 30-120 sweet spot, <30 fresh breakout, >120 extended/mature
@@ -474,9 +554,6 @@ class LeaderboardService:
                         "rvol": rvol,
                         "rs_rank": rs_rank,
                         "rs_score": rs_score,
-                        "pivot_rs": pivot_rs,
-                        "rs_shift": rs_shift,
-                        "is_prs_90": bool(pivot_rs >= 90),
                         "dist_from_52w_high": dist_52w,
                         "high_52w": high_52w,
                         "ema_10": ema10,
@@ -492,6 +569,10 @@ class LeaderboardService:
                         "ret_6m": ret_6m,
                         "ret_ytd": ret_ytd,
                         "gap_pct": gap_pct,
+                        "rs_line": rs_line,
+                        "is_rs_52w_high": is_rs_52w,
+                        "is_rs_blue_dot": is_blue_dot,
+                        "is_rs_ath": is_ath,
                         "status_days": status_days,
                         "status_atr": status_atr,
                         "status_rvol": status_rvol
@@ -524,8 +605,9 @@ class LeaderboardService:
                             "sweet_spot_count": 0,
                             "healthy_atr_count": 0,
                             "expanding_vol_count": 0,
-                            "prs_90_count": 0,
-                            "accelerating_count": 0
+                            "rs_90_count": 0,
+                            "blue_dot_count": 0,
+                            "ath_rs_count": 0
                         },
                         "sector_distribution": [],
                         "industry_distribution": [],
@@ -548,8 +630,6 @@ class LeaderboardService:
                         "symbol": s["symbol"],
                         "name": s["name"],
                         "rs_rank": s["rs_rank"],
-                        "pivot_rs": s.get("pivot_rs", s["rs_rank"]),
-                        "rs_shift": s.get("rs_shift", 0),
                         "change_pct": s["change_pct"],
                         "close": s["close"],
                         "days_at_highs": s["days_at_highs"],
@@ -700,8 +780,9 @@ class LeaderboardService:
                 sweet_spot_count = sum(1 for s in filtered_stocks if s["status_days"] == "sweet_spot")
                 healthy_atr_count = sum(1 for s in filtered_stocks if s["status_atr"] == "healthy")
                 expanding_vol_count = sum(1 for s in filtered_stocks if s["status_rvol"] == "expanding")
-                prs_90_count = sum(1 for s in filtered_stocks if s.get("pivot_rs", 0) >= 90)
-                accelerating_count = sum(1 for s in filtered_stocks if s.get("rs_shift", 0) >= 10)
+                rs_90_count = sum(1 for s in filtered_stocks if s.get("rs_rank", 0) >= 90)
+                blue_dot_count = sum(1 for s in filtered_stocks if s.get("is_rs_blue_dot"))
+                ath_rs_count = sum(1 for s in filtered_stocks if s.get("is_rs_ath"))
 
                 board_description = meta["desc_template"].format(count=len(filtered_stocks), date=actual_date_str)
 
@@ -724,8 +805,9 @@ class LeaderboardService:
                     "sweet_spot_count": sweet_spot_count,
                     "healthy_atr_count": healthy_atr_count,
                     "expanding_vol_count": expanding_vol_count,
-                    "prs_90_count": prs_90_count,
-                    "accelerating_count": accelerating_count
+                    "rs_90_count": rs_90_count,
+                    "blue_dot_count": blue_dot_count,
+                    "ath_rs_count": ath_rs_count
                 }
 
                 return {
@@ -741,170 +823,4 @@ class LeaderboardService:
 
         except Exception as e:
             logger.error(f"Error in LeaderboardService.get_leaderboard: {e}", exc_info=True)
-            raise e
-
-    def get_score_movers(
-        self,
-        target_date: Optional[str] = None,
-        timeframe: str = "1d",
-        limit: int = 5,
-        min_price: float = 5.0,
-        min_volume: int = 50000
-    ) -> Dict[str, Any]:
-        """
-        Calculates Pivot Strength Score (PSS) movers:
-        - Biggest gains (highest positive delta)
-        - Biggest drops (largest negative delta)
-        Over selectable timeframes:
-        - 1d: 1 trading session delta (default)
-        - 5d: 5 trading sessions delta (~1 week)
-        - 20d: 20 trading sessions delta (~1 month)
-        Includes recent score sparkline history for each mover.
-        """
-        try:
-            with self._get_connection() as conn:
-                # 1. Resolve actual target date
-                if target_date and str(target_date).strip().lower() != "latest":
-                    target_dt_input = str(target_date).strip()
-                    row = conn.execute(
-                        "SELECT MAX(date) FROM daily_bars WHERE date <= CAST(? AS DATE)",
-                        [target_dt_input]
-                    ).fetchone()
-                    if row and row[0]:
-                        actual_date = row[0]
-                        actual_date_str = actual_date.strftime("%Y-%m-%d") if hasattr(actual_date, "strftime") else str(actual_date)
-                    else:
-                        actual_date_str = target_dt_input
-                else:
-                    max_dt = conn.execute("SELECT MAX(date) FROM daily_bars WHERE date <= CURRENT_DATE").fetchone()[0]
-                    if not max_dt:
-                        max_dt = conn.execute("SELECT MAX(date) FROM daily_bars").fetchone()[0]
-                    if not max_dt:
-                        return {"as_of_date": "", "timeframe": timeframe, "biggest_gains": [], "biggest_drops": []}
-                    actual_date_str = max_dt.strftime("%Y-%m-%d") if hasattr(max_dt, "strftime") else str(max_dt)
-
-                tf = (timeframe or "1d").strip().lower()
-                if tf in ("5d", "1w", "week", "weekly"):
-                    lag = 5
-                    norm_tf = "5d"
-                elif tf in ("20d", "1m", "month", "monthly", "21d"):
-                    lag = 20
-                    norm_tf = "20d"
-                else:
-                    lag = 1
-                    norm_tf = "1d"
-
-                sparkline_sessions = 15
-                lookback_sessions = max(lag + 10, 25)
-
-                query = """
-                WITH recent_dates AS (
-                    SELECT DISTINCT date FROM daily_bars 
-                    WHERE date <= CAST(? AS DATE)
-                    ORDER BY date DESC LIMIT ?
-                ),
-                min_d AS (
-                    SELECT MIN(date) as min_date FROM recent_dates
-                ),
-                perf AS (
-                    SELECT d.symbol, d.date, d.close, d.volume, d.vol_50d_ma, d.adr_20d,
-                           s.name, s.sector, s.industry,
-                           (COALESCE(d.ret_1m, 0) * 0.50 + COALESCE(d.ret_3m, 0) * 0.35 + COALESCE(d.ret_6m, 0) * 0.15) as prs_raw
-                    FROM daily_bars d
-                    JOIN symbols s ON d.symbol = s.symbol
-                    WHERE d.date >= (SELECT min_date FROM min_d)
-                      AND d.date <= CAST(? AS DATE)
-                      AND d.close >= ?
-                      AND COALESCE(d.vol_50d_ma, d.volume) >= ?
-                ),
-                ranked AS (
-                    SELECT symbol, name, sector, industry, date, close, adr_20d,
-                           CAST(PERCENT_RANK() OVER (PARTITION BY date ORDER BY prs_raw) * 98 + 1 AS INTEGER) as prs
-                    FROM perf
-                ),
-                with_lag AS (
-                    SELECT symbol, name, sector, industry, date, close, adr_20d, prs,
-                           LAG(prs, ?) OVER (PARTITION BY symbol ORDER BY date) as prev_prs,
-                           LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) as prev_close
-                    FROM ranked
-                ),
-                target_movers AS (
-                    SELECT symbol, name, sector, industry, close, adr_20d, prs, prev_prs,
-                           (prs - prev_prs) as delta,
-                           ROUND(((close - prev_close) / NULLIF(prev_close, 0)) * 100.0, 2) as change_pct
-                    FROM with_lag
-                    WHERE date = CAST(? AS DATE) AND prev_prs IS NOT NULL
-                ),
-                top_gains AS (
-                    SELECT symbol, name, sector, industry, close, adr_20d, prs, prev_prs, delta, change_pct, 'gain' as move_type
-                    FROM target_movers
-                    ORDER BY delta DESC
-                    LIMIT ?
-                ),
-                top_drops AS (
-                    SELECT symbol, name, sector, industry, close, adr_20d, prs, prev_prs, delta, change_pct, 'drop' as move_type
-                    FROM target_movers
-                    ORDER BY delta ASC
-                    LIMIT ?
-                ),
-                selected_movers AS (
-                    SELECT * FROM top_gains
-                    UNION ALL
-                    SELECT * FROM top_drops
-                ),
-                sparklines AS (
-                    SELECT r.symbol, LIST(r.prs ORDER BY r.date) as sparkline_scores
-                    FROM ranked r
-                    WHERE r.symbol IN (SELECT symbol FROM selected_movers)
-                    GROUP BY r.symbol
-                )
-                SELECT m.symbol, m.name, m.sector, m.industry, m.close, m.adr_20d, m.prs, m.prev_prs, m.delta, m.change_pct, m.move_type,
-                       s.sparkline_scores
-                FROM selected_movers m
-                JOIN sparklines s ON m.symbol = s.symbol
-                """
-
-                params = [
-                    actual_date_str, lookback_sessions, actual_date_str,
-                    float(min_price), int(min_volume),
-                    lag, actual_date_str, int(limit), int(limit)
-                ]
-
-                rows = conn.execute(query, params).fetchall()
-
-                gains = []
-                drops = []
-                for r in rows:
-                    item = {
-                        "symbol": r[0],
-                        "name": r[1] or r[0],
-                        "sector": r[2] or "",
-                        "industry": r[3] or "",
-                        "close": round(float(r[4]), 2) if r[4] is not None else None,
-                        "adr_20d": round(float(r[5]), 1) if r[5] is not None else None,
-                        "score": int(r[6]),
-                        "prev_score": int(r[7]),
-                        "delta": int(r[8]),
-                        "change_pct": float(r[9]) if r[9] is not None else 0.0,
-                        "sparkline": r[11][-sparkline_sessions:] if r[11] else []
-                    }
-                    if r[10] == "gain":
-                        gains.append(item)
-                    else:
-                        drops.append(item)
-
-                gains.sort(key=lambda x: x["delta"], reverse=True)
-                drops.sort(key=lambda x: x["delta"])
-
-                return {
-                    "as_of_date": actual_date_str,
-                    "timeframe": norm_tf,
-                    "lag_sessions": lag,
-                    "limit": limit,
-                    "biggest_gains": gains,
-                    "biggest_drops": drops
-                }
-
-        except Exception as e:
-            logger.error(f"Error in LeaderboardService.get_score_movers: {e}", exc_info=True)
             raise e

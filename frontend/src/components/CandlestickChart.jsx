@@ -1278,6 +1278,13 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         wickDownColor: '#ef4444',
         priceLineVisible: showPriceLine,
         lastValueVisible: showPriceLine,
+        priceFormat: {
+          type: 'custom',
+          formatter: (price) => {
+            if (price < 0) return '';
+            return price >= 1 ? price.toFixed(2) : price.toFixed(4);
+          },
+        },
       });
 
       const ema10Series = chart.addSeries(LineSeries, {
@@ -1456,25 +1463,59 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           value: d.volume || 0,
           color: (d.close >= d.open) ? 'rgba(16, 185, 129, 0.5)' : 'rgba(239, 68, 68, 0.5)',
         }));
-
         volumeSeries.setData(volumeData);
-        volumeMa50Series.setData(calculateSMA(data, 50, 'volume'));
+
+        const ma50VolData = calculateSMA(data, 50, 'volume');
+        volumeMa50Series.setData(ma50VolData);
+        if (volumeMa50Series.options().visible !== (ma50VolData.length > 0)) {
+          volumeMa50Series.applyOptions({ visible: ma50VolData.length > 0 });
+        }
+
         candlestickSeries.setData(data);
-        ema10Series.setData(calculateEMA(data, 10));
-        ema20Series.setData(calculateEMA(data, 20));
-        sma50Series.setData(calculateSMA(data, 50));
-        sma150Series.setData(calculateSMA(data, 150));
-        sma220Series.setData(calculateSMA(data, 220));
+
+        const ema10Data = calculateEMA(data, 10);
+        ema10Series.setData(ema10Data);
+        if (ema10Series.options().visible !== (ema10Data.length > 0)) {
+          ema10Series.applyOptions({ visible: ema10Data.length > 0 });
+        }
+
+        const ema20Data = calculateEMA(data, 20);
+        ema20Series.setData(ema20Data);
+        if (ema20Series.options().visible !== (ema20Data.length > 0)) {
+          ema20Series.applyOptions({ visible: ema20Data.length > 0 });
+        }
+
+        const sma50Data = calculateSMA(data, 50);
+        sma50Series.setData(sma50Data);
+        if (sma50Series.options().visible !== (sma50Data.length > 0)) {
+          sma50Series.applyOptions({ visible: sma50Data.length > 0 });
+        }
+
+        const sma150Data = calculateSMA(data, 150);
+        sma150Series.setData(sma150Data);
+        if (sma150Series.options().visible !== (sma150Data.length > 0)) {
+          sma150Series.applyOptions({ visible: sma150Data.length > 0 });
+        }
+
+        const sma220Data = calculateSMA(data, 220);
+        sma220Series.setData(sma220Data);
+        if (sma220Series.options().visible !== (sma220Data.length > 0)) {
+          sma220Series.applyOptions({ visible: sma220Data.length > 0 });
+        }
 
         if (rsLineSeries) {
-          const rsData = data
-            .filter((d) => d.rs_line !== undefined && d.rs_line !== null)
-            .map((d) => ({
-              time: d.time,
-              value: d.rs_line,
-            }));
-          rsLineSeries.setData(showRsLine ? rsData : []);
-          rsLineSeries.applyOptions({ visible: showRsLine });
+          const rsData = showRsLine
+            ? data
+                .filter((d) => d.rs_line !== undefined && d.rs_line !== null)
+                .map((d) => ({
+                  time: d.time,
+                  value: d.rs_line,
+                }))
+            : [];
+          if (rsLineSeries.options().visible !== showRsLine) {
+            rsLineSeries.applyOptions({ visible: showRsLine });
+          }
+          rsLineSeries.setData(rsData);
         }
       }
 
@@ -1573,7 +1614,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     } else {
       renderLegend(null, null, symbol);
     }
-  }, [data, height, asOfDate, symbol, setupName, showRsLine]);
+  }, [data, height, asOfDate, symbol, setupName]);
 
   // Handle immediate toggle of RS Line and Blue Dot markers
   useEffect(() => {
@@ -1586,8 +1627,10 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           time: d.time,
           value: d.rs_line,
         }));
+      if (seriesRef.current.rsLineSeries.options().visible !== true) {
+        seriesRef.current.rsLineSeries.applyOptions({ visible: true });
+      }
       seriesRef.current.rsLineSeries.setData(rsData);
-      seriesRef.current.rsLineSeries.applyOptions({ visible: true });
       if (markersPluginRef.current) {
         const blueDotMarkers = [];
         currentData.forEach((d) => {
@@ -1602,11 +1645,12 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           }
         });
         markersPluginRef.current.setMarkers(blueDotMarkers);
-
       }
     } else {
+      if (seriesRef.current.rsLineSeries.options().visible !== false) {
+        seriesRef.current.rsLineSeries.applyOptions({ visible: false });
+      }
       seriesRef.current.rsLineSeries.setData([]);
-      seriesRef.current.rsLineSeries.applyOptions({ visible: false });
       if (markersPluginRef.current) {
         markersPluginRef.current.setMarkers([]);
       }

@@ -388,8 +388,152 @@ def calculate_breadth_moving_averages(conn, as_of_date: Optional[str] = None, lo
     return {
         "total_symbols": total_symbols,
         "latest_date": latest_date_str,
-        "metrics": metrics
+        "metrics": metrics,
+        "_df": df
     }
+
+
+def calculate_market_pulse_history(
+    conn,
+    as_of_date: Optional[str] = None,
+    lookback_sessions: int = 252,
+    df_breadth: Optional[pd.DataFrame] = None
+) -> List[Dict[str, Any]]:
+    """
+    Computes chronological Market Pulse history for dynamics comparison:
+    - Moving average breadth (% above 21d, 50d, 200d)
+    - Active distribution pressure (rolling 25 sessions with 5% rally rule) for SPY & QQQ
+    - Benchmark close prices for divergence and correlation analysis
+    """
+    date_filter = f"AND date <= '{as_of_date}'" if as_of_date else "AND date <= CURRENT_DATE"
+    db_date_filter = f"AND db.date <= '{as_of_date}'" if as_of_date else "AND db.date <= CURRENT_DATE"
+    lookback_cutoff = lookback_sessions + 35
+
+    if df_breadth is None or df_breadth.empty:
+        b_query = f"""
+            WITH cutoff AS (
+                SELECT MIN(date) as min_date FROM (
+                    SELECT date FROM daily_bars WHERE symbol = 'QQQ' {date_filter} ORDER BY date DESC LIMIT {lookback_cutoff}
+                )
+            ),
+            raw_bars AS (
+                SELECT 
+                    db.symbol,
+                    db.date,
+                    db.close,
+                    AVG(db.close) OVER (PARTITION BY db.symbol ORDER BY db.date ROWS BETWEEN 20 PRECEDING AND CURRENT ROW) as ma_21,
+                    db.sma_50,
+                    db.sma_200
+                FROM daily_bars db
+                JOIN cutoff c ON db.date >= c.min_date
+                WHERE 1=1 {db_date_filter} AND db.close > 0
+            ),
+            daily_breadth AS (
+                SELECT 
+                    date,
+                    COUNT(*) as total_symbols,
+                    ROUND(COUNT(CASE WHEN close > ma_21 THEN 1 END) * 100.0 / COUNT(*), 1) as pct_above_21,
+                    ROUND(COUNT(CASE WHEN close > sma_50 THEN 1 END) * 100.0 / COUNT(*), 1) as pct_above_50,
+                    ROUND(COUNT(CASE WHEN close > sma_200 THEN 1 END) * 100.0 / COUNT(*), 1) as pct_above_200
+                FROM raw_bars
+                GROUP BY date
+                ORDER BY date DESC
+                LIMIT {lookback_sessions}
+            )
+            SELECT * FROM daily_breadth ORDER BY date ASC;
+        """
+        df_breadth = conn.execute(b_query).df()
+
+    if df_breadth.empty:
+        return []
+
+    df_b = df_breadth.tail(lookback_sessions).copy()
+    df_b['date_str'] = pd.to_datetime(df_b['date']).dt.strftime('%Y-%m-%d')
+
+    # Fetch index bars for SPY & QQQ with buffer for rolling 25-day distribution window
+    idx_query = f"""
+        WITH cutoff AS (
+            SELECT MIN(date) as min_date FROM (
+                SELECT date FROM daily_bars WHERE symbol = 'QQQ' {date_filter} ORDER BY date DESC LIMIT {lookback_cutoff + 35}
+            )
+        ),
+        ranked AS (
+            SELECT 
+                symbol,
+                date,
+                close,
+                volume,
+                LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) as prev_close,
+                LAG(volume, 1) OVER (PARTITION BY symbol ORDER BY date) as prev_volume
+            FROM daily_bars
+            WHERE symbol IN ('SPY', 'QQQ') {date_filter}
+        )
+        SELECT * FROM ranked 
+        WHERE prev_close IS NOT NULL 
+          AND date >= (SELECT min_date FROM cutoff)
+        ORDER BY symbol, date ASC;
+    """
+    df_idx = conn.execute(idx_query).df()
+
+    spy_dist_map = {}
+    qqq_dist_map = {}
+    spy_close_map = {}
+    qqq_close_map = {}
+
+    if not df_idx.empty:
+        df_idx['date_str'] = pd.to_datetime(df_idx['date']).dt.strftime('%Y-%m-%d')
+        df_idx['pct_change'] = (df_idx['close'] - df_idx['prev_close']) / df_idx['prev_close']
+        df_idx['is_dist'] = (df_idx['pct_change'] <= -0.002) & (df_idx['volume'] > df_idx['prev_volume'])
+
+        for sym in ['SPY', 'QQQ']:
+            sdf = df_idx[df_idx['symbol'] == sym].sort_values('date').reset_index(drop=True)
+            n = len(sdf)
+            closes = sdf['close'].values
+            is_dists = sdf['is_dist'].values
+            dates = sdf['date_str'].values
+
+            for t in range(n):
+                d_str = dates[t]
+                c_t = round(float(closes[t]), 2)
+                if sym == 'SPY':
+                    spy_close_map[d_str] = c_t
+                else:
+                    qqq_close_map[d_str] = c_t
+
+                window_start = max(0, t - 24)
+                count = 0
+                for k in range(window_start, t + 1):
+                    if is_dists[k]:
+                        c_k = closes[k]
+                        max_sub = np.max(closes[k+1:t+1]) if t > k else c_k
+                        # 5% rally exemption rule
+                        if (max_sub - c_k) / c_k < 0.05:
+                            count += 1
+                if sym == 'SPY':
+                    spy_dist_map[d_str] = count
+                else:
+                    qqq_dist_map[d_str] = count
+
+    history = []
+    for row in df_b.itertuples(index=False):
+        d_str = row.date_str
+        s_dist = spy_dist_map.get(d_str, 0)
+        q_dist = qqq_dist_map.get(d_str, 0)
+        dist_pressure = max(s_dist, q_dist)
+        history.append({
+            'date': d_str,
+            'pct_above_21': float(row.pct_above_21),
+            'pct_above_50': float(row.pct_above_50),
+            'pct_above_200': float(row.pct_above_200),
+            'total_symbols': int(row.total_symbols),
+            'distribution_pressure': int(dist_pressure),
+            'spy_dist': int(s_dist),
+            'qqq_dist': int(q_dist),
+            'spy_close': spy_close_map.get(d_str),
+            'qqq_close': qqq_close_map.get(d_str)
+        })
+
+    return history
 
 
 def get_market_pulse(conn, as_of_date: Optional[str] = None, force_refresh: bool = False) -> Dict[str, Any]:
@@ -401,6 +545,7 @@ def get_market_pulse(conn, as_of_date: Optional[str] = None, force_refresh: bool
     - 5% rally exemption alert
     - Liquid universe moving average breadth with 1-year percentiles
     - Detailed mark list for interactive popovers
+    - Full chronological history for pulse dynamics graph comparison
     """
     cache_key = as_of_date or "latest"
     now = time.time()
@@ -410,6 +555,10 @@ def get_market_pulse(conn, as_of_date: Optional[str] = None, force_refresh: bool
     dist_data = calculate_distribution_days(conn, as_of_date=as_of_date)
     ftd_data = calculate_ftd_status(conn, as_of_date=as_of_date)
     breadth_data = calculate_breadth_moving_averages(conn, as_of_date=as_of_date)
+    raw_df = breadth_data.pop("_df", None)
+    history_data = calculate_market_pulse_history(
+        conn, as_of_date=as_of_date, lookback_sessions=252, df_breadth=raw_df
+    )
 
     latest_date = breadth_data.get("latest_date") or as_of_date or time.strftime("%Y-%m-%d")
 
@@ -429,7 +578,8 @@ def get_market_pulse(conn, as_of_date: Optional[str] = None, force_refresh: bool
         "total_symbols": breadth_data.get("total_symbols", 0),
         "breadth_metrics": breadth_data.get("metrics", []),
         "distribution_marks": dist_data.get("marks", []),
-        "indices_breakdown": dist_data.get("indices", {})
+        "indices_breakdown": dist_data.get("indices", {}),
+        "history": history_data
     }
 
     _market_pulse_cache[cache_key] = payload

@@ -67,6 +67,20 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "price",
         "description": "Current bar intraday low price"
     },
+    "CLOSE_RANGE": {
+        "sql": "((b.close - b.low) / NULLIF(b.high - b.low, 0))",
+        "type": "numeric",
+        "label": "Close Range Position",
+        "category": "price",
+        "description": "Intraday position of Close within candle range (0.0 to 1.0, e.g. >= 0.75 for top quartile)"
+    },
+    "RANGE_POS": {
+        "sql": "((b.close - b.low) / NULLIF(b.high - b.low, 0))",
+        "type": "numeric",
+        "label": "Close Range Position",
+        "category": "price",
+        "description": "Intraday position of Close within candle range (0.0 to 1.0)"
+    },
     "V": {
         "sql": "b.volume",
         "type": "numeric",
@@ -930,6 +944,8 @@ class ScanExpressionEngine:
             return ""
 
         s = expr.strip()
+        # Replace newlines with spaces so multiline expressions parse cleanly
+        s = re.sub(r'[\r\n]+', ' ', s)
 
         # Normalize IS NOT NULL / IS NULL and comparisons with NULL
         s = re.sub(r'\bIS\s+NOT\s+NULL\b', 'is not None', s, flags=re.IGNORECASE)
@@ -983,7 +999,7 @@ class ScanExpressionEngine:
             ast.Call
         )
 
-        allowed_functions = {"MAX", "MIN", "AVG", "ABS", "COALESCE", "GREATEST", "LEAST", "TOP", "RANK"}
+        allowed_functions = {"MAX", "MIN", "AVG", "ABS", "COALESCE", "GREATEST", "LEAST", "TOP", "RANK", "NULLIF"}
 
         for node in ast.walk(tree):
             if not isinstance(node, allowed_nodes):
