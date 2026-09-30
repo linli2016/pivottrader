@@ -645,7 +645,7 @@ export default function LeaderboardTab({
       </div>
 
       {/* KovaView Subtitle describing the active board criteria */}
-      <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '-4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '500', marginTop: '-4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
         <span>{data.board_description || `${data.stocks?.length || 0} stocks as of ${curDateStr}`}</span>
       </div>
 
@@ -656,7 +656,7 @@ export default function LeaderboardTab({
           <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Qualified Leaders</div>
           <div style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', marginTop: '2px', display: 'flex', alignItems: 'baseline', gap: '5px' }}>
             {data.summary.total_candidates ?? '--'}
-            <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: '400' }}>of {data.summary.total_universe_qualified ?? '--'} near highs</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '500' }}>of {data.summary.total_universe_qualified ?? '--'} near highs</span>
           </div>
         </div>
 
@@ -676,7 +676,7 @@ export default function LeaderboardTab({
           <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Top 3 Concentration</div>
           <div style={{ fontSize: '18px', fontWeight: '700', color: '#f59e0b', marginTop: '2px' }}>
             {data.summary.top_3_sectors_pct ? `${data.summary.top_3_sectors_pct}%` : '--'}
-            <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: '400', marginLeft: '5px' }}>of leaders</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '500', marginLeft: '5px' }}>of leaders</span>
           </div>
         </div>
 
@@ -731,7 +731,7 @@ export default function LeaderboardTab({
               </div>
               <div style={{ fontSize: '18px', fontWeight: '700', color: '#38bdf8', marginTop: '2px' }}>
                 {data.summary.blue_dot_count ?? 0}
-                <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: '400', marginLeft: '5px' }}>stocks</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '500', marginLeft: '5px' }}>stocks</span>
               </div>
             </div>
 
@@ -753,7 +753,7 @@ export default function LeaderboardTab({
               </div>
               <div style={{ fontSize: '18px', fontWeight: '700', color: '#f59e0b', marginTop: '2px' }}>
                 {data.summary.ath_rs_count ?? 0}
-                <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: '400', marginLeft: '5px' }}>leaders</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '500', marginLeft: '5px' }}>leaders</span>
               </div>
             </div>
           </>
@@ -764,7 +764,7 @@ export default function LeaderboardTab({
               <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>In Sweet Spot (30–120d)</div>
               <div style={{ fontSize: '18px', fontWeight: '700', color: '#10b981', marginTop: '2px' }}>
                 {data.summary.sweet_spot_count ?? '--'}
-                <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: '400', marginLeft: '5px' }}>stocks</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '500', marginLeft: '5px' }}>stocks</span>
               </div>
             </div>
 
@@ -773,7 +773,7 @@ export default function LeaderboardTab({
               <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Healthy ATR (&le; 2 ATR)</div>
               <div style={{ fontSize: '18px', fontWeight: '700', color: '#10b981', marginTop: '2px' }}>
                 {data.summary.healthy_atr_count ?? '--'}
-                <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: '400', marginLeft: '5px' }}>buyable</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '500', marginLeft: '5px' }}>buyable</span>
               </div>
             </div>
           </>
@@ -803,7 +803,7 @@ export default function LeaderboardTab({
       {/* 3. Filter Toolbar & Search */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', background: 'rgba(255,255,255,0.02)', padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Filter:</span>
+          <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Filter:</span>
 
           {/* New RS Highs sub-mode pills */}
           {selectedBoard === 'new_rs_highs' && (

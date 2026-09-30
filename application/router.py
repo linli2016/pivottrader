@@ -428,6 +428,33 @@ def get_groups_rrg(type: str = "sectors", date: Optional[str] = None, trail: int
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/api/groups/bars")
+def get_group_bars_endpoint(
+    type: str = "industries",
+    name: str = "",
+    timeframe: str = "weekly",
+    limit: int = 156,
+    date: Optional[str] = None
+):
+    """Retrieve synthetic group price bars (OHLCV), 40-week (or 200-day) SMA, Mansfield RS vs SPY, and Stan Weinstein Stage Analysis."""
+    try:
+        if not name:
+            raise HTTPException(status_code=400, detail="Missing required group 'name' parameter")
+        return group_radar_service.get_group_bars(
+            group_type=type,
+            group_name=name,
+            timeframe=timeframe,
+            limit=limit,
+            date=date
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_group_bars({type}, {name}): {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 @router.get("/api/themes")
 def get_themes():
     """Retrieve all configured themes."""

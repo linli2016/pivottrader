@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import RRGQuadrantChart from './RRGQuadrantChart';
+import GroupStageChart from './GroupStageChart';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
@@ -720,7 +721,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
             </button>
           </div>
 
-          {/* View Mode Switcher: ① RRG / ② Board / ③ Heatmap / ④ Table */}
+          {/* View Mode Switcher: ① RRG / ② Board / ③ Heatmap / ④ Table / ⑤ Stage Chart */}
           <div className="radar-pills-group">
             <button
               className={`radar-pill-btn ${viewMode === 'rrg' ? 'view-active' : ''}`}
@@ -745,6 +746,13 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
               onClick={() => setViewMode('table')}
             >
               ④ Table
+            </button>
+            <button
+              className={`radar-pill-btn ${viewMode === 'stage' ? 'view-active' : ''}`}
+              onClick={() => setViewMode('stage')}
+              title="Stan Weinstein 40-Week Stage Analysis & Price Chart"
+            >
+              ⑤ Stage Chart
             </button>
           </div>
 
@@ -938,11 +946,12 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
             </div>
           </div>
 
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '10px', height: '16px', lineHeight: '16px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+          <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 500, marginBottom: '10px', height: '18px', lineHeight: '18px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
             {viewMode === 'rrg' && 'Lines show where leaders moved over the window • hover any bubble for detail'}
             {viewMode === 'board' && 'Quadrants matrix showing leaders & rotation stages • click card to inspect'}
             {viewMode === 'heatmap' && 'Rank-ordered performance tiles tinted by quadrant status • click tile to inspect'}
             {viewMode === 'table' && 'Detailed metrics table with multi-timeframe returns & relative strength'}
+            {viewMode === 'stage' && 'Stan Weinstein Stage Analysis • Synthetic Group Candlesticks, 40-Week SMA & Mansfield RS vs SPY'}
           </div>
 
           {/* VIEW CANVAS CONTAINER WITH STABLE HEIGHT & INTERNAL SCROLL */}
@@ -1731,6 +1740,63 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
       )}
             </div>
           )}
+
+          {/* 5. STAGE ANALYSIS VIEW (Stan Weinstein 40-Week MA & Mansfield RS) */}
+          {viewMode === 'stage' && (
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                  background: 'rgba(0,0,0,0.3)',
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(255,255,255,0.06)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>
+                    Active {activeTab === 'sectors' ? 'Sector' : activeTab === 'industries' ? 'Industry' : 'Theme'}:
+                  </span>
+                  <select
+                    value={selectedGroupName || (filteredAndSortedGroups[0]?.name || '')}
+                    onChange={(e) => handleSelectGroup(e.target.value)}
+                    className="form-control"
+                    style={{
+                      padding: '4px 12px',
+                      fontSize: '12px',
+                      minWidth: '240px',
+                      background: '#0e1422',
+                      border: '1px solid rgba(255,255,255,0.18)',
+                      color: '#ffffff',
+                      borderRadius: '6px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {filteredAndSortedGroups.map((g) => (
+                      <option key={g.name} value={g.name}>
+                        {g.name} ({g.quadrant || 'Stage'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                  Stan Weinstein Methodology: 40-Week SMA • Mansfield RS vs SPY • Group Breadth
+                </div>
+              </div>
+
+              <GroupStageChart
+                groupType={activeTab}
+                groupName={selectedGroupName || (filteredAndSortedGroups[0]?.name || '')}
+                onSelectStock={onSelectStock}
+                height={480}
+                isCompact={false}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -1800,6 +1866,30 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                       {selectedItem.ret_ytd_pct !== undefined ? `${selectedItem.ret_ytd_pct >= 0 ? '+' : ''}${selectedItem.ret_ytd_pct}%` : '--'}
                     </div>
                   </div>
+                </div>
+
+                {/* Stan Weinstein 40-Week Stage Chart in Inspector */}
+                <div style={{ marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                      Stage Chart (40w SMA)
+                    </span>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      style={{ padding: '2px 8px', fontSize: '10.5px' }}
+                      onClick={() => setViewMode('stage')}
+                      title="Expand full screen Stage Chart"
+                    >
+                      Full Chart ↗
+                    </button>
+                  </div>
+                  <GroupStageChart
+                    groupType={activeTab}
+                    groupName={selectedItem.name}
+                    onSelectStock={onSelectStock}
+                    height={250}
+                    isCompact={true}
+                  />
                 </div>
 
                 {/* Top Constituent Stocks */}

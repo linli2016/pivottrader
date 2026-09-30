@@ -1,8 +1,6 @@
 # Agent Guidelines & Engineering Rules
 
 ## 1. Mandatory Pre-Flight Reading
-- **Requirements First**: Always read [`docs/requirements.md`](docs/requirements.md) before planning or executing any changes to verify functional constraints and algorithmic rules.
-- **Architecture Reference**: Consult [`docs/architecture.md`](docs/architecture.md) and the relevant subsystem document in `docs/modules/` when modifying system components.
 - **Backward Compatibility**: **No backwards compatibility is needed**. Favor clean refactoring over legacy adapters.
 
 ## 2. Testing & Verification Discipline

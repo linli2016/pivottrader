@@ -75,11 +75,39 @@ export default function MarketPulseCard({ marketPulse, asOfDate, isLive = true }
       }}
     >
       {/* 1. Header Row */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.01em' }}>
             Market pulse
           </h2>
+
+          {/* Live Badge */}
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '2px 8px',
+              borderRadius: '999px',
+              background: 'rgba(16, 185, 129, 0.12)',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+              color: '#34d399',
+              fontSize: '11px',
+              fontWeight: 700,
+              letterSpacing: '0.02em'
+            }}
+          >
+            <span
+              style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                backgroundColor: '#10b981',
+                boxShadow: '0 0 6px #10b981'
+              }}
+            />
+            <span>{badgeLabel}</span>
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -130,205 +158,178 @@ export default function MarketPulseCard({ marketPulse, asOfDate, isLive = true }
             <span>{showDetails ? 'Hide Marks' : 'Inspect Marks'}</span>
             <span style={{ fontSize: '10px' }}>{showDetails ? '▲' : '▼'}</span>
           </button>
-
-          {/* Live Badge */}
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '3px 10px',
-              borderRadius: '999px',
-              background: 'rgba(16, 185, 129, 0.12)',
-              border: '1px solid rgba(16, 185, 129, 0.3)',
-              color: '#34d399',
-              fontSize: '11px',
-              fontWeight: 700,
-              letterSpacing: '0.02em'
-            }}
-          >
-            <span
-              style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                backgroundColor: '#10b981',
-                boxShadow: '0 0 6px #10b981'
-              }}
-            />
-            <span>{badgeLabel}</span>
-          </div>
         </div>
       </div>
 
-      {/* 2. Headline: FTD & Distribution Pressure */}
-      <div style={{ marginBottom: '4px' }}>
-        <span style={{ fontSize: '15px', fontWeight: 700, color: '#f1f5f9' }}>
-          {ftd_status}
-        </span>
-        <span style={{ margin: '0 8px', color: '#64748b' }}>·</span>
-        <span style={{ fontSize: '15px', fontWeight: 700, color: '#f1f5f9' }}>
-          Distribution pressure {distribution_pressure}{' '}
-          <span style={{ color: trendColor, fontWeight: 800 }}>
-            {trendArrow}
-          </span>
-          <span style={{ fontSize: '13px', fontWeight: 500, color: '#94a3b8', marginLeft: '4px' }}>
-            vs 1 week ago
-          </span>
-        </span>
-      </div>
+      {/* 2. Main Content: Side-by-side layout when Graph is active */}
+      <div className={`market-pulse-grid ${showGraph ? 'with-graph' : ''}`}>
+        {/* Left Column: Pulse Overview & Market Breadth Meters (The Bar Chart) */}
+        <div className="market-pulse-summary-col">
+          {/* Headline: FTD & Distribution Pressure */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '14.5px', fontWeight: 700, color: '#f1f5f9' }}>
+                {ftd_status}
+              </span>
+              <span style={{ color: '#475569' }}>·</span>
+              <span style={{ fontSize: '14.5px', fontWeight: 700, color: '#f1f5f9' }}>
+                Distribution pressure {distribution_pressure}{' '}
+                <span style={{ color: trendColor, fontWeight: 800 }}>
+                  {trendArrow}
+                </span>
+                <span style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8', marginLeft: '3px' }}>
+                  {distribution_trend_label}
+                </span>
+              </span>
+            </div>
 
-      {/* 3. Sub-callout: Rally Exemption Status */}
-      <div style={{ marginBottom: '18px' }}>
-        <span
-          style={{
-            fontSize: '12.5px',
-            fontWeight: 600,
-            color: near_exemption_count > 0 ? '#f59e0b' : '#34d399',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '5px'
-          }}
-        >
-          {near_exemption_label}
-        </span>
-      </div>
-
-      {/* 4. Moving Average Market Breadth Meters */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {breadth_metrics.map(metric => {
-          const isGreen = metric.is_bullish;
-          const barColor = isGreen ? '#10b981' : '#f43f5e';
-          const pct = Math.min(Math.max(metric.current_pct, 0), 100);
-          const pctile = Math.min(Math.max(metric.percentile_1y, 0), 100);
-
-          return (
-            <div
-              key={metric.key}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '125px 1fr auto',
-                alignItems: 'center',
-                gap: '14px'
-              }}
-            >
-              {/* Metric Label */}
-              <div style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                {metric.label}
-              </div>
-
-              {/* Progress Bar Track */}
-              <div
+            {/* Sub-callout: Rally Exemption Status */}
+            <div style={{ marginTop: '4px' }}>
+              <span
                 style={{
-                  height: '6.5px',
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  borderRadius: '999px',
-                  position: 'relative',
-                  overflow: 'hidden'
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: near_exemption_count > 0 ? '#f59e0b' : '#34d399',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px'
                 }}
               >
+                {near_exemption_label}
+              </span>
+            </div>
+          </div>
+
+          {/* Moving Average Market Breadth Meters (The Bar Chart) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '11px', margin: '4px 0' }}>
+            {breadth_metrics.map(metric => {
+              const isGreen = metric.is_bullish;
+              const barColor = isGreen ? '#10b981' : '#f43f5e';
+              const pct = Math.min(Math.max(metric.current_pct, 0), 100);
+              const pctile = Math.min(Math.max(metric.percentile_1y, 0), 100);
+
+              return (
                 <div
+                  key={metric.key}
                   style={{
-                    height: '100%',
-                    width: `${pct}%`,
-                    background: barColor,
-                    borderRadius: '999px',
-                    transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
-                  }}
-                />
-              </div>
-
-              {/* Metric Value & 1-Year Percentile Slider */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '150px', justifyContent: 'flex-end' }}>
-                <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#f8fafc', minWidth: '45px', textAlign: 'right' }}>
-                  {metric.current_pct.toFixed(1)}%
-                </span>
-
-                <span style={{ color: '#475569', fontSize: '11px' }}>•</span>
-
-                {/* 1Y Dot on Track Visualizer */}
-                <div
-                  style={{
-                    display: 'flex',
+                    display: 'grid',
+                    gridTemplateColumns: showGraph ? '108px 1fr auto' : '125px 1fr auto',
                     alignItems: 'center',
-                    gap: '6px'
+                    gap: '12px'
                   }}
-                  title={`1-Year Range: Min ${metric.min_1y}% - Max ${metric.max_1y}% (Rank: ${metric.percentile_1y}%)`}
                 >
+                  {/* Metric Label */}
+                  <div style={{ fontSize: '12.5px', color: '#94a3b8', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                    {metric.label}
+                  </div>
+
+                  {/* Progress Bar Track */}
                   <div
                     style={{
-                      width: '38px',
-                      height: '2px',
-                      background: 'rgba(255, 255, 255, 0.18)',
-                      borderRadius: '2px',
-                      position: 'relative'
+                      height: '6.5px',
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      borderRadius: '999px',
+                      position: 'relative',
+                      overflow: 'hidden'
                     }}
                   >
                     <div
                       style={{
-                        position: 'absolute',
-                        left: `${pctile}%`,
-                        top: '50%',
-                        transform: 'translate(-50%, -50%)',
-                        width: '5px',
-                        height: '5px',
-                        borderRadius: '50%',
-                        backgroundColor: '#e2e8f0',
-                        boxShadow: '0 0 3px rgba(255, 255, 255, 0.5)'
+                        height: '100%',
+                        width: `${pct}%`,
+                        background: barColor,
+                        borderRadius: '999px',
+                        transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
                       }}
                     />
                   </div>
 
-                  <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 500, minWidth: '46px', textAlign: 'left' }}>
-                    {metric.percentile_label}
-                  </span>
+                  {/* Metric Value & 1-Year Percentile Slider */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: showGraph ? '132px' : '150px', justifyContent: 'flex-end' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#f8fafc', minWidth: '40px', textAlign: 'right' }}>
+                      {metric.current_pct.toFixed(1)}%
+                    </span>
+
+                    <span style={{ color: '#475569', fontSize: '10px' }}>•</span>
+
+                    {/* 1Y Dot on Track Visualizer */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px'
+                      }}
+                      title={`1-Year Range: Min ${metric.min_1y}% - Max ${metric.max_1y}% (Rank: ${metric.percentile_1y}%)`}
+                    >
+                      <div
+                        style={{
+                          width: '32px',
+                          height: '2px',
+                          background: 'rgba(255, 255, 255, 0.18)',
+                          borderRadius: '2px',
+                          position: 'relative'
+                        }}
+                      >
+                        <div
+                          style={{
+                            position: 'absolute',
+                            left: `${pctile}%`,
+                            top: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            width: '5px',
+                            height: '5px',
+                            borderRadius: '50%',
+                            backgroundColor: '#e2e8f0',
+                            boxShadow: '0 0 3px rgba(255, 255, 255, 0.5)'
+                          }}
+                        />
+                      </div>
+
+                      <span style={{ fontSize: '11.5px', color: '#94a3b8', fontWeight: 500, minWidth: '42px', textAlign: 'left' }}>
+                        {metric.percentile_label}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              );
+            })}
+          </div>
+
+          {/* Sub-footer with universe size & timestamp */}
+          <div
+            style={{
+              marginTop: 'auto',
+              paddingTop: '10px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontSize: '11px',
+              color: '#64748b'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span>Breadth:</span>
+              <strong style={{ color: '#cbd5e1' }}>{total_symbols.toLocaleString()} stocks</strong>
             </div>
-          );
-        })}
-      </div>
 
-      {/* 4b. Historical Market Pulse Dynamics Graph */}
-      {showGraph && (
-        <div
-          style={{
-            marginTop: '18px',
-            paddingTop: '16px',
-            borderTop: '1px solid rgba(255, 255, 255, 0.08)'
-          }}
-        >
-          <MarketPulseDynamicsChart
-            history={pulseHistory}
-            asOfDate={asOfDate}
-            isEmbedded={true}
-          />
-        </div>
-      )}
-
-      {/* 5. Sub-footer with universe size & timestamp */}
-      <div
-        style={{
-          marginTop: '16px',
-          paddingTop: '12px',
-          borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          fontSize: '11.5px',
-          color: '#64748b'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span>Market Breadth:</span>
-          <strong style={{ color: '#cbd5e1' }}>{total_symbols.toLocaleString()} stocks in database</strong>
-          <span style={{ color: '#475569' }}>(All symbols)</span>
+            <div>
+              <span>As of </span>
+              <strong style={{ color: '#cbd5e1' }}>{marketPulse.as_of_date}</strong>
+            </div>
+          </div>
         </div>
 
-        <div>
-          <span>As of </span>
-          <strong style={{ color: '#cbd5e1' }}>{marketPulse.as_of_date}</strong>
-        </div>
+        {/* Right Column: Historical Market Pulse Dynamics Graph */}
+        {showGraph && (
+          <div className="market-pulse-graph-col">
+            <MarketPulseDynamicsChart
+              history={pulseHistory}
+              asOfDate={asOfDate}
+              isEmbedded={true}
+            />
+          </div>
+        )}
       </div>
 
       {/* 6. Expandable Detailed Distribution Marks & FTD Breakdown Table */}

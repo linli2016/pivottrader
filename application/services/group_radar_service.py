@@ -11,6 +11,7 @@ class GroupRadarService:
     def __init__(self, db_path: str = "data.db", theme_service: Optional[ThemeService] = None):
         self.db_path = db_path
         self.theme_service = theme_service or ThemeService()
+        self._bars_cache = {}
 
     def _get_connection(self):
         import time
@@ -851,4 +852,426 @@ class GroupRadarService:
         except Exception as e:
             logger.error(f"Error computing RRG data ({group_type}): {e}", exc_info=True)
             return []
+
+    def _empty_group_bars_response(self, group_name: str, group_type: str, timeframe: str, target_date: str) -> Dict[str, Any]:
+        return {
+            "name": group_name,
+            "type": group_type,
+            "timeframe": timeframe,
+            "as_of": target_date,
+            "stage_summary": {
+                "stage": "Unknown",
+                "stage_badge": "Unknown",
+                "stage_color": "#94a3b8",
+                "ma_val": None,
+                "ma_slope_pct": None,
+                "mansfield_rs": None,
+                "is_above_ma": False,
+                "pct_above_200d": 0.0,
+                "pct_in_stage2": 0.0,
+                "bias": "No active constituent stocks found"
+            },
+            "breadth": {
+                "total_stocks": 0,
+                "above_200d_count": 0,
+                "pct_above_200d": 0.0,
+                "stage2_count": 0,
+                "pct_in_stage2": 0.0,
+                "leaders": []
+            },
+            "bars": []
+        }
+
+    def get_group_bars(
+        self,
+        group_type: str = "industries",
+        group_name: str = "",
+        timeframe: str = "weekly",
+        limit: int = 156,
+        date: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Calculates synthetic group price bars (OHLCV), Weinstein 40-week (or 200-day) SMA,
+        Mansfield Relative Strength vs SPY, and automated Stage 1-4 classification.
+        """
+        g_type = (group_type or "industries").strip().lower()
+        g_name = (group_name or "").strip()
+        tf = (timeframe or "weekly").strip().lower()
+        if tf not in ("weekly", "daily"):
+            tf = "weekly"
+
+        max_limit = 500 if tf == "daily" else 260
+        limit_n = max(10, min(int(limit or 156), max_limit))
+
+        try:
+            with self._get_connection() as conn:
+                # 1. Resolve target date
+                if not date:
+                    d_row = conn.execute("SELECT MAX(date) FROM daily_bars").fetchone()
+                    if not d_row or not d_row[0]:
+                        return self._empty_group_bars_response(g_name, g_type, tf, "")
+                    target_date = str(d_row[0])
+                else:
+                    target_date = date
+
+                cache_key = (g_type, g_name, tf, target_date, limit_n)
+                if cache_key in self._bars_cache:
+                    return self._bars_cache[cache_key]
+
+                # 2. Build stock filter
+                if g_type == "themes":
+                    theme = self.theme_service.get_theme(g_name)
+                    if not theme or not theme.get("symbols"):
+                        return self._empty_group_bars_response(g_name, g_type, tf, target_date)
+                    clean_syms = [s.strip().upper().replace("'", "''") for s in theme.get("symbols", []) if s.strip()]
+                    if not clean_syms:
+                        return self._empty_group_bars_response(g_name, g_type, tf, target_date)
+                    syms_sql = ", ".join(f"'{s}'" for s in clean_syms)
+                    stock_filter = f"s.symbol IN ({syms_sql})"
+                elif g_type == "sectors":
+                    clean_sec = g_name.replace("'", "''")
+                    stock_filter = f"s.sector = '{clean_sec}'"
+                else:  # industries
+                    clean_ind = g_name.replace("'", "''")
+                    stock_filter = f"s.industry = '{clean_ind}'"
+
+                # 3. Breadth & Leaders query as of target date
+                breadth_query = f"""
+                    SELECT 
+                        COUNT(*) as total_stocks,
+                        COUNT(CASE WHEN d.close > d.sma_200 THEN 1 END) as above_200d_count,
+                        ROUND(COUNT(CASE WHEN d.close > d.sma_200 THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0), 1) as pct_above_200d,
+                        COUNT(CASE WHEN d.stage2_days > 0 THEN 1 END) as stage2_count,
+                        ROUND(COUNT(CASE WHEN d.stage2_days > 0 THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0), 1) as pct_in_stage2
+                    FROM daily_bars d
+                    JOIN symbols s ON d.symbol = s.symbol
+                    WHERE {stock_filter} AND s.active = true AND s.asset_type = 'Common Stock' AND d.close >= 3.0
+                      AND d.date = '{target_date}'
+                """
+                b_row = conn.execute(breadth_query).fetchone()
+                total_stocks = b_row[0] if b_row else 0
+                if total_stocks == 0:
+                    return self._empty_group_bars_response(g_name, g_type, tf, target_date)
+
+                above_200d_count = b_row[1] or 0
+                pct_above_200d = float(b_row[2]) if b_row[2] is not None else 0.0
+                stage2_count = b_row[3] or 0
+                pct_in_stage2 = float(b_row[4]) if b_row[4] is not None else 0.0
+
+                leaders_query = f"""
+                    SELECT d.symbol, s.name, d.close, d.rs_score, d.rs_rank, d.stage2_days,
+                           ROUND((d.close - d.sma_200) / NULLIF(d.sma_200, 0) * 100.0, 1) as dist_sma200_pct
+                    FROM daily_bars d
+                    JOIN symbols s ON d.symbol = s.symbol
+                    WHERE {stock_filter} AND s.active = true AND s.asset_type = 'Common Stock' AND d.close >= 3.0
+                      AND d.date = '{target_date}'
+                    ORDER BY d.rs_rank DESC NULLS LAST
+                    LIMIT 8
+                """
+                leaders_rows = conn.execute(leaders_query).fetchall()
+                leaders = [
+                    {
+                        "symbol": lr[0],
+                        "name": lr[1],
+                        "close": float(lr[2]) if lr[2] is not None else 0.0,
+                        "rs_score": float(lr[3]) if lr[3] is not None else 0.0,
+                        "rs_rank": int(lr[4]) if lr[4] is not None else 0,
+                        "stage2_days": int(lr[5]) if lr[5] is not None else 0,
+                        "dist_sma200_pct": float(lr[6]) if lr[6] is not None else 0.0
+                    }
+                    for lr in leaders_rows
+                ]
+
+                # 4. Generate Synthetic Group OHLCV + MAs + Mansfield RS
+                if tf == "weekly":
+                    bars_query = f"""
+                        WITH stock_rets AS (
+                            SELECT 
+                                d.date,
+                                d.symbol,
+                                (d.open / NULLIF(LAG(d.close) OVER (PARTITION BY d.symbol ORDER BY d.date), 0)) - 1.0 as ret_open,
+                                (d.high / NULLIF(LAG(d.close) OVER (PARTITION BY d.symbol ORDER BY d.date), 0)) - 1.0 as ret_high,
+                                (d.low / NULLIF(LAG(d.close) OVER (PARTITION BY d.symbol ORDER BY d.date), 0)) - 1.0 as ret_low,
+                                (d.close / NULLIF(LAG(d.close) OVER (PARTITION BY d.symbol ORDER BY d.date), 0)) - 1.0 as ret_close,
+                                d.volume
+                            FROM symbols s
+                            JOIN daily_bars d ON s.symbol = d.symbol
+                            WHERE {stock_filter} AND s.active = true AND s.asset_type = 'Common Stock' AND d.close >= 3.0
+                              AND d.date <= '{target_date}'
+                        ),
+                        daily_med AS (
+                            SELECT 
+                                date,
+                                COUNT(symbol) as stock_count,
+                                MEDIAN(ret_open) as med_open,
+                                MEDIAN(ret_high) as med_high,
+                                MEDIAN(ret_low) as med_low,
+                                MEDIAN(ret_close) as med_close,
+                                SUM(volume) as total_volume
+                            FROM stock_rets
+                            WHERE ret_close IS NOT NULL
+                            GROUP BY date
+                        ),
+                        cum_base AS (
+                            SELECT 
+                                date,
+                                stock_count,
+                                med_open,
+                                med_high,
+                                med_low,
+                                med_close,
+                                total_volume,
+                                EXP(SUM(LN(1.0 + COALESCE(med_close, 0.0))) OVER (ORDER BY date)) * 100.0 as close_idx
+                            FROM daily_med
+                        ),
+                        daily_ohlc AS (
+                            SELECT 
+                                date,
+                                date_trunc('week', date) as week_start,
+                                stock_count,
+                                total_volume as volume,
+                                LAG(close_idx, 1, close_idx) OVER (ORDER BY date) * (1.0 + COALESCE(med_open, 0.0)) as raw_open,
+                                LAG(close_idx, 1, close_idx) OVER (ORDER BY date) * (1.0 + COALESCE(med_high, 0.0)) as raw_high,
+                                LAG(close_idx, 1, close_idx) OVER (ORDER BY date) * (1.0 + COALESCE(med_low, 0.0)) as raw_low,
+                                close_idx as raw_close
+                            FROM cum_base
+                        ),
+                        sanitized_daily AS (
+                            SELECT 
+                                date,
+                                week_start,
+                                stock_count,
+                                volume,
+                                raw_open,
+                                GREATEST(raw_high, raw_open, raw_close) as high,
+                                LEAST(raw_low, raw_open, raw_close) as low,
+                                raw_close as close
+                            FROM daily_ohlc
+                        ),
+                        weekly_bars AS (
+                            SELECT 
+                                MAX(date) as date,
+                                FIRST(raw_open ORDER BY date ASC) as open,
+                                MAX(high) as high,
+                                MIN(low) as low,
+                                LAST(close ORDER BY date ASC) as close,
+                                SUM(volume) as volume,
+                                AVG(stock_count)::INT as avg_stock_count
+                            FROM sanitized_daily
+                            GROUP BY week_start
+                            ORDER BY date ASC
+                        ),
+                        spy_weekly AS (
+                            SELECT 
+                                date_trunc('week', date) as week_start,
+                                LAST(close ORDER BY date ASC) as spy_close
+                            FROM daily_bars
+                            WHERE symbol = 'SPY' AND date <= '{target_date}'
+                            GROUP BY week_start
+                        ),
+                        weekly_with_spy AS (
+                            SELECT 
+                                w.date,
+                                ROUND(w.open, 2) as open,
+                                ROUND(GREATEST(w.high, w.open, w.close), 2) as high,
+                                ROUND(LEAST(w.low, w.open, w.close), 2) as low,
+                                ROUND(w.close, 2) as close,
+                                w.volume,
+                                w.avg_stock_count,
+                                s.spy_close,
+                                ROUND((w.close / NULLIF(s.spy_close, 0)) * 100.0, 4) as rs_line
+                            FROM weekly_bars w
+                            LEFT JOIN spy_weekly s ON date_trunc('week', w.date) = s.week_start
+                        ),
+                        with_ma AS (
+                            SELECT 
+                                *,
+                                ROUND(AVG(close) OVER (ORDER BY date ROWS BETWEEN 39 PRECEDING AND CURRENT ROW), 2) as sma_40w,
+                                ROUND(AVG(close) OVER (ORDER BY date ROWS BETWEEN 9 PRECEDING AND CURRENT ROW), 2) as sma_10w,
+                                ROUND(AVG(rs_line) OVER (ORDER BY date ROWS BETWEEN 39 PRECEDING AND CURRENT ROW), 4) as rs_sma_40w
+                            FROM weekly_with_spy
+                        ),
+                        with_mansfield AS (
+                            SELECT 
+                                *,
+                                ROUND(((rs_line / NULLIF(rs_sma_40w, 0)) - 1.0) * 100.0, 2) as mansfield_rs,
+                                ROUND((sma_40w - LAG(sma_40w, 4) OVER (ORDER BY date)) / NULLIF(LAG(sma_40w, 4) OVER (ORDER BY date), 0) * 100.0, 2) as ma_slope_pct
+                            FROM with_ma
+                        )
+                        SELECT 
+                            date::VARCHAR as date, open, high, low, close, volume, sma_40w, sma_10w, rs_line, mansfield_rs, ma_slope_pct,
+                            CASE 
+                                WHEN close > sma_40w AND ma_slope_pct > 0.05 AND mansfield_rs > 0 THEN 'Stage 2 (Advancing)'
+                                WHEN close > sma_40w AND ma_slope_pct >= -0.15 THEN 'Stage 1 (Basing/Transition)'
+                                WHEN close < sma_40w AND ma_slope_pct < -0.05 AND mansfield_rs < 0 THEN 'Stage 4 (Declining)'
+                                ELSE 'Stage 3 (Topping/Distribution)'
+                            END as stage
+                        FROM with_mansfield 
+                        ORDER BY date ASC;
+                    """
+                else:  # daily
+                    bars_query = f"""
+                        WITH stock_rets AS (
+                            SELECT 
+                                d.date,
+                                d.symbol,
+                                (d.open / NULLIF(LAG(d.close) OVER (PARTITION BY d.symbol ORDER BY d.date), 0)) - 1.0 as ret_open,
+                                (d.high / NULLIF(LAG(d.close) OVER (PARTITION BY d.symbol ORDER BY d.date), 0)) - 1.0 as ret_high,
+                                (d.low / NULLIF(LAG(d.close) OVER (PARTITION BY d.symbol ORDER BY d.date), 0)) - 1.0 as ret_low,
+                                (d.close / NULLIF(LAG(d.close) OVER (PARTITION BY d.symbol ORDER BY d.date), 0)) - 1.0 as ret_close,
+                                d.volume
+                            FROM symbols s
+                            JOIN daily_bars d ON s.symbol = d.symbol
+                            WHERE {stock_filter} AND s.active = true AND s.asset_type = 'Common Stock' AND d.close >= 3.0
+                              AND d.date <= '{target_date}'
+                        ),
+                        daily_med AS (
+                            SELECT 
+                                date,
+                                COUNT(symbol) as stock_count,
+                                MEDIAN(ret_open) as med_open,
+                                MEDIAN(ret_high) as med_high,
+                                MEDIAN(ret_low) as med_low,
+                                MEDIAN(ret_close) as med_close,
+                                SUM(volume) as total_volume
+                            FROM stock_rets
+                            WHERE ret_close IS NOT NULL
+                            GROUP BY date
+                        ),
+                        cum_base AS (
+                            SELECT 
+                                date,
+                                stock_count,
+                                med_open,
+                                med_high,
+                                med_low,
+                                med_close,
+                                total_volume,
+                                EXP(SUM(LN(1.0 + COALESCE(med_close, 0.0))) OVER (ORDER BY date)) * 100.0 as close_idx
+                            FROM daily_med
+                        ),
+                        daily_ohlc AS (
+                            SELECT 
+                                date,
+                                stock_count,
+                                total_volume as volume,
+                                LAG(close_idx, 1, close_idx) OVER (ORDER BY date) * (1.0 + COALESCE(med_open, 0.0)) as raw_open,
+                                LAG(close_idx, 1, close_idx) OVER (ORDER BY date) * (1.0 + COALESCE(med_high, 0.0)) as raw_high,
+                                LAG(close_idx, 1, close_idx) OVER (ORDER BY date) * (1.0 + COALESCE(med_low, 0.0)) as raw_low,
+                                close_idx as raw_close
+                            FROM cum_base
+                        ),
+                        spy_daily AS (
+                            SELECT date, close as spy_close 
+                            FROM daily_bars 
+                            WHERE symbol = 'SPY' AND date <= '{target_date}'
+                        ),
+                        daily_with_spy AS (
+                            SELECT 
+                                d.date,
+                                ROUND(d.raw_open, 2) as open,
+                                ROUND(GREATEST(d.raw_high, d.raw_open, d.raw_close), 2) as high,
+                                ROUND(LEAST(d.raw_low, d.raw_open, d.raw_close), 2) as low,
+                                ROUND(d.raw_close, 2) as close,
+                                d.volume,
+                                s.spy_close,
+                                ROUND((d.raw_close / NULLIF(s.spy_close, 0)) * 100.0, 4) as rs_line
+                            FROM daily_ohlc d
+                            LEFT JOIN spy_daily s ON d.date = s.date
+                        ),
+                        with_ma AS (
+                            SELECT 
+                                *,
+                                ROUND(AVG(close) OVER (ORDER BY date ROWS BETWEEN 199 PRECEDING AND CURRENT ROW), 2) as sma_200d,
+                                ROUND(AVG(close) OVER (ORDER BY date ROWS BETWEEN 49 PRECEDING AND CURRENT ROW), 2) as sma_50d,
+                                ROUND(AVG(rs_line) OVER (ORDER BY date ROWS BETWEEN 199 PRECEDING AND CURRENT ROW), 4) as rs_sma_200d
+                            FROM daily_with_spy
+                        ),
+                        with_mansfield AS (
+                            SELECT 
+                                *,
+                                ROUND(((rs_line / NULLIF(rs_sma_200d, 0)) - 1.0) * 100.0, 2) as mansfield_rs,
+                                ROUND((sma_200d - LAG(sma_200d, 20) OVER (ORDER BY date)) / NULLIF(LAG(sma_200d, 20) OVER (ORDER BY date), 0) * 100.0, 2) as ma_slope_pct
+                            FROM with_ma
+                        )
+                        SELECT 
+                            date::VARCHAR as date, open, high, low, close, volume, sma_200d, sma_50d, rs_line, mansfield_rs, ma_slope_pct,
+                            CASE 
+                                WHEN close > sma_200d AND ma_slope_pct > 0.05 AND mansfield_rs > 0 THEN 'Stage 2 (Advancing)'
+                                WHEN close > sma_200d AND ma_slope_pct >= -0.15 THEN 'Stage 1 (Basing/Transition)'
+                                WHEN close < sma_200d AND ma_slope_pct < -0.05 AND mansfield_rs < 0 THEN 'Stage 4 (Declining)'
+                                ELSE 'Stage 3 (Topping/Distribution)'
+                            END as stage
+                        FROM with_mansfield 
+                        ORDER BY date ASC;
+                    """
+
+                b_rows = conn.execute(bars_query).fetchall()
+                if not b_rows:
+                    return self._empty_group_bars_response(g_name, g_type, tf, target_date)
+
+                cols = [c[0] for c in conn.description]
+                all_bars = [dict(zip(cols, r)) for r in b_rows]
+                sliced_bars = all_bars[-limit_n:] if len(all_bars) > limit_n else all_bars
+
+                # 5. Extract latest stage summary
+                latest_bar = sliced_bars[-1]
+                st_label = latest_bar.get("stage", "Stage 1 (Basing/Transition)")
+                ma_val = latest_bar.get("sma_40w") if tf == "weekly" else latest_bar.get("sma_200d")
+                ma_slope = latest_bar.get("ma_slope_pct")
+                mrs = latest_bar.get("mansfield_rs")
+                close_p = latest_bar.get("close", 0.0)
+
+                badge_map = {
+                    "Stage 2 (Advancing)": ("Stage 2", "#10b981", f"Bullish: Price > rising { '40-week' if tf == 'weekly' else '200-day' } MA with positive Mansfield RS outperformance"),
+                    "Stage 1 (Basing/Transition)": ("Stage 1", "#38bdf8", f"Neutral: { '40-week' if tf == 'weekly' else '200-day' } MA is flat or stabilizing. Base accumulation phase"),
+                    "Stage 3 (Topping/Distribution)": ("Stage 3", "#f59e0b", f"Caution: { '40-week' if tf == 'weekly' else '200-day' } MA has flattened / lost upward momentum. Distribution warning"),
+                    "Stage 4 (Declining)": ("Stage 4", "#f43f5e", f"Bearish: Price < declining { '40-week' if tf == 'weekly' else '200-day' } MA with negative Mansfield RS underperformance")
+                }
+                badge, color, bias_desc = badge_map.get(st_label, ("Stage 1", "#38bdf8", "Neutral"))
+
+                stage_summary = {
+                    "stage": st_label,
+                    "stage_badge": badge,
+                    "stage_color": color,
+                    "ma_name": "40w SMA" if tf == "weekly" else "200d SMA",
+                    "ma_val": float(ma_val) if ma_val is not None else None,
+                    "ma_slope_pct": float(ma_slope) if ma_slope is not None else 0.0,
+                    "mansfield_rs": float(mrs) if mrs is not None else 0.0,
+                    "is_above_ma": (close_p > ma_val) if (close_p is not None and ma_val is not None) else False,
+                    "pct_above_200d": pct_above_200d,
+                    "pct_in_stage2": pct_in_stage2,
+                    "bias": bias_desc
+                }
+
+                breadth = {
+                    "total_stocks": total_stocks,
+                    "above_200d_count": above_200d_count,
+                    "pct_above_200d": pct_above_200d,
+                    "stage2_count": stage2_count,
+                    "pct_in_stage2": pct_in_stage2,
+                    "leaders": leaders
+                }
+
+                result = {
+                    "name": g_name,
+                    "type": g_type,
+                    "timeframe": tf,
+                    "as_of": target_date,
+                    "stage_summary": stage_summary,
+                    "breadth": breadth,
+                    "bars": sliced_bars
+                }
+
+                # Manage cache
+                if len(self._bars_cache) > 60:
+                    self._bars_cache.pop(next(iter(self._bars_cache)))
+                self._bars_cache[cache_key] = result
+
+                return result
+
+        except Exception as e:
+            logger.error(f"Error computing group bars ({group_type}, {group_name}): {e}", exc_info=True)
+            return self._empty_group_bars_response(g_name, g_type, tf, date or "")
+
 
