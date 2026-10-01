@@ -148,6 +148,31 @@ export default function LeaderboardTab({
     }
   };
 
+  // Group selection helpers ensuring mutual exclusivity (filter by sector OR industry, never both)
+  const handleSelectSector = (sector) => {
+    setSelectedIndustry(null);
+    setSelectedSector(prev => (prev === sector ? null : sector));
+  };
+
+  const handleSelectIndustry = (industry) => {
+    setSelectedSector(null);
+    setSelectedIndustry(prev => (prev === industry ? null : industry));
+  };
+
+  const handleClearGroupFilter = () => {
+    setSelectedSector(null);
+    setSelectedIndustry(null);
+  };
+
+  const handleSwitchGroupMode = (mode) => {
+    setGroupViewMode(mode);
+    if (mode === 'sector') {
+      setSelectedIndustry(null);
+    } else if (mode === 'industry') {
+      setSelectedSector(null);
+    }
+  };
+
   // Selected Stock for drawer & arrow keys
   const [selectedSymbol, setSelectedSymbol] = useState(null);
   const [expandedSectors, setExpandedSectors] = useState({});
@@ -232,8 +257,11 @@ export default function LeaderboardTab({
       if (dateToFetch) params.append('date', dateToFetch);
       params.append('board', selectedBoard);
       params.append('min_rs', minRs);
-      if (selectedSector) params.append('sector', selectedSector);
-      if (selectedIndustry) params.append('industry', selectedIndustry);
+      if (selectedIndustry) {
+        params.append('industry', selectedIndustry);
+      } else if (selectedSector) {
+        params.append('sector', selectedSector);
+      }
 
       const res = await fetch(`${API_BASE}/api/leaderboard?${params.toString()}`);
       if (!res.ok) {
@@ -684,7 +712,7 @@ export default function LeaderboardTab({
         <div
           onClick={() => {
             if (data.summary.top_cluster_industry && data.summary.top_cluster_industry !== 'None') {
-              setSelectedIndustry(data.summary.top_cluster_industry === selectedIndustry ? null : data.summary.top_cluster_industry);
+              handleSelectIndustry(data.summary.top_cluster_industry);
             }
           }}
           style={{
@@ -935,7 +963,7 @@ export default function LeaderboardTab({
             >
               Sector: {selectedSector}
               <span
-                onClick={() => { setSelectedSector(null); setSelectedIndustry(null); }}
+                onClick={handleClearGroupFilter}
                 style={{ cursor: 'pointer', fontWeight: 'bold', marginLeft: '2px' }}
                 title="Clear sector filter"
               >
@@ -960,7 +988,7 @@ export default function LeaderboardTab({
             >
               Industry: {selectedIndustry}
               <span
-                onClick={() => setSelectedIndustry(null)}
+                onClick={handleClearGroupFilter}
                 style={{ cursor: 'pointer', fontWeight: 'bold', marginLeft: '2px' }}
                 title="Clear industry filter"
               >
@@ -1027,7 +1055,7 @@ export default function LeaderboardTab({
                 border: '1px solid rgba(255, 255, 255, 0.1)'
               }}>
                 <button
-                  onClick={() => setGroupViewMode('sector')}
+                  onClick={() => handleSwitchGroupMode('sector')}
                   style={{
                     padding: '2px 9px',
                     fontSize: '11px',
@@ -1043,7 +1071,7 @@ export default function LeaderboardTab({
                   Sector
                 </button>
                 <button
-                  onClick={() => setGroupViewMode('industry')}
+                  onClick={() => handleSwitchGroupMode('industry')}
                   style={{
                     padding: '2px 9px',
                     fontSize: '11px',
@@ -1068,7 +1096,7 @@ export default function LeaderboardTab({
               </span>
               {(selectedSector || selectedIndustry) && (
                 <button
-                  onClick={() => { setSelectedSector(null); setSelectedIndustry(null); }}
+                  onClick={handleClearGroupFilter}
                   style={{
                     padding: '1px 6px',
                     fontSize: '10px',
@@ -1105,15 +1133,7 @@ export default function LeaderboardTab({
                         cursor: 'pointer',
                         transition: 'all 0.15s ease'
                       }}
-                      onClick={() => {
-                        if (isSelected) {
-                          setSelectedSector(null);
-                          setSelectedIndustry(null);
-                        } else {
-                          setSelectedSector(sec.sector);
-                          setSelectedIndustry(null);
-                        }
-                      }}
+                      onClick={() => handleSelectSector(sec.sector)}
                     >
                       {/* Sector Header Row */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '3px' }}>
@@ -1172,8 +1192,7 @@ export default function LeaderboardTab({
                                     key={ind.industry}
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setSelectedSector(sec.sector);
-                                      setSelectedIndustry(isIndSelected ? null : ind.industry);
+                                      handleSelectIndustry(ind.industry);
                                     }}
                                     style={{
                                       display: 'flex',
@@ -1225,13 +1244,7 @@ export default function LeaderboardTab({
                         cursor: 'pointer',
                         transition: 'all 0.15s ease'
                       }}
-                      onClick={() => {
-                        if (isSelected) {
-                          setSelectedIndustry(null);
-                        } else {
-                          setSelectedIndustry(ind.industry);
-                        }
-                      }}
+                      onClick={() => handleSelectIndustry(ind.industry)}
                     >
                       {/* Industry Header Row: Industry Name & Count/Pct */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
@@ -1373,8 +1386,7 @@ export default function LeaderboardTab({
                 <div>No stocks found matching the current filters.</div>
                 <button
                   onClick={() => {
-                    setSelectedSector(null);
-                    setSelectedIndustry(null);
+                    handleClearGroupFilter();
                     setFilterSweetSpot(false);
                     setFilterHealthyAtr(false);
                     setFilterExpandingVol(false);

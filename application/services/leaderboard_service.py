@@ -767,11 +767,19 @@ class LeaderboardService:
                 top_3_pct = sum(s["pct"] for s in sector_distribution[:3]) if sector_distribution else 0.0
 
                 # 4. Filter stocks by user criteria (min_rs, sector, industry)
+                # Filter either on selected sector or industry, but not both
+                target_sector = None
+                target_industry = None
+                if industry and industry.strip():
+                    target_industry = industry.strip().lower()
+                elif sector and sector.strip():
+                    target_sector = sector.strip().lower()
+
                 filtered_stocks = [
                     s for s in all_stocks
                     if s["rs_rank"] >= min_rs
-                    and (not sector or s["sector"].lower() == sector.strip().lower())
-                    and (not industry or s["industry"].lower() == industry.strip().lower())
+                    and (not target_sector or s["sector"].lower() == target_sector)
+                    and (not target_industry or s["industry"].lower() == target_industry)
                 ]
 
                 # Enrich filtered stocks with cluster indicators

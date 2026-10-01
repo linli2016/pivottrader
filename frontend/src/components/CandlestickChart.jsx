@@ -1086,7 +1086,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   const showRsLineRef = useRef(showRsLine);
   showRsLineRef.current = showRsLine;
 
-  // Collapsed toolbar: show extra buttons (measure, earnings, RS, OI, scale)
+  // Collapsed toolbar: show extra buttons (measure, earnings, RS, VP, yearly, scale)
   const [showToolbarMore, setShowToolbarMore] = useState(false);
 
   const toggleRsLine = () => {
@@ -2813,29 +2813,6 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           >
             W
           </button>
-          <button
-            type="button"
-            onClick={toggleMansfieldYearly}
-            title={showMansfieldYearly ? "Hide Mansfield Yearly Bar Chart (Hotkey: Y)" : "Show Mansfield Yearly Bar Chart (Hotkey: Y) — Stan Weinstein Overhead Supply Check"}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '0 7px',
-              height: '24px',
-              background: showMansfieldYearly ? 'rgba(56, 189, 248, 0.28)' : 'transparent',
-              border: showMansfieldYearly ? '1px solid #38bdf8' : '1px solid transparent',
-              color: showMansfieldYearly ? '#38bdf8' : '#94a3b8',
-              borderRadius: '4px',
-              fontSize: '11px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-              lineHeight: '22px',
-            }}
-          >
-            Y
-          </button>
         </div>
 
         {/* Separator between Timeframe and Tools */}
@@ -3031,6 +3008,33 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         )}
 
         {showToolbarMore && (
+          /* Stan Weinstein Mansfield Yearly Bar Chart Thumbnail Toggle Button */
+          <button
+            type="button"
+            onClick={toggleMansfieldYearly}
+            title={showMansfieldYearly ? "Hide Mansfield Yearly Bar Chart (Hotkey: Y)" : "Show Mansfield Yearly Bar Chart (Hotkey: Y) — Stan Weinstein Overhead Supply Check"}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '26px',
+              height: '26px',
+              padding: 0,
+              background: showMansfieldYearly ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.05)',
+              border: showMansfieldYearly ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.15)',
+              color: showMansfieldYearly ? '#38bdf8' : '#94a3b8',
+              borderRadius: '5px',
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            Y
+          </button>
+        )}
+
+        {showToolbarMore && (
           /* Price Scale Mode Toggle (Arithmetic / Linear vs Logarithmic) */
           <button
             type="button"
@@ -3120,7 +3124,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         <button
           type="button"
           onClick={() => setShowToolbarMore((v) => !v)}
-          title={showToolbarMore ? 'Collapse toolbar' : 'Expand toolbar (Measure, Earnings, RS, OI, Scale)'}
+          title={showToolbarMore ? 'Collapse toolbar' : 'Expand toolbar (Measure, Earnings, RS, VP, Yearly, Scale)'}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -3130,17 +3134,17 @@ const CandlestickChart = forwardRef(function CandlestickChart({
             padding: 0,
             background: showToolbarMore
               ? 'rgba(255,255,255,0.10)'
-              : (isMeasureModeActive || !showEarnings || !showRsLine || showVolumeProfile || isLogScale)
+              : (isMeasureModeActive || !showEarnings || !showRsLine || showVolumeProfile || isLogScale || !showMansfieldYearly)
                 ? 'rgba(56, 189, 248, 0.12)'
                 : 'rgba(255, 255, 255, 0.05)',
             border: showToolbarMore
               ? '1px solid rgba(255,255,255,0.3)'
-              : (isMeasureModeActive || !showEarnings || !showRsLine || showVolumeProfile || isLogScale)
+              : (isMeasureModeActive || !showEarnings || !showRsLine || showVolumeProfile || isLogScale || !showMansfieldYearly)
                 ? '1px solid rgba(56,189,248,0.4)'
                 : '1px solid rgba(255, 255, 255, 0.15)',
             color: showToolbarMore
               ? '#e2e8f0'
-              : (isMeasureModeActive || !showEarnings || !showRsLine || showVolumeProfile || isLogScale)
+              : (isMeasureModeActive || !showEarnings || !showRsLine || showVolumeProfile || isLogScale || !showMansfieldYearly)
                 ? '#38bdf8'
                 : '#94a3b8',
             borderRadius: '5px',

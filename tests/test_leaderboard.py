@@ -111,6 +111,33 @@ class TestLeaderboardService(unittest.TestCase):
             self.assertNotIn("is_prs_90", s)
             self.assertIn("rs_rank", s)
 
+    def test_sector_or_industry_exclusive_filtering(self):
+        # 1. Get an existing sector from distribution
+        base_res = self.service.get_leaderboard(target_date=self.test_date, board="gainers")
+        self.assertGreater(len(base_res["sector_distribution"]), 1)
+        test_sec = base_res["sector_distribution"][0]["sector"]
+        other_sec = base_res["sector_distribution"][1]["sector"]
+
+        # Filter by sector only
+        res_sec = self.service.get_leaderboard(target_date=self.test_date, board="gainers", sector=test_sec)
+        self.assertGreater(len(res_sec["stocks"]), 0)
+        for s in res_sec["stocks"]:
+            self.assertEqual(s["sector"].lower(), test_sec.lower())
+
+        # 2. Filter by industry only
+        first_ind = res_sec["stocks"][0]["industry"]
+        res_ind = self.service.get_leaderboard(target_date=self.test_date, board="gainers", industry=first_ind)
+        self.assertGreater(len(res_ind["stocks"]), 0)
+        for s in res_ind["stocks"]:
+            self.assertEqual(s["industry"].lower(), first_ind.lower())
+
+        # 3. If both are passed (conflicting sector + industry), industry takes precedence and does not intersect with the mismatched sector
+        # For example, industry from test_sec with sector=other_sec
+        res_both = self.service.get_leaderboard(target_date=self.test_date, board="gainers", sector=other_sec, industry=first_ind)
+        self.assertGreater(len(res_both["stocks"]), 0)
+        for s in res_both["stocks"]:
+            self.assertEqual(s["industry"].lower(), first_ind.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
