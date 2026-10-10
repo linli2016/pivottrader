@@ -72,7 +72,8 @@ export default function StageDistributionCard({
   stageDistribution = null,
   dailyData = [],
   asOfDate = null,
-  isEmbedded = false
+  isEmbedded = false,
+  onNavigateToStage = null
 }) {
   const [fetchedData, setFetchedData] = useState(null);
   const [timeRange, setTimeRange] = useState('6M'); // '1M', '3M', '6M', '1Y'
@@ -455,9 +456,40 @@ export default function StageDistributionCard({
               ({s1.pct.toFixed(1)}%)
             </span>
           </div>
-          <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
-            {STAGE_META[1].desc}
-          </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+            <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.35, flex: 1 }}>
+              {STAGE_META[1].desc}
+            </p>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onNavigateToStage) {
+                  onNavigateToStage('stage1');
+                } else {
+                  window.dispatchEvent(new CustomEvent('pt-navigate-radar', { detail: { stageFilter: 'stage1', activeTab: 'industries' } }));
+                  const radarNavBtn = document.querySelector('[title*="Industry Radar"]');
+                  if (radarNavBtn) radarNavBtn.click();
+                }
+              }}
+              style={{
+                fontSize: '10.5px',
+                fontWeight: 700,
+                color: '#38bdf8',
+                background: 'rgba(56, 189, 248, 0.18)',
+                border: '1px solid rgba(56, 189, 248, 0.35)',
+                borderRadius: '4px',
+                padding: '2px 8px',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                marginLeft: '8px'
+              }}
+              className="hover-brighten"
+              title="Inspect Stage 1 Basing groups in Industry Radar"
+            >
+              Scan Groups ↗
+            </button>
+          </div>
         </div>
 
         {/* Stage 2: Advancing */}
@@ -504,9 +536,40 @@ export default function StageDistributionCard({
               ({s2.pct.toFixed(1)}%)
             </span>
           </div>
-          <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
-            {STAGE_META[2].desc}
-          </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+            <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.35, flex: 1 }}>
+              {STAGE_META[2].desc}
+            </p>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onNavigateToStage) {
+                  onNavigateToStage('stage2');
+                } else {
+                  window.dispatchEvent(new CustomEvent('pt-navigate-radar', { detail: { stageFilter: 'stage2', activeTab: 'industries' } }));
+                  const radarNavBtn = document.querySelector('[title*="Industry Radar"]');
+                  if (radarNavBtn) radarNavBtn.click();
+                }
+              }}
+              style={{
+                fontSize: '10.5px',
+                fontWeight: 700,
+                color: '#10b981',
+                background: 'rgba(16, 185, 129, 0.2)',
+                border: '1px solid rgba(16, 185, 129, 0.4)',
+                borderRadius: '4px',
+                padding: '2px 8px',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                marginLeft: '8px'
+              }}
+              className="hover-brighten"
+              title="Inspect Stage 2 Advancing groups in Industry Radar"
+            >
+              Scan Groups ↗
+            </button>
+          </div>
         </div>
 
         {/* Stage 3: Topping */}
@@ -584,9 +647,40 @@ export default function StageDistributionCard({
               ({s4.pct.toFixed(1)}%)
             </span>
           </div>
-          <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.35 }}>
-            {STAGE_META[4].desc}
-          </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+            <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.35, flex: 1 }}>
+              {STAGE_META[4].desc}
+            </p>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onNavigateToStage) {
+                  onNavigateToStage('stage4');
+                } else {
+                  window.dispatchEvent(new CustomEvent('pt-navigate-radar', { detail: { stageFilter: 'stage4', activeTab: 'industries' } }));
+                  const radarNavBtn = document.querySelector('[title*="Industry Radar"]');
+                  if (radarNavBtn) radarNavBtn.click();
+                }
+              }}
+              style={{
+                fontSize: '10.5px',
+                fontWeight: 700,
+                color: '#f43f5e',
+                background: 'rgba(244, 63, 94, 0.18)',
+                border: '1px solid rgba(244, 63, 94, 0.35)',
+                borderRadius: '4px',
+                padding: '2px 8px',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                marginLeft: '8px'
+              }}
+              className="hover-brighten"
+              title="Inspect Stage 4 Declining groups in Industry Radar"
+            >
+              Scan Groups ↗
+            </button>
+          </div>
         </div>
       </div>
 

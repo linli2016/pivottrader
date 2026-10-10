@@ -40,6 +40,148 @@ class GroupRadarService:
                 else:
                     raise
 
+    def _calc_group_stages(self, conn, group_type: str, target_date: str, sector: Optional[str] = None, limit_bars: int = 260) -> Dict[str, Dict[str, Any]]:
+        """
+        Calculates Stan Weinstein Stage, 40W / 200D MA slope, and Mansfield Relative Strength
+        for all groups in batch (~150ms).
+        """
+        g_type = group_type.strip().lower()
+        clean_sec = sector.replace("'", "''") if sector else ""
+        sector_filter = f"AND s.sector = '{clean_sec}'" if sector else ""
+
+        if g_type == "themes":
+            themes = self.theme_service.load_themes()
+            if not themes:
+                return {}
+            value_rows = []
+            for t in themes:
+                t_name = t.get("name", "").replace("'", "''")
+                for sym in t.get("symbols", []):
+                    sym_clean = sym.strip().upper().replace("'", "''")
+                    if sym_clean:
+                        value_rows.append(f"('{t_name}', '{sym_clean}')")
+            if not value_rows:
+                return {}
+            values_sql = ",\n".join(value_rows)
+            grp_join = f"""
+                theme_map(theme, symbol) AS (VALUES {values_sql}),
+                stock_rets AS (
+                    SELECT 
+                        d.date,
+                        t.theme as grp_name,
+                        d.symbol,
+                        (d.close / NULLIF(LAG(d.close) OVER (PARTITION BY d.symbol ORDER BY d.date), 0)) - 1.0 as ret_close
+                    FROM theme_map t
+                    JOIN daily_bars d ON t.symbol = d.symbol
+                    JOIN symbols s ON d.symbol = s.symbol
+                    WHERE s.active = true
+                      AND d.date >= (SELECT min_date FROM min_d) AND d.date <= '{target_date}'
+                )
+            """
+        elif g_type == "sectors":
+            grp_join = f"""
+                stock_rets AS (
+                    SELECT 
+                        d.date,
+                        s.sector as grp_name,
+                        d.symbol,
+                        (d.close / NULLIF(LAG(d.close) OVER (PARTITION BY d.symbol ORDER BY d.date), 0)) - 1.0 as ret_close
+                    FROM symbols s
+                    JOIN daily_bars d ON s.symbol = d.symbol
+                    WHERE s.sector IS NOT NULL AND s.sector != '' AND s.active = true AND s.asset_type = 'Common Stock' AND d.close >= 3.0
+                      AND d.date >= (SELECT min_date FROM min_d) AND d.date <= '{target_date}'
+                )
+            """
+        else:  # industries
+            grp_join = f"""
+                stock_rets AS (
+                    SELECT 
+                        d.date,
+                        s.industry as grp_name,
+                        d.symbol,
+                        (d.close / NULLIF(LAG(d.close) OVER (PARTITION BY d.symbol ORDER BY d.date), 0)) - 1.0 as ret_close
+                    FROM symbols s
+                    JOIN daily_bars d ON s.symbol = d.symbol
+                    WHERE s.industry IS NOT NULL AND s.industry != '' AND s.active = true AND s.asset_type = 'Common Stock' AND d.close >= 3.0
+                      {sector_filter}
+                      AND d.date >= (SELECT min_date FROM min_d) AND d.date <= '{target_date}'
+                )
+            """
+
+        query = f"""
+            WITH target_cal AS (
+                SELECT DISTINCT date FROM daily_bars WHERE date <= '{target_date}' ORDER BY date DESC LIMIT {limit_bars}
+            ),
+            min_d AS (SELECT MIN(date) as min_date FROM target_cal),
+            {grp_join},
+            grp_daily AS (
+                SELECT grp_name, date, MEDIAN(ret_close) as med_close
+                FROM stock_rets WHERE ret_close IS NOT NULL
+                GROUP BY grp_name, date
+            ),
+            cum_base AS (
+                SELECT grp_name, date,
+                    EXP(SUM(LN(1.0 + COALESCE(med_close, 0.0))) OVER (PARTITION BY grp_name ORDER BY date)) * 100.0 as close_idx
+                FROM grp_daily
+            ),
+            spy_daily AS (
+                SELECT date, close as spy_close FROM daily_bars WHERE symbol = 'SPY' AND date >= (SELECT min_date FROM min_d) AND date <= '{target_date}'
+            ),
+            daily_with_spy AS (
+                SELECT c.grp_name, c.date, c.close_idx,
+                    ROUND((c.close_idx / NULLIF(s.spy_close, 0)) * 100.0, 4) as rs_line
+                FROM cum_base c LEFT JOIN spy_daily s ON c.date = s.date
+            ),
+            with_ma AS (
+                SELECT *,
+                    ROUND(AVG(close_idx) OVER (PARTITION BY grp_name ORDER BY date ROWS BETWEEN 199 PRECEDING AND CURRENT ROW), 2) as sma_200d,
+                    ROUND(AVG(rs_line) OVER (PARTITION BY grp_name ORDER BY date ROWS BETWEEN 199 PRECEDING AND CURRENT ROW), 4) as rs_sma_200d
+                FROM daily_with_spy
+            ),
+            with_mansfield AS (
+                SELECT *,
+                    ROUND(((rs_line / NULLIF(rs_sma_200d, 0)) - 1.0) * 100.0, 2) as mansfield_rs,
+                    ROUND((sma_200d - LAG(sma_200d, 20) OVER (PARTITION BY grp_name ORDER BY date)) / NULLIF(LAG(sma_200d, 20) OVER (PARTITION BY grp_name ORDER BY date), 0) * 100.0, 2) as ma_slope_pct
+                FROM with_ma
+            ),
+            latest AS (
+                SELECT grp_name, close_idx, sma_200d, rs_line, mansfield_rs, ma_slope_pct,
+                    CASE 
+                        WHEN close_idx > sma_200d AND ma_slope_pct > 0.05 AND mansfield_rs > 0 THEN 'Stage 2 (Advancing)'
+                        WHEN close_idx > sma_200d AND ma_slope_pct >= -0.15 THEN 'Stage 1 (Basing/Transition)'
+                        WHEN close_idx < sma_200d AND ma_slope_pct < -0.05 AND mansfield_rs < 0 THEN 'Stage 4 (Declining)'
+                        ELSE 'Stage 3 (Topping/Distribution)'
+                    END as stage,
+                    ROW_NUMBER() OVER (PARTITION BY grp_name ORDER BY date DESC) as rn
+                FROM with_mansfield
+            )
+            SELECT grp_name, mansfield_rs, ma_slope_pct, stage FROM latest WHERE rn = 1;
+        """
+
+        try:
+            rows = conn.execute(query).fetchall()
+            stage_map = {}
+            badge_map = {
+                "Stage 2 (Advancing)": (2, "Stage 2", "#10b981"),
+                "Stage 1 (Basing/Transition)": (1, "Stage 1", "#38bdf8"),
+                "Stage 3 (Topping/Distribution)": (3, "Stage 3", "#f59e0b"),
+                "Stage 4 (Declining)": (4, "Stage 4", "#f43f5e"),
+            }
+            for grp_name, mrs, slope, st_label in rows:
+                s_num, badge, color = badge_map.get(st_label, (1, "Stage 1", "#38bdf8"))
+                stage_map[grp_name] = {
+                    "stage": st_label,
+                    "stage_num": s_num,
+                    "stage_badge": badge,
+                    "stage_color": color,
+                    "mansfield_rs": float(mrs) if mrs is not None else 0.0,
+                    "ma_slope_pct": float(slope) if slope is not None else 0.0
+                }
+            return stage_map
+        except Exception as e:
+            logger.error(f"Error calculating group stages in batch: {e}")
+            return {}
+
     def get_group_strength(self, group_type: str = "industries", date: Optional[str] = None, sector: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Calculates group-level strength metrics (Today, 1W, 1M, 3M, YTD, RS Rank, 52wH, RVol)
@@ -86,7 +228,8 @@ class GroupRadarService:
                 stock_cte = f"""
                     d0 AS (
                         SELECT d.symbol, d.date, d.close, d.volume, d.vol_50d_ma, d.rs_score, d.rs_rank, d.dist_from_52w_high, d.rel_vol_50d,
-                               s.name, s.sector, s.industry
+                               s.name, s.sector, s.industry,
+                               d.sma_200, d.stage2_days, d.weinstein_stage
                         FROM daily_bars d
                         JOIN symbols s ON d.symbol = s.symbol
                         WHERE d.date = (SELECT date FROM d0_date)
@@ -162,6 +305,8 @@ class GroupRadarService:
                             ROUND(MEDIAN(rs_rank), 0) as rs_rank,
                             ROUND(-COALESCE(MEDIAN(dist_from_52w_high), 0), 1) as dist_52wh_pct,
                             ROUND(SUM(volume)::DOUBLE / NULLIF(SUM(vol_50d_ma), 0) * 100.0, 0) as rvol_pct,
+                            ROUND(COUNT(CASE WHEN close > sma_200 THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0), 1) as pct_above_200d,
+                            ROUND(COUNT(CASE WHEN stage2_days > 0 OR weinstein_stage = 2 THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0), 1) as pct_in_stage2,
                             list(symbol ORDER BY rs_rank DESC NULLS LAST)[:4] as top_symbols
                         FROM theme_stocks
                         GROUP BY group_name
@@ -185,6 +330,8 @@ class GroupRadarService:
                                 ROUND(MEDIAN(rs_rank), 0) as rs_rank,
                                 ROUND(-COALESCE(MEDIAN(dist_from_52w_high), 0), 1) as dist_52wh_pct,
                                 ROUND(SUM(volume)::DOUBLE / NULLIF(SUM(vol_50d_ma), 0) * 100.0, 0) as rvol_pct,
+                                ROUND(COUNT(CASE WHEN close > sma_200 THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0), 1) as pct_above_200d,
+                                ROUND(COUNT(CASE WHEN stage2_days > 0 OR weinstein_stage = 2 THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0), 1) as pct_in_stage2,
                                 list(symbol ORDER BY rs_rank DESC NULLS LAST)[:4] as top_symbols
                             FROM stock_metrics
                             WHERE sector IS NOT NULL AND sector != ''
@@ -298,6 +445,8 @@ class GroupRadarService:
                             s.rs_rank,
                             s.dist_52wh_pct,
                             s.rvol_pct,
+                            s.pct_above_200d,
+                            s.pct_in_stage2,
                             s.top_symbols,
                             r0.rank_d0 as rank,
                             (r5.rank_d5 - r0.rank_d0) as rank_delta,
@@ -326,6 +475,8 @@ class GroupRadarService:
                             ROUND(MEDIAN(rs_rank), 0) as rs_rank,
                             ROUND(-COALESCE(MEDIAN(dist_from_52w_high), 0), 1) as dist_52wh_pct,
                             ROUND(SUM(volume)::DOUBLE / NULLIF(SUM(vol_50d_ma), 0) * 100.0, 0) as rvol_pct,
+                            ROUND(COUNT(CASE WHEN close > sma_200 THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0), 1) as pct_above_200d,
+                            ROUND(COUNT(CASE WHEN stage2_days > 0 OR weinstein_stage = 2 THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0), 1) as pct_in_stage2,
                             list(symbol ORDER BY rs_rank DESC NULLS LAST)[:4] as top_symbols
                         FROM stock_metrics
                         WHERE industry IS NOT NULL AND industry != ''
@@ -374,6 +525,35 @@ class GroupRadarService:
                         results = sorted_items
                     except Exception as e:
                         logger.error(f"Error augmenting {g_type} with RRG metadata: {e}")
+
+                # Attach Stan Weinstein Stage, 40W / 200D MA slope, and Mansfield RS metrics
+                try:
+                    stage_metrics = self._calc_group_stages(conn, g_type, target_date, sector=sector)
+                    for item in results:
+                        s_info = stage_metrics.get(item.get("name", ""))
+                        if s_info:
+                            item["stage"] = s_info["stage"]
+                            item["stage_num"] = s_info["stage_num"]
+                            item["stage_badge"] = s_info["stage_badge"]
+                            item["stage_color"] = s_info["stage_color"]
+                            item["mansfield_rs"] = s_info["mansfield_rs"]
+                            item["ma_slope_pct"] = s_info["ma_slope_pct"]
+                        else:
+                            pct_s2 = item.get("pct_in_stage2") or 0.0
+                            if pct_s2 >= 50.0:
+                                item["stage"] = "Stage 2 (Advancing)"
+                                item["stage_num"] = 2
+                                item["stage_badge"] = "Stage 2"
+                                item["stage_color"] = "#10b981"
+                            else:
+                                item["stage"] = "Stage 1 (Basing/Transition)"
+                                item["stage_num"] = 1
+                                item["stage_badge"] = "Stage 1"
+                                item["stage_color"] = "#38bdf8"
+                            item["mansfield_rs"] = 0.0
+                            item["ma_slope_pct"] = 0.0
+                except Exception as e:
+                    logger.error(f"Error attaching stage metrics to {g_type}: {e}")
 
                 _GLOBAL_STRENGTH_CACHE[cache_key] = results
                 return results
@@ -443,12 +623,26 @@ class GroupRadarService:
                 s["industry_quadrant"] = ind_info.get("quadrant", "Improving")
                 s["industry_ret_1w"] = ind_info.get("ret_1w_pct")
                 s["industry_ret_1m"] = ind_info.get("ret_1m_pct")
+                s["industry_stage"] = ind_info.get("stage")
+                s["industry_stage_num"] = ind_info.get("stage_num")
+                s["industry_stage_badge"] = ind_info.get("stage_badge")
+                s["industry_stage_color"] = ind_info.get("stage_color")
+                s["industry_mansfield_rs"] = ind_info.get("mansfield_rs")
+                s["industry_pct_in_stage2"] = ind_info.get("pct_in_stage2")
+                s["industry_pct_above_200d"] = ind_info.get("pct_above_200d")
             else:
                 s["industry_rank"] = None
                 s["industry_rs_rank"] = None
                 s["industry_quadrant"] = None
                 s["industry_ret_1w"] = None
                 s["industry_ret_1m"] = None
+                s["industry_stage"] = None
+                s["industry_stage_num"] = None
+                s["industry_stage_badge"] = None
+                s["industry_stage_color"] = None
+                s["industry_mansfield_rs"] = None
+                s["industry_pct_in_stage2"] = None
+                s["industry_pct_above_200d"] = None
 
             # Sector metadata
             sec_name = (s.get("sector") or "").strip()
@@ -458,11 +652,27 @@ class GroupRadarService:
                 s["sector_rs_rank"] = sec_info.get("rs_rank")
                 s["sector_quadrant"] = sec_info.get("quadrant", "Improving")
                 s["sector_ret_1w"] = sec_info.get("ret_1w_pct")
+                s["sector_ret_1m"] = sec_info.get("ret_1m_pct")
+                s["sector_stage"] = sec_info.get("stage")
+                s["sector_stage_num"] = sec_info.get("stage_num")
+                s["sector_stage_badge"] = sec_info.get("stage_badge")
+                s["sector_stage_color"] = sec_info.get("stage_color")
+                s["sector_mansfield_rs"] = sec_info.get("mansfield_rs")
+                s["sector_pct_in_stage2"] = sec_info.get("pct_in_stage2")
+                s["sector_pct_above_200d"] = sec_info.get("pct_above_200d")
             else:
                 s["sector_rank"] = None
                 s["sector_rs_rank"] = None
                 s["sector_quadrant"] = None
                 s["sector_ret_1w"] = None
+                s["sector_ret_1m"] = None
+                s["sector_stage"] = None
+                s["sector_stage_num"] = None
+                s["sector_stage_badge"] = None
+                s["sector_stage_color"] = None
+                s["sector_mansfield_rs"] = None
+                s["sector_pct_in_stage2"] = None
+                s["sector_pct_above_200d"] = None
 
             # Themes metadata
             th_list = sym_to_themes.get(sym, [])
@@ -486,6 +696,11 @@ class GroupRadarService:
             s["group_rs_rank"] = s["industry_rs_rank"] if s.get("industry_rs_rank") is not None else (s["sector_rs_rank"] if s.get("sector_rs_rank") is not None else 50)
             s["group_quadrant"] = s["industry_quadrant"] or s["sector_quadrant"] or "Improving"
             s["group_rank"] = s["industry_rank"] or s["sector_rank"]
+            s["group_stage"] = s["industry_stage"] or s["sector_stage"] or "Stage 1 (Basing/Transition)"
+            s["group_stage_num"] = s["industry_stage_num"] or s["sector_stage_num"] or 1
+            s["group_stage_badge"] = s["industry_stage_badge"] or s["sector_stage_badge"] or "Stage 1"
+            s["group_stage_color"] = s["industry_stage_color"] or s["sector_stage_color"] or "#38bdf8"
+            s["group_mansfield_rs"] = s["industry_mansfield_rs"] if s.get("industry_mansfield_rs") is not None else s.get("sector_mansfield_rs")
 
         return stocks
 

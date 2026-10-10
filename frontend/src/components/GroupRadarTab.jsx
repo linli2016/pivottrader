@@ -56,9 +56,10 @@ export const SECTOR_LEGEND_DOTS = [
   { name: 'Utilities', color: '#84cc16' }
 ];
 
-export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates = [] }) {
+export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates = [], initialStageFilter = 'all' }) {
   const [activeTab, setActiveTab] = useState('sectors'); // 'sectors', 'industries', or 'themes'
   const [viewMode, setViewMode] = useState('rrg'); // 'rrg' | 'board' | 'heatmap' | 'table'
+  const [stageFilter, setStageFilter] = useState(initialStageFilter); // 'all' | 'stage2' | 'stage1' | 'stage3' | 'stage4' | 'positive_rs'
   const [timeframe, setTimeframe] = useState('1wk'); // '1wk' | '1mo' | '3mo' | '6mo'
   const [selectedGroupName, setSelectedGroupName] = useState(null);
   const [selectedConstituents, setSelectedConstituents] = useState([]);
@@ -184,6 +185,22 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
     fetchGroupStrength(activeTab, selectedDate);
     fetchRRGData(activeTab, selectedDate, trailBars);
   }, [activeTab, selectedDate, trailBars]);
+
+  useEffect(() => {
+    const handleNavRadar = (e) => {
+      if (e.detail?.stageFilter) {
+        setStageFilter(e.detail.stageFilter);
+      }
+      if (e.detail?.activeTab) {
+        setActiveTab(e.detail.activeTab);
+      }
+      if (e.detail?.groupName) {
+        setSelectedGroupName(e.detail.groupName);
+      }
+    };
+    window.addEventListener('pt-navigate-radar', handleNavRadar);
+    return () => window.removeEventListener('pt-navigate-radar', handleNavRadar);
+  }, []);
 
 
   // Fetch constituents or child groups for a specific parent group
@@ -321,6 +338,21 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
     }
   };
 
+  // Stage distribution counts for the active dataset
+  const stageCounts = useMemo(() => {
+    const counts = { all: 0, stage2: 0, stage1: 0, stage3: 0, stage4: 0, positive_rs: 0 };
+    if (!Array.isArray(data)) return counts;
+    counts.all = data.length;
+    data.forEach((d) => {
+      if (d.stage_num === 2 || (typeof d.stage === 'string' && d.stage.includes('Stage 2'))) counts.stage2++;
+      else if (d.stage_num === 1 || (typeof d.stage === 'string' && d.stage.includes('Stage 1'))) counts.stage1++;
+      else if (d.stage_num === 3 || (typeof d.stage === 'string' && d.stage.includes('Stage 3'))) counts.stage3++;
+      else if (d.stage_num === 4 || (typeof d.stage === 'string' && d.stage.includes('Stage 4'))) counts.stage4++;
+      if ((d.mansfield_rs ?? -999) > 0) counts.positive_rs++;
+    });
+    return counts;
+  }, [data]);
+
   // Filtered & Sorted groups
   const filteredAndSortedGroups = useMemo(() => {
     let list = [...data];
@@ -328,6 +360,19 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
     // Sector pill filter
     if (activeTab === 'sectors' && selectedSectorFilter) {
       list = list.filter((g) => g.name === selectedSectorFilter);
+    }
+
+    // Stan Weinstein Stage filter
+    if (stageFilter === 'stage2') {
+      list = list.filter((g) => g.stage_num === 2 || (typeof g.stage === 'string' && g.stage.includes('Stage 2')));
+    } else if (stageFilter === 'stage1') {
+      list = list.filter((g) => g.stage_num === 1 || (typeof g.stage === 'string' && g.stage.includes('Stage 1')));
+    } else if (stageFilter === 'stage3') {
+      list = list.filter((g) => g.stage_num === 3 || (typeof g.stage === 'string' && g.stage.includes('Stage 3')));
+    } else if (stageFilter === 'stage4') {
+      list = list.filter((g) => g.stage_num === 4 || (typeof g.stage === 'string' && g.stage.includes('Stage 4')));
+    } else if (stageFilter === 'positive_rs') {
+      list = list.filter((g) => (g.mansfield_rs ?? -999) > 0);
     }
 
     // Search filter
@@ -355,7 +400,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
     });
 
     return list;
-  }, [data, activeTab, selectedSectorFilter, searchTerm, sortBy, sortOrder]);
+  }, [data, activeTab, selectedSectorFilter, stageFilter, searchTerm, sortBy, sortOrder]);
 
   const selectedItem = useMemo(() => {
     if (!selectedGroupName || !Array.isArray(data)) return null;
@@ -921,6 +966,123 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
         </div>
       </div>
 
+      {/* Weinstein Stage & Mansfield RS Filter Sub-bar */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '8px',
+          marginTop: '-6px',
+          marginBottom: '14px',
+          padding: '7px 12px',
+          background: 'rgba(255, 255, 255, 0.02)',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          borderRadius: '8px'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginRight: '4px' }}>
+            Weinstein Filter:
+          </span>
+          <button
+            type="button"
+            className={`radar-pill-btn ${stageFilter === 'all' ? 'active' : ''}`}
+            onClick={() => setStageFilter('all')}
+            style={{ fontSize: '11px', padding: '3px 9px' }}
+          >
+            All ({stageCounts.all})
+          </button>
+          <button
+            type="button"
+            className={`radar-pill-btn ${stageFilter === 'stage2' ? 'active' : ''}`}
+            onClick={() => setStageFilter(stageFilter === 'stage2' ? 'all' : 'stage2')}
+            style={{
+              fontSize: '11px',
+              padding: '3px 9px',
+              color: '#10b981',
+              borderColor: stageFilter === 'stage2' ? '#10b981' : 'rgba(16, 185, 129, 0.3)',
+              background: stageFilter === 'stage2' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(16, 185, 129, 0.08)'
+            }}
+            title="Stage 2: Advancing Phase - Prime focus for buying (Stan Weinstein Rule #1)"
+          >
+            🟩 Stage 2 ({stageCounts.stage2})
+          </button>
+          <button
+            type="button"
+            className={`radar-pill-btn ${stageFilter === 'stage1' ? 'active' : ''}`}
+            onClick={() => setStageFilter(stageFilter === 'stage1' ? 'all' : 'stage1')}
+            style={{
+              fontSize: '11px',
+              padding: '3px 9px',
+              color: '#38bdf8',
+              borderColor: stageFilter === 'stage1' ? '#38bdf8' : 'rgba(56, 189, 248, 0.3)',
+              background: stageFilter === 'stage1' ? 'rgba(56, 189, 248, 0.25)' : 'rgba(56, 189, 248, 0.08)'
+            }}
+            title="Stage 1: Basing Phase - Accumulation before markup"
+          >
+            🟦 Stage 1 ({stageCounts.stage1})
+          </button>
+          <button
+            type="button"
+            className={`radar-pill-btn ${stageFilter === 'stage3' ? 'active' : ''}`}
+            onClick={() => setStageFilter(stageFilter === 'stage3' ? 'all' : 'stage3')}
+            style={{
+              fontSize: '11px',
+              padding: '3px 9px',
+              color: '#f59e0b',
+              borderColor: stageFilter === 'stage3' ? '#f59e0b' : 'rgba(245, 158, 11, 0.3)',
+              background: stageFilter === 'stage3' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(245, 158, 11, 0.08)'
+            }}
+            title="Stage 3: Topping Phase - Distribution & churning"
+          >
+            🟨 Stage 3 ({stageCounts.stage3})
+          </button>
+          <button
+            type="button"
+            className={`radar-pill-btn ${stageFilter === 'stage4' ? 'active' : ''}`}
+            onClick={() => setStageFilter(stageFilter === 'stage4' ? 'all' : 'stage4')}
+            style={{
+              fontSize: '11px',
+              padding: '3px 9px',
+              color: '#f43f5e',
+              borderColor: stageFilter === 'stage4' ? '#f43f5e' : 'rgba(244, 63, 94, 0.3)',
+              background: stageFilter === 'stage4' ? 'rgba(244, 63, 94, 0.25)' : 'rgba(244, 63, 94, 0.08)'
+            }}
+            title="Stage 4: Declining Phase - Markdown, avoid buying"
+          >
+            🟥 Stage 4 ({stageCounts.stage4})
+          </button>
+          <button
+            type="button"
+            className={`radar-pill-btn ${stageFilter === 'positive_rs' ? 'active' : ''}`}
+            onClick={() => setStageFilter(stageFilter === 'positive_rs' ? 'all' : 'positive_rs')}
+            style={{
+              fontSize: '11px',
+              padding: '3px 9px',
+              color: '#34d399',
+              borderColor: stageFilter === 'positive_rs' ? '#34d399' : 'rgba(52, 211, 153, 0.3)',
+              background: stageFilter === 'positive_rs' ? 'rgba(52, 211, 153, 0.2)' : 'rgba(52, 211, 153, 0.06)'
+            }}
+            title="Mansfield Relative Strength > 0 (Outperforming SPY Benchmark)"
+          >
+            📈 Mansfield RS &gt; 0 ({stageCounts.positive_rs})
+          </button>
+        </div>
+
+        {stageFilter !== 'all' && (
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => setStageFilter('all')}
+            style={{ fontSize: '11px', padding: '2px 8px' }}
+          >
+            Reset Filter ✕
+          </button>
+        )}
+      </div>
+
       {/* 3-Column Institutional Layout */}
       <div className="radar-3col-layout">
         {/* LEFT COLUMN: Ranks List */}
@@ -972,12 +1134,45 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                   id={`radar-rank-row-${encodeURIComponent(g.name)}`}
                   className={`radar-rank-row ${isSelected ? 'selected' : ''}`}
                   onClick={() => handleSelectGroup(g.name)}
-                  title={`#${g.rank} ${g.name} | ${g.quadrant || 'Improving'} | Δ ${delta} | ${timeframe}: ${retStr}`}
+                  title={`#${g.rank} ${g.name} | ${g.stage_badge || g.stage || g.quadrant || 'Stage 1'} | MRS: ${g.mansfield_rs !== undefined && g.mansfield_rs !== null ? (g.mansfield_rs > 0 ? '+' : '') + Number(g.mansfield_rs).toFixed(1) + '%' : '--'} | Δ ${delta} | ${timeframe}: ${retStr}`}
                 >
                   <span className="radar-rank-num">#{g.rank || '-'}</span>
                   <div className="radar-rank-name-wrap">
-                    <div className="radar-rank-name">{g.name}</div>
-                    <div className="radar-rank-meta">{g.stock_count ? `${g.stock_count} stocks` : ''}</div>
+                    <div className="radar-rank-name" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</span>
+                      {g.stage_num && (
+                        <span
+                          style={{
+                            fontSize: '9px',
+                            fontWeight: 700,
+                            padding: '1px 4px',
+                            borderRadius: '3px',
+                            lineHeight: 1.1,
+                            flexShrink: 0,
+                            background: g.stage_num === 2 ? 'rgba(16, 185, 129, 0.25)' : g.stage_num === 1 ? 'rgba(56, 189, 248, 0.25)' : g.stage_num === 3 ? 'rgba(245, 158, 11, 0.25)' : 'rgba(244, 63, 94, 0.25)',
+                            color: g.stage_num === 2 ? '#10b981' : g.stage_num === 1 ? '#38bdf8' : g.stage_num === 3 ? '#f59e0b' : '#f43f5e',
+                            border: `1px solid ${g.stage_num === 2 ? 'rgba(16, 185, 129, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`
+                          }}
+                        >
+                          S{g.stage_num}
+                        </span>
+                      )}
+                    </div>
+                    <div className="radar-rank-meta" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      {g.mansfield_rs !== undefined && g.mansfield_rs !== null && (
+                        <span
+                          style={{
+                            color: g.mansfield_rs > 0 ? '#34d399' : '#f87171',
+                            fontWeight: 600,
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: '10px'
+                          }}
+                        >
+                          RS {g.mansfield_rs > 0 ? '+' : ''}{Number(g.mansfield_rs).toFixed(1)}%
+                        </span>
+                      )}
+                      <span>{g.stock_count ? `${g.stock_count} stks` : ''}</span>
+                    </div>
                   </div>
                   <span className="radar-rank-delta" style={{ color: deltaColor }}>
                     {arrow} {delta !== 0 ? Math.abs(delta) : ''}
@@ -1233,55 +1428,76 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
               <tr style={{ borderBottom: '1px solid var(--border-color)', userSelect: 'none', position: 'sticky', top: 0, zIndex: 10, background: '#0e1422' }}>
                 <th
                   onClick={() => handleSort('name')}
-                  style={{ textAlign: 'left', padding: '10px 12px', cursor: 'pointer', minWidth: '220px' }}
+                  style={{ textAlign: 'left', padding: '10px 12px', cursor: 'pointer', minWidth: '200px' }}
                 >
                   NAME {sortBy === 'name' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th
+                  onClick={() => handleSort('stage_num')}
+                  style={{ textAlign: 'center', padding: '10px 10px', cursor: 'pointer', width: '90px' }}
+                  title="Stan Weinstein 4-Stage Status (Stage 1 Basing, Stage 2 Advancing, Stage 3 Topping, Stage 4 Declining)"
+                >
+                  STAGE {sortBy === 'stage_num' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
+                </th>
+                <th
+                  onClick={() => handleSort('mansfield_rs')}
+                  style={{ textAlign: 'right', padding: '10px 10px', cursor: 'pointer', width: '105px' }}
+                  title="Mansfield Relative Strength vs SPY (Positive = Outperforming benchmark, Negative = Underperforming)"
+                >
+                  Mansfield RS {sortBy === 'mansfield_rs' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
+                </th>
+                <th
+                  onClick={() => handleSort('pct_in_stage2')}
+                  style={{ textAlign: 'right', padding: '10px 10px', cursor: 'pointer', width: '85px' }}
+                  title="% of constituent stocks in Stage 2 (Weinstein Breadth Confirmation)"
+                >
+                  % in S2 {sortBy === 'pct_in_stage2' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
+                </th>
+                <th
                   onClick={() => handleSort('today_pct')}
-                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '85px' }}
+                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '80px' }}
                 >
                   Today {sortBy === 'today_pct' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th
                   onClick={() => handleSort('ret_1w_pct')}
-                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '85px' }}
+                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '80px' }}
                 >
                   1W {sortBy === 'ret_1w_pct' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th
                   onClick={() => handleSort('ret_1m_pct')}
-                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '85px' }}
+                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '80px' }}
                 >
                   1M {sortBy === 'ret_1m_pct' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th
                   onClick={() => handleSort('ret_3m_pct')}
-                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '85px' }}
+                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '80px' }}
                 >
                   3M {sortBy === 'ret_3m_pct' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th
                   onClick={() => handleSort('ret_ytd_pct')}
-                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '85px' }}
+                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '80px' }}
                 >
                   YTD {sortBy === 'ret_ytd_pct' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th
                   onClick={() => handleSort('rs_rank')}
-                  style={{ textAlign: 'center', padding: '10px 12px', cursor: 'pointer', width: '80px' }}
+                  style={{ textAlign: 'center', padding: '10px 12px', cursor: 'pointer', width: '75px' }}
                 >
                   RS Rank {sortBy === 'rs_rank' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th
                   onClick={() => handleSort('dist_52wh_pct')}
-                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '90px' }}
+                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '85px' }}
                 >
                   52wH {sortBy === 'dist_52wh_pct' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th
                   onClick={() => handleSort('rvol_pct')}
-                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '85px' }}
+                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '80px' }}
                 >
                   RVol {sortBy === 'rvol_pct' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
@@ -1293,8 +1509,8 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
             <tbody>
               {filteredAndSortedGroups.length === 0 ? (
                 <tr>
-                  <td colSpan={10} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
-                    No {activeTab} matched your search filter.
+                  <td colSpan={activeTab === 'themes' ? 13 : 12} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                    No {activeTab} matched your search or stage filter.
                   </td>
                 </tr>
               ) : (
@@ -1395,6 +1611,56 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                           </div>
                         </td>
 
+                        {/* Weinstein Stage */}
+                        <td style={{ textAlign: 'center', padding: '11px 10px' }}>
+                          {group.stage_num ? (
+                            <span
+                              style={{
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                background: group.stage_num === 2 ? 'rgba(16, 185, 129, 0.2)' : group.stage_num === 1 ? 'rgba(56, 189, 248, 0.2)' : group.stage_num === 3 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(244, 63, 94, 0.2)',
+                                color: group.stage_num === 2 ? '#10b981' : group.stage_num === 1 ? '#38bdf8' : group.stage_num === 3 ? '#f59e0b' : '#f43f5e',
+                                border: `1px solid ${group.stage_num === 2 ? 'rgba(16, 185, 129, 0.4)' : 'rgba(255, 255, 255, 0.12)'}`
+                              }}
+                              title={group.stage || `Stage ${group.stage_num}`}
+                            >
+                              {group.stage_badge || `Stage ${group.stage_num}`}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>-</span>
+                          )}
+                        </td>
+
+                        {/* Mansfield RS */}
+                        <td style={{ textAlign: 'right', padding: '11px 10px', fontFamily: 'var(--font-mono)' }}>
+                          {group.mansfield_rs !== undefined && group.mansfield_rs !== null ? (
+                            <span style={{
+                              fontWeight: 700,
+                              color: group.mansfield_rs > 0 ? '#10b981' : group.mansfield_rs < 0 ? '#f43f5e' : 'var(--text-secondary)'
+                            }}>
+                              {group.mansfield_rs > 0 ? '+' : ''}{Number(group.mansfield_rs).toFixed(1)}%
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>-</span>
+                          )}
+                        </td>
+
+                        {/* % in Stage 2 */}
+                        <td style={{ textAlign: 'right', padding: '11px 10px', fontFamily: 'var(--font-mono)' }}>
+                          {group.pct_in_stage2 !== undefined && group.pct_in_stage2 !== null ? (
+                            <span style={{
+                              fontWeight: 600,
+                              color: group.pct_in_stage2 >= 50 ? '#10b981' : group.pct_in_stage2 >= 25 ? '#38bdf8' : 'var(--text-secondary)'
+                            }}>
+                              {Number(group.pct_in_stage2).toFixed(0)}%
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>-</span>
+                          )}
+                        </td>
+
                         {/* Today % */}
                         <td style={{ textAlign: 'right', padding: '11px 12px' }}>{formatReturn(group.today_pct)}</td>
 
@@ -1447,7 +1713,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                       {isExpanded && (
                         <tr>
                           <td
-                            colSpan={activeTab === 'themes' ? 10 : 9}
+                            colSpan={activeTab === 'themes' ? 13 : 12}
                             style={{
                               padding: '14px 16px 22px 28px',
                               backgroundColor: 'rgba(0, 0, 0, 0.38)',
@@ -1856,6 +2122,113 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
           {/* 5. STAGE ANALYSIS VIEW (Stan Weinstein 40-Week MA & Mansfield RS) */}
           {viewMode === 'stage' && (
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+              {/* Quick Group Navigator Bar for Stage View */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 14px',
+                  marginBottom: '10px',
+                  background: 'rgba(0, 0, 0, 0.35)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  borderRadius: '8px',
+                  flexWrap: 'wrap',
+                  gap: '8px'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>Active Group:</span>
+                  <select
+                    value={selectedGroupName || (filteredAndSortedGroups[0]?.name || '')}
+                    onChange={(e) => selectGroup(e.target.value)}
+                    style={{
+                      background: 'rgba(15, 23, 42, 0.9)',
+                      color: '#ffffff',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '6px',
+                      padding: '4px 10px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      maxWidth: '260px'
+                    }}
+                  >
+                    {filteredAndSortedGroups.map((g) => (
+                      <option key={g.name} value={g.name}>
+                        #{g.rank} {g.name} {g.stage_badge ? `[${g.stage_badge}]` : ''} {g.mansfield_rs !== undefined && g.mansfield_rs !== null ? `(MRS ${g.mansfield_rs > 0 ? '+' : ''}${Number(g.mansfield_rs).toFixed(1)}%)` : ''}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Stage & RS Quick Diagnostic Badges */}
+                  {selectedItem && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      {selectedItem.stage_badge && (
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            background: selectedItem.stage_num === 2 ? 'rgba(16, 185, 129, 0.25)' : selectedItem.stage_num === 1 ? 'rgba(56, 189, 248, 0.25)' : selectedItem.stage_num === 3 ? 'rgba(245, 158, 11, 0.25)' : 'rgba(244, 63, 94, 0.25)',
+                            color: selectedItem.stage_num === 2 ? '#10b981' : selectedItem.stage_num === 1 ? '#38bdf8' : selectedItem.stage_num === 3 ? '#f59e0b' : '#f43f5e',
+                            border: `1px solid ${selectedItem.stage_num === 2 ? 'rgba(16, 185, 129, 0.4)' : 'rgba(255, 255, 255, 0.15)'}`
+                          }}
+                        >
+                          {selectedItem.stage_badge}
+                        </span>
+                      )}
+                      {selectedItem.mansfield_rs !== undefined && selectedItem.mansfield_rs !== null && (
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            background: 'rgba(0, 0, 0, 0.4)',
+                            color: selectedItem.mansfield_rs > 0 ? '#34d399' : '#f87171',
+                            fontFamily: 'var(--font-mono)'
+                          }}
+                        >
+                          Mansfield RS: {selectedItem.mansfield_rs > 0 ? '+' : ''}{Number(selectedItem.mansfield_rs).toFixed(1)}%
+                        </span>
+                      )}
+                      {selectedItem.pct_in_stage2 !== undefined && selectedItem.pct_in_stage2 !== null && (
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            color: 'var(--text-secondary)'
+                          }}
+                        >
+                          Breadth: <strong style={{ color: '#ffffff' }}>{Number(selectedItem.pct_in_stage2).toFixed(0)}%</strong> in S2
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={handlePrevGroup}
+                    style={{ fontSize: '11px', padding: '3px 8px' }}
+                    title="Previous Group (↑ Up Arrow)"
+                  >
+                    ◀ Prev
+                  </button>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleNextGroup}
+                    style={{ fontSize: '11px', padding: '3px 8px' }}
+                    title="Next Group (↓ Down Arrow)"
+                  >
+                    Next ▶
+                  </button>
+                </div>
+              </div>
+
               <GroupStageChart
                 groupType={activeTab}
                 groupName={selectedGroupName || (filteredAndSortedGroups[0]?.name || '')}
@@ -1933,9 +2306,36 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                 {/* Metrics Matrix */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px', marginBottom: '14px' }}>
                   <div style={{ background: 'rgba(0,0,0,0.3)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Weinstein Stage</div>
+                    <div style={{
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      color: selectedItem.stage_num === 2 ? '#10b981' : selectedItem.stage_num === 1 ? '#38bdf8' : selectedItem.stage_num === 3 ? '#f59e0b' : selectedItem.stage_num === 4 ? '#f43f5e' : 'var(--text-secondary)'
+                    }}>
+                      {selectedItem.stage_badge || (selectedItem.stage_num ? `Stage ${selectedItem.stage_num}` : '--')}
+                    </div>
+                  </div>
+                  <div style={{ background: 'rgba(0,0,0,0.3)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Mansfield RS vs SPY</div>
+                    <div style={{
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      color: (selectedItem.mansfield_rs ?? 0) > 0 ? '#34d399' : (selectedItem.mansfield_rs ?? 0) < 0 ? '#f87171' : 'var(--text-secondary)',
+                      fontFamily: 'var(--font-mono)'
+                    }}>
+                      {selectedItem.mansfield_rs !== undefined && selectedItem.mansfield_rs !== null ? `${selectedItem.mansfield_rs > 0 ? '+' : ''}${Number(selectedItem.mansfield_rs).toFixed(1)}%` : '--'}
+                    </div>
+                  </div>
+                  <div style={{ background: 'rgba(0,0,0,0.3)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
                     <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>RS-Ratio / Mom</div>
                     <div style={{ fontSize: '12px', fontWeight: 700, color: '#38bdf8', fontFamily: 'var(--font-mono)' }}>
                       {selectedItem.rs_ratio || '--'} / {selectedItem.rs_momentum || '--'}
+                    </div>
+                  </div>
+                  <div style={{ background: 'rgba(0,0,0,0.3)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>% in Stage 2</div>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: (selectedItem.pct_in_stage2 ?? 0) >= 50 ? '#34d399' : '#38bdf8', fontFamily: 'var(--font-mono)' }}>
+                      {selectedItem.pct_in_stage2 !== undefined && selectedItem.pct_in_stage2 !== null ? `${Number(selectedItem.pct_in_stage2).toFixed(0)}%` : '--'}
                     </div>
                   </div>
                   <div style={{ background: 'rgba(0,0,0,0.3)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
@@ -1948,12 +2348,6 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                     <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>1M Return</div>
                     <div style={{ fontSize: '12px', fontWeight: 700, color: (selectedItem.ret_1m_pct || 0) >= 0 ? '#34d399' : '#f87171', fontFamily: 'var(--font-mono)' }}>
                       {selectedItem.ret_1m_pct !== undefined ? `${selectedItem.ret_1m_pct >= 0 ? '+' : ''}${selectedItem.ret_1m_pct}%` : '--'}
-                    </div>
-                  </div>
-                  <div style={{ background: 'rgba(0,0,0,0.3)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                    <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>YTD Return</div>
-                    <div style={{ fontSize: '12px', fontWeight: 700, color: (selectedItem.ret_ytd_pct || 0) >= 0 ? '#34d399' : '#f87171', fontFamily: 'var(--font-mono)' }}>
-                      {selectedItem.ret_ytd_pct !== undefined ? `${selectedItem.ret_ytd_pct >= 0 ? '+' : ''}${selectedItem.ret_ytd_pct}%` : '--'}
                     </div>
                   </div>
                 </div>

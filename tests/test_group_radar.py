@@ -90,6 +90,11 @@ class TestGroupRadarService(unittest.TestCase):
         self.assertIsInstance(results, list)
         self.assertGreater(len(results), 50)
 
+        first = results[0]
+        self.assertIn("stage", first)
+        self.assertIn("mansfield_rs", first)
+        self.assertIn("pct_in_stage2", first)
+
         # Check Semiconductors or Computer Software
         names = [r["name"] for r in results]
         self.assertTrue(any("Semiconductors" in n or "Software" in n for n in names))

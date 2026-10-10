@@ -1,5 +1,6 @@
 import React from 'react';
 import CandlestickChart from './CandlestickChart';
+import GroupStageChart from './GroupStageChart';
 import ExpressionCheatSheet from './ExpressionCheatSheet';
 import { getLocalDateStr } from '../utils/dateUtils';
 
@@ -159,6 +160,8 @@ export default function CandidatesTab({
   const [showExpressionSection, setShowExpressionSection] = React.useState(false);
   const [exprValidation, setExprValidation] = React.useState({ valid: true, error: null });
   const [selectedSector, setSelectedSector] = React.useState('ALL');
+  const [stage2OnlyFilter, setStage2OnlyFilter] = React.useState(false);
+  const [previewGroupModal, setPreviewGroupModal] = React.useState(null);
 
   const priceCacheRef = React.useRef(new Map());
   const pendingRequestsRef = React.useRef(new Map());
@@ -237,14 +240,18 @@ export default function CandidatesTab({
   }, [filteredCandidates]);
 
   const displayedCandidates = React.useMemo(() => {
-    if (!selectedSector || selectedSector === 'ALL') {
-      return filteredCandidates;
+    let list = filteredCandidates || [];
+    if (selectedSector && selectedSector !== 'ALL') {
+      list = list.filter(c => {
+        const s = c.sector && c.sector.trim() !== '' ? c.sector.trim() : 'Unclassified';
+        return s === selectedSector;
+      });
     }
-    return filteredCandidates.filter(c => {
-      const s = c.sector && c.sector.trim() !== '' ? c.sector.trim() : 'Unclassified';
-      return s === selectedSector;
-    });
-  }, [filteredCandidates, selectedSector]);
+    if (stage2OnlyFilter) {
+      list = list.filter(c => c.industry_stage_num === 2 || (typeof c.group_stage_badge === 'string' && c.group_stage_badge.includes('Stage 2')));
+    }
+    return list;
+  }, [filteredCandidates, selectedSector, stage2OnlyFilter]);
 
   // Reset selected sector if no longer present in candidates list
   React.useEffect(() => {
@@ -1158,8 +1165,61 @@ export default function CandidatesTab({
                     <div style={{ fontSize: '14px', fontWeight: 700, color: '#ffffff', lineHeight: 1.2 }}>
                       {currentCandidate?.name || currentCandidate?.symbol || ''}
                     </div>
-                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                      {currentCandidate?.exchange || ''} • {currentCandidate?.sector || 'Sector'} ({currentCandidate?.industry || 'Industry'})
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                        {currentCandidate?.exchange || ''} • {currentCandidate?.sector || 'Sector'}
+                      </span>
+                      {currentCandidate?.industry && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewGroupModal({ groupType: 'industries', groupName: currentCandidate.industry })}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '2px 8px',
+                            borderRadius: '5px',
+                            background: 'rgba(56, 189, 248, 0.1)',
+                            border: '1px solid rgba(56, 189, 248, 0.3)',
+                            color: '#38bdf8',
+                            fontSize: '11.5px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                          }}
+                          className="hover-brighten"
+                          title="Click to view Stan Weinstein Stage Analysis Chart & Breadth for this Industry"
+                        >
+                          <span>🏭 {currentCandidate.industry}</span>
+                          {currentCandidate.industry_stage_num ? (
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                fontWeight: 700,
+                                padding: '1px 5px',
+                                borderRadius: '3px',
+                                background: currentCandidate.industry_stage_num === 2 ? 'rgba(16, 185, 129, 0.25)' : currentCandidate.industry_stage_num === 1 ? 'rgba(56, 189, 248, 0.25)' : currentCandidate.industry_stage_num === 3 ? 'rgba(245, 158, 11, 0.25)' : 'rgba(244, 63, 94, 0.25)',
+                                color: currentCandidate.industry_stage_num === 2 ? '#10b981' : currentCandidate.industry_stage_num === 1 ? '#38bdf8' : currentCandidate.industry_stage_num === 3 ? '#f59e0b' : '#f43f5e',
+                                border: `1px solid ${currentCandidate.industry_stage_num === 2 ? 'rgba(16, 185, 129, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`
+                              }}
+                            >
+                              {currentCandidate.industry_stage_badge || `S${currentCandidate.industry_stage_num}`}
+                            </span>
+                          ) : null}
+                          {currentCandidate.industry_mansfield_rs !== undefined && currentCandidate.industry_mansfield_rs !== null && (
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                fontWeight: 700,
+                                color: currentCandidate.industry_mansfield_rs >= 0 ? '#34d399' : '#f87171'
+                              }}
+                            >
+                              RS {currentCandidate.industry_mansfield_rs >= 0 ? '+' : ''}{Number(currentCandidate.industry_mansfield_rs).toFixed(1)}%
+                            </span>
+                          )}
+                          <span style={{ fontSize: '10px', opacity: 0.85 }}>📈 Chart</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1542,8 +1602,8 @@ export default function CandidatesTab({
               </div>
             </div>
 
-            {/* Sector Filter Dropdown */}
-            <div style={{ marginBottom: '8px', flexShrink: 0 }}>
+            {/* Sector Filter & Weinstein Stage 2 Quick Filter */}
+            <div style={{ marginBottom: '8px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '5px' }}>
               <select
                 value={selectedSector}
                 onChange={(e) => {
@@ -1571,6 +1631,36 @@ export default function CandidatesTab({
                   </option>
                 ))}
               </select>
+
+              {/* Stan Weinstein Stage 2 Group Toggle */}
+              <button
+                type="button"
+                onClick={() => {
+                  setStage2OnlyFilter((prev) => !prev);
+                  setBrowseIndex(0);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  background: stage2OnlyFilter ? 'rgba(16, 185, 129, 0.22)' : 'rgba(255, 255, 255, 0.03)',
+                  border: `1px solid ${stage2OnlyFilter ? '#10b981' : 'rgba(255, 255, 255, 0.08)'}`,
+                  color: stage2OnlyFilter ? '#10b981' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+                title="Stan Weinstein Rule: Only show candidates whose industry is in Stage 2 (Advancing Markup)"
+              >
+                <span>🟩 Stage 2 Groups Only</span>
+                <span style={{ fontSize: '10px', opacity: 0.85 }}>
+                  {stage2OnlyFilter ? 'ACTIVE ✓' : 'OFF'}
+                </span>
+              </button>
             </div>
 
             <div
@@ -1613,6 +1703,22 @@ export default function CandidatesTab({
                       {isItemSaved && <span style={{ fontSize: '11px' }} title="Saved in active watchlist">⭐️</span>}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      {c.industry_stage_num && (
+                        <span
+                          className="pill"
+                          style={{
+                            fontSize: '9.5px',
+                            padding: '1px 5px',
+                            fontWeight: 700,
+                            background: c.industry_stage_num === 2 ? 'rgba(16, 185, 129, 0.2)' : c.industry_stage_num === 1 ? 'rgba(56, 189, 248, 0.2)' : c.industry_stage_num === 3 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(244, 63, 94, 0.2)',
+                            color: c.industry_stage_num === 2 ? '#10b981' : c.industry_stage_num === 1 ? '#38bdf8' : c.industry_stage_num === 3 ? '#f59e0b' : '#f43f5e',
+                            border: `1px solid ${c.industry_stage_num === 2 ? 'rgba(16, 185, 129, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`
+                          }}
+                          title={`Industry: ${c.industry || ''} (Stage ${c.industry_stage_num})`}
+                        >
+                          S{c.industry_stage_num}
+                        </span>
+                      )}
                       {c.ti_65 !== null && c.ti_65 !== undefined && (
                         <span
                           className="pill"
@@ -1668,6 +1774,82 @@ export default function CandidatesTab({
                 );
               })}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Stan Weinstein Industry Stage Chart Preview */}
+      {previewGroupModal && (
+        <div
+          className="full-page-modal-backdrop"
+          onClick={() => setPreviewGroupModal(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.78)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+        >
+          <div
+            className="glass-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '940px',
+              maxWidth: '96vw',
+              maxHeight: '92vh',
+              overflowY: 'auto',
+              background: '#0e1422',
+              border: '1px solid rgba(56, 189, 248, 0.35)',
+              borderRadius: '14px',
+              padding: '20px 24px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              boxShadow: '0 24px 50px rgba(0, 0, 0, 0.75)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '12px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                  <span style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    STAN WEINSTEIN INDUSTRY CONFIRMATION
+                  </span>
+                  <span className="badge badge-outline" style={{ fontSize: '10px' }}>
+                    Forest to Tree Check
+                  </span>
+                </div>
+                <h3 style={{ margin: 0, fontSize: '19px', fontWeight: 800, color: '#ffffff' }}>
+                  🏭 {previewGroupModal.groupName}
+                </h3>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setPreviewGroupModal(null)}
+                style={{ padding: '5px 12px', fontSize: '12px' }}
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            <GroupStageChart
+              groupType={previewGroupModal.groupType}
+              groupName={previewGroupModal.groupName}
+              onSelectStock={(sym) => {
+                setPreviewGroupModal(null);
+                handleSelectStock(sym);
+              }}
+              height={440}
+              isCompact={false}
+            />
           </div>
         </div>
       )}

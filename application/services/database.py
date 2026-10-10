@@ -1533,6 +1533,14 @@ class DatabaseService:
             except Exception as e:
                 print(f"Error calculating forward performance for candidates on {actual_date_str}: {e}")
 
+            if candidates:
+                try:
+                    from application.services.group_radar_service import GroupRadarService
+                    gr_service = GroupRadarService(self.get_db_path())
+                    candidates = gr_service.enrich_stocks_with_groups(candidates, date=actual_date_str)
+                except Exception as e:
+                    logger.error(f"Error enriching candidates with groups on {actual_date_str}: {e}")
+
             return candidates
 
 

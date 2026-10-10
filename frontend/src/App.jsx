@@ -33,6 +33,15 @@ function App() {
     }
   }, [activeTab]);
 
+  // Global listener for Industry Radar navigation
+  useEffect(() => {
+    const handleNavRadar = () => {
+      setActiveTab('sector-compare');
+    };
+    window.addEventListener('pt-navigate-radar', handleNavRadar);
+    return () => window.removeEventListener('pt-navigate-radar', handleNavRadar);
+  }, []);
+
   const fetchWatchlists = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/watchlists`);
