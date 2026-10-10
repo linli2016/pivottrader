@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import RRGQuadrantChart from './RRGQuadrantChart';
 import GroupStageChart from './GroupStageChart';
 
@@ -149,22 +149,36 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
     }
   };
 
+  const inspectorRequestIdRef = useRef(0);
+
   const fetchInspectorConstituents = async (name) => {
     if (!name) return;
+    const reqId = ++inspectorRequestIdRef.current;
     setLoadingSelectedConstituents(true);
     try {
       const dateParam = selectedDate ? `&date=${encodeURIComponent(selectedDate)}` : '';
       const res = await fetch(`${API_BASE}/api/groups/constituents?type=${activeTab}&name=${encodeURIComponent(name)}${dateParam}`);
-      if (res.ok) {
+      if (res.ok && reqId === inspectorRequestIdRef.current) {
         const items = await res.json();
-        setSelectedConstituents(Array.isArray(items) ? items : []);
+        if (reqId === inspectorRequestIdRef.current) {
+          setSelectedConstituents(Array.isArray(items) ? items : []);
+        }
       }
     } catch (err) {
-      console.error('Error loading inspector constituents:', err);
+      if (reqId === inspectorRequestIdRef.current) {
+        console.error('Error loading inspector constituents:', err);
+      }
     } finally {
-      setLoadingSelectedConstituents(false);
+      if (reqId === inspectorRequestIdRef.current) {
+        setLoadingSelectedConstituents(false);
+      }
     }
   };
+
+  useEffect(() => {
+    setSelectedGroupName(null);
+    setSelectedConstituents([]);
+  }, [activeTab]);
 
   useEffect(() => {
     fetchGroupStrength(activeTab, selectedDate);
@@ -347,6 +361,82 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
     if (!selectedGroupName || !Array.isArray(data)) return null;
     return data.find((d) => d.name === selectedGroupName) || null;
   }, [selectedGroupName, data]);
+
+  const scrollToGroupRow = (name) => {
+    if (!name) return;
+    const rankEl = document.getElementById(`radar-rank-row-${encodeURIComponent(name)}`);
+    if (rankEl) {
+      rankEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    const tableEl = document.getElementById(`radar-table-row-${encodeURIComponent(name)}`);
+    if (tableEl && viewMode === 'table') {
+      tableEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  };
+
+  const selectGroup = (name) => {
+    if (!name) return;
+    setSelectedGroupName(name);
+    fetchInspectorConstituents(name);
+    setTimeout(() => scrollToGroupRow(name), 10);
+  };
+
+  const handleNextGroup = () => {
+    if (!filteredAndSortedGroups || filteredAndSortedGroups.length === 0) return;
+    const currentIndex = filteredAndSortedGroups.findIndex((g) => g.name === selectedGroupName);
+    let nextIndex = 0;
+    if (currentIndex >= 0) {
+      nextIndex = currentIndex < filteredAndSortedGroups.length - 1 ? currentIndex + 1 : 0;
+    } else if (viewMode === 'stage' && filteredAndSortedGroups.length > 1) {
+      nextIndex = 1;
+    }
+    const nextGroup = filteredAndSortedGroups[nextIndex];
+    if (nextGroup) {
+      selectGroup(nextGroup.name);
+    }
+  };
+
+  const handlePrevGroup = () => {
+    if (!filteredAndSortedGroups || filteredAndSortedGroups.length === 0) return;
+    const currentIndex = filteredAndSortedGroups.findIndex((g) => g.name === selectedGroupName);
+    let prevIndex = filteredAndSortedGroups.length - 1;
+    if (currentIndex > 0) {
+      prevIndex = currentIndex - 1;
+    } else if (currentIndex === 0) {
+      prevIndex = filteredAndSortedGroups.length - 1;
+    }
+    const prevGroup = filteredAndSortedGroups[prevIndex];
+    if (prevGroup) {
+      selectGroup(prevGroup.name);
+    }
+  };
+
+  // Keyboard navigation: Up/Down arrow keys move between sectors / industries / themes
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Don't intercept if user is typing in an input, textarea, or select element
+      const activeTag = document.activeElement?.tagName;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(activeTag) || ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target?.tagName)) {
+        return;
+      }
+
+      // Don't intercept if modal or drawer is open
+      if (isThemeModalOpen || document.querySelector('.full-page-modal-backdrop') || e.defaultPrevented) {
+        return;
+      }
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        handleNextGroup();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        handlePrevGroup();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [filteredAndSortedGroups, selectedGroupName, viewMode, isThemeModalOpen]);
 
   const topMovers = useMemo(() => {
     if (!Array.isArray(data) || data.length === 0) return [];
@@ -769,14 +859,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
             ))}
           </div>
 
-          {/* Ranking info */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-            <span>📅 {selectedDate ? `ranking as of ${selectedDate}` : 'ranking as of Latest'}</span>
-          </div>
-        </div>
-
-        <div className="radar-toolbar-right">
-          {/* Search box */}
+          {/* Search box directly on the same line as tabs */}
           <div style={{ position: 'relative' }}>
             <input
               type="text"
@@ -785,17 +868,18 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{
-                width: '210px',
+                width: '190px',
                 background: 'rgba(0, 0, 0, 0.35)',
                 color: 'var(--text-primary)',
                 border: '1px solid var(--border-color)',
                 borderRadius: '20px',
-                padding: '6px 28px 6px 12px',
+                padding: '5px 28px 5px 12px',
                 fontSize: '12px'
               }}
             />
             {searchTerm && (
               <button
+                type="button"
                 onClick={() => setSearchTerm('')}
                 style={{
                   position: 'absolute',
@@ -813,6 +897,9 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
               </button>
             )}
           </div>
+        </div>
+
+        <div className="radar-toolbar-right">
 
           {activeTab === 'themes' && (
             <button
@@ -841,9 +928,33 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
           <div className="radar-left-header">
             <div className="radar-left-title">
               <span>{activeTab === 'sectors' ? 'Sector' : activeTab === 'industries' ? 'Industry' : 'Theme'} ranks</span>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{filteredAndSortedGroups.length}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{filteredAndSortedGroups.length}</span>
+                <div style={{ display: 'inline-flex', gap: '3px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ padding: '1px 6px', fontSize: '10px', height: '22px', minWidth: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                    onClick={handlePrevGroup}
+                    disabled={filteredAndSortedGroups.length === 0}
+                    title="Previous Group (↑ Up Arrow)"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ padding: '1px 6px', fontSize: '10px', height: '22px', minWidth: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                    onClick={handleNextGroup}
+                    disabled={filteredAndSortedGroups.length === 0}
+                    title="Next Group (↓ Down Arrow)"
+                  >
+                    ▼
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="radar-left-subtitle">Click once to focus, click again to clear.</div>
+            <div className="radar-left-subtitle">Use ↑ / ↓ arrow keys or buttons to navigate.</div>
           </div>
 
           <div className="radar-ranks-scroll">
@@ -858,6 +969,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
               return (
                 <div
                   key={g.name}
+                  id={`radar-rank-row-${encodeURIComponent(g.name)}`}
                   className={`radar-rank-row ${isSelected ? 'selected' : ''}`}
                   onClick={() => handleSelectGroup(g.name)}
                   title={`#${g.rank} ${g.name} | ${g.quadrant || 'Improving'} | Δ ${delta} | ${timeframe}: ${retStr}`}
@@ -882,15 +994,6 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
         {/* CENTER COLUMN: Main Canvas */}
         <div className="radar-center-col">
           <div className="radar-canvas-header">
-            <div className="radar-category-legend">
-              {SECTOR_LEGEND_DOTS.map((cat) => (
-                <div key={cat.name} className="radar-category-dot-item">
-                  <span className="radar-category-dot" style={{ backgroundColor: cat.color }} />
-                  <span style={{ color: 'var(--text-secondary)' }}>{cat.name}</span>
-                </div>
-              ))}
-            </div>
-
             <div className="radar-migration-pills" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ color: 'var(--text-muted)', fontSize: '11px', marginRight: '4px' }}>Migrated:</span>
               <span className="radar-mig-pill" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
@@ -946,13 +1049,14 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
             </div>
           </div>
 
-          <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 500, marginBottom: '10px', height: '18px', lineHeight: '18px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-            {viewMode === 'rrg' && 'Lines show where leaders moved over the window • hover any bubble for detail'}
-            {viewMode === 'board' && 'Quadrants matrix showing leaders & rotation stages • click card to inspect'}
-            {viewMode === 'heatmap' && 'Rank-ordered performance tiles tinted by quadrant status • click tile to inspect'}
-            {viewMode === 'table' && 'Detailed metrics table with multi-timeframe returns & relative strength'}
-            {viewMode === 'stage' && 'Stan Weinstein Stage Analysis • Synthetic Group Candlesticks, 40-Week SMA & Mansfield RS vs SPY'}
-          </div>
+          {viewMode !== 'stage' && (
+            <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 500, marginBottom: '10px', height: '18px', lineHeight: '18px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+              {viewMode === 'rrg' && 'Lines show where leaders moved over the window • hover any bubble for detail'}
+              {viewMode === 'board' && 'Quadrants matrix showing leaders & rotation stages • click card to inspect'}
+              {viewMode === 'heatmap' && 'Rank-ordered performance tiles tinted by quadrant status • click tile to inspect'}
+              {viewMode === 'table' && 'Detailed metrics table with multi-timeframe returns & relative strength'}
+            </div>
+          )}
 
           {/* VIEW CANVAS CONTAINER WITH STABLE HEIGHT & INTERNAL SCROLL */}
           <div className="radar-canvas-view-wrap">
@@ -1211,14 +1315,22 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                     <React.Fragment key={group.name}>
                       {/* Parent Group Row */}
                       <tr
-                        onClick={() => toggleGroupExpand(group.name)}
+                        id={`radar-table-row-${encodeURIComponent(group.name)}`}
+                        onClick={() => {
+                          selectGroup(group.name);
+                          toggleGroupExpand(group.name);
+                        }}
                         style={{
                           borderBottom: '1px solid var(--border-color)',
                           cursor: 'pointer',
-                          backgroundColor: isExpanded ? 'rgba(255, 255, 255, 0.04)' : 'transparent',
+                          backgroundColor: selectedGroupName === group.name
+                            ? 'rgba(56, 189, 248, 0.16)'
+                            : isExpanded
+                            ? 'rgba(255, 255, 255, 0.04)'
+                            : 'transparent',
                           transition: 'background-color 0.15s ease'
                         }}
-                        className="group-row"
+                        className={`group-row ${selectedGroupName === group.name ? 'selected-group-row' : ''}`}
                       >
                         {/* Group Name + Chevron */}
                         <td style={{ padding: '11px 12px' }}>
@@ -1743,56 +1855,12 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
 
           {/* 5. STAGE ANALYSIS VIEW (Stan Weinstein 40-Week MA & Mansfield RS) */}
           {viewMode === 'stage' && (
-            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '12px',
-                  background: 'rgba(0,0,0,0.3)',
-                  padding: '8px 14px',
-                  borderRadius: '8px',
-                  border: '1px solid rgba(255,255,255,0.06)'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>
-                    Active {activeTab === 'sectors' ? 'Sector' : activeTab === 'industries' ? 'Industry' : 'Theme'}:
-                  </span>
-                  <select
-                    value={selectedGroupName || (filteredAndSortedGroups[0]?.name || '')}
-                    onChange={(e) => handleSelectGroup(e.target.value)}
-                    className="form-control"
-                    style={{
-                      padding: '4px 12px',
-                      fontSize: '12px',
-                      minWidth: '240px',
-                      background: '#0e1422',
-                      border: '1px solid rgba(255,255,255,0.18)',
-                      color: '#ffffff',
-                      borderRadius: '6px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {filteredAndSortedGroups.map((g) => (
-                      <option key={g.name} value={g.name}>
-                        {g.name} ({g.quadrant || 'Stage'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  Stan Weinstein Methodology: 40-Week SMA • Mansfield RS vs SPY • Group Breadth
-                </div>
-              </div>
-
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
               <GroupStageChart
                 groupType={activeTab}
                 groupName={selectedGroupName || (filteredAndSortedGroups[0]?.name || '')}
                 onSelectStock={onSelectStock}
-                height={480}
+                height={500}
                 isCompact={false}
               />
             </div>
@@ -1804,8 +1872,30 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
         <div className="radar-right-col">
           {/* Selected Group Card */}
           <div className="radar-inspector-card">
-            <div className="radar-inspector-title">
-              Selected {activeTab === 'sectors' ? 'Sector' : activeTab === 'industries' ? 'Industry' : 'Theme'}
+            <div className="radar-inspector-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Selected {activeTab === 'sectors' ? 'Sector' : activeTab === 'industries' ? 'Industry' : 'Theme'}</span>
+              <div style={{ display: 'inline-flex', gap: '3px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ padding: '1px 6px', fontSize: '10px', height: '20px', minWidth: '20px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                  onClick={handlePrevGroup}
+                  disabled={filteredAndSortedGroups.length === 0}
+                  title="Previous Group (↑ Up Arrow)"
+                >
+                  ▲
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ padding: '1px 6px', fontSize: '10px', height: '20px', minWidth: '20px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                  onClick={handleNextGroup}
+                  disabled={filteredAndSortedGroups.length === 0}
+                  title="Next Group (↓ Down Arrow)"
+                >
+                  ▼
+                </button>
+              </div>
             </div>
 
             {!selectedItem ? (

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 
-// Total outer height of the thumbnail (svgHeight 84 + padding top/bottom 5 + border 2 = 91px)
-export const MANSFIELD_THUMBNAIL_HEIGHT = 91;
+// Total outer height of the thumbnail (svgHeight 52 + padding top/bottom 4 + border 2 = 58px)
+export const MANSFIELD_THUMBNAIL_HEIGHT = 58;
 
 // In-memory cache for full historical yearly bars to avoid redundant network round-trips
 const yearlyBarsCache = new Map();
@@ -211,11 +211,11 @@ export default function MansfieldYearlyThumbnail({
 
   // --- Dimensions: Ultra-compact, narrow footprint ---
   const svgWidth = 126;
-  const svgHeight = 84;
+  const svgHeight = 52;
   const padLeft = 4;
   const padRight = 24; // space for price tag at right
-  const padTop = 13;   // space for mini ATH/Blue Sky text at top
-  const padBottom = 13; // space for year labels
+  const padTop = 11;   // space for mini ATH/Blue Sky text at top
+  const padBottom = 10; // space for year labels
 
   const chartW = svgWidth - padLeft - padRight;
   const chartH = svgHeight - padTop - padBottom;
@@ -253,7 +253,7 @@ export default function MansfieldYearlyThumbnail({
         background: 'rgba(15, 23, 42, 0.96)',
         border: '1px solid rgba(255, 255, 255, 0.14)',
         borderRadius: '5px',
-        padding: '3px 3px 2px 3px',
+        padding: '2px 3px 2px 3px',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         boxShadow: '0 4px 16px rgba(0, 0, 0, 0.55)',
@@ -274,9 +274,9 @@ export default function MansfieldYearlyThumbnail({
           {/* Subtle Top Indicator Text (No title bar, just clean data) */}
           <text
             x={padLeft}
-            y={9}
+            y={8.5}
             fill="#38bdf8"
-            fontSize="7.5px"
+            fontSize="7px"
             fontWeight="800"
             letterSpacing="0.4px"
           >
@@ -286,10 +286,10 @@ export default function MansfieldYearlyThumbnail({
           {supplyAnalysis?.isBlueSky ? (
             <text
               x={padLeft + chartW}
-              y={9}
+              y={8.5}
               textAnchor="end"
               fill="#34d399"
-              fontSize="7.5px"
+              fontSize="7px"
               fontWeight="800"
             >
               ★ BLUE SKY
@@ -297,10 +297,10 @@ export default function MansfieldYearlyThumbnail({
           ) : (
             <text
               x={padLeft + chartW}
-              y={9}
+              y={8.5}
               textAnchor="end"
               fill="#fbbf24"
-              fontSize="7px"
+              fontSize="6.5px"
               fontWeight="700"
             >
               ATH ${formatPriceTag(supplyAnalysis?.allTimeHigh)} ({supplyAnalysis?.distToAthPct?.toFixed(0)}%)
@@ -410,7 +410,7 @@ export default function MansfieldYearlyThumbnail({
                   y={svgHeight - 2}
                   textAnchor="middle"
                   fill={hasOverhead ? '#fca5a5' : 'rgba(255, 255, 255, 0.5)'}
-                  fontSize="7px"
+                  fontSize="6.5px"
                   fontWeight={isHovered || hasOverhead ? 700 : 500}
                 >
                   '{bar.year.slice(2)}
@@ -422,17 +422,17 @@ export default function MansfieldYearlyThumbnail({
           {/* Current Breakout Price Tag on the Right */}
           <rect
             x={padLeft + chartW + 2}
-            y={Math.max(padTop - 2, Math.min(svgHeight - 16, activeY - 5.5))}
+            y={Math.max(padTop - 2, Math.min(svgHeight - 13, activeY - 5))}
             width={padRight - 3}
-            height="11"
+            height="10"
             fill="#0284c7"
             rx="2"
           />
           <text
             x={padLeft + chartW + 3.5}
-            y={Math.max(padTop - 2, Math.min(svgHeight - 16, activeY - 5.5)) + 8}
+            y={Math.max(padTop - 2, Math.min(svgHeight - 13, activeY - 5)) + 7.5}
             fill="#ffffff"
-            fontSize="7px"
+            fontSize="6.5px"
             fontWeight="700"
           >
             ${formatPriceTag(activePrice)}

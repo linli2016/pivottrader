@@ -85,6 +85,7 @@ class TestMarketMonitorAsOf(unittest.TestCase):
         self.assertIn("latest_net_new_highs", summary)
         self.assertIn("latest_net_new_highs_10d", summary)
         self.assertIn("latest_cum_ad", summary)
+        self.assertIn("latest_momentum_index", summary)
         self.assertIn("weinstein_verdict", summary)
 
         verdict = summary["weinstein_verdict"]
@@ -97,7 +98,10 @@ class TestMarketMonitorAsOf(unittest.TestCase):
         self.assertIn("ad_status", verdict)
         self.assertIn("nh_status", verdict)
         self.assertIn("ma_status", verdict)
-        self.assertTrue(0 <= verdict["score"] <= 4)
+        self.assertIn("mi_status", verdict)
+        self.assertIn("mi_is_bullish", verdict)
+        self.assertIn("momentum_index", verdict)
+        self.assertTrue(0 <= verdict["score"] <= 5)
 
         # Verify daily data fields
         first_row = res["daily_data"][0]
@@ -106,6 +110,7 @@ class TestMarketMonitorAsOf(unittest.TestCase):
         self.assertIn("net_new_highs", first_row)
         self.assertIn("net_new_highs_10d", first_row)
         self.assertIn("cum_ad", first_row)
+        self.assertIn("momentum_index", first_row)
         self.assertIn("spy_close", first_row)
         self.assertIn("spy_sma_200", first_row)
         self.assertGreater(first_row["spy_close"], 0.0)

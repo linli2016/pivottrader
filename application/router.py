@@ -345,6 +345,16 @@ def get_market_pulse_history(limit: int = 252, date: Optional[str] = None):
         logger.error(f"Error in get_market_pulse_history: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/api/market/stages")
+def get_market_stages(limit: int = 252, date: Optional[str] = None):
+    """Retrieve Stan Weinstein 4-Stage market-wide stock distribution summary and historical dynamics."""
+    try:
+        return db_service.get_stage_distribution(as_of_date=date, limit=limit)
+    except Exception as e:
+        logger.error(f"Error in get_market_stages: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 @router.get("/api/market/cross-asset")
 def get_cross_asset(date: Optional[str] = None, refresh: bool = False):

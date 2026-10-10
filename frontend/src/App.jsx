@@ -106,7 +106,7 @@ function App() {
   const [setupsConfig, setSetupsConfig] = useState({ folders: [], setups: [], filters: {} });
   const [activeFolderId, setActiveFolderId] = useState('daily');
   const [activeScreenerId, setActiveScreenerId] = useState('power_play');
-  const [folderMemory, setFolderMemory] = useState({ daily: 'power_play', weekly: 'leaders', others: 'stage2' });
+  const [folderMemory, setFolderMemory] = useState({ daily: 'power_play', weekly: 'leaders', others: 'confirmed_staged' });
   const [activeSetupKey, setActiveSetupKey] = useState('power_play');
   const [activeExpression, setActiveExpression] = useState('');
 

@@ -510,10 +510,8 @@ export default function StockDetailDrawer({
           border: '1px solid var(--border-color)',
           borderRadius: '8px',
           padding: '6px 10px',
-          height: '480px',
-          minHeight: '480px',
-          maxHeight: '480px',
-          flexShrink: 0,
+          flex: 1,
+          minHeight: 0,
           boxSizing: 'border-box',
           overflow: 'hidden',
           display: 'flex',
@@ -524,7 +522,7 @@ export default function StockDetailDrawer({
             symbol={selectedStock?.symbol}
             companyName={cleanName}
             asOfDate={selectedStock?.screen_date || null}
-            height={468}
+            height="100%"
           />
         </div>
       </div>

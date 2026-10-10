@@ -26,15 +26,91 @@ COMPANY_DESCRIPTIONS: Dict[str, str] = {
 }
 
 
+class RWLock:
+    """Thread-safe reentrant Reader-Writer Lock."""
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._cond = threading.Condition(self._lock)
+        self._readers = 0
+        self._reader_threads = defaultdict(int)
+        self._writers_waiting = 0
+        self._writing = False
+        self._writer_thread = None
+        self._writer_count = 0
+
+    def acquire_read(self):
+        tid = threading.get_ident()
+        with self._lock:
+            if self._reader_threads[tid] > 0:
+                self._reader_threads[tid] += 1
+                self._readers += 1
+                return
+            while self._writing or self._writers_waiting > 0:
+                self._cond.wait()
+            self._reader_threads[tid] = 1
+            self._readers += 1
+
+    def release_read(self) -> int:
+        tid = threading.get_ident()
+        with self._lock:
+            if tid in self._reader_threads:
+                self._reader_threads[tid] -= 1
+                if self._reader_threads[tid] == 0:
+                    del self._reader_threads[tid]
+            self._readers = max(0, self._readers - 1)
+            readers_left = self._readers
+            if self._readers == 0:
+                self._cond.notify_all()
+        return readers_left
+
+    def get_readers_count(self) -> int:
+        with self._lock:
+            return self._readers
+
+    def acquire_write(self):
+        tid = threading.get_ident()
+        with self._lock:
+            if self._writer_thread == tid:
+                self._writer_count += 1
+                return
+            self._writers_waiting += 1
+            while self._writing or self._readers > 0:
+                self._cond.wait()
+            self._writers_waiting -= 1
+            self._writing = True
+            self._writer_thread = tid
+            self._writer_count = 1
+
+    def release_write(self):
+        tid = threading.get_ident()
+        with self._lock:
+            if self._writer_thread == tid:
+                self._writer_count -= 1
+                if self._writer_count == 0:
+                    self._writer_thread = None
+                    self._writing = False
+                    self._cond.notify_all()
+
+
 class ReadConnectionContext:
     """Thread-safe cursor context manager that behaves as a DuckDB connection/cursor."""
     def __init__(self, service):
         self.service = service
         self.cursor = None
+        self._acquired = False
 
     def __enter__(self):
-        self.cursor = self.service._get_cursor()
-        return self.cursor
+        self.service._rwlock.acquire_read()
+        self._acquired = True
+        try:
+            self.cursor = self.service._get_cursor()
+            return self.cursor
+        except Exception:
+            remaining = self.service._rwlock.release_read()
+            self._acquired = False
+            if remaining == 0:
+                self.service.close_connection()
+            raise
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.cursor:
@@ -43,8 +119,16 @@ class ReadConnectionContext:
             except Exception:
                 pass
             self.cursor = None
+        if self._acquired:
+            remaining = self.service._rwlock.release_read()
+            self._acquired = False
+            if remaining == 0:
+                self.service.close_connection()
 
     def execute(self, *args, **kwargs):
+        if not self._acquired:
+            self.service._rwlock.acquire_read()
+            self._acquired = True
         if not self.cursor:
             self.cursor = self.service._get_cursor()
         return self.cursor.execute(*args, **kwargs)
@@ -63,6 +147,9 @@ class ReadConnectionContext:
         return self.cursor.description if self.cursor else []
 
     def register(self, view_name, python_object):
+        if not self._acquired:
+            self.service._rwlock.acquire_read()
+            self._acquired = True
         if not self.cursor:
             self.cursor = self.service._get_cursor()
         return self.cursor.register(view_name, python_object)
@@ -78,20 +165,40 @@ class ReadConnectionContext:
             except Exception:
                 pass
             self.cursor = None
+        if self._acquired:
+            remaining = self.service._rwlock.release_read()
+            self._acquired = False
+            if remaining == 0:
+                self.service.close_connection()
 
 
 class WriteConnectionContext:
     """Thread-safe write cursor context manager serialized across threads."""
     def __init__(self, service):
         self.service = service
+        self.conn = None
         self.cursor = None
         self._acquired = False
 
     def __enter__(self):
-        self.service._write_lock.acquire()
+        self.service._rwlock.acquire_write()
         self._acquired = True
-        self.cursor = self.service._get_cursor()
-        return self.cursor
+        try:
+            self.service.close_connection()
+            from application.database import DatabaseManager
+            self.conn = DatabaseManager(self.service.get_db_path(), init_schema=False).get_connection()
+            self.cursor = self.conn.cursor()
+            return self.cursor
+        except Exception:
+            if self.conn:
+                try:
+                    self.conn.close()
+                except Exception:
+                    pass
+                self.conn = None
+            self.service._rwlock.release_write()
+            self._acquired = False
+            raise
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.cursor:
@@ -100,24 +207,36 @@ class WriteConnectionContext:
             except Exception:
                 pass
             self.cursor = None
+        if self.conn:
+            try:
+                self.conn.close()
+            except Exception:
+                pass
+            self.conn = None
         if self._acquired:
-            self.service._write_lock.release()
+            self.service._rwlock.release_write()
             self._acquired = False
 
     def execute(self, *args, **kwargs):
         if not self._acquired:
-            self.service._write_lock.acquire()
+            self.service._rwlock.acquire_write()
             self._acquired = True
         if not self.cursor:
-            self.cursor = self.service._get_cursor()
+            self.service.close_connection()
+            from application.database import DatabaseManager
+            self.conn = DatabaseManager(self.service.get_db_path(), init_schema=False).get_connection()
+            self.cursor = self.conn.cursor()
         return self.cursor.execute(*args, **kwargs)
 
     def executemany(self, *args, **kwargs):
         if not self._acquired:
-            self.service._write_lock.acquire()
+            self.service._rwlock.acquire_write()
             self._acquired = True
         if not self.cursor:
-            self.cursor = self.service._get_cursor()
+            self.service.close_connection()
+            from application.database import DatabaseManager
+            self.conn = DatabaseManager(self.service.get_db_path(), init_schema=False).get_connection()
+            self.cursor = self.conn.cursor()
         return self.cursor.executemany(*args, **kwargs)
 
     def fetchone(self):
@@ -140,8 +259,14 @@ class WriteConnectionContext:
             except Exception:
                 pass
             self.cursor = None
+        if self.conn:
+            try:
+                self.conn.close()
+            except Exception:
+                pass
+            self.conn = None
         if self._acquired:
-            self.service._write_lock.release()
+            self.service._rwlock.release_write()
             self._acquired = False
 
 
@@ -152,7 +277,7 @@ class DatabaseService:
         self._cache_timestamp: float = 0.0
         self._conn = None
         self._conn_lock = threading.RLock()
-        self._write_lock = threading.RLock()
+        self._rwlock = RWLock()
         self._spy_daily_cache: Dict[Any, float] = {}
         self._spy_weekly_cache: Dict[Any, float] = {}
         self._spy_cache_loaded = False
@@ -177,7 +302,19 @@ class DatabaseService:
                 if not os.path.exists(db_path):
                     conn = duckdb.connect(db_path)
                     conn.close()
-                self._conn = duckdb.connect(db_path)
+                import time
+                max_retries = 35
+                for attempt in range(max_retries):
+                    try:
+                        self._conn = duckdb.connect(db_path, read_only=True)
+                        break
+                    except Exception as e:
+                        err_msg = str(e).lower()
+                        is_lock = any(k in err_msg for k in ["lock", "conflict", "held in", "temporarily unavailable", "different configuration", "resource temporarily unavailable"])
+                        if is_lock and attempt < max_retries - 1:
+                            time.sleep(0.05 + attempt * 0.02)
+                        else:
+                            raise
             return self._conn
 
     def _get_cursor(self):
@@ -218,6 +355,8 @@ class DatabaseService:
             cross_asset_service.clear_cache()
             from application.services.leaderboard_service import LeaderboardService
             LeaderboardService.clear_cache()
+            from application.services.group_radar_service import GroupRadarService
+            GroupRadarService.clear_strength_cache()
         except Exception:
             pass
 
@@ -430,7 +569,7 @@ class DatabaseService:
 
                 # Stage 2 Trend Template
                 if f.get("enforce_stage2"):
-                    where_clauses.append(ScanExpressionEngine.get_alias_sql("STAGE2", table_alias="db"))
+                    where_clauses.append(ScanExpressionEngine.get_alias_sql("CONFIRMED_STAGED", table_alias="db"))
 
                 # Relative Strength Rank
                 if f.get("enable_rs"):
@@ -691,7 +830,7 @@ class DatabaseService:
                     db.low_cheat_risk_pct,
                     db.low_cheat_base_depth,
                     db.sma_200_20d_ago,
-                    ({ScanExpressionEngine.get_alias_sql('STAGE2', table_alias='db')}) as is_stage2,
+                    ({ScanExpressionEngine.get_alias_sql('CONFIRMED_STAGED', table_alias='db')}) as is_stage2,
                     db.ema_50,
                     db.dist_ema50_pct,
                     s.active,
@@ -701,7 +840,8 @@ class DatabaseService:
                     f.sponsorship_streak,
                     db.days_since_52w_high,
                     db.pp_runup_days,
-                    db.stage2_days
+                    db.stage2_days,
+                    db.weinstein_stage
                 FROM {from_table}
                 LEFT JOIN latest_fundamentals f ON db.symbol = f.symbol AND f.rn = 1
                 JOIN symbols s ON db.symbol = s.symbol
@@ -818,7 +958,10 @@ class DatabaseService:
                     "sponsorship_streak": int(row[71]) if len(row) > 71 and row[71] is not None else 0,
                     "days_since_52w_high": int(row[72]) if len(row) > 72 and row[72] is not None else None,
                     "pp_runup_days": int(row[73]) if len(row) > 73 and row[73] is not None else 0,
-                    "stage2_days": int(row[74]) if len(row) > 74 and row[74] is not None else 0
+                    "stage2_days": int(row[74]) if len(row) > 74 and row[74] is not None else 0,
+                    "weinstein_stage": int(row[75]) if len(row) > 75 and row[75] is not None else None,
+                    "stage": int(row[75]) if len(row) > 75 and row[75] is not None else None,
+                    "is_confirmed_staged": bool(row[64]) if len(row) > 64 and row[64] is not None else False
                 })
 
             if not candidates:
@@ -1247,8 +1390,17 @@ class DatabaseService:
                         ),
                         reverse=True
                     )
-                elif qm_subview == 'stage2':
+                elif qm_subview in ('stage2', 'confirmed_staged'):
                     candidates = list(stage2_map.values())
+                    candidates.sort(key=lambda x: x.get("rs_rank") or 0, reverse=True)
+                elif qm_subview == 'stage1':
+                    candidates = [c for c in candidates if c.get("stage") == 1 or c.get("weinstein_stage") == 1]
+                    candidates.sort(key=lambda x: x.get("rs_rank") or 0, reverse=True)
+                elif qm_subview == 'stage3':
+                    candidates = [c for c in candidates if c.get("stage") == 3 or c.get("weinstein_stage") == 3]
+                    candidates.sort(key=lambda x: x.get("rs_rank") or 0, reverse=True)
+                elif qm_subview == 'stage4':
+                    candidates = [c for c in candidates if c.get("stage") == 4 or c.get("weinstein_stage") == 4]
                     candidates.sort(key=lambda x: x.get("rs_rank") or 0, reverse=True)
                 elif qm_subview == 'leaders':
                     target_min_price = float(f.get("min_price", 10.0)) if f.get("min_price") is not None else 10.0
@@ -1300,7 +1452,7 @@ class DatabaseService:
                     )
 
                 # If enforce_stage2 is explicitly toggled by user in filters (and not already stage2 or leaders view)
-                if f.get("enforce_stage2") and qm_subview not in ('stage2', 'leaders'):
+                if f.get("enforce_stage2") and qm_subview not in ('stage2', 'confirmed_staged', 'leaders'):
                     candidates = [c for c in candidates if c.get("is_stage2")]
             else:
                 for c in candidates:
@@ -1849,9 +2001,19 @@ class DatabaseService:
                             "time_of_day": tod
                         })
                     if new_records:
-                        from application.database import DatabaseManager
-                        db_mgr = DatabaseManager(self.get_db_path())
-                        db_mgr.upsert_earnings_calendar(new_records)
+                        with self.get_write_conn() as write_conn:
+                            df = pd.DataFrame(new_records)
+                            columns = ["symbol", "earnings_date", "eps_estimate", "eps_actual", "surprise_pct", "time_of_day"]
+                            for col in columns:
+                                if col not in df.columns:
+                                    df[col] = None
+                            df = df[columns]
+                            write_conn.execute("CREATE OR REPLACE TEMP TABLE temp_earnings_calendar AS SELECT * FROM df")
+                            write_conn.execute("""
+                                INSERT OR REPLACE INTO earnings_calendar (symbol, earnings_date, eps_estimate, eps_actual, surprise_pct, time_of_day)
+                                SELECT symbol, CAST(earnings_date AS DATE), CAST(eps_estimate AS DOUBLE), CAST(eps_actual AS DOUBLE), CAST(surprise_pct AS DOUBLE), CAST(time_of_day AS VARCHAR)
+                                FROM temp_earnings_calendar
+                            """)
                         records = [{
                             "date": nr["earnings_date"],
                             "eps_estimate": nr["eps_estimate"],
@@ -2109,9 +2271,8 @@ class DatabaseService:
         else:
             # Persist newly retrieved next_earnings_date to DuckDB symbols table
             try:
-                from application.database import DatabaseManager
-                db_mgr = DatabaseManager(self.get_db_path())
-                db_mgr.update_symbol_next_earnings_date(symbol, next_earnings_date)
+                with self.get_write_conn() as write_conn:
+                    write_conn.execute("UPDATE symbols SET next_earnings_date = ?, last_updated = CURRENT_TIMESTAMP WHERE symbol = ?", [next_earnings_date, symbol])
             except Exception:
                 pass
 
@@ -2194,7 +2355,13 @@ class DatabaseService:
                     db.low_52w,
                     db.is_52w_high,
                     db.volume, 
-                    s.market_cap
+                    s.market_cap,
+                    db.weinstein_stage,
+                    db.sma_50,
+                    db.sma_150,
+                    db.dist_from_52w_high,
+                    db.dist_from_52w_low,
+                    db.ret_6m
                 FROM daily_bars db
                 JOIN cutoff c ON db.date >= c.min_date
                 LEFT JOIN symbols s ON db.symbol = s.symbol
@@ -2214,7 +2381,14 @@ class DatabaseService:
                     market_cap,
                     LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) as prev_close,
                     LAG(close, 20) OVER (PARTITION BY symbol ORDER BY date) as close_20d_ago,
-                    LAG(close, 65) OVER (PARTITION BY symbol ORDER BY date) as close_65d_ago
+                    LAG(close, 65) OVER (PARTITION BY symbol ORDER BY date) as close_65d_ago,
+                    LAG(sma_150, 20) OVER (PARTITION BY symbol ORDER BY date) as sma_150_20d_ago,
+                    weinstein_stage,
+                    sma_50,
+                    sma_150,
+                    dist_from_52w_high,
+                    dist_from_52w_low,
+                    ret_6m
                 FROM filtered_bars
             ),
             daily_counts AS (
@@ -2242,7 +2416,12 @@ class DatabaseService:
                     COUNT(CASE WHEN close_65d_ago > 0 AND ((close - close_65d_ago)/close_65d_ago)*100 <= -25.0 THEN 1 END) as down_25pct_3m,
                     COUNT(CASE WHEN close_20d_ago > 0 AND ((close - close_20d_ago)/close_20d_ago)*100 >= 50.0 THEN 1 END) as up_50pct_1m,
                     COUNT(CASE WHEN close_65d_ago > 0 AND ((close - close_65d_ago)/close_65d_ago)*100 >= 50.0 THEN 1 END) as up_50pct_3m,
-                    COUNT(CASE WHEN close_65d_ago > 0 AND ((close - close_65d_ago)/close_65d_ago)*100 <= -50.0 THEN 1 END) as down_50pct_3m
+                    COUNT(CASE WHEN close_65d_ago > 0 AND ((close - close_65d_ago)/close_65d_ago)*100 <= -50.0 THEN 1 END) as down_50pct_3m,
+                    COUNT(CASE WHEN (weinstein_stage = 1 OR (weinstein_stage IS NULL AND sma_150 IS NOT NULL AND (COALESCE(dist_from_52w_high, 0) > 20.0 OR COALESCE(dist_from_52w_low, 100.0) <= 35.0) AND ABS((sma_150 - sma_150_20d_ago) / NULLIF(sma_150_20d_ago, 0) * 100.0) <= 1.5 AND close >= sma_150 * 0.85)) THEN 1 END) as stage1_count,
+                    COUNT(CASE WHEN (weinstein_stage = 2 OR (weinstein_stage IS NULL AND sma_150 IS NOT NULL AND close > sma_150 AND (sma_50 IS NULL OR close >= sma_50) AND (sma_50 IS NULL OR sma_50 >= sma_150) AND (sma_150 - sma_150_20d_ago) / NULLIF(sma_150_20d_ago, 0) * 100.0 > 0.5 AND COALESCE(dist_from_52w_high, 0) <= 25.0)) THEN 1 END) as stage2_count,
+                    COUNT(CASE WHEN (weinstein_stage = 3 OR (weinstein_stage IS NULL AND sma_150 IS NOT NULL AND (COALESCE(dist_from_52w_high, 50.0) <= 20.0 OR COALESCE(ret_6m, 0) > 30.0) AND (close < sma_50 OR (sma_150 - sma_150_20d_ago) / NULLIF(sma_150_20d_ago, 0) * 100.0 <= 0.5) AND close >= sma_150 * 0.90)) THEN 1 END) as stage3_count,
+                    COUNT(CASE WHEN (weinstein_stage = 4 OR (weinstein_stage IS NULL AND sma_150 IS NOT NULL AND close < sma_150 AND (sma_50 IS NULL OR close < sma_50) AND (sma_50 IS NULL OR sma_50 < sma_150) AND (sma_150 - sma_150_20d_ago) / NULLIF(sma_150_20d_ago, 0) * 100.0 < -0.5)) THEN 1 END) as stage4_count,
+                    COUNT(CASE WHEN weinstein_stage IS NOT NULL OR sma_150 IS NOT NULL THEN 1 END) as stage_total_count
                 FROM daily_gains
                 GROUP BY date
                 ORDER BY date ASC
@@ -2294,6 +2473,11 @@ class DatabaseService:
             df['net_adv_calc'] = df['advancers'] - df['decliners']
             df['cum_ad'] = df['net_adv_calc'].cumsum()
 
+            # Stan Weinstein: Momentum Index (200-day SMA of daily Net Advance-Decline)
+            # Weinstein specifies a 200-day moving average of (Advances - Declines).
+            # Zero-line crossover indicates transition between Stage 2 Expansion and Stage 4 Contraction.
+            df['momentum_index'] = df['net_adv_calc'].rolling(window=200, min_periods=1).mean().round(1)
+
             # Stan Weinstein: Net New 52-Week Highs vs Lows
             df['new_highs'] = df['new_highs'].fillna(0).astype(int)
             df['new_lows'] = df['new_lows'].fillna(0).astype(int)
@@ -2321,7 +2505,7 @@ class DatabaseService:
             sum_10d_down = df['losers_4pct'].rolling(window=10, min_periods=1).sum()
             df['ratio_10d'] = (sum_10d_up / sum_10d_down.replace(0, 1)).round(2)
 
-            # Stan Weinstein: 4-Pillar Stage Indicators across all dates
+            # Stan Weinstein: 5-Pillar Stage Indicators across all dates
             spy_sma200_shift20 = df['spy_sma_200'].shift(20).bfill()
             spy_above_200 = df['spy_close'] >= df['spy_sma_200']
             spy_sma200_rising = df['spy_sma_200'] >= spy_sma200_shift20
@@ -2332,6 +2516,7 @@ class DatabaseService:
 
             w_nh_expanding = df['net_new_highs_10d'] > 0
             w_ma_bullish = df['up_25pct_3m'] >= df['down_25pct_3m']
+            w_mi_bullish = df['momentum_index'] > 0
 
             # If pulse_data provides actual pct_above_200 for latest date, use it
             pct_above_200 = 50.0
@@ -2346,8 +2531,22 @@ class DatabaseService:
                 w_trend.astype(int) +
                 w_ad_rising.astype(int) +
                 w_nh_expanding.astype(int) +
-                w_ma_bullish.astype(int)
+                w_ma_bullish.astype(int) +
+                w_mi_bullish.astype(int)
             )
+
+            # Stan Weinstein 4-Stage Breakdown percentiles & net expansion
+            df['stage1_count'] = df['stage1_count'].fillna(0).astype(int)
+            df['stage2_count'] = df['stage2_count'].fillna(0).astype(int)
+            df['stage3_count'] = df['stage3_count'].fillna(0).astype(int)
+            df['stage4_count'] = df['stage4_count'].fillna(0).astype(int)
+            df['stage_total_count'] = df['stage_total_count'].replace(0, 1).astype(int)
+
+            df['stage1_pct'] = (df['stage1_count'] / df['stage_total_count'] * 100.0).round(1)
+            df['stage2_pct'] = (df['stage2_count'] / df['stage_total_count'] * 100.0).round(1)
+            df['stage3_pct'] = (df['stage3_count'] / df['stage_total_count'] * 100.0).round(1)
+            df['stage4_pct'] = (df['stage4_count'] / df['stage_total_count'] * 100.0).round(1)
+            df['stage_net_pct'] = (df['stage2_pct'] - df['stage4_pct']).round(1)
 
             dist_pressure = pulse_data.get("distribution_pressure", 0) if pulse_data else 0
             latest_date_str = str(df['date_str'].iloc[-1]) if not df.empty else ""
@@ -2384,10 +2583,10 @@ class DatabaseService:
                     sb_regime = "NEUTRAL"
 
                 # Calculate Composite Market Light for this session
-                w_score_row = int(getattr(row, "w_score", 2) or 2)
+                w_score_row = int(getattr(row, "w_score", 3) or 3)
                 row_w_verdict = {
                     "score": w_score_row,
-                    "stage": "Stage 2 (Bull Market)" if w_score_row >= 3 else ("Stage 4 (Bear Market)" if w_score_row <= 1 else "Stage 1 / 3 (Transition / Divergence)")
+                    "stage": "Stage 2 (Bull Market)" if w_score_row >= 4 else ("Stage 4 (Bear Market)" if w_score_row <= 2 else "Stage 1 / 3 (Transition / Divergence)")
                 }
                 row_sb_metrics = {
                     "latest_ratio_4pct": float(row.ratio_4pct),
@@ -2426,6 +2625,7 @@ class DatabaseService:
                     "net_new_highs": int(getattr(row, "net_new_highs", 0) or 0),
                     "net_new_highs_10d": float(getattr(row, "net_new_highs_10d", 0.0) or 0.0),
                     "cum_ad": int(getattr(row, "cum_ad", 0) or 0),
+                    "momentum_index": float(getattr(row, "momentum_index", 0.0) or 0.0),
                     "spy_close": float(getattr(row, "spy_close", 0.0) or 0.0),
                     "spy_sma_50": float(getattr(row, "spy_sma_50", 0.0) or 0.0),
                     "spy_sma_200": float(getattr(row, "spy_sma_200", 0.0) or 0.0),
@@ -2462,7 +2662,17 @@ class DatabaseService:
                     "qqq_sma_50": kq_info.get("sma_50"),
                     "qqq_dist_ema10_pct": kq_info.get("dist_ema10_pct"),
                     "qqq_dist_ema20_pct": kq_info.get("dist_ema20_pct"),
-                    "qqq_dist_sma50_pct": kq_info.get("dist_sma50_pct")
+                    "qqq_dist_sma50_pct": kq_info.get("dist_sma50_pct"),
+                    "stage1_count": int(getattr(row, "stage1_count", 0) or 0),
+                    "stage2_count": int(getattr(row, "stage2_count", 0) or 0),
+                    "stage3_count": int(getattr(row, "stage3_count", 0) or 0),
+                    "stage4_count": int(getattr(row, "stage4_count", 0) or 0),
+                    "stage_total_count": int(getattr(row, "stage_total_count", 0) or 0),
+                    "stage1_pct": float(getattr(row, "stage1_pct", 0.0) or 0.0),
+                    "stage2_pct": float(getattr(row, "stage2_pct", 0.0) or 0.0),
+                    "stage3_pct": float(getattr(row, "stage3_pct", 0.0) or 0.0),
+                    "stage4_pct": float(getattr(row, "stage4_pct", 0.0) or 0.0),
+                    "stage_net_pct": float(getattr(row, "stage_net_pct", 0.0) or 0.0)
                 })
 
             # Calculate overall Regime Status & Metrics
@@ -2480,7 +2690,7 @@ class DatabaseService:
             elif latest.get("down_25pct_1m", 0) > latest.get("up_25pct_1m", 0) * 1.5:
                 regime = "Bearish Contraction"
 
-            # Stan Weinstein: 4-Pillar "Weight of the Evidence" Verdict
+            # Stan Weinstein: 5-Pillar "Weight of the Evidence" Verdict
             ago20 = daily_list[min(20, len(daily_list) - 1)] if daily_list else {}
             latest_spy_close = float(latest.get("spy_close", 0.0) or 0.0)
             latest_spy_sma200 = float(latest.get("spy_sma_200", 0.0) or 0.0)
@@ -2491,6 +2701,9 @@ class DatabaseService:
             latest_cum_ad = int(latest.get("cum_ad", 0) or 0)
             ago20_cum_ad = int(ago20.get("cum_ad", 0) or 0)
             ad_rising = latest_cum_ad >= ago20_cum_ad
+
+            latest_mi = float(latest.get("momentum_index", 0.0) or 0.0)
+            mi_bullish = latest_mi > 0
 
             latest_nh_10d = float(latest.get("net_new_highs_10d", 0.0) or 0.0)
             nh_expanding = latest_nh_10d > 0
@@ -2506,14 +2719,15 @@ class DatabaseService:
                 bool(spy_above_200 and spy_sma200_rising),
                 bool(ma_breadth_bullish),
                 bool(ad_rising),
-                bool(nh_expanding)
+                bool(nh_expanding),
+                bool(mi_bullish)
             ])
 
-            if weinstein_score >= 3:
+            if weinstein_score >= 4:
                 weinstein_stage = "Stage 2 (Bull Market)"
                 weinstein_badge = "#10b981"
                 weinstein_tone = "BULLISH"
-            elif weinstein_score == 2:
+            elif weinstein_score == 3:
                 weinstein_stage = "Stage 1 / 3 (Transition / Divergence)"
                 weinstein_badge = "#f59e0b"
                 weinstein_tone = "NEUTRAL"
@@ -2524,7 +2738,7 @@ class DatabaseService:
 
             weinstein_verdict = {
                 "score": weinstein_score,
-                "score_label": f"{weinstein_score}/4 Bullish",
+                "score_label": f"{weinstein_score}/5 Bullish",
                 "stage": weinstein_stage,
                 "stage_tone": weinstein_tone,
                 "badge_color": weinstein_badge,
@@ -2532,6 +2746,9 @@ class DatabaseService:
                 "index_is_bullish": bool(spy_above_200 and spy_sma200_rising),
                 "ad_status": f"A/D Line {'Rising' if ad_rising else 'Declining'} (20d)",
                 "ad_is_bullish": bool(ad_rising),
+                "mi_status": f"Momentum Index {latest_mi:+.1f} ({'Positive / Bullish' if mi_bullish else 'Negative / Bearish'})",
+                "mi_is_bullish": bool(mi_bullish),
+                "momentum_index": latest_mi,
                 "nh_status": f"Net Highs {'Expanding' if nh_expanding else 'Contracting'} ({latest_nh_10d:+.1f} 10d MA)",
                 "nh_is_bullish": bool(nh_expanding),
                 "ma_status": f"{pct_above_200:.1f}% > 200 SMA ({'Healthy' if ma_breadth_bullish else 'Deteriorating'})",
@@ -2601,6 +2818,7 @@ class DatabaseService:
                 "latest_net_new_highs": latest.get("net_new_highs", 0),
                 "latest_net_new_highs_10d": latest.get("net_new_highs_10d", 0.0),
                 "latest_cum_ad": latest.get("cum_ad", 0),
+                "latest_momentum_index": latest.get("momentum_index", 0.0),
                 "weinstein_verdict": weinstein_verdict,
                 "latest_gainers_4pct": latest.get("gainers_4pct"),
                 "latest_losers_4pct": latest.get("losers_4pct"),
@@ -2619,7 +2837,55 @@ class DatabaseService:
                 "kq_evaluation": kq_summary,
                 "market_pulse": pulse_data,
                 "composite_light": composite_light,
-                "market_light": composite_light
+                "market_light": composite_light,
+                "stage_distribution": {
+                    "as_of_date": latest.get("date"),
+                    "total_stocks": int(latest.get("stage_total_count", 1) or 1),
+                    "stage1": {
+                        "stage": 1,
+                        "name": "Stage 1: Basing",
+                        "short": "Stage 1",
+                        "count": int(latest.get("stage1_count", 0)),
+                        "pct": float(latest.get("stage1_pct", 0.0)),
+                        "color": "#38bdf8",
+                        "bias": "Neutral • Base Accumulation",
+                        "desc": "Flat 30W MA. Basing & accumulation after prior markdown"
+                    },
+                    "stage2": {
+                        "stage": 2,
+                        "name": "Stage 2: Advancing",
+                        "short": "Stage 2",
+                        "count": int(latest.get("stage2_count", 0)),
+                        "pct": float(latest.get("stage2_pct", 0.0)),
+                        "color": "#10b981",
+                        "bias": "Bullish • Markup & Expansion",
+                        "desc": "Rising 30W MA. Markup trend, clean breakout setups"
+                    },
+                    "stage3": {
+                        "stage": 3,
+                        "name": "Stage 3: Topping",
+                        "short": "Stage 3",
+                        "count": int(latest.get("stage3_count", 0)),
+                        "pct": float(latest.get("stage3_pct", 0.0)),
+                        "color": "#f59e0b",
+                        "bias": "Caution • Top Distribution",
+                        "desc": "Flattening 30W MA. Volatile churning near highs, take profits"
+                    },
+                    "stage4": {
+                        "stage": 4,
+                        "name": "Stage 4: Declining",
+                        "short": "Stage 4",
+                        "count": int(latest.get("stage4_count", 0)),
+                        "pct": float(latest.get("stage4_pct", 0.0)),
+                        "color": "#f43f5e",
+                        "bias": "Bearish • Markdown & Defense",
+                        "desc": "Falling 30W MA. Markdown downtrend, avoid longs / preserve cash"
+                    },
+                    "net_expansion": round(float(latest.get("stage2_pct", 0.0)) - float(latest.get("stage4_pct", 0.0)), 1),
+                    "delta_5d_stage2_pct": round(float(latest.get("stage2_pct", 0.0)) - float(daily_list[4].get("stage2_pct", latest.get("stage2_pct", 0.0)) if len(daily_list) > 4 else latest.get("stage2_pct", 0.0)), 1),
+                    "delta_5d_stage4_pct": round(float(latest.get("stage4_pct", 0.0)) - float(daily_list[4].get("stage4_pct", latest.get("stage4_pct", 0.0)) if len(daily_list) > 4 else latest.get("stage4_pct", 0.0)), 1),
+                    "dominant_stage": 2 if float(latest.get("stage2_pct", 0.0)) >= max(float(latest.get("stage1_pct", 0.0)), float(latest.get("stage3_pct", 0.0)), float(latest.get("stage4_pct", 0.0))) else (4 if float(latest.get("stage4_pct", 0.0)) >= max(float(latest.get("stage1_pct", 0.0)), float(latest.get("stage2_pct", 0.0)), float(latest.get("stage3_pct", 0.0))) else (3 if float(latest.get("stage3_pct", 0.0)) >= float(latest.get("stage1_pct", 0.0)) else 1))
+                }
             }
 
             result = {"summary": summary, "daily_data": daily_list}
@@ -2629,6 +2895,35 @@ class DatabaseService:
 
         except Exception as e:
             return {"error": str(e), "summary": {}, "daily_data": []}
+
+    def get_stage_distribution(self, as_of_date: Optional[str] = None, limit: int = 252) -> Dict[str, Any]:
+        """Returns Stan Weinstein 4-Stage summary and historical daily breakdown."""
+        monitor_data = self.get_market_monitor(limit=limit, as_of_date=as_of_date)
+        if not monitor_data or "summary" not in monitor_data:
+            return {"summary": {}, "history": []}
+        summary = monitor_data.get("summary", {})
+        daily = monitor_data.get("daily_data", [])
+        history = [
+            {
+                "date": d.get("date"),
+                "stage1_count": d.get("stage1_count", 0),
+                "stage2_count": d.get("stage2_count", 0),
+                "stage3_count": d.get("stage3_count", 0),
+                "stage4_count": d.get("stage4_count", 0),
+                "stage1_pct": d.get("stage1_pct", 0.0),
+                "stage2_pct": d.get("stage2_pct", 0.0),
+                "stage3_pct": d.get("stage3_pct", 0.0),
+                "stage4_pct": d.get("stage4_pct", 0.0),
+                "stage_net_pct": d.get("stage_net_pct", 0.0),
+                "stage_total_count": d.get("stage_total_count", 0),
+                "spy_close": d.get("spy_close", 0.0)
+            }
+            for d in reversed(daily)
+        ]
+        return {
+            "summary": summary.get("stage_distribution", {}),
+            "history": history
+        }
 
     def get_market_pulse_data(self, as_of_date: Optional[str] = None, force_refresh: bool = False) -> Dict[str, Any]:
         """Returns the CANSLIM / Deepvue style Market Pulse data."""
@@ -2837,7 +3132,7 @@ class DatabaseService:
             conn.execute("DELETE FROM watchlists WHERE id = ?", [watchlist_id])
             return True
 
-    def get_watchlist_items(self, watchlist_id: int) -> List[Dict[str, Any]]:
+    def get_watchlist_items(self, watchlist_id: int, enrich_groups: bool = True) -> List[Dict[str, Any]]:
         with self.get_read_only_conn() as conn:
             tables = [t[0] for t in conn.execute("SHOW TABLES").fetchall()]
             if "watchlist_items" not in tables:
@@ -2926,7 +3221,7 @@ class DatabaseService:
                 ORDER BY ts.added_at DESC
             """
             rows = conn.execute(query, [watchlist_id]).fetchall()
-            return [
+            items = [
                 {
                     "symbol": row[0],
                     "name": row[1],
@@ -2967,6 +3262,14 @@ class DatabaseService:
                 }
                 for row in rows
             ]
+            if enrich_groups and items:
+                try:
+                    from application.services.group_radar_service import GroupRadarService
+                    gr_service = GroupRadarService(self.get_db_path())
+                    items = gr_service.enrich_stocks_with_groups(items)
+                except Exception as e:
+                    logger.error(f"Error enriching watchlist items with groups: {e}")
+            return items
 
     def get_industry_peers(self, symbol: str, limit: int = 6) -> Dict[str, Any]:
         """Retrieve peer stocks in the same industry ranked by RS."""

@@ -109,6 +109,13 @@ function StockBrandIcon({ symbol }) {
   );
 }
 
+const QUADRANT_COLORS = {
+  Leading: { accent: '#10b981', bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.35)', title: 'Leading' },
+  Improving: { accent: '#38bdf8', bg: 'rgba(56, 189, 248, 0.15)', border: 'rgba(56, 189, 248, 0.35)', title: 'Improving' },
+  Weakening: { accent: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.35)', title: 'Weakening' },
+  Lagging: { accent: '#f43f5e', bg: 'rgba(244, 63, 94, 0.15)', border: 'rgba(244, 63, 94, 0.35)', title: 'Lagging' },
+};
+
 export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetchWatchlists }) {
   const [selectedWatchlistId, setSelectedWatchlistId] = useState(null);
   const [items, setItems] = useState([]);
@@ -142,7 +149,38 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   };
 
   // Watchlist Management State
-  const [symbolFilter, setSymbolFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterSector, setFilterSector] = useState('ALL');
+  const [filterIndustry, setFilterIndustry] = useState('ALL');
+  const [filterTheme, setFilterTheme] = useState('ALL');
+  const [sortBy, setSortBy] = useState('group_rs'); // 'group_rs' | 'rs_rank' | 'chg_pct_desc' | 'chg_pct_asc' | 'rvol' | 'symbol' | 'added'
+  const [groupMode, setGroupMode] = useState('none'); // 'none' | 'industry' | 'sector' | 'theme'
+  const [collapsedGroupKeys, setCollapsedGroupKeys] = useState(new Set());
+
+  const toggleGroupCollapse = (key) => {
+    setCollapsedGroupKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  // Right Info Panel Collapse State (persisted in localStorage)
+  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('pivot_watchlist_right_panel_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('pivot_watchlist_right_panel_collapsed', isRightPanelCollapsed);
+    } catch (_) {}
+  }, [isRightPanelCollapsed]);
+
   const [newSymbolInput, setNewSymbolInput] = useState('');
   const [isAddingSymbol, setIsAddingSymbol] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -315,31 +353,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     });
   }, [selectedStock?.symbol, items, prefetchAdjacentWatchlistStocks]);
 
-  // Keyboard Navigation: ArrowUp / ArrowDown flips between stocks in list
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Don't intercept if user is typing in an input
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
 
-      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        if (!items || items.length === 0) return;
-        const currentIdx = items.findIndex(
-          (i) => (i.symbol || '').toUpperCase() === (selectedStock?.symbol || '').toUpperCase()
-        );
-        if (e.key === 'ArrowUp') {
-          const prevIdx = currentIdx > 0 ? currentIdx - 1 : items.length - 1;
-          setSelectedStock(items[prevIdx]);
-        } else {
-          const nextIdx = currentIdx < items.length - 1 ? currentIdx + 1 : 0;
-          setSelectedStock(items[nextIdx]);
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [items, selectedStock]);
 
   // Quick Add Symbol to active watchlist
   const handleAddSymbol = async (e) => {
@@ -467,10 +481,10 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   };
 
   const toggleSelectAll = () => {
-    if (selectedSymbols.size === filteredItems.length && filteredItems.length > 0) {
+    if (selectedSymbols.size === displayItems.length && displayItems.length > 0) {
       setSelectedSymbols(new Set());
     } else {
-      setSelectedSymbols(new Set(filteredItems.map((i) => i.symbol)));
+      setSelectedSymbols(new Set(displayItems.map((i) => i.symbol)));
     }
   };
 
@@ -572,14 +586,188 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     URL.revokeObjectURL(url);
   };
 
+  // Extract unique sectors from items with counts
+  const availableSectors = useMemo(() => {
+    const map = new Map();
+    items.forEach((it) => {
+      const s = (it.sector || '').trim() || 'Unclassified';
+      map.set(s, (map.get(s) || 0) + 1);
+    });
+    return Array.from(map.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }, [items]);
+
+  // Extract unique industries from items (filtered by selected sector if applicable)
+  const availableIndustries = useMemo(() => {
+    const map = new Map();
+    items.forEach((it) => {
+      if (filterSector !== 'ALL' && ((it.sector || '').trim() || 'Unclassified') !== filterSector) {
+        return;
+      }
+      const ind = (it.industry || '').trim() || 'Unclassified';
+      map.set(ind, (map.get(ind) || 0) + 1);
+    });
+    return Array.from(map.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }, [items, filterSector]);
+
+  // Extract unique themes from items
+  const availableThemes = useMemo(() => {
+    const map = new Map();
+    items.forEach((it) => {
+      const ths = it.themes || (it.theme ? [it.theme] : []);
+      ths.forEach((t) => {
+        const tn = (t || '').trim();
+        if (tn) map.set(tn, (map.get(tn) || 0) + 1);
+      });
+    });
+    return Array.from(map.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }, [items]);
+
   // Filtered items list
   const filteredItems = useMemo(() => {
-    if (!symbolFilter.trim()) return items;
-    const query = symbolFilter.trim().toUpperCase();
-    return items.filter(
-      (i) => i.symbol.toUpperCase().includes(query) || (i.name || '').toUpperCase().includes(query)
-    );
-  }, [items, symbolFilter]);
+    let result = items;
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toUpperCase();
+      result = result.filter(
+        (i) => i.symbol.toUpperCase().includes(q) || (i.name || '').toUpperCase().includes(q)
+      );
+    }
+    if (filterSector !== 'ALL') {
+      result = result.filter(
+        (i) => ((i.sector || '').trim() || 'Unclassified') === filterSector
+      );
+    }
+    if (filterIndustry !== 'ALL') {
+      result = result.filter(
+        (i) => ((i.industry || '').trim() || 'Unclassified') === filterIndustry
+      );
+    }
+    if (filterTheme !== 'ALL') {
+      result = result.filter(
+        (i) => (i.themes && i.themes.some((t) => t === filterTheme)) || i.theme === filterTheme
+      );
+    }
+    return result;
+  }, [items, searchQuery, filterSector, filterIndustry, filterTheme]);
+
+  // Sorted items list
+  const sortedItems = useMemo(() => {
+    const copy = [...filteredItems];
+    switch (sortBy) {
+      case 'group_rs':
+        return copy.sort((a, b) => {
+          const grpA = a.group_rs_rank ?? -1;
+          const grpB = b.group_rs_rank ?? -1;
+          if (grpB !== grpA) return grpB - grpA;
+          return (b.rs_rank ?? -1) - (a.rs_rank ?? -1);
+        });
+      case 'rs_rank':
+        return copy.sort((a, b) => (b.rs_rank ?? -1) - (a.rs_rank ?? -1));
+      case 'chg_pct_desc':
+        return copy.sort((a, b) => (b.chg_pct ?? -999) - (a.chg_pct ?? -999));
+      case 'chg_pct_asc':
+        return copy.sort((a, b) => (a.chg_pct ?? 999) - (b.chg_pct ?? 999));
+      case 'rvol':
+        return copy.sort((a, b) => (b.rvol_pct ?? -1) - (a.rvol_pct ?? -1));
+      case 'symbol':
+        return copy.sort((a, b) => a.symbol.localeCompare(b.symbol));
+      case 'added':
+      default:
+        return copy;
+    }
+  }, [filteredItems, sortBy]);
+
+  // Grouped items structure if groupMode !== 'none'
+  const groupedSections = useMemo(() => {
+    if (groupMode === 'none') return null;
+
+    const groupsMap = new Map();
+    sortedItems.forEach((item) => {
+      let gName = '';
+      let gRsRank = 50;
+      let gQuadrant = 'Improving';
+      let gRank = null;
+
+      if (groupMode === 'industry') {
+        gName = (item.industry || '').trim() || 'Unclassified Industry';
+        gRsRank = item.industry_rs_rank ?? item.group_rs_rank ?? 50;
+        gQuadrant = item.industry_quadrant ?? item.group_quadrant ?? 'Improving';
+        gRank = item.industry_rank;
+      } else if (groupMode === 'sector') {
+        gName = (item.sector || '').trim() || 'Unclassified Sector';
+        gRsRank = item.sector_rs_rank ?? item.group_rs_rank ?? 50;
+        gQuadrant = item.sector_quadrant ?? item.group_quadrant ?? 'Improving';
+        gRank = item.sector_rank;
+      } else if (groupMode === 'theme') {
+        gName = item.theme || (item.themes && item.themes[0]) || 'Other / No Theme';
+        gRsRank = item.theme_rs_rank ?? item.group_rs_rank ?? 50;
+        gQuadrant = item.theme_quadrant ?? item.group_quadrant ?? 'Improving';
+        gRank = item.theme_rank;
+      }
+
+      if (!groupsMap.has(gName)) {
+        groupsMap.set(gName, {
+          key: gName,
+          name: gName,
+          rsRank: gRsRank,
+          quadrant: gQuadrant,
+          rank: gRank,
+          items: []
+        });
+      }
+      groupsMap.get(gName).items.push(item);
+    });
+
+    // Sort groups themselves by Group RS Rank descending (Weinstein top-down order)
+    return Array.from(groupsMap.values()).sort((a, b) => {
+      if (b.rsRank !== a.rsRank) return b.rsRank - a.rsRank;
+      return b.items.length - a.items.length || a.name.localeCompare(b.name);
+    });
+  }, [sortedItems, groupMode]);
+
+  // Flattened visible items list for keyboard navigation and count
+  const displayItems = useMemo(() => {
+    if (groupMode === 'none' || !groupedSections) {
+      return sortedItems;
+    }
+    const flat = [];
+    groupedSections.forEach((g) => {
+      if (!collapsedGroupKeys.has(g.key)) {
+        flat.push(...g.items);
+      }
+    });
+    return flat;
+  }, [sortedItems, groupMode, groupedSections, collapsedGroupKeys]);
+
+  // Keyboard Navigation across currently visible display items
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (!displayItems || displayItems.length === 0) return;
+        const currentIdx = displayItems.findIndex(
+          (i) => (i.symbol || '').toUpperCase() === (selectedStock?.symbol || '').toUpperCase()
+        );
+        if (e.key === 'ArrowUp') {
+          const prevIdx = currentIdx > 0 ? currentIdx - 1 : displayItems.length - 1;
+          setSelectedStock(displayItems[prevIdx]);
+        } else {
+          const nextIdx = currentIdx < displayItems.length - 1 ? currentIdx + 1 : 0;
+          setSelectedStock(displayItems[nextIdx]);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [displayItems, selectedStock]);
 
   const activeWatchlist = watchlists.find((w) => w.id === selectedWatchlistId);
 
@@ -715,9 +903,9 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         {/* COLUMN 1: LEFT WATCHLIST & SYMBOL LIST (~270px)          */}
         {/* ======================================================== */}
         <div style={{
-          width: '275px',
-          minWidth: '275px',
-          maxWidth: '275px',
+          width: '295px',
+          minWidth: '295px',
+          maxWidth: '295px',
           display: 'flex',
           flexDirection: 'column',
           background: 'var(--bg-secondary)',
@@ -1144,6 +1332,247 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
             )}
           </div>
 
+          {/* Search, Filter & Grouping Controls Bar (Stan Weinstein Forest-to-Trees) */}
+          <div style={{
+            padding: '6px 8px',
+            borderBottom: '1px solid var(--border-color)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '5px',
+            background: 'rgba(0, 0, 0, 0.2)'
+          }}>
+            {/* Search Input with Clear Button */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                type="text"
+                placeholder="🔍 Filter ticker or name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: 'rgba(0, 0, 0, 0.35)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  padding: '4px 22px 4px 7px',
+                  fontSize: '11px',
+                  color: '#ffffff',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  style={{
+                    position: 'absolute', right: '5px', background: 'transparent',
+                    border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
+                    fontSize: '11px', padding: 0
+                  }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Row 1: Filter Selects (Sector, Industry) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+              <select
+                value={filterSector}
+                onChange={(e) => {
+                  setFilterSector(e.target.value);
+                  setFilterIndustry('ALL');
+                }}
+                style={{
+                  background: filterSector !== 'ALL' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(0, 0, 0, 0.35)',
+                  border: filterSector !== 'ALL' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
+                  color: filterSector !== 'ALL' ? '#38bdf8' : 'var(--text-secondary)',
+                  borderRadius: '4px',
+                  padding: '3px 4px',
+                  fontSize: '10.5px',
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+                title="Filter by Sector"
+              >
+                <option value="ALL">All Sectors ({items.length})</option>
+                {availableSectors.map((s) => (
+                  <option key={s.name} value={s.name}>
+                    {s.name} ({s.count})
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={filterIndustry}
+                onChange={(e) => setFilterIndustry(e.target.value)}
+                style={{
+                  background: filterIndustry !== 'ALL' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(0, 0, 0, 0.35)',
+                  border: filterIndustry !== 'ALL' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
+                  color: filterIndustry !== 'ALL' ? '#38bdf8' : 'var(--text-secondary)',
+                  borderRadius: '4px',
+                  padding: '3px 4px',
+                  fontSize: '10.5px',
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+                title="Filter by Industry"
+              >
+                <option value="ALL">All Industries</option>
+                {availableIndustries.map((ind) => (
+                  <option key={ind.name} value={ind.name}>
+                    {ind.name} ({ind.count})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Row 2: Theme Filter & Sort By */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+              <select
+                value={filterTheme}
+                onChange={(e) => setFilterTheme(e.target.value)}
+                style={{
+                  background: filterTheme !== 'ALL' ? 'rgba(168, 85, 247, 0.15)' : 'rgba(0, 0, 0, 0.35)',
+                  border: filterTheme !== 'ALL' ? '1px solid #a855f7' : '1px solid var(--border-color)',
+                  color: filterTheme !== 'ALL' ? '#c084fc' : 'var(--text-secondary)',
+                  borderRadius: '4px',
+                  padding: '3px 4px',
+                  fontSize: '10.5px',
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+                title="Filter by Theme"
+              >
+                <option value="ALL">All Themes {availableThemes.length > 0 ? `(${availableThemes.length})` : ''}</option>
+                {availableThemes.map((th) => (
+                  <option key={th.name} value={th.name}>
+                    {th.name} ({th.count})
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                style={{
+                  background: 'rgba(0, 0, 0, 0.35)',
+                  border: '1px solid var(--border-color)',
+                  color: sortBy === 'group_rs' ? '#10b981' : 'var(--text-secondary)',
+                  borderRadius: '4px',
+                  padding: '3px 4px',
+                  fontSize: '10.5px',
+                  outline: 'none',
+                  fontWeight: sortBy === 'group_rs' ? 700 : 400,
+                  cursor: 'pointer'
+                }}
+                title="Sort stocks in watchlist"
+              >
+                <option value="group_rs">⚡ Group RS (Strongest)</option>
+                <option value="rs_rank">🏆 Stock RS (Leaders)</option>
+                <option value="chg_pct_desc">📈 Chg% (High → Low)</option>
+                <option value="chg_pct_asc">📉 Chg% (Low → High)</option>
+                <option value="rvol">🌊 Rel Vol (RVol ↓)</option>
+                <option value="symbol">🔤 Symbol (A → Z)</option>
+                <option value="added">🕒 Date Added</option>
+              </select>
+            </div>
+
+            {/* Row 3: Group View Segmentation Bar */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                Group by:
+              </span>
+              <div style={{ display: 'flex', gap: '2px', background: 'rgba(0,0,0,0.3)', padding: '2px', borderRadius: '4px' }}>
+                {[
+                  { id: 'none', label: 'Flat' },
+                  { id: 'industry', label: 'Industry' },
+                  { id: 'sector', label: 'Sector' },
+                  { id: 'theme', label: 'Theme' }
+                ].map((btn) => (
+                  <button
+                    key={btn.id}
+                    type="button"
+                    onClick={() => setGroupMode(btn.id)}
+                    style={{
+                      background: groupMode === btn.id ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
+                      border: groupMode === btn.id ? '1px solid #38bdf8' : '1px solid transparent',
+                      color: groupMode === btn.id ? '#38bdf8' : 'var(--text-muted)',
+                      borderRadius: '3px',
+                      padding: '1px 5px',
+                      fontSize: '9.5px',
+                      fontWeight: groupMode === btn.id ? 700 : 500,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {btn.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Active Filters Clear Pills */}
+            {(filterSector !== 'ALL' || filterIndustry !== 'ALL' || filterTheme !== 'ALL' || searchQuery) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', paddingTop: '2px' }}>
+                {filterSector !== 'ALL' && (
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '3px',
+                    background: 'rgba(56, 189, 248, 0.15)', border: '1px solid rgba(56, 189, 248, 0.4)',
+                    borderRadius: '3px', padding: '1px 4px', fontSize: '9.5px', color: '#38bdf8'
+                  }}>
+                    {filterSector}
+                    <span style={{ cursor: 'pointer' }} onClick={() => setFilterSector('ALL')}>✕</span>
+                  </span>
+                )}
+                {filterIndustry !== 'ALL' && (
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '3px',
+                    background: 'rgba(56, 189, 248, 0.15)', border: '1px solid rgba(56, 189, 248, 0.4)',
+                    borderRadius: '3px', padding: '1px 4px', fontSize: '9.5px', color: '#38bdf8'
+                  }}>
+                    {filterIndustry}
+                    <span style={{ cursor: 'pointer' }} onClick={() => setFilterIndustry('ALL')}>✕</span>
+                  </span>
+                )}
+                {filterTheme !== 'ALL' && (
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '3px',
+                    background: 'rgba(168, 85, 247, 0.15)', border: '1px solid rgba(168, 85, 247, 0.4)',
+                    borderRadius: '3px', padding: '1px 4px', fontSize: '9.5px', color: '#c084fc'
+                  }}>
+                    {filterTheme}
+                    <span style={{ cursor: 'pointer' }} onClick={() => setFilterTheme('ALL')}>✕</span>
+                  </span>
+                )}
+                {searchQuery && (
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '3px',
+                    background: 'rgba(255, 255, 255, 0.1)', border: '1px solid rgba(255, 255, 255, 0.2)',
+                    borderRadius: '3px', padding: '1px 4px', fontSize: '9.5px', color: 'var(--text-secondary)'
+                  }}>
+                    "{searchQuery}"
+                    <span style={{ cursor: 'pointer' }} onClick={() => setSearchQuery('')}>✕</span>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterSector('ALL');
+                    setFilterIndustry('ALL');
+                    setFilterTheme('ALL');
+                    setSearchQuery('');
+                  }}
+                  style={{
+                    background: 'transparent', border: 'none', color: '#fb7185',
+                    cursor: 'pointer', padding: 0, fontSize: '9.5px', fontWeight: 600, textDecoration: 'underline'
+                  }}
+                >
+                  Reset
+                </button>
+              </div>
+            )}
+          </div>
+
           {/* Symbol List Table */}
           <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px' }}>
@@ -1161,7 +1590,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                     <th style={{ width: '24px', textAlign: 'center', padding: '6px 4px' }}>
                       <input
                         type="checkbox"
-                        checked={filteredItems.length > 0 && selectedSymbols.size === filteredItems.length}
+                        checked={displayItems.length > 0 && selectedSymbols.size === displayItems.length}
                         onChange={toggleSelectAll}
                         style={{ cursor: 'pointer' }}
                       />
@@ -1170,7 +1599,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                   <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600 }}>Ticker</th>
                   <th style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 600 }}>Chg%</th>
                   <th style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 600 }}>Rel Vol</th>
-                  <th style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 600 }}>RS</th>
+                  <th style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 600 }}>RS / Grp</th>
                   <th style={{ width: '22px', textAlign: 'center', padding: '6px 2px' }}></th>
                 </tr>
               </thead>
@@ -1181,19 +1610,49 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                       ⏳ Loading symbols...
                     </td>
                   </tr>
-                ) : filteredItems.length === 0 ? (
+                ) : displayItems.length === 0 ? (
                   <tr>
                     <td colSpan={isSelectMode ? 6 : 5} style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--text-muted)' }}>
-                      No stocks in this list.<br />
-                      Type a ticker above to add.
+                      {items.length === 0 ? (
+                        <>
+                          No stocks in this list.<br />
+                          Type a ticker above to add.
+                        </>
+                      ) : (
+                        <>
+                          No stocks match filters.<br />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFilterSector('ALL');
+                              setFilterIndustry('ALL');
+                              setFilterTheme('ALL');
+                              setSearchQuery('');
+                            }}
+                            style={{
+                              marginTop: '6px',
+                              background: 'rgba(56, 189, 248, 0.15)',
+                              border: '1px solid #38bdf8',
+                              color: '#38bdf8',
+                              borderRadius: '3px',
+                              padding: '2px 8px',
+                              fontSize: '10.5px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Reset filters
+                          </button>
+                        </>
+                      )}
                     </td>
                   </tr>
-                ) : (
-                  filteredItems.map((item) => {
+                ) : groupMode === 'none' ? (
+                  sortedItems.map((item) => {
                     const isSelected = selectedStock?.symbol === item.symbol;
                     const chg = item.chg_pct;
                     const isPositive = chg !== null && chg !== undefined ? chg >= 0 : false;
                     const rsVal = item.rs_rank;
+                    const quadColor = QUADRANT_COLORS[item.industry_quadrant || item.group_quadrant]?.accent || '#38bdf8';
 
                     return (
                       <tr
@@ -1218,7 +1677,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                         className="watchlist-item-row"
                       >
                         {isSelectMode && (
-                          <td style={{ textAlign: 'center', padding: '7px 4px' }} onClick={(e) => e.stopPropagation()}>
+                          <td style={{ textAlign: 'center', padding: '6px 4px' }} onClick={(e) => e.stopPropagation()}>
                             <input
                               type="checkbox"
                               checked={selectedSymbols.has(item.symbol)}
@@ -1228,17 +1687,49 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                           </td>
                         )}
 
-                        {/* Ticker */}
-                        <td style={{ padding: '7px 8px' }}>
-                          <span style={{ fontWeight: 800, color: isSelected ? '#10b981' : 'var(--text-primary)', fontSize: '12px' }}>
-                            {item.symbol}
-                          </span>
+                        {/* Ticker & Sub-tag */}
+                        <td style={{ padding: '6px 8px', maxWidth: '125px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <StockBrandIcon symbol={item.symbol} />
+                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+                              <span style={{ fontWeight: 800, color: isSelected ? '#10b981' : 'var(--text-primary)', fontSize: '12px', lineHeight: 1.15 }}>
+                                {item.symbol}
+                              </span>
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                  marginTop: '1.5px',
+                                  fontSize: '9.5px',
+                                  color: 'var(--text-muted)',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis'
+                                }}
+                                title={`${item.industry || item.sector || ''}${item.theme ? ` • Theme: ${item.theme}` : ''}`}
+                              >
+                                {(item.industry_quadrant || item.group_quadrant) && (
+                                  <span style={{
+                                    width: '5px',
+                                    height: '5px',
+                                    borderRadius: '50%',
+                                    background: quadColor,
+                                    flexShrink: 0
+                                  }} />
+                                )}
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {item.industry || item.sector || '—'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
                         </td>
 
                         {/* Chg% */}
                         <td style={{
                           textAlign: 'right',
-                          padding: '7px 6px',
+                          padding: '6px 6px',
                           fontWeight: 700,
                           color: chg === null || chg === undefined ? 'var(--text-muted)' : isPositive ? '#34d399' : '#fb7185'
                         }}>
@@ -1252,25 +1743,36 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                         {/* Rel Vol */}
                         <td style={{
                           textAlign: 'right',
-                          padding: '7px 6px',
+                          padding: '6px 6px',
                           color: item.rvol_pct && item.rvol_pct >= 150 ? '#34d399' : 'var(--text-secondary)'
                         }}>
                           {item.rvol_pct ? `${Math.round(item.rvol_pct)}%` : '—'}
                         </td>
 
-                        {/* RS Rank Badge */}
-                        <td style={{ textAlign: 'center', padding: '7px 6px' }}>
-                          <span style={{
-                            fontSize: '10.5px',
-                            fontWeight: 800,
-                            color: rsVal >= 70 ? '#34d399' : rsVal <= 30 ? '#fb7185' : 'var(--text-secondary)'
-                          }}>
-                            {rsVal !== null && rsVal !== undefined ? rsVal : '—'}
-                          </span>
+                        {/* RS & Group RS */}
+                        <td style={{ textAlign: 'center', padding: '6px 4px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0px' }}>
+                            <span style={{
+                              fontSize: '11px',
+                              fontWeight: 800,
+                              color: rsVal >= 70 ? '#34d399' : rsVal <= 30 ? '#fb7185' : 'var(--text-secondary)'
+                            }} title={`Stock RS Rank: ${rsVal ?? 'N/A'}`}>
+                              {rsVal !== null && rsVal !== undefined ? rsVal : '—'}
+                            </span>
+                            {item.group_rs_rank !== null && item.group_rs_rank !== undefined && (
+                              <span style={{
+                                fontSize: '8.5px',
+                                fontWeight: 700,
+                                color: item.group_rs_rank >= 70 ? '#10b981' : item.group_rs_rank <= 30 ? '#f43f5e' : 'var(--text-muted)'
+                              }} title={`Group RS: ${Math.round(item.group_rs_rank)} (${item.group_quadrant || ''})`}>
+                                G:{Math.round(item.group_rs_rank)}
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         {/* Single Row Remove Action */}
-                        <td style={{ textAlign: 'center', padding: '7px 2px' }} onClick={(e) => e.stopPropagation()}>
+                        <td style={{ textAlign: 'center', padding: '6px 2px' }} onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
                             onClick={(e) => handleRemoveSymbol(item.symbol, e)}
@@ -1305,6 +1807,235 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                           </button>
                         </td>
                       </tr>
+                    );
+                  })
+                ) : (
+                  groupedSections.map((group) => {
+                    const isCollapsed = collapsedGroupKeys.has(group.key);
+                    const qConf = QUADRANT_COLORS[group.quadrant] || QUADRANT_COLORS.Improving;
+                    return (
+                      <React.Fragment key={group.key}>
+                        {/* Group Header Row */}
+                        <tr
+                          onClick={() => toggleGroupCollapse(group.key)}
+                          style={{
+                            background: isCollapsed ? 'rgba(255, 255, 255, 0.03)' : 'rgba(255, 255, 255, 0.07)',
+                            borderTop: '1px solid var(--border-color)',
+                            borderBottom: '1px solid var(--border-color)',
+                            cursor: 'pointer',
+                            userSelect: 'none'
+                          }}
+                          className="watchlist-group-header-row"
+                        >
+                          <td colSpan={isSelectMode ? 6 : 5} style={{ padding: '5px 8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
+                                <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>
+                                  {isCollapsed ? '▶' : '▼'}
+                                </span>
+                                <span style={{
+                                  width: '6px', height: '6px', borderRadius: '50%',
+                                  background: qConf.accent,
+                                  flexShrink: 0
+                                }} />
+                                <span style={{
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  color: 'var(--text-primary)',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap'
+                                }}>
+                                  {group.name}
+                                </span>
+                                <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                  ({group.items.length})
+                                </span>
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+                                {group.rsRank !== null && group.rsRank !== undefined && (
+                                  <span style={{
+                                    fontSize: '9px',
+                                    fontWeight: 800,
+                                    padding: '1px 5px',
+                                    borderRadius: '3px',
+                                    background: qConf.bg,
+                                    color: qConf.accent,
+                                    border: `1px solid ${qConf.border}`
+                                  }} title={`Group RS: ${Math.round(group.rsRank)} (${group.quadrant})`}>
+                                    RS {Math.round(group.rsRank)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Group Member Stock Rows */}
+                        {!isCollapsed && group.items.map((item) => {
+                          const isSelected = selectedStock?.symbol === item.symbol;
+                          const chg = item.chg_pct;
+                          const isPositive = chg !== null && chg !== undefined ? chg >= 0 : false;
+                          const rsVal = item.rs_rank;
+                          const quadColor = QUADRANT_COLORS[item.industry_quadrant || item.group_quadrant]?.accent || '#38bdf8';
+
+                          return (
+                            <tr
+                              key={item.symbol}
+                              onClick={() => {
+                                if (isSelectMode) {
+                                  toggleSelectStock(item.symbol);
+                                } else {
+                                  setSelectedStock(item);
+                                }
+                              }}
+                              style={{
+                                borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
+                                cursor: 'pointer',
+                                background: isSelected
+                                  ? 'rgba(16, 185, 129, 0.12)'
+                                  : selectedSymbols.has(item.symbol)
+                                  ? 'rgba(56, 189, 248, 0.12)'
+                                  : 'transparent',
+                                transition: 'background-color 0.12s ease'
+                              }}
+                              className="watchlist-item-row"
+                            >
+                              {isSelectMode && (
+                                <td style={{ textAlign: 'center', padding: '6px 4px' }} onClick={(e) => e.stopPropagation()}>
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedSymbols.has(item.symbol)}
+                                    onChange={(e) => toggleSelectStock(item.symbol, e)}
+                                    style={{ cursor: 'pointer' }}
+                                  />
+                                </td>
+                              )}
+
+                              {/* Ticker & Sub-tag */}
+                              <td style={{ padding: '6px 8px 6px 14px', maxWidth: '125px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <StockBrandIcon symbol={item.symbol} />
+                                  <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+                                    <span style={{ fontWeight: 800, color: isSelected ? '#10b981' : 'var(--text-primary)', fontSize: '12px', lineHeight: 1.15 }}>
+                                      {item.symbol}
+                                    </span>
+                                    <div
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '3px',
+                                        marginTop: '1.5px',
+                                        fontSize: '9.5px',
+                                        color: 'var(--text-muted)',
+                                        whiteSpace: 'nowrap',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis'
+                                      }}
+                                      title={`${item.industry || item.sector || ''}${item.theme ? ` • Theme: ${item.theme}` : ''}`}
+                                    >
+                                      {(item.industry_quadrant || item.group_quadrant) && (
+                                        <span style={{
+                                          width: '5px',
+                                          height: '5px',
+                                          borderRadius: '50%',
+                                          background: quadColor,
+                                          flexShrink: 0
+                                        }} />
+                                      )}
+                                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {item.industry || item.sector || '—'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Chg% */}
+                              <td style={{
+                                textAlign: 'right',
+                                padding: '6px 6px',
+                                fontWeight: 700,
+                                color: chg === null || chg === undefined ? 'var(--text-muted)' : isPositive ? '#34d399' : '#fb7185'
+                              }}>
+                                {chg !== null && chg !== undefined ? (
+                                  <div>
+                                    <span>{isPositive ? `+${chg.toFixed(1)}%` : `${chg.toFixed(1)}%`}</span>
+                                  </div>
+                                ) : '—'}
+                              </td>
+
+                              {/* Rel Vol */}
+                              <td style={{
+                                textAlign: 'right',
+                                padding: '6px 6px',
+                                color: item.rvol_pct && item.rvol_pct >= 150 ? '#34d399' : 'var(--text-secondary)'
+                              }}>
+                                {item.rvol_pct ? `${Math.round(item.rvol_pct)}%` : '—'}
+                              </td>
+
+                              {/* RS & Group RS */}
+                              <td style={{ textAlign: 'center', padding: '6px 4px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0px' }}>
+                                  <span style={{
+                                    fontSize: '11px',
+                                    fontWeight: 800,
+                                    color: rsVal >= 70 ? '#34d399' : rsVal <= 30 ? '#fb7185' : 'var(--text-secondary)'
+                                  }} title={`Stock RS Rank: ${rsVal ?? 'N/A'}`}>
+                                    {rsVal !== null && rsVal !== undefined ? rsVal : '—'}
+                                  </span>
+                                  {item.group_rs_rank !== null && item.group_rs_rank !== undefined && (
+                                    <span style={{
+                                      fontSize: '8.5px',
+                                      fontWeight: 700,
+                                      color: item.group_rs_rank >= 70 ? '#10b981' : item.group_rs_rank <= 30 ? '#f43f5e' : 'var(--text-muted)'
+                                    }} title={`Group RS: ${Math.round(item.group_rs_rank)} (${item.group_quadrant || ''})`}>
+                                      G:{Math.round(item.group_rs_rank)}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* Single Row Remove Action */}
+                              <td style={{ textAlign: 'center', padding: '6px 2px' }} onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleRemoveSymbol(item.symbol, e)}
+                                  title={`Remove ${item.symbol} from watchlist`}
+                                  style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: 'var(--text-muted)',
+                                    cursor: 'pointer',
+                                    padding: '2px 4px',
+                                    fontSize: '11px',
+                                    lineHeight: 1,
+                                    borderRadius: '3px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    opacity: 0.5,
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.color = '#fb7185';
+                                    e.currentTarget.style.background = 'rgba(251, 113, 133, 0.15)';
+                                    e.currentTarget.style.opacity = '1';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.color = 'var(--text-muted)';
+                                    e.currentTarget.style.background = 'transparent';
+                                    e.currentTarget.style.opacity = '0.5';
+                                  }}
+                                >
+                                  ✕
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
                     );
                   })
                 )}
@@ -1369,39 +2100,77 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                     )}
                   </div>
 
-                  {/* Remove Stock from active Watchlist Button */}
-                  <button
-                    type="button"
-                    onClick={(e) => handleRemoveSymbol(selectedStock.symbol, e)}
-                    title={`Remove ${selectedStock.symbol} from "${activeWatchlist?.name || 'Watchlist'}"`}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      background: 'rgba(251, 113, 133, 0.08)',
-                      border: '1px solid rgba(251, 113, 133, 0.25)',
-                      borderRadius: '5px',
-                      color: 'var(--text-secondary)',
-                      padding: '3px 8px',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = '#fb7185';
-                      e.currentTarget.style.borderColor = 'rgba(251, 113, 133, 0.6)';
-                      e.currentTarget.style.background = 'rgba(251, 113, 133, 0.18)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = 'var(--text-secondary)';
-                      e.currentTarget.style.borderColor = 'rgba(251, 113, 133, 0.25)';
-                      e.currentTarget.style.background = 'rgba(251, 113, 133, 0.08)';
-                    }}
-                  >
-                    <span style={{ fontSize: '11px' }}>✕</span>
-                    <span>Remove from List</span>
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {/* Toggle Right Stock Details Panel Button */}
+                    <button
+                      type="button"
+                      onClick={() => setIsRightPanelCollapsed(!isRightPanelCollapsed)}
+                      title={isRightPanelCollapsed ? 'Show Stock Details & Info Panel (expand)' : 'Collapse Stock Details to maximize chart space'}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        background: isRightPanelCollapsed ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                        border: isRightPanelCollapsed ? '1px solid #38bdf8' : '1px solid var(--border-color)',
+                        borderRadius: '5px',
+                        color: isRightPanelCollapsed ? '#38bdf8' : 'var(--text-secondary)',
+                        padding: '3px 8px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isRightPanelCollapsed) {
+                          e.currentTarget.style.color = 'var(--text-primary)';
+                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isRightPanelCollapsed) {
+                          e.currentTarget.style.color = 'var(--text-secondary)';
+                          e.currentTarget.style.borderColor = 'var(--border-color)';
+                        }
+                      }}
+                    >
+                      <span style={{ fontSize: '11px' }}>{isRightPanelCollapsed ? '◧' : '◨'}</span>
+                      <span>{isRightPanelCollapsed ? 'Show Details' : 'Collapse Details'}</span>
+                    </button>
+
+                    {/* Remove Stock from active Watchlist Button */}
+                    <button
+                      type="button"
+                      onClick={(e) => handleRemoveSymbol(selectedStock.symbol, e)}
+                      title={`Remove ${selectedStock.symbol} from "${activeWatchlist?.name || 'Watchlist'}"`}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        background: 'rgba(251, 113, 133, 0.08)',
+                        border: '1px solid rgba(251, 113, 133, 0.25)',
+                        borderRadius: '5px',
+                        color: 'var(--text-secondary)',
+                        padding: '3px 8px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color = '#fb7185';
+                        e.currentTarget.style.borderColor = 'rgba(251, 113, 133, 0.6)';
+                        e.currentTarget.style.background = 'rgba(251, 113, 133, 0.18)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = 'var(--text-secondary)';
+                        e.currentTarget.style.borderColor = 'rgba(251, 113, 133, 0.25)';
+                        e.currentTarget.style.background = 'rgba(251, 113, 133, 0.08)';
+                      }}
+                    >
+                      <span style={{ fontSize: '11px' }}>✕</span>
+                      <span>Remove from List</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Row 2: Badges / Pills Group (identical to Stock Screen result) */}
@@ -1409,6 +2178,56 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                   <span className="pill pill-success" style={{ fontSize: '11px', padding: '3px 8px' }}>
                     RS: {rsRank ?? 'N/A'}
                   </span>
+
+                  {/* Group Strength Pill */}
+                  {(selectedStock.industry || selectedStock.sector) && (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        background: QUADRANT_COLORS[selectedStock.industry_quadrant || selectedStock.group_quadrant]?.bg || 'rgba(56, 189, 248, 0.15)',
+                        color: QUADRANT_COLORS[selectedStock.industry_quadrant || selectedStock.group_quadrant]?.accent || '#38bdf8',
+                        border: `1px solid ${QUADRANT_COLORS[selectedStock.industry_quadrant || selectedStock.group_quadrant]?.border || 'rgba(56, 189, 248, 0.35)'}`,
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px'
+                      }}
+                      title={`Sector: ${selectedStock.sector || 'N/A'} • Industry: ${selectedStock.industry || 'N/A'}${selectedStock.industry_rank ? ` (#${selectedStock.industry_rank})` : ''} • Group RS: ${Math.round(selectedStock.group_rs_rank || 50)} • Quadrant: ${selectedStock.industry_quadrant || selectedStock.group_quadrant || 'Improving'}`}
+                    >
+                      <span style={{
+                        width: '6px', height: '6px', borderRadius: '50%',
+                        background: QUADRANT_COLORS[selectedStock.industry_quadrant || selectedStock.group_quadrant]?.accent || '#38bdf8'
+                      }} />
+                      <span>{selectedStock.industry || selectedStock.sector}</span>
+                      {selectedStock.group_rs_rank !== null && selectedStock.group_rs_rank !== undefined && (
+                        <span style={{ opacity: 0.9 }}>• Grp RS {Math.round(selectedStock.group_rs_rank)}</span>
+                      )}
+                    </span>
+                  )}
+
+                  {/* Themes Pill */}
+                  {selectedStock.themes && selectedStock.themes.length > 0 && (
+                    <span
+                      className="pill"
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        background: 'rgba(168, 85, 247, 0.15)',
+                        color: '#c084fc',
+                        border: '1px solid rgba(168, 85, 247, 0.35)',
+                        fontWeight: 600,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                      title={`Themes: ${selectedStock.themes.join(', ')}`}
+                    >
+                      <span>🏷️</span>
+                      <span>{selectedStock.themes.join(' • ')}</span>
+                    </span>
+                  )}
 
                   {hasBlueDot && (
                     <span
@@ -1670,20 +2489,21 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         {/* ======================================================== */}
         {/* COLUMN 3: RIGHT STOCK & COMPANY INFO PANEL (~340px)      */}
         {/* ======================================================== */}
-        <div
-          className="custom-scrollbar"
-          style={{
-            width: '340px',
-            minWidth: '340px',
-            maxWidth: '340px',
-            display: 'flex',
-            flexDirection: 'column',
-            background: 'var(--bg-secondary)',
-            borderLeft: '1px solid var(--border-color)',
-            overflowY: 'auto'
-          }}
-        >
-          {selectedStock ? (
+        {!isRightPanelCollapsed ? (
+          <div
+            className="custom-scrollbar"
+            style={{
+              width: '340px',
+              minWidth: '340px',
+              maxWidth: '340px',
+              display: 'flex',
+              flexDirection: 'column',
+              background: 'var(--bg-secondary)',
+              borderLeft: '1px solid var(--border-color)',
+              overflowY: 'auto'
+            }}
+          >
+            {selectedStock ? (
             <>
               {/* Header: Symbol, Name & Prev/Next Arrows */}
               <div style={{
@@ -1734,6 +2554,17 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                     }}
                   >
                     ▶
+                  </button>
+                  <button
+                    onClick={() => setIsRightPanelCollapsed(true)}
+                    title="Collapse details panel (maximize chart)"
+                    style={{
+                      background: 'transparent', border: '1px solid var(--border-color)',
+                      borderRadius: '3px', color: 'var(--text-secondary)', cursor: 'pointer',
+                      padding: '2px 6px', fontSize: '11px', display: 'inline-flex', alignItems: 'center'
+                    }}
+                  >
+                    ⇥
                   </button>
                 </div>
               </div>
@@ -1823,12 +2654,26 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '3px' }}>
                         <span style={{ color: 'var(--text-muted)' }}>Industry rank</span>
-                        <span style={{ fontWeight: 700 }}>—</span>
+                        <span style={{ fontWeight: 700, color: (selectedStock.industry_rs_rank ?? 0) >= 70 ? '#34d399' : 'var(--text-primary)' }}>
+                          {selectedStock.industry_rank ? `#${selectedStock.industry_rank}` : '—'}
+                          {selectedStock.industry_rs_rank ? ` (RS ${Math.round(selectedStock.industry_rs_rank)})` : ''}
+                        </span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '3px' }}>
                         <span style={{ color: 'var(--text-muted)' }}>Sector</span>
-                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedStock.sector || 'N/A'}</span>
+                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {selectedStock.sector || 'N/A'}
+                          {selectedStock.sector_rs_rank ? ` (RS ${Math.round(selectedStock.sector_rs_rank)})` : ''}
+                        </span>
                       </div>
+                      {selectedStock.themes && selectedStock.themes.length > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '3px', gridColumn: 'span 2' }}>
+                          <span style={{ color: 'var(--text-muted)' }}>Themes</span>
+                          <span style={{ fontWeight: 600, color: '#c084fc', textAlign: 'right' }}>
+                            {selectedStock.themes.join(', ')}
+                          </span>
+                        </div>
+                      )}
                       <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '3px' }}>
                         <span style={{ color: 'var(--text-muted)' }}>Off 52w high</span>
                         <span style={{ fontWeight: 700, color: '#fb7185' }}>
@@ -2063,7 +2908,53 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
             </div>
           )}
         </div>
-      </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setIsRightPanelCollapsed(false)}
+          title="Expand Stock Details Panel"
+          style={{
+            width: '28px',
+            minWidth: '28px',
+            maxWidth: '28px',
+            background: 'var(--bg-secondary)',
+            borderLeft: '1px solid var(--border-color)',
+            borderTop: 'none',
+            borderRight: 'none',
+            borderBottom: 'none',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'flex-start',
+            gap: '12px',
+            padding: '16px 0',
+            userSelect: 'none',
+            transition: 'background 0.15s, color 0.15s'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+            e.currentTarget.style.color = '#38bdf8';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'var(--bg-secondary)';
+            e.currentTarget.style.color = 'var(--text-muted)';
+          }}
+        >
+          <span style={{ fontSize: '13px' }}>⫷</span>
+          <span style={{
+            writingMode: 'vertical-rl',
+            fontSize: '10.5px',
+            fontWeight: 700,
+            letterSpacing: '1.2px',
+            textTransform: 'uppercase'
+          }}>
+            Stock Details
+          </span>
+        </button>
+      )}
+    </div>
 
       {/* Create Watchlist Modal */}
       {showCreateModal && (

@@ -35,8 +35,11 @@ class TestWatchlists(unittest.TestCase):
             self.assertIn("ema_10", item)
             self.assertIn("ema_20", item)
             self.assertIn("ema_50", item)
-            self.assertIn("sma_200", item)
             self.assertIn("industry", item)
+            self.assertIn("themes", item)
+            self.assertIn("group_rs_rank", item)
+            self.assertIn("industry_quadrant", item)
+            self.assertIn("sector_quadrant", item)
 
     def test_get_industry_peers(self):
         peers_data = db_service.get_industry_peers("AAPL", limit=5)

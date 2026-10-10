@@ -21,12 +21,17 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertIn("b.lag_v1", sql)
 
     def test_boolean_flags_and_stage2(self):
-        expr = "STAGE2 AND C >= 10.0 AND DOLLAR_VOL >= 3000000"
+        expr = "CONFIRMED_STAGED AND C >= 10.0 AND DOLLAR_VOL >= 3000000"
         res = ScanExpressionEngine.validate(expr)
         self.assertTrue(res["valid"])
         self.assertFalse(res["has_lags"])
-        self.assertIn("STAGE2", res["variables"])
+        self.assertIn("CONFIRMED_STAGED", res["variables"])
         self.assertIn("sma_50", res["sql"])
+
+        # Test Weinstein stages
+        res_s2 = ScanExpressionEngine.validate("STAGE2 AND C >= 10.0")
+        self.assertTrue(res_s2["valid"])
+        self.assertIn("weinstein_stage = 2", res_s2["sql"])
 
     def test_pattern_primitives(self):
         expr = "RUNUP >= 100 AND RUNUP_DAYS <= 40 AND PULLBACK <= 25 AND DAYS_SINCE_PEAK >= 10"
@@ -163,9 +168,10 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertIn("TOP() requires at least 2 arguments", res["error"])
 
     def test_alias_stage2_expansion(self):
-        res = ScanExpressionEngine.validate("STAGE2")
+        # CONFIRMED_STAGED is the Minervini Trend Template
+        res = ScanExpressionEngine.validate("CONFIRMED_STAGED")
         self.assertTrue(res["valid"])
-        self.assertIn("STAGE2", res["variables"])
+        self.assertIn("CONFIRMED_STAGED", res["variables"])
         self.assertIn("SMA_50", res["variables"])
         self.assertIn("SMA_150", res["variables"])
         self.assertIn("SMA_200", res["variables"])
@@ -179,6 +185,17 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertIn("b.sma_150 > b.sma_200", sql)
         self.assertIn("b.sma_200_20d_ago IS NULL", sql)
         self.assertIn("b.dist_from_52w_low >= 25.0", sql)
+
+        # CONFIRMED_STAGE2 is an alias for CONFIRMED_STAGED
+        res_alias = ScanExpressionEngine.validate("CONFIRMED_STAGE2")
+        self.assertTrue(res_alias["valid"])
+        self.assertIn("b.sma_50 > b.sma_150", res_alias["sql"])
+
+        # STAGE1..4 are Stan Weinstein stages
+        for s in (1, 2, 3, 4):
+            res_s = ScanExpressionEngine.validate(f"STAGE{s}")
+            self.assertTrue(res_s["valid"])
+            self.assertIn(f"b.weinstein_stage = {s}", res_s["sql"])
 
     def test_dist_52w_low_and_surge_off_low(self):
         # DIST_52W_LOW direct expression
@@ -242,10 +259,10 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertIn("b.sma_200_20d_ago IS NULL", res2["sql"])
 
     def test_composite_expression_with_stage2(self):
-        expr = "C >= 15 AND STAGE2 AND V > 100000"
+        expr = "C >= 15 AND CONFIRMED_STAGED AND V > 100000"
         res = ScanExpressionEngine.validate(expr)
         self.assertTrue(res["valid"])
-        self.assertIn("STAGE2", res["variables"])
+        self.assertIn("CONFIRMED_STAGED", res["variables"])
         self.assertIn("C", res["variables"])
         self.assertIn("V", res["variables"])
         self.assertIn("b.close >= 15", res["sql"])
@@ -253,7 +270,7 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertIn("b.sma_50 IS NOT NULL", res["sql"])
 
     def test_alias_negation(self):
-        expr = "NOT STAGE2"
+        expr = "NOT CONFIRMED_STAGED"
         res = ScanExpressionEngine.validate(expr)
         self.assertTrue(res["valid"])
         self.assertIn("NOT", res["sql"])
@@ -271,14 +288,17 @@ class TestScanExpressionEngine(unittest.TestCase):
             del ALIAS_CATALOG["_TEST_CIRC_B"]
 
     def test_get_alias_sql_table_aliases(self):
-        sql_b = ScanExpressionEngine.get_alias_sql("STAGE2", table_alias="b")
+        sql_b = ScanExpressionEngine.get_alias_sql("CONFIRMED_STAGED", table_alias="b")
         self.assertIn("b.close > b.sma_50", sql_b)
 
-        sql_db = ScanExpressionEngine.get_alias_sql("STAGE2", table_alias="db")
+        sql_db = ScanExpressionEngine.get_alias_sql("CONFIRMED_STAGED", table_alias="db")
         self.assertIn("db.close > db.sma_50", sql_db)
 
-        sql_none = ScanExpressionEngine.get_alias_sql("STAGE2", table_alias="")
+        sql_none = ScanExpressionEngine.get_alias_sql("CONFIRMED_STAGED", table_alias="")
         self.assertIn("close > sma_50", sql_none)
+
+        sql_s2 = ScanExpressionEngine.get_alias_sql("STAGE2", table_alias="b")
+        self.assertEqual(sql_s2, "(b.weinstein_stage = 2)")
 
     def test_catalog_and_category_metadata(self):
         cat = ScanExpressionEngine.get_catalog()

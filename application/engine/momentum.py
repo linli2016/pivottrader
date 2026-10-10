@@ -15,15 +15,15 @@ class MomentumEngine:
 
     def get_connection(self):
         import time
-        max_retries = 25
+        max_retries = 35
         for attempt in range(max_retries):
             try:
                 return duckdb.connect(self.db_path)
             except Exception as e:
                 err_msg = str(e).lower()
-                is_lock = any(k in err_msg for k in ["lock", "different configuration", "conflict", "held in", "temporarily unavailable"])
+                is_lock = any(k in err_msg for k in ["lock", "different configuration", "conflict", "held in", "temporarily unavailable", "resource temporarily unavailable"])
                 if is_lock and attempt < max_retries - 1:
-                    time.sleep(0.1 + attempt * 0.02)
+                    time.sleep(0.1 + attempt * 0.05)
                 else:
                     raise
 
@@ -178,6 +178,7 @@ class MomentumEngine:
                     sma_50,
                     sma_150,
                     sma_200,
+                    LAG(sma_150, 20) OVER (PARTITION BY symbol ORDER BY date) as sma_150_20d_ago,
                     LAG(sma_200, 20) OVER (PARTITION BY symbol ORDER BY date) as sma_200_20d_ago,
                     LAG(sma_200, 80) OVER (PARTITION BY symbol ORDER BY date) as sma_200_80d_ago,
                     LAG(sma_200, 100) OVER (PARTITION BY symbol ORDER BY date) as sma_200_100d_ago,
@@ -205,7 +206,7 @@ class MomentumEngine:
                     (sma_50 IS NOT NULL AND sma_150 IS NOT NULL AND sma_200 IS NOT NULL 
                      AND sma_50 > sma_150 AND sma_150 > sma_200) as is_stage2_stack,
                     SUM(CASE WHEN NOT (sma_50 IS NOT NULL AND sma_150 IS NOT NULL AND sma_200 IS NOT NULL 
-                                       AND sma_50 > sma_150 AND sma_150 > sma_200) 
+                                        AND sma_50 > sma_150 AND sma_150 > sma_200) 
                              THEN 1 ELSE 0 END) 
                         OVER (PARTITION BY symbol ORDER BY date) as s2_grp
                 FROM price_lags_derived
@@ -217,7 +218,34 @@ class MomentumEngine:
                         WHEN is_stage2_stack THEN 
                             ROW_NUMBER() OVER (PARTITION BY symbol, s2_grp ORDER BY date)
                         ELSE 0 
-                    END as stage2_days
+                    END as stage2_days,
+                    CASE
+                        WHEN sma_150 IS NOT NULL AND close > sma_150 
+                         AND (sma_50 IS NULL OR close >= sma_50)
+                         AND (sma_50 IS NULL OR sma_50 >= sma_150)
+                         AND (sma_150_20d_ago IS NOT NULL AND (sma_150 - sma_150_20d_ago) / sma_150_20d_ago * 100.0 > 0.5)
+                         AND COALESCE(dist_from_52w_high, 0) <= 25.0
+                        THEN 2
+
+                        WHEN sma_150 IS NOT NULL AND close < sma_150 
+                         AND (sma_50 IS NULL OR close < sma_50)
+                         AND (sma_50 IS NULL OR sma_50 < sma_150)
+                         AND (sma_150_20d_ago IS NOT NULL AND (sma_150 - sma_150_20d_ago) / sma_150_20d_ago * 100.0 < -0.5)
+                        THEN 4
+
+                        WHEN (COALESCE(dist_from_52w_high, 50.0) <= 20.0 OR COALESCE(ret_6m, 0) > 30.0)
+                         AND (close < sma_50 OR (sma_150_20d_ago IS NOT NULL AND (sma_150 - sma_150_20d_ago) / sma_150_20d_ago * 100.0 <= 0.5))
+                         AND close >= sma_150 * 0.90
+                        THEN 3
+
+                        WHEN (COALESCE(dist_from_52w_high, 0) > 20.0 OR COALESCE(dist_from_52w_low, 100.0) <= 35.0)
+                         AND (sma_150_20d_ago IS NOT NULL AND ABS((sma_150 - sma_150_20d_ago) / sma_150_20d_ago * 100.0) <= 1.5)
+                         AND close >= sma_150 * 0.85
+                        THEN 1
+
+                        WHEN close >= sma_150 THEN 2
+                        ELSE 4
+                    END as weinstein_stage
                 FROM stage2_islands
             ),
             weighted_scores AS (
@@ -235,6 +263,7 @@ class MomentumEngine:
                     sma_200_80d_ago,
                     sma_200_100d_ago,
                     stage2_days,
+                    weinstein_stage,
                     ti_65,
                     high_52w,
                     days_since_52w_high,
@@ -269,6 +298,7 @@ class MomentumEngine:
                     sma_200_80d_ago,
                     sma_200_100d_ago,
                     stage2_days,
+                    weinstein_stage,
                     ti_65,
                     high_52w,
                     days_since_52w_high,
@@ -296,6 +326,7 @@ class MomentumEngine:
                 sma_200_80d_ago = src.sma_200_80d_ago,
                 sma_200_100d_ago = src.sma_200_100d_ago,
                 stage2_days = src.stage2_days,
+                weinstein_stage = src.weinstein_stage,
                 ti_65 = src.ti_65,
                 high_52w = src.high_52w,
                 days_since_52w_high = src.days_since_52w_high,

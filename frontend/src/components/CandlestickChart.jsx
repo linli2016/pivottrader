@@ -223,31 +223,34 @@ export function getPanelMargins(containerHeight, showRs = true) {
   const timeScaleH = 30; // standard time scale height in px
   const plotH = Math.max(120, H - timeScaleH);
 
-  // Exact outer height of MansfieldYearlyThumbnail: 91px
-  const THUMBNAIL_HEIGHT = MANSFIELD_THUMBNAIL_HEIGHT || 91;
+  // Exact outer height of MansfieldYearlyThumbnail: 58px
+  const THUMBNAIL_HEIGHT = MANSFIELD_THUMBNAIL_HEIGHT || 58;
+
+  // Leave comfortable top clearance so the toolbar overlay (~32-36px) never covers candlestick bars
+  const topClearancePx = 54;
+  const priceTop = Math.min(0.20, Math.max(0.08, topClearancePx / plotH));
 
   if (!showRs) {
     return {
-      price: { top: 0.08, bottom: 0.22 },
-      volume: { top: 0.80, bottom: 0.0 },
-      rs: { top: 0.85, bottom: 0.01 },
+      price: { top: priceTop, bottom: 0.14 },
+      volume: { top: 0.88, bottom: 0.0 },
+      rs: { top: 0.95, bottom: 0.0 },
     };
   }
 
-  // Fraction of plot height occupied by RS panel to equal 91px
-  const rsFraction = Math.min(0.40, Math.max(0.14, THUMBNAIL_HEIGHT / plotH));
+  // Fraction of plot height occupied by RS panel to equal THUMBNAIL_HEIGHT (58px)
+  const rsFraction = Math.min(0.25, Math.max(0.06, THUMBNAIL_HEIGHT / plotH));
   const rsBottom = 0.005;
   const rsTop = 1.0 - rsFraction;
 
-  // Volume panel height (~45px) sits immediately above RS panel
-  const volHeightPx = 45;
-  const volFraction = Math.min(0.16, Math.max(0.08, volHeightPx / plotH));
-  const volBottom = rsFraction + 0.015;
-  const volTop = Math.max(0.35, 1.0 - (volBottom + volFraction));
+  // Volume panel height (~36px) sits immediately above RS panel
+  const volHeightPx = 36;
+  const volFraction = Math.min(0.12, Math.max(0.045, volHeightPx / plotH));
+  const volBottom = rsFraction + 0.012;
+  const volTop = Math.max(0.30, 1.0 - (volBottom + volFraction));
 
-  // Price panel sits above Volume panel
-  const priceBottom = Math.min(0.68, volBottom + volFraction + 0.02);
-  const priceTop = 0.04;
+  // Price panel sits above Volume panel with ample vertical room for candles
+  const priceBottom = Math.min(0.55, volBottom + volFraction + 0.015);
 
   return {
     price: { top: priceTop, bottom: priceBottom },
@@ -779,7 +782,7 @@ function compositeChartScreenshot(rawChartCanvas, {
   if (showMansfieldYearly && yearlyBars && yearlyBars.length > 0) {
     const displayBars = yearlyBars.length > 9 ? yearlyBars.slice(-9) : yearlyBars;
     const tWidth = 110 * scale;
-    const tHeight = 68 * scale;
+    const tHeight = 56 * scale;
     const tX = padX;
     const tY = outHeight - tHeight - (32 * scaleY);
 
@@ -820,7 +823,7 @@ function compositeChartScreenshot(rawChartCanvas, {
     const plotX = tX + 4 * scale;
     const plotY = tY + 11 * scale;
     const plotW = tWidth - 26 * scale;
-    const plotH = tHeight - 21 * scale;
+    const plotH = tHeight - 19 * scale;
 
     let minP = currentPriceVal;
     let maxP = currentPriceVal;
@@ -3835,7 +3838,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           <div
             style={{
               position: 'absolute',
-              bottom: '121px',
+              bottom: `${30 + (MANSFIELD_THUMBNAIL_HEIGHT || 58)}px`,
               left: showMansfieldYearly ? '132px' : '0px',
               right: '0px',
               height: '1px',

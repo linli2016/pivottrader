@@ -352,6 +352,20 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
     },
 
     # ---------------- Trend, RS & Momentum ----------------
+    "STAGE": {
+        "sql": "b.weinstein_stage",
+        "type": "numeric",
+        "label": "Weinstein Stage (1-4)",
+        "category": "trend",
+        "description": "Stan Weinstein 4-Stage market cycle code: 1 (Basing), 2 (Advancing), 3 (Topping), 4 (Declining)"
+    },
+    "WEINSTEIN_STAGE": {
+        "sql": "b.weinstein_stage",
+        "type": "numeric",
+        "label": "Weinstein Stage (1-4)",
+        "category": "trend",
+        "description": "Stan Weinstein 4-Stage market cycle code: 1 (Basing), 2 (Advancing), 3 (Topping), 4 (Declining)"
+    },
     "STAGE2_DAYS": {
         "sql": "COALESCE(b.stage2_days, 0)",
         "type": "numeric",
@@ -772,7 +786,7 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
 # Composite Expression Aliases Catalog
 # Defines reusable composite filters and setups constructed from primitive variables.
 ALIAS_CATALOG: Dict[str, Dict[str, Any]] = {
-    "STAGE2": {
+    "CONFIRMED_STAGED": {
         "expr": (
             "SMA_50 IS NOT NULL AND SMA_150 IS NOT NULL AND SMA_200 IS NOT NULL "
             "AND C > SMA_50 AND SMA_50 > SMA_150 AND SMA_150 > SMA_200 "
@@ -781,9 +795,78 @@ ALIAS_CATALOG: Dict[str, Dict[str, Any]] = {
             "AND (DIST_52W_LOW IS NULL OR DIST_52W_LOW >= 25.0)"
         ),
         "type": "boolean",
-        "label": "Stage 2 Uptrend",
+        "label": "Confirmed Stage 2 Uptrend",
         "category": "trend",
-        "description": "Minervini Stage 2 Trend Template (Close > 50 > 150 > 200 SMA, within 25% of 52w high & >= 25% above 52w low)"
+        "description": "Minervini Stage 2 Trend Template (Close > 50 > 150 > 200 SMA, rising 200 SMA, within 25% of 52w high & >= 25% above 52w low)"
+    },
+    "CONFIRMED_STAGE2": {
+        "expr": (
+            "SMA_50 IS NOT NULL AND SMA_150 IS NOT NULL AND SMA_200 IS NOT NULL "
+            "AND C > SMA_50 AND SMA_50 > SMA_150 AND SMA_150 > SMA_200 "
+            "AND (SMA_200_20D_AGO IS NULL OR SMA_200 > SMA_200_20D_AGO) "
+            "AND (DIST_52W_HIGH IS NULL OR DIST_52W_HIGH <= 25.0) "
+            "AND (DIST_52W_LOW IS NULL OR DIST_52W_LOW >= 25.0)"
+        ),
+        "type": "boolean",
+        "label": "Confirmed Stage 2 Uptrend",
+        "category": "trend",
+        "description": "Minervini Stage 2 Trend Template (Close > 50 > 150 > 200 SMA, rising 200 SMA, within 25% of 52w high & >= 25% above 52w low)"
+    },
+    "STAGE1": {
+        "expr": "STAGE = 1",
+        "type": "boolean",
+        "label": "Stage 1 (Basing)",
+        "category": "trend",
+        "description": "Stan Weinstein Stage 1: Base building & accumulation after prior decline (flat 30W MA)"
+    },
+    "STAGE_1": {
+        "expr": "STAGE = 1",
+        "type": "boolean",
+        "label": "Stage 1 (Basing)",
+        "category": "trend",
+        "description": "Stan Weinstein Stage 1: Base building & accumulation after prior decline (flat 30W MA)"
+    },
+    "STAGE2": {
+        "expr": "STAGE = 2",
+        "type": "boolean",
+        "label": "Stage 2 (Advancing)",
+        "category": "trend",
+        "description": "Stan Weinstein Stage 2: Markup uptrend with rising 30-week (150-day) moving average"
+    },
+    "STAGE_2": {
+        "expr": "STAGE = 2",
+        "type": "boolean",
+        "label": "Stage 2 (Advancing)",
+        "category": "trend",
+        "description": "Stan Weinstein Stage 2: Markup uptrend with rising 30-week (150-day) moving average"
+    },
+    "STAGE3": {
+        "expr": "STAGE = 3",
+        "type": "boolean",
+        "label": "Stage 3 (Topping)",
+        "category": "trend",
+        "description": "Stan Weinstein Stage 3: Top distribution & churning near highs (flattening 30W MA)"
+    },
+    "STAGE_3": {
+        "expr": "STAGE = 3",
+        "type": "boolean",
+        "label": "Stage 3 (Topping)",
+        "category": "trend",
+        "description": "Stan Weinstein Stage 3: Top distribution & churning near highs (flattening 30W MA)"
+    },
+    "STAGE4": {
+        "expr": "STAGE = 4",
+        "type": "boolean",
+        "label": "Stage 4 (Declining)",
+        "category": "trend",
+        "description": "Stan Weinstein Stage 4: Markdown downtrend below falling 30-week (150-day) moving average"
+    },
+    "STAGE_4": {
+        "expr": "STAGE = 4",
+        "type": "boolean",
+        "label": "Stage 4 (Declining)",
+        "category": "trend",
+        "description": "Stan Weinstein Stage 4: Markdown downtrend below falling 30-week (150-day) moving average"
     },
     "LOW_CHEAT": {
         "expr": (

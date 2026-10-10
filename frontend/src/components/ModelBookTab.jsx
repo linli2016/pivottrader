@@ -32,7 +32,11 @@ const SETUP_COLORS = {
   trend_1_4m: '#10b981',
   trend_5m: '#059669',
   // Others
+  confirmed_staged: '#10b981',
+  stage1: '#38bdf8',
   stage2: '#10b981',
+  stage3: '#f59e0b',
+  stage4: '#f43f5e',
   all: '#64748b',
   vcp: '#10b981',
 };
@@ -56,7 +60,11 @@ const SETUP_CANONICAL_NAMES = {
   '6m': '6M Gainers',
   all: 'All Gainers + Stage 2',
   ipo_base: 'IPO Base',
-  stage2: 'Stage 2',
+  confirmed_staged: 'Confirmed Staged',
+  stage1: 'Stage 1 Basing',
+  stage2: 'Stage 2 Advancing',
+  stage3: 'Stage 3 Topping',
+  stage4: 'Stage 4 Declining',
   trend_1m: '1 Month Trend',
   trend_1_4m: '1~4 Month Trend',
   trend_5m: '5 Months Trend',
@@ -72,7 +80,7 @@ export default function ModelBookTab({
   // Screening Parameters
   const [activeFolderId, setActiveFolderId] = useState('daily');
   const [activeScreenerId, setActiveScreenerId] = useState('power_play');
-  const [folderMemory, setFolderMemory] = useState({ daily: 'power_play', weekly: 'leaders', others: 'stage2' });
+  const [folderMemory, setFolderMemory] = useState({ daily: 'power_play', weekly: 'leaders', others: 'confirmed_staged' });
   const [setupType, setSetupType] = useState('power_play');
   const [selectedSubSetupId, setSelectedSubSetupId] = useState('htf');
   const modelBookChartRef = useRef(null);
@@ -277,7 +285,11 @@ export default function ModelBookTab({
     } else if (setupType === 'momentum') {
       const viewMap = {
         'all': 'All Views',
-        'stage2': 'Stage 2',
+        'confirmed_staged': 'Confirmed Staged',
+        'stage1': 'Stage 1 Basing',
+        'stage2': 'Stage 2 Advancing',
+        'stage3': 'Stage 3 Topping',
+        'stage4': 'Stage 4 Declining',
         'leaders': 'Leaders',
         'gainers': 'All Gainers',
         '1m': '1M Gainers',

@@ -3,22 +3,23 @@ from typing import List, Dict, Any, Tuple
 import pandas as pd
 
 class DatabaseManager:
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, init_schema: bool = True):
         self.db_path = db_path
-        self.initialize_schema()
+        if init_schema:
+            self.initialize_schema()
 
     def get_connection(self):
         """Returns a new connection to the DuckDB file, retrying if temporarily locked by concurrent queries."""
         import time
-        max_retries = 25
+        max_retries = 35
         for attempt in range(max_retries):
             try:
                 return duckdb.connect(self.db_path)
             except Exception as e:
                 err_msg = str(e).lower()
-                is_lock = any(k in err_msg for k in ["lock", "different configuration", "conflict", "held in", "temporarily unavailable"])
+                is_lock = any(k in err_msg for k in ["lock", "conflict", "held in", "temporarily unavailable", "different configuration", "resource temporarily unavailable"])
                 if is_lock and attempt < max_retries - 1:
-                    time.sleep(0.1 + attempt * 0.02)
+                    time.sleep(0.1 + attempt * 0.05)
                 else:
                     raise
 
@@ -160,6 +161,7 @@ class DatabaseManager:
                     low_cheat_risk_pct DOUBLE,
                     low_cheat_base_depth DOUBLE,
                     stage2_days INTEGER,
+                    weinstein_stage INTEGER,
                     PRIMARY KEY (symbol, date)
                 );
             """)
@@ -222,6 +224,7 @@ class DatabaseManager:
                 ("low_cheat_risk_pct", "DOUBLE"),
                 ("low_cheat_base_depth", "DOUBLE"),
                 ("stage2_days", "INTEGER"),
+                ("weinstein_stage", "INTEGER"),
             ]
             for col_name, col_type in new_cols:
                 try:
@@ -827,11 +830,11 @@ class DatabaseManager:
 
     def remove_watchlist_item(self, watchlist_id: int, symbol: str) -> bool:
         symbol_upper = symbol.upper()
-        with duckdb.connect(self.db_path) as conn:
+        with self.get_connection() as conn:
             conn.execute("DELETE FROM watchlist_items WHERE watchlist_id = ? AND symbol = ?", [watchlist_id, symbol_upper])
             return True
 
     def clear_watchlist_items(self, watchlist_id: int) -> bool:
-        with duckdb.connect(self.db_path) as conn:
+        with self.get_connection() as conn:
             conn.execute("DELETE FROM watchlist_items WHERE watchlist_id = ?", [watchlist_id])
             return True

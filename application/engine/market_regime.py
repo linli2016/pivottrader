@@ -328,23 +328,23 @@ def calculate_composite_market_light(
         kq_summary = f"Pullback / Consolidation ({kq.get('stack', '-')})"
 
     # --- Pillar 2: Stan Weinstein ---
-    w_score = int(weinstein.get("score", 2) or 2)
+    w_score = int(weinstein.get("score", 3) or 3)
     w_stage = str(weinstein.get("stage", "Stage 1 / 3 (Transition / Divergence)"))
-    if w_score >= 3:
+    if w_score >= 4:
         w_vote = 1
         w_status = "BULLISH"
         w_color = "#10b981"
-        w_summary = f"Stage 2 Bull Confirmed ({w_score}/4 Evidence)"
-    elif w_score <= 1:
+        w_summary = f"Stage 2 Bull Confirmed ({w_score}/5 Evidence)"
+    elif w_score <= 2:
         w_vote = -1
         w_status = "BEARISH"
         w_color = "#ef4444"
-        w_summary = f"Stage 4 Bear Market ({w_score}/4 Evidence)"
+        w_summary = f"Stage 4 Bear Market ({w_score}/5 Evidence)"
     else:
         w_vote = 0
         w_status = "NEUTRAL"
         w_color = "#f59e0b"
-        w_summary = f"Stage 1/3 Transition ({w_score}/4 Evidence)"
+        w_summary = f"Stage 1/3 Transition ({w_score}/5 Evidence)"
 
     # --- Pillar 3: Stockbee 4% Momentum Thrust ---
     sb_ratio = float(sb.get("latest_ratio_4pct") or sb.get("ratio_4pct") or 1.0)
@@ -455,7 +455,8 @@ def calculate_composite_market_light(
                 "color": w_color,
                 "summary": w_summary,
                 "stage": w_stage,
-                "score": w_score
+                "score": w_score,
+                "score_label": weinstein.get("score_label", f"{w_score}/5 Bullish")
             },
             "stockbee": {
                 "name": "Stockbee 4% Breadth Thrust",

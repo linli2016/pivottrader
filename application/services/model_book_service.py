@@ -75,12 +75,23 @@ SUB_SETUP_SIMULATION_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "min_base_depth": 12.0,
         "max_base_depth": 45.0,
     },
-    # Momentum subviews
     "all": {
         "qm_subview": "all",
     },
+    "confirmed_staged": {
+        "qm_subview": "confirmed_staged",
+    },
+    "stage1": {
+        "qm_subview": "stage1",
+    },
     "stage2": {
         "qm_subview": "stage2",
+    },
+    "stage3": {
+        "qm_subview": "stage3",
+    },
+    "stage4": {
+        "qm_subview": "stage4",
     },
     "leaders": {
         "qm_subview": "leaders",
@@ -206,18 +217,13 @@ class ModelBookService:
         """Returns a thread-safe read-only connection to DuckDB."""
         import time
         db_path = self.get_db_path()
-        max_retries = 25
+        max_retries = 35
         for attempt in range(max_retries):
             try:
-                return duckdb.connect(db_path)
+                return duckdb.connect(db_path, read_only=True)
             except Exception as e:
                 err_msg = str(e).lower()
-                if "different configuration" in err_msg:
-                    try:
-                        return duckdb.connect(db_path, read_only=True)
-                    except Exception:
-                        pass
-                is_lock = any(k in err_msg for k in ["lock", "different configuration", "conflict", "held in", "temporarily unavailable"])
+                is_lock = any(k in err_msg for k in ["lock", "different configuration", "conflict", "held in", "temporarily unavailable", "resource temporarily unavailable"])
                 if is_lock and attempt < max_retries - 1:
                     time.sleep(0.05 + attempt * 0.02)
                 else:
@@ -1095,12 +1101,18 @@ class ModelBookService:
                 sub_sql = "AND ret_6m IS NOT NULL AND ret_6m > 0"
             elif qm_subview in ('gainers', 'all_gainers'):
                 sub_sql = "AND ((ret_1m IS NOT NULL AND ret_1m > 0) OR (ret_3m IS NOT NULL AND ret_3m > 0) OR (ret_6m IS NOT NULL AND ret_6m > 0))"
-            elif qm_subview == 'stage2':
+            elif qm_subview in ('stage2', 'confirmed_staged'):
                 sub_sql = """AND (sma_50 IS NOT NULL AND sma_150 IS NOT NULL AND sma_200 IS NOT NULL 
                                   AND close > sma_50 AND sma_50 > sma_150 AND sma_150 > sma_200 
                                   AND (sma_200_20d_ago IS NULL OR sma_200 > sma_200_20d_ago) 
                                   AND (dist_from_52w_high IS NULL OR dist_from_52w_high <= 25.0) 
                                   AND (dist_from_52w_low IS NULL OR dist_from_52w_low >= 30.0))"""
+            elif qm_subview == 'stage1':
+                sub_sql = "AND weinstein_stage = 1"
+            elif qm_subview == 'stage3':
+                sub_sql = "AND weinstein_stage = 3"
+            elif qm_subview == 'stage4':
+                sub_sql = "AND weinstein_stage = 4"
             elif qm_subview == 'leaders':
                 sub_sql = """AND (
                                   close >= 10.0

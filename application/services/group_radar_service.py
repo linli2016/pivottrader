@@ -7,26 +7,34 @@ logger = logging.getLogger(__name__)
 
 
 
+_GLOBAL_STRENGTH_CACHE: Dict[Any, Any] = {}
+
+
 class GroupRadarService:
     def __init__(self, db_path: str = "data.db", theme_service: Optional[ThemeService] = None):
         self.db_path = db_path
         self.theme_service = theme_service or ThemeService()
         self._bars_cache = {}
 
+    def clear_cache(self):
+        """Clear all in-memory caches."""
+        self._bars_cache.clear()
+        _GLOBAL_STRENGTH_CACHE.clear()
+
+    @staticmethod
+    def clear_strength_cache():
+        """Clear global group strength cache."""
+        _GLOBAL_STRENGTH_CACHE.clear()
+
     def _get_connection(self):
         import time
-        max_retries = 25
+        max_retries = 35
         for attempt in range(max_retries):
             try:
-                return duckdb.connect(self.db_path)
+                return duckdb.connect(self.db_path, read_only=True)
             except Exception as e:
                 err_msg = str(e).lower()
-                if "different configuration" in err_msg:
-                    try:
-                        return duckdb.connect(self.db_path, read_only=True)
-                    except Exception:
-                        pass
-                is_lock = any(k in err_msg for k in ["lock", "different configuration", "conflict", "held in", "temporarily unavailable"])
+                is_lock = any(k in err_msg for k in ["lock", "different configuration", "conflict", "held in", "temporarily unavailable", "resource temporarily unavailable"])
                 if is_lock and attempt < max_retries - 1:
                     time.sleep(0.05 + attempt * 0.02)
                 else:
@@ -49,6 +57,10 @@ class GroupRadarService:
                     target_date = str(date_row[0])
                 else:
                     target_date = date
+
+                cache_key = (g_type, target_date, sector or "")
+                if cache_key in _GLOBAL_STRENGTH_CACHE:
+                    return _GLOBAL_STRENGTH_CACHE[cache_key]
 
                 year_str = target_date[:4]
                 clean_sec = sector.replace("'", "''") if sector else ""
@@ -363,11 +375,119 @@ class GroupRadarService:
                     except Exception as e:
                         logger.error(f"Error augmenting {g_type} with RRG metadata: {e}")
 
+                _GLOBAL_STRENGTH_CACHE[cache_key] = results
                 return results
 
         except Exception as e:
             logger.error(f"Error computing group strength ({group_type}): {e}", exc_info=True)
             return []
+
+    def enrich_stocks_with_groups(self, stocks: List[Dict[str, Any]], date: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Enriches a list of stock objects with Sector, Industry, and Theme strength & RRG metadata.
+        Crucial for Stan Weinstein's 'forest to trees' workflow: ranking individual stocks by group strength.
+        """
+        if not stocks:
+            return []
+
+        # 1. Fetch group strengths (cached)
+        try:
+            industries_list = self.get_group_strength("industries", date=date)
+            ind_map = {i["name"].lower(): i for i in industries_list if i.get("name")}
+        except Exception as e:
+            logger.error(f"Error fetching industries for enrichment: {e}")
+            ind_map = {}
+
+        try:
+            sectors_list = self.get_group_strength("sectors", date=date)
+            sec_map = {s["name"].lower(): s for s in sectors_list if s.get("name")}
+        except Exception as e:
+            logger.error(f"Error fetching sectors for enrichment: {e}")
+            sec_map = {}
+
+        try:
+            themes_list = self.get_group_strength("themes", date=date)
+            theme_strength_map = {t["name"].lower(): t for t in themes_list if t.get("name")}
+            all_themes = self.theme_service.load_themes()
+            sym_to_themes: Dict[str, List[Dict[str, Any]]] = {}
+            for th in all_themes:
+                th_name = th.get("name")
+                if not th_name:
+                    continue
+                th_meta = theme_strength_map.get(th_name.lower())
+                for sym in th.get("symbols", []):
+                    sym_upper = sym.strip().upper()
+                    if not sym_upper:
+                        continue
+                    if sym_upper not in sym_to_themes:
+                        sym_to_themes[sym_upper] = []
+                    sym_to_themes[sym_upper].append({
+                        "name": th_name,
+                        "rank": th_meta.get("rank") if th_meta else None,
+                        "rs_rank": th_meta.get("rs_rank") if th_meta else None,
+                        "quadrant": th_meta.get("quadrant", "Improving") if th_meta else "Improving",
+                    })
+        except Exception as e:
+            logger.error(f"Error fetching themes for enrichment: {e}")
+            sym_to_themes = {}
+
+        for s in stocks:
+            sym = (s.get("symbol") or "").upper()
+
+            # Industry metadata
+            ind_name = (s.get("industry") or "").strip()
+            ind_info = ind_map.get(ind_name.lower()) if ind_name else None
+            if ind_info:
+                s["industry_rank"] = ind_info.get("rank")
+                s["industry_rs_rank"] = ind_info.get("rs_rank")
+                s["industry_quadrant"] = ind_info.get("quadrant", "Improving")
+                s["industry_ret_1w"] = ind_info.get("ret_1w_pct")
+                s["industry_ret_1m"] = ind_info.get("ret_1m_pct")
+            else:
+                s["industry_rank"] = None
+                s["industry_rs_rank"] = None
+                s["industry_quadrant"] = None
+                s["industry_ret_1w"] = None
+                s["industry_ret_1m"] = None
+
+            # Sector metadata
+            sec_name = (s.get("sector") or "").strip()
+            sec_info = sec_map.get(sec_name.lower()) if sec_name else None
+            if sec_info:
+                s["sector_rank"] = sec_info.get("rank")
+                s["sector_rs_rank"] = sec_info.get("rs_rank")
+                s["sector_quadrant"] = sec_info.get("quadrant", "Improving")
+                s["sector_ret_1w"] = sec_info.get("ret_1w_pct")
+            else:
+                s["sector_rank"] = None
+                s["sector_rs_rank"] = None
+                s["sector_quadrant"] = None
+                s["sector_ret_1w"] = None
+
+            # Themes metadata
+            th_list = sym_to_themes.get(sym, [])
+            s["themes"] = [t["name"] for t in th_list]
+            s["themes_data"] = th_list
+            if th_list:
+                # Rank by theme rank (lower number = stronger)
+                best_theme = min(th_list, key=lambda x: x["rank"] if x.get("rank") is not None else 9999)
+                s["theme"] = best_theme["name"]
+                s["theme_rank"] = best_theme.get("rank")
+                s["theme_rs_rank"] = best_theme.get("rs_rank")
+                s["theme_quadrant"] = best_theme.get("quadrant")
+            else:
+                s["theme"] = None
+                s["theme_rank"] = None
+                s["theme_rs_rank"] = None
+                s["theme_quadrant"] = None
+
+            # Unified Group Strength Score for sorting
+            # Favor Industry RS Rank > Sector RS Rank > 50
+            s["group_rs_rank"] = s["industry_rs_rank"] if s.get("industry_rs_rank") is not None else (s["sector_rs_rank"] if s.get("sector_rs_rank") is not None else 50)
+            s["group_quadrant"] = s["industry_quadrant"] or s["sector_quadrant"] or "Improving"
+            s["group_rank"] = s["industry_rank"] or s["sector_rank"]
+
+        return stocks
 
     def get_group_constituents(self, group_type: str, group_name: str, date: Optional[str] = None) -> List[Dict[str, Any]]:
         """

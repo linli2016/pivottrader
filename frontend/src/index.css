@@ -844,13 +844,15 @@ body {
 .full-page-modal {
   width: 100%;
   max-width: 1060px;
-  max-height: 92vh;
+  height: 92vh;
+  min-height: 620px;
+  max-height: 95vh;
   background-color: var(--card-bg, #0f172a);
   border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
   border-radius: 12px;
   box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08);
   padding: 14px 18px 16px 18px;
-  overflow-y: auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -863,7 +865,9 @@ body {
   }
   .full-page-modal {
     max-width: 100%;
+    height: 96vh;
     max-height: 96vh;
+    min-height: 520px;
     padding: 12px 14px;
     border-radius: 8px;
   }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import SyncDataTab from './SyncDataTab';
 import MarketPulseCard from './MarketPulseCard';
+import StageDistributionCard from './StageDistributionCard';
 import { getLocalDateStr } from '../utils/dateUtils';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
@@ -918,16 +919,27 @@ export default function DashboardTab({
     const weinsteinVerdict = summaryData?.weinstein_verdict;
 
     const width = 1000;
-    const height = 340;
+    const height = 440;
     const paddingLeft = 55;
     const paddingRight = 55;
     const paddingTop = 20;
-    const panel1Bottom = 165;
-    const panel1InnerHeight = panel1Bottom - paddingTop; // 145px
-    const panel2Top = 195;
-    const panel2Bottom = 300;
-    const panel2InnerHeight = panel2Bottom - panel2Top; // 105px
-    const panel2BaselineY = panel2Top + panel2InnerHeight / 2; // ~247.5px (zero line)
+
+    // Panel 1: Cumulative A/D & SPY
+    const panel1Top = 20;
+    const panel1Bottom = 140;
+    const panel1InnerHeight = panel1Bottom - panel1Top; // 120px
+
+    // Panel 2: Stan Weinstein Momentum Index (200-day SMA Net A/D)
+    const panel2Top = 168;
+    const panel2Bottom = 268;
+    const panel2InnerHeight = panel2Bottom - panel2Top; // 100px
+    const panel2BaselineY = panel2Top + panel2InnerHeight / 2; // 218px (zero line)
+
+    // Panel 3: Net New Highs / Lows (NH - NL)
+    const panel3Top = 296;
+    const panel3Bottom = 396;
+    const panel3InnerHeight = panel3Bottom - panel3Top; // 100px
+    const panel3BaselineY = panel3Top + panel3InnerHeight / 2; // 346px (zero line)
 
     const stepX = (width - paddingLeft - paddingRight) / Math.max(chartData.length - 1, 1);
     const getX = (idx) => paddingLeft + idx * stepX;
@@ -946,23 +958,31 @@ export default function DashboardTab({
     const rangeSpy = maxSpy === minSpy ? 1 : maxSpy - minSpy;
     const getYSpy = (val) => panel1Bottom - ((val - minSpy) / rangeSpy) * panel1InnerHeight;
 
-    // Panel 2: Net New Highs / Lows scale
+    // Panel 2: Stan Weinstein Momentum Index scale (Zero-centered)
+    const miValues = chartData.map((d) => Math.abs(d.momentum_index ?? 0));
+    const maxAbsMI = Math.max(...miValues, 20);
+    const halfH2 = (panel2InnerHeight / 2) - 6;
+    const getYMI = (val) => panel2BaselineY - (val / maxAbsMI) * halfH2;
+    const pointsMI = chartData.map((d, i) => `${getX(i)},${getYMI(d.momentum_index ?? 0)}`).join(' ');
+
+    // Panel 3: Net New Highs / Lows scale (Zero-centered)
     const netNhValues = chartData.map((d) => Math.abs(d.net_new_highs ?? 0));
     const maxAbsNet = Math.max(...netNhValues, 50);
-    const halfH = (panel2InnerHeight / 2) - 6;
-    const getYNet = (val) => panel2BaselineY - (val / maxAbsNet) * halfH;
+    const halfH3 = (panel3InnerHeight / 2) - 6;
+    const getYNet = (val) => panel3BaselineY - (val / maxAbsNet) * halfH3;
+    const pointsNh10d = chartData.map((d, i) => `${getX(i)},${getYNet(d.net_new_highs_10d ?? 0)}`).join(' ');
 
     const { all: monthSeparators, visible: visibleSeparators } = getMonthSeparators(chartData, getX);
 
     // Points for lines
     const pointsCumAd = chartData.map((d, i) => `${getX(i)},${getYAd(d.cum_ad ?? 0)}`).join(' ');
     const pointsSpy = chartData.filter((d) => (d.spy_close || 0) > 0).map((d) => `${getX(chartData.indexOf(d))},${getYSpy(d.spy_close)}`).join(' ');
-    const pointsNh10d = chartData.map((d, i) => `${getX(i)},${getYNet(d.net_new_highs_10d ?? 0)}`).join(' ');
 
     // Area path for A/D
     const areaAdPath = `M ${getX(0)},${panel1Bottom} ${chartData.map((d, i) => `L ${getX(i)},${getYAd(d.cum_ad ?? 0)}`).join(' ')} L ${getX(chartData.length - 1)},${panel1Bottom} Z`;
 
     const barW = Math.max((width - paddingLeft - paddingRight) / chartData.length - 1, 1.2);
+    const latestMI = chartData.length > 0 ? (chartData[chartData.length - 1].momentum_index ?? 0) : 0;
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', width: '100%' }}>
@@ -998,11 +1018,11 @@ export default function DashboardTab({
               </span>
             </div>
             <div style={{ fontSize: '12px', fontWeight: 700, color: '#94a3b8' }}>
-              Evidence Score: <span style={{ color: weinsteinVerdict?.badge_color || '#10b981', fontWeight: 800 }}>{weinsteinVerdict?.score_label || '3/4 Bullish'}</span>
+              Evidence Score: <span style={{ color: weinsteinVerdict?.badge_color || '#10b981', fontWeight: 800 }}>{weinsteinVerdict?.score_label || '4/5 Bullish'}</span>
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))', gap: '10px' }}>
             {/* 1. Major Trend */}
             <div style={{ background: 'rgba(0, 0, 0, 0.35)', borderRadius: '8px', padding: '10px 12px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
               <div style={{ fontSize: '10.5px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>
@@ -1014,10 +1034,21 @@ export default function DashboardTab({
               </div>
             </div>
 
-            {/* 2. Advance-Decline Line */}
+            {/* 2. Momentum Index (200d Net A/D) */}
             <div style={{ background: 'rgba(0, 0, 0, 0.35)', borderRadius: '8px', padding: '10px 12px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
               <div style={{ fontSize: '10.5px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>
-                2. A/D Line Confirmation
+                2. Momentum Index (200d Net A/D)
+              </div>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: weinsteinVerdict?.mi_is_bullish ? '#34d399' : '#fb7185', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span>{weinsteinVerdict?.mi_is_bullish ? '✓' : '✗'}</span>
+                <span>{weinsteinVerdict?.mi_status || 'Momentum Index'}</span>
+              </div>
+            </div>
+
+            {/* 3. Advance-Decline Line */}
+            <div style={{ background: 'rgba(0, 0, 0, 0.35)', borderRadius: '8px', padding: '10px 12px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div style={{ fontSize: '10.5px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>
+                3. A/D Line Confirmation
               </div>
               <div style={{ fontSize: '12px', fontWeight: 700, color: weinsteinVerdict?.ad_is_bullish ? '#34d399' : '#fb7185', display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <span>{weinsteinVerdict?.ad_is_bullish ? '✓' : '✗'}</span>
@@ -1025,10 +1056,10 @@ export default function DashboardTab({
               </div>
             </div>
 
-            {/* 3. Net 52W Highs/Lows */}
+            {/* 4. Net 52W Highs/Lows */}
             <div style={{ background: 'rgba(0, 0, 0, 0.35)', borderRadius: '8px', padding: '10px 12px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
               <div style={{ fontSize: '10.5px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>
-                3. 52W Highs vs Lows
+                4. 52W Highs vs Lows
               </div>
               <div style={{ fontSize: '12px', fontWeight: 700, color: weinsteinVerdict?.nh_is_bullish ? '#34d399' : '#fb7185', display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <span>{weinsteinVerdict?.nh_is_bullish ? '✓' : '✗'}</span>
@@ -1036,10 +1067,10 @@ export default function DashboardTab({
               </div>
             </div>
 
-            {/* 4. % Above 200 SMA */}
+            {/* 5. % Above 200 SMA */}
             <div style={{ background: 'rgba(0, 0, 0, 0.35)', borderRadius: '8px', padding: '10px 12px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
               <div style={{ fontSize: '10.5px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: '4px' }}>
-                4. Participation (% &gt; 200d)
+                5. Participation (% &gt; 200d)
               </div>
               <div style={{ fontSize: '12px', fontWeight: 700, color: weinsteinVerdict?.ma_is_bullish ? '#34d399' : '#fb7185', display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <span>{weinsteinVerdict?.ma_is_bullish ? '✓' : '✗'}</span>
@@ -1049,7 +1080,7 @@ export default function DashboardTab({
           </div>
         </div>
 
-        {/* Dual Panel SVG Chart */}
+        {/* 3-Panel SVG Chart */}
         <div style={{ width: '100%', overflowX: 'auto' }}>
           <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 'auto', background: 'rgba(0, 0, 0, 0.3)', borderRadius: '8px' }}>
             <defs>
@@ -1059,10 +1090,38 @@ export default function DashboardTab({
               </linearGradient>
             </defs>
 
+            {/* Month Separators across all 3 panels */}
+            {monthSeparators.map((sep, idx) => {
+              if (sep.isFirst) return null;
+              return (
+                <line
+                  key={`wein-sep-${idx}`}
+                  x1={sep.x}
+                  y1={paddingTop}
+                  x2={sep.x}
+                  y2={panel3Bottom}
+                  stroke={sep.isNewYear ? 'rgba(255, 255, 255, 0.16)' : 'rgba(255, 255, 255, 0.07)'}
+                  strokeDasharray={sep.isNewYear ? 'none' : '3 3'}
+                  strokeWidth={sep.isNewYear ? 1.2 : 1}
+                />
+              );
+            })}
+
+            {/* ============================================================== */}
             {/* PANEL 1: CUMULATIVE A/D LINE & SPY */}
+            {/* ============================================================== */}
             <text x={paddingLeft} y="15" fill="#94a3b8" fontSize="10.5" fontWeight="700" letterSpacing="0.05em">
               PANEL 1: CUMULATIVE ADVANCE-DECLINE LINE vs. S&P 500 (SPY)
             </text>
+
+            {/* Panel 1 Legend */}
+            <g transform={`translate(${width - paddingRight - 225}, 8)`}>
+              <line x1="0" y1="4" x2="16" y2="4" stroke="#06b6d4" strokeWidth="2.5" />
+              <text x="22" y="7" fill="#06b6d4" fontSize="10.5" fontWeight="700">Cumulative A/D</text>
+
+              <line x1="115" y1="4" x2="131" y2="4" stroke="#f59e0b" strokeWidth="2.0" strokeDasharray="4 3" />
+              <text x="137" y="7" fill="#f59e0b" fontSize="10.5" fontWeight="700">SPY (S&P 500)</text>
+            </g>
 
             {/* Horizontal Grid Lines Panel 1 */}
             {[0, 0.5, 1].map((ratio, i) => {
@@ -1085,23 +1144,6 @@ export default function DashboardTab({
             {/* Baseline Panel 1 */}
             <line x1={paddingLeft} y1={panel1Bottom} x2={width - paddingRight} y2={panel1Bottom} stroke="rgba(255, 255, 255, 0.15)" />
 
-            {/* Month Separators across both panels */}
-            {monthSeparators.map((sep, idx) => {
-              if (sep.isFirst) return null;
-              return (
-                <line
-                  key={`wein-sep-${idx}`}
-                  x1={sep.x}
-                  y1={paddingTop}
-                  x2={sep.x}
-                  y2={panel2Bottom}
-                  stroke={sep.isNewYear ? 'rgba(255, 255, 255, 0.16)' : 'rgba(255, 255, 255, 0.07)'}
-                  strokeDasharray={sep.isNewYear ? 'none' : '3 3'}
-                  strokeWidth={sep.isNewYear ? 1.2 : 1}
-                />
-              );
-            })}
-
             {/* Shaded Area for Cumulative A/D */}
             <path d={areaAdPath} fill="url(#weinsteinAdGrad)" />
 
@@ -1111,13 +1153,61 @@ export default function DashboardTab({
             {/* SPY Benchmark Normalized Polyline */}
             <polyline fill="none" stroke="#f59e0b" strokeWidth="2.0" strokeDasharray="4 3" points={pointsSpy} />
 
-            {/* PANEL 2: NET NEW 52-WEEK HIGHS / LOWS HISTOGRAM */}
+            {/* ============================================================== */}
+            {/* PANEL 2: STAN WEINSTEIN MOMENTUM INDEX (200-DAY SMA NET A/D) */}
+            {/* ============================================================== */}
             <text x={paddingLeft} y={panel2Top - 8} fill="#94a3b8" fontSize="10.5" fontWeight="700" letterSpacing="0.05em">
-              PANEL 2: NET NEW 52-WEEK HIGHS vs. LOWS (NH – NL) & 10-DAY MA
+              PANEL 2: STAN WEINSTEIN MOMENTUM INDEX (200-DAY SMA OF NET ADVANCES - DECLINES)
             </text>
 
             {/* Panel 2 Legend */}
-            <g transform={`translate(${width - paddingRight - 225}, ${panel2Top - 18})`}>
+            <g transform={`translate(${width - paddingRight - 280}, ${panel2Top - 18})`}>
+              <line x1="0" y1="6" x2="16" y2="6" stroke="#38bdf8" strokeWidth="2.4" />
+              <text x="22" y="10" fill="#38bdf8" fontSize="10.5" fontWeight="700">Momentum Index (200d)</text>
+
+              <rect x="155" y="2" width="10" height="8" fill="rgba(16, 185, 129, 0.7)" rx="1" />
+              <text x="170" y="10" fill="#10b981" fontSize="10" fontWeight="600">&gt; 0 Bull</text>
+
+              <rect x="220" y="2" width="10" height="8" fill="rgba(244, 63, 94, 0.7)" rx="1" />
+              <text x="235" y="10" fill="#fb7185" fontSize="10" fontWeight="600">&lt; 0 Bear</text>
+            </g>
+
+            {/* Panel 2 Baseline at Zero */}
+            <line x1={paddingLeft} y1={panel2BaselineY} x2={width - paddingRight} y2={panel2BaselineY} stroke="rgba(255, 255, 255, 0.3)" strokeDasharray="3 3" />
+            <text x={paddingLeft - 8} y={panel2BaselineY + 3} fill="var(--text-muted)" fontSize="9.5" textAnchor="end">0</text>
+            <text x={paddingLeft - 8} y={panel2Top + 8} fill="#10b981" fontSize="9" textAnchor="end">+{maxAbsMI.toFixed(0)}</text>
+            <text x={paddingLeft - 8} y={panel2Bottom - 4} fill="#f43f5e" fontSize="9" textAnchor="end">-{maxAbsMI.toFixed(0)}</text>
+
+            {/* Daily Momentum Index Vertical Impulse Bars with Tooltips */}
+            {chartData.map((d, i) => {
+              const x = getX(i);
+              const mi = d.momentum_index ?? 0;
+              const yBar = getYMI(mi);
+              const isPos = mi >= 0;
+              const barColor = isPos ? 'rgba(16, 185, 129, 0.55)' : 'rgba(244, 63, 94, 0.55)';
+              return (
+                <g key={`mi-bar-${i}`}>
+                  <title>{`${d.date}: Weinstein Momentum Index: ${mi >= 0 ? '+' : ''}${mi.toFixed(1)} (${mi >= 0 ? 'Bullish Stage 2' : 'Bearish Stage 4'}) | Net A/D: ${(d.advancers ?? 0) - (d.decliners ?? 0)}`}</title>
+                  <line x1={x} y1={panel2BaselineY} x2={x} y2={yBar} stroke={barColor} strokeWidth={barW} />
+                </g>
+              );
+            })}
+
+            {/* Momentum Index Polyline */}
+            <polyline fill="none" stroke="#38bdf8" strokeWidth="2.4" points={pointsMI} />
+
+            {/* Baseline Bottom Panel 2 */}
+            <line x1={paddingLeft} y1={panel2Bottom} x2={width - paddingRight} y2={panel2Bottom} stroke="rgba(255, 255, 255, 0.15)" />
+
+            {/* ============================================================== */}
+            {/* PANEL 3: NET NEW 52-WEEK HIGHS / LOWS HISTOGRAM */}
+            {/* ============================================================== */}
+            <text x={paddingLeft} y={panel3Top - 8} fill="#94a3b8" fontSize="10.5" fontWeight="700" letterSpacing="0.05em">
+              PANEL 3: NET NEW 52-WEEK HIGHS vs. LOWS (NH – NL) & 10-DAY MA
+            </text>
+
+            {/* Panel 3 Legend */}
+            <g transform={`translate(${width - paddingRight - 225}, ${panel3Top - 18})`}>
               <rect x="0" y="2" width="12" height="9" fill="rgba(16, 185, 129, 0.8)" rx="1" />
               <text x="17" y="10" fill="#94a3b8" fontSize="10.5" fontWeight="600">Net NH Bars</text>
 
@@ -1125,11 +1215,11 @@ export default function DashboardTab({
               <text x="117" y="10" fill="#a855f7" fontSize="10.5" fontWeight="700">10d MA (NH-NL)</text>
             </g>
 
-            {/* Panel 2 Baseline at Zero */}
-            <line x1={paddingLeft} y1={panel2BaselineY} x2={width - paddingRight} y2={panel2BaselineY} stroke="rgba(255, 255, 255, 0.3)" strokeDasharray="3 3" />
-            <text x={paddingLeft - 8} y={panel2BaselineY + 3} fill="var(--text-muted)" fontSize="9.5" textAnchor="end">0</text>
-            <text x={paddingLeft - 8} y={panel2Top + 8} fill="#10b981" fontSize="9" textAnchor="end">+{maxAbsNet}</text>
-            <text x={paddingLeft - 8} y={panel2Bottom - 4} fill="#f43f5e" fontSize="9" textAnchor="end">-{maxAbsNet}</text>
+            {/* Panel 3 Baseline at Zero */}
+            <line x1={paddingLeft} y1={panel3BaselineY} x2={width - paddingRight} y2={panel3BaselineY} stroke="rgba(255, 255, 255, 0.3)" strokeDasharray="3 3" />
+            <text x={paddingLeft - 8} y={panel3BaselineY + 3} fill="var(--text-muted)" fontSize="9.5" textAnchor="end">0</text>
+            <text x={paddingLeft - 8} y={panel3Top + 8} fill="#10b981" fontSize="9" textAnchor="end">+{maxAbsNet}</text>
+            <text x={paddingLeft - 8} y={panel3Bottom - 4} fill="#f43f5e" fontSize="9" textAnchor="end">-{maxAbsNet}</text>
 
             {/* Daily Net New Highs / Lows Histogram Bars with Hover Tooltips */}
             {chartData.map((d, i) => {
@@ -1140,8 +1230,8 @@ export default function DashboardTab({
               const barColor = isPos ? 'rgba(16, 185, 129, 0.8)' : 'rgba(244, 63, 94, 0.8)';
               return (
                 <g key={`bar-${i}`}>
-                  <title>{`${d.date}: SPY $${d.spy_close ?? '-'} | Cum A/D: ${(d.cum_ad ?? 0).toLocaleString()} | 52W Highs: ${d.new_highs ?? 0} | 52W Lows: ${d.new_lows ?? 0} | Net NH: ${d.net_new_highs ?? 0} (10d MA: ${d.net_new_highs_10d ?? 0})`}</title>
-                  <line x1={x} y1={panel2BaselineY} x2={x} y2={yBar} stroke={barColor} strokeWidth={barW} />
+                  <title>{`${d.date}: SPY $${d.spy_close ?? '-'} | Momentum Index: ${(d.momentum_index ?? 0).toFixed(1)} | Cum A/D: ${(d.cum_ad ?? 0).toLocaleString()} | 52W Highs: ${d.new_highs ?? 0} | 52W Lows: ${d.new_lows ?? 0} | Net NH: ${d.net_new_highs ?? 0} (10d MA: ${d.net_new_highs_10d ?? 0})`}</title>
+                  <line x1={x} y1={panel3BaselineY} x2={x} y2={yBar} stroke={barColor} strokeWidth={barW} />
                 </g>
               );
             })}
@@ -1149,23 +1239,23 @@ export default function DashboardTab({
             {/* 10-day MA Polyline */}
             <polyline fill="none" stroke="#a855f7" strokeWidth="2.2" points={pointsNh10d} />
 
-            {/* Baseline Bottom Panel 2 */}
-            <line x1={paddingLeft} y1={panel2Bottom} x2={width - paddingRight} y2={panel2Bottom} stroke="rgba(255, 255, 255, 0.18)" />
+            {/* Baseline Bottom Panel 3 */}
+            <line x1={paddingLeft} y1={panel3Bottom} x2={width - paddingRight} y2={panel3Bottom} stroke="rgba(255, 255, 255, 0.18)" />
 
             {/* Month Labels on Date Axis */}
             {visibleSeparators.map((sep, idx) => (
               <g key={`wein-lbl-${idx}`}>
                 <line
                   x1={sep.x}
-                  y1={panel2Bottom}
+                  y1={panel3Bottom}
                   x2={sep.x}
-                  y2={panel2Bottom + 5}
+                  y2={panel3Bottom + 5}
                   stroke="rgba(255, 255, 255, 0.3)"
                   strokeWidth={1}
                 />
                 <text
                   x={sep.x}
-                  y={panel2Bottom + 18}
+                  y={panel3Bottom + 18}
                   fill={sep.isNewYear || sep.isFirst ? 'var(--text-primary)' : 'var(--text-muted)'}
                   fontSize="10"
                   fontWeight={sep.isNewYear || sep.isFirst ? 700 : 500}
@@ -1175,15 +1265,6 @@ export default function DashboardTab({
                 </text>
               </g>
             ))}
-
-            {/* Panel 1 Legend */}
-            <g transform={`translate(${width - paddingRight - 225}, 8)`}>
-              <line x1="0" y1="4" x2="16" y2="4" stroke="#06b6d4" strokeWidth="2.5" />
-              <text x="22" y="7" fill="#06b6d4" fontSize="10.5" fontWeight="700">Cumulative A/D</text>
-
-              <line x1="115" y1="4" x2="131" y2="4" stroke="#f59e0b" strokeWidth="2.0" strokeDasharray="4 3" />
-              <text x="137" y="7" fill="#f59e0b" fontSize="10.5" fontWeight="700">SPY (S&P 500)</text>
-            </g>
           </svg>
         </div>
       </div>
@@ -1318,6 +1399,7 @@ export default function DashboardTab({
                 </th>
                 <th style={{ textAlign: 'center', color: '#38bdf8' }}>A / D (Up/Down)</th>
                 <th style={{ textAlign: 'right', color: '#06b6d4' }}>Cum A/D</th>
+                <th style={{ textAlign: 'right', color: '#38bdf8' }} title="Stan Weinstein Momentum Index (200-day SMA of Net Advance-Decline)">MI (200d)</th>
                 <th style={{ textAlign: 'right', color: '#34d399' }}>52W H</th>
                 <th style={{ textAlign: 'right', color: '#fb7185' }}>52W L</th>
                 <th style={{ textAlign: 'right', color: '#eab308' }}>Net NH</th>
@@ -1424,6 +1506,9 @@ export default function DashboardTab({
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 600, color: (row.cum_ad || 0) >= 0 ? '#06b6d4' : '#94a3b8', fontFamily: 'var(--font-mono)', fontSize: '11px', whiteSpace: 'nowrap' }}>
                       {row.cum_ad !== undefined ? (row.cum_ad >= 0 ? `+${row.cum_ad.toLocaleString()}` : row.cum_ad.toLocaleString()) : '-'}
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: (row.momentum_index || 0) > 0 ? '#34d399' : (row.momentum_index || 0) < 0 ? '#fb7185' : 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '11px', whiteSpace: 'nowrap' }} title="Stan Weinstein Momentum Index (200-day SMA of Net Advance-Decline)">
+                      {row.momentum_index !== undefined ? (row.momentum_index > 0 ? `+${row.momentum_index.toFixed(1)}` : row.momentum_index.toFixed(1)) : '-'}
                     </td>
                     <td style={{ textAlign: 'right', color: '#34d399', fontSize: '11px', fontWeight: 600 }}>
                       {row.new_highs?.toLocaleString() ?? '-'}
@@ -2035,7 +2120,7 @@ export default function DashboardTab({
               <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: compositeLight.pillars.weinstein?.color || '#94a3b8' }} />
               <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Weinstein:</span>
               <span style={{ fontWeight: 700, color: compositeLight.pillars.weinstein?.color || '#94a3b8' }}>
-                {compositeLight.pillars.weinstein?.status} ({compositeLight.pillars.weinstein?.score}/4)
+                {compositeLight.pillars.weinstein?.status} ({compositeLight.pillars.weinstein?.score}/5)
               </span>
             </div>
 
@@ -2415,7 +2500,10 @@ export default function DashboardTab({
         </div>
       </div>
 
-      {/* 1c. Market Pulse Widget (CANSLIM FTD, Distribution Pressure, and MA Breadth Percentiles) */}
+      {/* 1c. Stan Weinstein 4-Stage Market Distribution Widget */}
+      <StageDistributionCard stageDistribution={summaryData?.stage_distribution} dailyData={dailyData} asOfDate={asOfDate} />
+
+      {/* 1d. Market Pulse Widget (CANSLIM FTD, Distribution Pressure, and MA Breadth Percentiles) */}
       <MarketPulseCard marketPulse={summaryData?.market_pulse} asOfDate={asOfDate} />
 
       {/* 2. Market Breadth Visualizer & Trend Health */}
@@ -2457,6 +2545,12 @@ export default function DashboardTab({
               >
                 ⚖️ Weinstein Stage & A/D
               </button>
+              <button
+                className={`segmented-item ${activeBreadthChart === 'stages' ? 'active' : ''}`}
+                onClick={() => setActiveBreadthChart('stages')}
+              >
+                ⚖️ 4-Stage Cycles
+              </button>
             </div>
 
             <button
@@ -2481,6 +2575,14 @@ export default function DashboardTab({
             {activeBreadthChart === 'trend' && renderTrendChart()}
             {activeBreadthChart === 'heatmap' && renderHeatmap()}
             {activeBreadthChart === 'weinstein' && renderWeinsteinChart()}
+            {activeBreadthChart === 'stages' && (
+              <StageDistributionCard
+                stageDistribution={summaryData?.stage_distribution}
+                dailyData={dailyData}
+                asOfDate={asOfDate}
+                isEmbedded={true}
+              />
+            )}
 
             {/* Expandable Historical Breadth Table */}
             {isBreadthTableOpen && (

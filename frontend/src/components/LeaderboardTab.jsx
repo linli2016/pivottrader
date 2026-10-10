@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import GroupChart from './GroupChart';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
@@ -172,6 +173,27 @@ export default function LeaderboardTab({
       setSelectedSector(null);
     }
   };
+
+  // Active selected group (Sector or Industry) for Group Stage Chart view
+  const activeGroup = useMemo(() => {
+    if (selectedIndustry) {
+      return { type: 'industries', name: selectedIndustry, label: `Industry: ${selectedIndustry}` };
+    }
+    if (selectedSector) {
+      return { type: 'sectors', name: selectedSector, label: `Sector: ${selectedSector}` };
+    }
+    return null;
+  }, [selectedSector, selectedIndustry]);
+
+  const topSector = useMemo(() => {
+    return data.summary?.top_sector || (data.sector_distribution && data.sector_distribution[0]?.sector) || null;
+  }, [data]);
+
+  const topIndustry = useMemo(() => {
+    return (data.summary?.top_cluster_industry && data.summary.top_cluster_industry !== 'None')
+      ? data.summary.top_cluster_industry
+      : (data.industry_distribution && data.industry_distribution[0]?.industry) || null;
+  }, [data]);
 
   // Selected Stock for drawer & arrow keys
   const [selectedSymbol, setSelectedSymbol] = useState(null);
@@ -958,10 +980,29 @@ export default function LeaderboardTab({
                 border: '1px solid rgba(56, 189, 248, 0.3)',
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '4px'
+                gap: '5px'
               }}
             >
-              Sector: {selectedSector}
+              <span>Sector: {selectedSector}</span>
+              <button
+                type="button"
+                onClick={() => setLeaderViewMode('chart')}
+                style={{
+                  cursor: 'pointer',
+                  border: 'none',
+                  borderRadius: '3px',
+                  background: leaderViewMode === 'chart' ? '#38bdf8' : 'rgba(56, 189, 248, 0.25)',
+                  color: leaderViewMode === 'chart' ? '#000' : '#38bdf8',
+                  fontSize: '10px',
+                  fontWeight: '600',
+                  padding: '1px 5px',
+                  lineHeight: '14px',
+                  transition: 'all 0.15s ease'
+                }}
+                title="View Stan Weinstein 40-Week Stage Chart for this Sector"
+              >
+                📈 Chart
+              </button>
               <span
                 onClick={handleClearGroupFilter}
                 style={{ cursor: 'pointer', fontWeight: 'bold', marginLeft: '2px' }}
@@ -983,10 +1024,29 @@ export default function LeaderboardTab({
                 border: '1px solid rgba(168, 85, 247, 0.3)',
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '4px'
+                gap: '5px'
               }}
             >
-              Industry: {selectedIndustry}
+              <span>Industry: {selectedIndustry}</span>
+              <button
+                type="button"
+                onClick={() => setLeaderViewMode('chart')}
+                style={{
+                  cursor: 'pointer',
+                  border: 'none',
+                  borderRadius: '3px',
+                  background: leaderViewMode === 'chart' ? '#c084fc' : 'rgba(168, 85, 247, 0.25)',
+                  color: leaderViewMode === 'chart' ? '#000' : '#c084fc',
+                  fontSize: '10px',
+                  fontWeight: '600',
+                  padding: '1px 5px',
+                  lineHeight: '14px',
+                  transition: 'all 0.15s ease'
+                }}
+                title="View Stan Weinstein 40-Week Stage Chart for this Industry"
+              >
+                📈 Chart
+              </button>
               <span
                 onClick={handleClearGroupFilter}
                 style={{ cursor: 'pointer', fontWeight: 'bold', marginLeft: '2px' }}
@@ -1335,10 +1395,14 @@ export default function LeaderboardTab({
           <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
-                Leading Stocks
+                {leaderViewMode === 'chart'
+                  ? (activeGroup ? activeGroup.label : 'Group Stage Chart')
+                  : 'Leading Stocks'}
               </span>
               <span className="badge" style={{ fontSize: '11px', background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)' }}>
-                {displayedStocks.length} displayed
+                {leaderViewMode === 'chart'
+                  ? 'Weekly 40-SMA • Mansfield RS vs SPY'
+                  : `${displayedStocks.length} displayed`}
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1364,10 +1428,19 @@ export default function LeaderboardTab({
                 >
                   📊 Sector Board
                 </button>
+                <button
+                  className={`leaderboard-view-btn ${leaderViewMode === 'chart' ? 'active' : ''}`}
+                  onClick={() => setLeaderViewMode('chart')}
+                  title="Stan Weinstein 40-Week Stage Analysis & RS Chart"
+                >
+                  📈 Group Chart
+                </button>
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                Use ↑ ↓ arrow keys to inspect
-              </div>
+              {leaderViewMode !== 'chart' && (
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  Use ↑ ↓ arrow keys to inspect
+                </div>
+              )}
             </div>
           </div>
 
@@ -1379,6 +1452,50 @@ export default function LeaderboardTab({
             ) : error ? (
               <div style={{ padding: '24px', color: '#f43f5e', textAlign: 'center' }}>
                 {error}
+              </div>
+            ) : leaderViewMode === 'chart' ? (
+              <div style={{ padding: '12px 14px' }}>
+                {activeGroup ? (
+                  <GroupChart
+                    groupType={activeGroup.type}
+                    groupName={activeGroup.name}
+                    onSelectStock={onSelectStock}
+                    height={460}
+                    date={curDateStr}
+                  />
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '360px', color: 'var(--text-secondary)', padding: '24px', textAlign: 'center' }}>
+                    <span style={{ fontSize: '38px', marginBottom: '10px' }}>📈</span>
+                    <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '6px' }}>
+                      No Sector or Industry Selected
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '440px', lineHeight: 1.5, marginBottom: '18px' }}>
+                      Select any Sector or Industry group from the left panel to inspect its Stan Weinstein 40-Week Stage Analysis, Mansfield RS vs S&P 500, and institutional leadership breakouts.
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                      {topSector && (
+                        <button
+                          type="button"
+                          onClick={() => handleSelectSector(topSector)}
+                          className="btn btn-secondary"
+                          style={{ fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', border: '1px solid rgba(56, 189, 248, 0.4)', color: '#38bdf8' }}
+                        >
+                          <span>🏛️</span> Inspect Top Sector: <strong>{topSector}</strong>
+                        </button>
+                      )}
+                      {topIndustry && (
+                        <button
+                          type="button"
+                          onClick={() => handleSelectIndustry(topIndustry)}
+                          className="btn btn-secondary"
+                          style={{ fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', border: '1px solid rgba(168, 85, 247, 0.4)', color: '#c084fc' }}
+                        >
+                          <span>🔥</span> Inspect Top Cluster: <strong>{topIndustry}</strong>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : displayedStocks.length === 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '240px', color: 'var(--text-secondary)' }}>

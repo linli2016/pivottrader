@@ -13,18 +13,13 @@ class LeaderboardService:
 
     def _get_connection(self):
         import time
-        max_retries = 25
+        max_retries = 35
         for attempt in range(max_retries):
             try:
-                return duckdb.connect(self.db_path)
+                return duckdb.connect(self.db_path, read_only=True)
             except Exception as e:
                 err_msg = str(e).lower()
-                if "different configuration" in err_msg:
-                    try:
-                        return duckdb.connect(self.db_path, read_only=True)
-                    except Exception:
-                        pass
-                is_lock = any(k in err_msg for k in ["lock", "different configuration", "conflict", "held in", "temporarily unavailable"])
+                is_lock = any(k in err_msg for k in ["lock", "different configuration", "conflict", "held in", "temporarily unavailable", "resource temporarily unavailable"])
                 if is_lock and attempt < max_retries - 1:
                     time.sleep(0.05 + attempt * 0.02)
                 else:
