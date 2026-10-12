@@ -11,6 +11,7 @@ import SetupsAndRulesTab from './components/SetupsAndRulesTab';
 import ModelBookTab from './components/ModelBookTab';
 import LearnTab from './components/LearnTab';
 import LeaderboardTab from './components/LeaderboardTab';
+import JournalTab from './components/JournalTab';
 
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
@@ -711,6 +712,16 @@ function App() {
             <div className="nav-section-title">Tools & Config</div>
             <ul className="nav-menu">
               <li
+                className={`nav-item ${activeTab === 'journal' ? 'active' : ''}`}
+                onClick={() => setActiveTab('journal')}
+                title="Trading Journal & IBKR Performance"
+              >
+                <div className="nav-item-content">
+                  <span className="nav-icon">📓</span>
+                  <span className="nav-label">Trading Journal</span>
+                </div>
+              </li>
+              <li
                 className={`nav-item ${activeTab === 'model-book' ? 'active' : ''}`}
                 onClick={() => setActiveTab('model-book')}
                 title="Model Book Study (Historical Winners)"
@@ -881,6 +892,10 @@ function App() {
             sqlResult={sqlResult}
             handleRunSQL={handleRunSQL}
           />
+        )}
+
+        {activeTab === 'journal' && (
+          <JournalTab onSelectStock={handleSelectStock} />
         )}
 
         {activeTab === 'model-book' && (

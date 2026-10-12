@@ -40,3 +40,6 @@ frontend/dist/
 *.swp
 
 charts/
+# Trading journal secrets (IBKR Flex token)
+data/ibkr_flex.json
+data/journal.db*

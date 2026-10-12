@@ -15,6 +15,7 @@ const CHEAT_SHEET_CATEGORIES = [
       { sym: 'V1', label: 'Volume 1d Ago', desc: 'Yesterday volume' },
       { sym: 'AVGV50', label: '50d Vol MA', desc: '50-day average volume' },
       { sym: 'DOLLAR_VOL', label: '50d $ Vol', desc: '50-day average dollar volume' },
+      { sym: 'HIGHEST_VOL_1Y', label: 'Highest Vol 1Y', desc: 'Highest single-day volume in trailing 52 weeks (HVE)' },
       { sym: 'CLOSE_RANGE', label: 'Close Range Pos', desc: 'Intraday close in candle range (0.0 to 1.0, e.g. >= 0.75)' },
     ]
   },

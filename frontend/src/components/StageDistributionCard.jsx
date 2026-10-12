@@ -73,9 +73,12 @@ export default function StageDistributionCard({
   dailyData = [],
   asOfDate = null,
   isEmbedded = false,
-  onNavigateToStage = null
+  onNavigateToStage = null,
+  weinsteinVerdict = null,
+  renderWeinsteinBreadth = null
 }) {
   const [fetchedData, setFetchedData] = useState(null);
+  const [graphMode, setGraphMode] = useState('stages'); // 'stages' | 'breadth'
   const [timeRange, setTimeRange] = useState('6M'); // '1M', '3M', '6M', '1Y'
   const [viewMode, setViewMode] = useState('percent'); // 'percent', 'count'
   const [chartType, setChartType] = useState('stacked'); // 'stacked', 'lines'
@@ -331,6 +334,7 @@ export default function StageDistributionCard({
 
   return (
     <div
+      id="weinstein-section"
       className="glass-card"
       style={{
         padding: '20px 24px',
@@ -347,7 +351,7 @@ export default function StageDistributionCard({
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
             <span className="cockpit-card-tag" style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
-              STAN WEINSTEIN CYCLE FRAMEWORK
+              STAN WEINSTEIN MACRO SYSTEM
             </span>
             <span className="badge badge-outline" style={{ fontSize: '10.5px' }}>
               {totalStocks.toLocaleString()} Stocks Categorized
@@ -359,12 +363,37 @@ export default function StageDistributionCard({
             )}
           </div>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.01em', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>⚖️ Stan Weinstein 4-Stage Market Distribution</span>
+            <span>⚖️ Stan Weinstein 5-Pillar Market Verdict & 4-Stage Cycles</span>
           </h2>
         </div>
 
         {/* Right Badges & Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {/* Weinstein Verdict Badge if available */}
+          {weinsteinVerdict && (
+            <div
+              style={{
+                padding: '4px 10px',
+                borderRadius: '8px',
+                background: `${weinsteinVerdict.badge_color || '#10b981'}1f`,
+                border: `1px solid ${weinsteinVerdict.badge_color || '#10b981'}55`,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '12px'
+              }}
+              title={`Stan Weinstein Macro Verdict: ${weinsteinVerdict.score_label || '4/5 Bullish'}`}
+            >
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: weinsteinVerdict.badge_color || '#10b981' }} />
+              <strong style={{ color: weinsteinVerdict.badge_color || '#10b981' }}>
+                {weinsteinVerdict.stage || 'Stage 2 (Bull Market)'}
+              </strong>
+              <span style={{ fontSize: '11px', color: '#ffffff', opacity: 0.9, fontWeight: 700 }}>
+                ({weinsteinVerdict.score_label || '4/5 Bullish'})
+              </span>
+            </div>
+          )}
+
           {/* Stage 1+2 Summary Badge */}
           <div
             style={{
@@ -401,13 +430,10 @@ export default function StageDistributionCard({
               fontSize: '12px'
             }}
           >
-            <span style={{ color: 'var(--text-muted)' }}>Net Expansion (S2 - S4):</span>
+            <span style={{ color: 'var(--text-muted)' }}>Net Expansion:</span>
             <strong style={{ color: netBiasColor, fontFamily: 'var(--font-mono)' }}>
               {netExp >= 0 ? `+${netExp.toFixed(1)}%` : `${netExp.toFixed(1)}%`}
             </strong>
-            <span style={{ fontSize: '11px', color: netBiasColor, fontWeight: 600 }}>
-              ({netBiasLabel})
-            </span>
           </div>
 
           <button
@@ -416,12 +442,226 @@ export default function StageDistributionCard({
             onClick={() => setShowGraph(prev => !prev)}
             style={{ fontSize: '12px', padding: '5px 12px' }}
           >
-            {showGraph ? '▲ Hide Graph' : '▼ Show History Graph'}
+            {showGraph ? '▲ Hide Charts' : '▼ Show Charts'}
           </button>
         </div>
       </div>
 
-      {/* 2. 4 Stage Cards Grid */}
+      {/* 2. Stan Weinstein 5-Pillar Weight of the Evidence Matrix (Grouped) */}
+      {weinsteinVerdict && !isEmbedded && (
+        <div
+          style={{
+            marginBottom: '18px',
+            padding: '14px 16px',
+            background: 'rgba(0, 0, 0, 0.3)',
+            border: '1px solid rgba(255, 255, 255, 0.07)',
+            borderRadius: '12px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                5-PILLAR "WEIGHT OF THE EVIDENCE" VERDICT
+              </span>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                Macro Trend, Breadth & Momentum Rules
+              </span>
+            </div>
+            <div style={{ fontSize: '11.5px', color: '#94a3b8' }}>
+              Evidence Score: <span style={{ color: weinsteinVerdict.badge_color || '#10b981', fontWeight: 800 }}>{weinsteinVerdict.score_label || '4/5 Bullish'}</span>
+              <span style={{ margin: '0 6px', opacity: 0.4 }}>•</span>
+              Tone: <span style={{ color: weinsteinVerdict.badge_color || '#10b981', fontWeight: 700 }}>{weinsteinVerdict.stage_tone || 'BULLISH'}</span>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))', gap: '10px' }}>
+            {/* Pillar 1: Major Trend (SPY vs 30W) */}
+            <div
+              style={{
+                background: 'rgba(0, 0, 0, 0.4)',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                border: `1px solid ${weinsteinVerdict.index_is_bullish ? 'rgba(16, 185, 129, 0.25)' : 'rgba(244, 63, 94, 0.25)'}`
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>
+                  1. Major Trend (SPY vs 30W)
+                </span>
+                <span
+                  style={{
+                    fontSize: '9.5px',
+                    fontWeight: 800,
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    background: weinsteinVerdict.index_is_bullish ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)',
+                    color: weinsteinVerdict.index_is_bullish ? '#34d399' : '#fb7185'
+                  }}
+                >
+                  {weinsteinVerdict.index_is_bullish ? '✓ PASS' : '✗ FAIL'}
+                </span>
+              </div>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: weinsteinVerdict.index_is_bullish ? '#34d399' : '#fb7185', marginTop: '2px' }}>
+                {weinsteinVerdict.index_status || 'SPY vs 200 SMA'}
+              </div>
+              <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '3px' }}>
+                Price &gt; rising 30W / 200d MA
+              </div>
+            </div>
+
+            {/* Pillar 2: Momentum Index (200d Net A/D) */}
+            <div
+              style={{
+                background: 'rgba(0, 0, 0, 0.4)',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                border: `1px solid ${weinsteinVerdict.mi_is_bullish ? 'rgba(16, 185, 129, 0.25)' : 'rgba(244, 63, 94, 0.25)'}`
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>
+                  2. Momentum Index (200d A/D)
+                </span>
+                <span
+                  style={{
+                    fontSize: '9.5px',
+                    fontWeight: 800,
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    background: weinsteinVerdict.mi_is_bullish ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)',
+                    color: weinsteinVerdict.mi_is_bullish ? '#34d399' : '#fb7185'
+                  }}
+                >
+                  {weinsteinVerdict.mi_is_bullish ? '✓ PASS' : '✗ FAIL'}
+                </span>
+              </div>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: weinsteinVerdict.mi_is_bullish ? '#34d399' : '#fb7185', marginTop: '2px' }}>
+                {weinsteinVerdict.mi_status || 'Momentum Index'}
+              </div>
+              <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '3px' }}>
+                200-day smoothed Net A/D &gt; 0
+              </div>
+            </div>
+
+            {/* Pillar 3: Advance-Decline Line */}
+            <div
+              style={{
+                background: 'rgba(0, 0, 0, 0.4)',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                border: `1px solid ${weinsteinVerdict.ad_is_bullish ? 'rgba(16, 185, 129, 0.25)' : 'rgba(244, 63, 94, 0.25)'}`
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>
+                  3. A/D Line Confirmation
+                </span>
+                <span
+                  style={{
+                    fontSize: '9.5px',
+                    fontWeight: 800,
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    background: weinsteinVerdict.ad_is_bullish ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)',
+                    color: weinsteinVerdict.ad_is_bullish ? '#34d399' : '#fb7185'
+                  }}
+                >
+                  {weinsteinVerdict.ad_is_bullish ? '✓ PASS' : '✗ FAIL'}
+                </span>
+              </div>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: weinsteinVerdict.ad_is_bullish ? '#34d399' : '#fb7185', marginTop: '2px' }}>
+                {weinsteinVerdict.ad_status || 'A/D Line Trend (20d)'}
+              </div>
+              <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '3px' }}>
+                Cumulative A/D higher vs 20d ago
+              </div>
+            </div>
+
+            {/* Pillar 4: Net 52W Highs/Lows */}
+            <div
+              style={{
+                background: 'rgba(0, 0, 0, 0.4)',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                border: `1px solid ${weinsteinVerdict.nh_is_bullish ? 'rgba(16, 185, 129, 0.25)' : 'rgba(244, 63, 94, 0.25)'}`
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>
+                  4. 52W Highs vs Lows
+                </span>
+                <span
+                  style={{
+                    fontSize: '9.5px',
+                    fontWeight: 800,
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    background: weinsteinVerdict.nh_is_bullish ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)',
+                    color: weinsteinVerdict.nh_is_bullish ? '#34d399' : '#fb7185'
+                  }}
+                >
+                  {weinsteinVerdict.nh_is_bullish ? '✓ PASS' : '✗ FAIL'}
+                </span>
+              </div>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: weinsteinVerdict.nh_is_bullish ? '#34d399' : '#fb7185', marginTop: '2px' }}>
+                {weinsteinVerdict.nh_status || 'Net Highs'}
+              </div>
+              <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '3px' }}>
+                10-day MA of Net New Highs &gt; 0
+              </div>
+            </div>
+
+            {/* Pillar 5: % Above 200 SMA */}
+            <div
+              style={{
+                background: 'rgba(0, 0, 0, 0.4)',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                border: `1px solid ${weinsteinVerdict.ma_is_bullish ? 'rgba(16, 185, 129, 0.25)' : 'rgba(244, 63, 94, 0.25)'}`
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>
+                  5. Participation (% &gt; 200d)
+                </span>
+                <span
+                  style={{
+                    fontSize: '9.5px',
+                    fontWeight: 800,
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    background: weinsteinVerdict.ma_is_bullish ? 'rgba(16, 185, 129, 0.2)' : 'rgba(244, 63, 94, 0.2)',
+                    color: weinsteinVerdict.ma_is_bullish ? '#34d399' : '#fb7185'
+                  }}
+                >
+                  {weinsteinVerdict.ma_is_bullish ? '✓ PASS' : '✗ FAIL'}
+                </span>
+              </div>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: weinsteinVerdict.ma_is_bullish ? '#34d399' : '#fb7185', marginTop: '2px' }}>
+                {weinsteinVerdict.ma_status || '% > 200 SMA'}
+              </div>
+              <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', marginTop: '3px' }}>
+                Universe breadth participation ≥ 50%
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Stan Weinstein 4-Stage Universe Breakdown */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
+        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          Stan Weinstein 4-Stage Universe Breakdown
+        </span>
+        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+          {totalStocks.toLocaleString()} Stocks Tracked
+        </span>
+      </div>
+
+      {/* 4. 4 Stage Cards Grid */}
       <div
         style={{
           display: 'grid',
@@ -714,7 +954,7 @@ export default function StageDistributionCard({
         </div>
       </div>
 
-      {/* 4. Historical Dynamics Graph */}
+      {/* 5. Historical Dynamics Graph & 3-Panel Breadth */}
       {showGraph && (
         <div
           style={{
@@ -727,12 +967,40 @@ export default function StageDistributionCard({
             gap: '12px'
           }}
         >
-          {/* Graph Toolbar */}
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
+          {renderWeinsteinBreadth && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', paddingBottom: '8px', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
+              <div className="segmented-control" style={{ fontSize: '11px' }}>
+                <button
+                  type="button"
+                  className={`segmented-item ${graphMode === 'stages' ? 'active' : ''}`}
+                  onClick={() => setGraphMode('stages')}
+                >
+                  📈 4-Stage Cycles
+                </button>
+                <button
+                  type="button"
+                  className={`segmented-item ${graphMode === 'breadth' ? 'active' : ''}`}
+                  onClick={() => setGraphMode('breadth')}
+                >
+                  ⚖️ 3-Panel Breadth (A/D & Net Highs)
+                </button>
+              </div>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                {graphMode === 'stages' ? 'Historical 4-stage cycle evolution & SPY divergence' : 'Cumulative Advance-Decline Line, Momentum Index & Net New Highs'}
+              </span>
+            </div>
+          )}
+
+          {graphMode === 'breadth' && renderWeinsteinBreadth ? (
+            renderWeinsteinBreadth()
+          ) : (
+            <>
+              {/* Graph Toolbar */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
               flexWrap: 'wrap',
               gap: '10px',
               fontSize: '11.5px'
@@ -1130,8 +1398,10 @@ export default function StageDistributionCard({
               </div>
             )}
           </div>
-        </div>
+        </>
       )}
     </div>
-  );
+  )}
+</div>
+);
 }

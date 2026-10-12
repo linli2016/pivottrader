@@ -364,13 +364,27 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertIn("b.close - b.low", res2["sql"])
         self.assertIn("NULLIF(b.high - b.low, 0)", res2["sql"])
 
-        # Test complete Unified Quality Breakout expression (Ultra-fast single-bar formula)
-        expr3 = "STAGE2 AND RS_RANK >= 75 AND C >= 5.0 AND DOLLAR_VOL >= 5000000 AND C >= O * 1.025 AND ((IS_52W_HIGH AND REL_VOL >= 1.8 AND CLOSE_RANGE >= 0.75) OR (DIST_52W_HIGH <= 15.0 AND REL_VOL >= 1.5 AND CLOSE_RANGE >= 0.70))"
+        # Test complete High Volume Breakout expression (Ultra-fast single-bar formula)
+        expr3 = "STAGE2 AND RS_RANK >= 75 AND C >= 5.0 AND DOLLAR_VOL >= 5000000 AND REL_VOL >= 2.5 AND C >= O * 1.025 AND ((IS_52W_HIGH AND CLOSE_RANGE >= 0.75) OR (DIST_52W_HIGH <= 15.0 AND CLOSE_RANGE >= 0.70))"
         res3 = ScanExpressionEngine.validate(expr3)
         self.assertTrue(res3["valid"])
         self.assertFalse(res3["has_lags"])
         self.assertIn("is_52w_high", res3["sql"])
         self.assertIn("b.dist_from_52w_high <= 15.0", res3["sql"])
+        self.assertIn("b.rel_vol_50d >= 2.5", res3["sql"])
+
+        # Test Highest Volume Ever (HIGHEST_VOL_1Y / HVE) expression
+        expr_hve = "C >= 5.0 AND DOLLAR_VOL >= 5000000 AND HIGHEST_VOL_1Y AND C >= O * 1.025 AND ((IS_52W_HIGH AND CLOSE_RANGE >= 0.75) OR (DIST_52W_HIGH <= 15.0 AND CLOSE_RANGE >= 0.70))"
+        res_hve = ScanExpressionEngine.validate(expr_hve)
+        self.assertTrue(res_hve["valid"])
+        self.assertFalse(res_hve["has_lags"])
+        self.assertIn("is_52w_high_vol", res_hve["sql"])
+        self.assertIn("is_52w_high", res_hve["sql"])
+
+        # Test alias HVE and IS_52W_HIGH_VOL
+        res_alias = ScanExpressionEngine.validate("HVE AND IS_52W_HIGH_VOL")
+        self.assertTrue(res_alias["valid"])
+        self.assertIn("is_52w_high_vol", res_alias["sql"])
 
         # Test multiline expression support
         expr_multiline = """
@@ -379,7 +393,17 @@ class TestScanExpressionEngine(unittest.TestCase):
              OR (DIST_52W_HIGH <= 15.0 AND REL_VOL >= 1.5))
         """
         res_multi = ScanExpressionEngine.validate(expr_multiline)
-        self.assertTrue(res_multi["valid"])
+        # Test Model Book expression scan integration
+        from application.services.model_book_service import model_book_service
+        res = model_book_service.scan_setups(
+            setup_type="highest_volume_ever",
+            start_date="2026-01-01",
+            end_date="2026-01-15"
+        )
+        cands = res.get("all_candidates", [])
+        # Verify that AAL on 2026-01-02 is NOT returned because it is not 52w high volume
+        aal_match = [c for c in cands if c["symbol"] == "AAL" and c["setup_date"] == "2026-01-02"]
+        self.assertEqual(len(aal_match), 0, "AAL on 2026-01-02 should not match highest_volume_ever")
 
 if __name__ == "__main__":
     unittest.main()

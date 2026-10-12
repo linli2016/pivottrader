@@ -61,7 +61,19 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
   const [viewMode, setViewMode] = useState('rrg'); // 'rrg' | 'board' | 'heatmap' | 'table'
   const [stageFilter, setStageFilter] = useState(initialStageFilter); // 'all' | 'stage2' | 'stage1' | 'stage3' | 'stage4' | 'positive_rs'
   const [timeframe, setTimeframe] = useState('1wk'); // '1wk' | '1mo' | '3mo' | '6mo'
-  const [selectedGroupName, setSelectedGroupName] = useState(null);
+  const [selectedGroupPerTab, setSelectedGroupPerTab] = useState({
+    sectors: null,
+    industries: null,
+    themes: null
+  });
+  const selectedGroupName = selectedGroupPerTab[activeTab] || null;
+
+  const setSelectedGroupName = (name) => {
+    setSelectedGroupPerTab((prev) => ({
+      ...prev,
+      [activeTab]: name
+    }));
+  };
   const [selectedConstituents, setSelectedConstituents] = useState([]);
   const [loadingSelectedConstituents, setLoadingSelectedConstituents] = useState(false);
 
@@ -141,13 +153,8 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
   };
 
   const handleSelectGroup = (name) => {
-    if (selectedGroupName === name) {
-      setSelectedGroupName(null);
-      setSelectedConstituents([]);
-    } else {
-      setSelectedGroupName(name);
-      fetchInspectorConstituents(name);
-    }
+    if (!name) return;
+    selectGroup(name);
   };
 
   const inspectorRequestIdRef = useRef(0);
@@ -176,10 +183,23 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
     }
   };
 
+  // Always keep current selected sector/industry/theme populated and persistent
   useEffect(() => {
-    setSelectedGroupName(null);
-    setSelectedConstituents([]);
-  }, [activeTab]);
+    if (Array.isArray(data) && data.length > 0) {
+      const current = selectedGroupPerTab[activeTab];
+      const exists = current && data.some((d) => d.name === current);
+      if (!exists) {
+        const fallback = data[0].name;
+        setSelectedGroupPerTab((prev) => ({
+          ...prev,
+          [activeTab]: fallback
+        }));
+        fetchInspectorConstituents(fallback);
+      } else {
+        fetchInspectorConstituents(current);
+      }
+    }
+  }, [data, activeTab]);
 
   useEffect(() => {
     fetchGroupStrength(activeTab, selectedDate);
@@ -191,16 +211,21 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
       if (e.detail?.stageFilter) {
         setStageFilter(e.detail.stageFilter);
       }
+      const targetTab = e.detail?.activeTab || activeTab;
       if (e.detail?.activeTab) {
         setActiveTab(e.detail.activeTab);
       }
       if (e.detail?.groupName) {
-        setSelectedGroupName(e.detail.groupName);
+        setSelectedGroupPerTab((prev) => ({
+          ...prev,
+          [targetTab]: e.detail.groupName
+        }));
+        fetchInspectorConstituents(e.detail.groupName);
       }
     };
     window.addEventListener('pt-navigate-radar', handleNavRadar);
     return () => window.removeEventListener('pt-navigate-radar', handleNavRadar);
-  }, []);
+  }, [activeTab]);
 
 
   // Fetch constituents or child groups for a specific parent group
@@ -2138,32 +2163,13 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>Active Group:</span>
-                  <select
-                    value={selectedGroupName || (filteredAndSortedGroups[0]?.name || '')}
-                    onChange={(e) => selectGroup(e.target.value)}
-                    style={{
-                      background: 'rgba(15, 23, 42, 0.9)',
-                      color: '#ffffff',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '6px',
-                      padding: '4px 10px',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      maxWidth: '260px'
-                    }}
-                  >
-                    {filteredAndSortedGroups.map((g) => (
-                      <option key={g.name} value={g.name}>
-                        #{g.rank} {g.name} {g.stage_badge ? `[${g.stage_badge}]` : ''} {g.mansfield_rs !== undefined && g.mansfield_rs !== null ? `(MRS ${g.mansfield_rs > 0 ? '+' : ''}${Number(g.mansfield_rs).toFixed(1)}%)` : ''}
-                      </option>
-                    ))}
-                  </select>
-
-                  {/* Stage & RS Quick Diagnostic Badges */}
                   {selectedItem && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#ffffff' }}>
+                        {selectedItem.rank ? `#${selectedItem.rank} ` : ''}{selectedItem.name}
+                      </span>
+
+                      {/* Stage & RS Quick Diagnostic Badges */}
                       {selectedItem.stage_badge && (
                         <span
                           style={{

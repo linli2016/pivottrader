@@ -6,7 +6,8 @@ from .setup_service import setup_service
 from .saved_trades_service import saved_trades_service
 from .options_service import options_service
 from .cross_asset_service import cross_asset_service
+from .journal_service import journal_service
 from . import chart_service
 
-__all__ = ["config_service", "db_service", "sync_service", "model_book_service", "chart_service", "setup_service", "saved_trades_service", "options_service", "cross_asset_service"]
+__all__ = ["config_service", "db_service", "sync_service", "model_book_service", "chart_service", "setup_service", "saved_trades_service", "options_service", "cross_asset_service", "journal_service"]
 

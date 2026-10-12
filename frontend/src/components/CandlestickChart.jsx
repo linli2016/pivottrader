@@ -138,6 +138,55 @@ export function aggregateDailyBarsToWeekly(dailyBars) {
   return weeklyBars;
 }
 
+export function getCombinedTradeMarkers(chartData, showRsLine, tradeExecutions) {
+  const markers = [];
+  if (showRsLine && Array.isArray(chartData)) {
+    chartData.forEach((d) => {
+      if (d.is_rs_blue_dot) {
+        markers.push({
+          time: d.time,
+          position: 'aboveBar',
+          color: '#38bdf8',
+          shape: 'circle',
+          size: 0.6,
+        });
+      }
+    });
+  }
+  if (Array.isArray(tradeExecutions) && tradeExecutions.length > 0 && Array.isArray(chartData) && chartData.length > 0) {
+    const barTimes = chartData.map((d) => (typeof d.time === 'string' ? d.time : (d.time?.year ? `${d.time.year}-${String(d.time.month).padStart(2, '0')}-${String(d.time.day).padStart(2, '0')}` : String(d.time))));
+    tradeExecutions.forEach((e) => {
+      const rawDate = (e.date_time ? e.date_time.slice(0, 10) : e.trade_date) || '';
+      if (!rawDate) return;
+      let barTime = barTimes.find((t) => t === rawDate);
+      if (!barTime) {
+        let closest = barTimes[0];
+        let minDiff = Math.abs(new Date(rawDate).getTime() - new Date(closest).getTime());
+        for (let i = 1; i < barTimes.length; i++) {
+          const diff = Math.abs(new Date(rawDate).getTime() - new Date(barTimes[i]).getTime());
+          if (diff < minDiff) { minDiff = diff; closest = barTimes[i]; }
+        }
+        barTime = closest;
+      }
+      if (!barTime) return;
+      const isBuy = e.side === 'BUY';
+      markers.push({
+        time: barTime,
+        position: isBuy ? 'belowBar' : 'aboveBar',
+        color: isBuy ? '#00f0ff' : '#d946ef',
+        shape: isBuy ? 'arrowUp' : 'arrowDown',
+        size: 1.5,
+      });
+    });
+  }
+  markers.sort((a, b) => {
+    const ta = typeof a.time === 'string' ? a.time : `${a.time.year}-${String(a.time.month).padStart(2, '0')}-${String(a.time.day).padStart(2, '0')}`;
+    const tb = typeof b.time === 'string' ? b.time : `${b.time.year}-${String(b.time.month).padStart(2, '0')}-${String(b.time.day).padStart(2, '0')}`;
+    return ta.localeCompare(tb);
+  });
+  return markers;
+}
+
 /**
  * Normalizes the Relative Strength (Stock / SPY) line to between -1.0 and +1.0.
  *
@@ -931,6 +980,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   showPriceLine = true,
   timeframe = null, // 'daily' | 'weekly' | null (controlled or uncontrolled)
   onTimeframeChange = null,
+  tradeExecutions = null,
+  tradePriceLines = null,
 }, ref) {
   const rootContainerRef = useRef(null);
   const chartContainerRef = useRef();
@@ -941,6 +992,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   const volumeProfilePrimitiveRef = useRef(null);
   const legendRef = useRef(null);
   const dataLookupRef = useRef({ timeMap: new Map(), data: [], defaultBar: null, defaultPrevBar: null, symbol: null, timeframe: 'daily' });
+  const tradePriceLinesRef = useRef([]);
   const lastCancelTimestampRef = useRef(0);
   const asOfIdxRef = useRef(-1);
   const isUserPannedRef = useRef(false);
@@ -2081,24 +2133,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       if (userPanCheckTimeoutRef.current) clearTimeout(userPanCheckTimeoutRef.current);
 
       if (markersPluginRef.current) {
-        if (showRsLine) {
-          const blueDotMarkers = [];
-          chartData.forEach((d) => {
-            if (d.is_rs_blue_dot) {
-              blueDotMarkers.push({
-                time: d.time,
-                position: 'aboveBar',
-                color: '#38bdf8',
-                shape: 'circle',
-                size: 0.6,
-              });
-            }
-          });
-          markersPluginRef.current.setMarkers(blueDotMarkers);
-
-        } else {
-          markersPluginRef.current.setMarkers([]);
-        }
+        const markers = getCombinedTradeMarkers(chartData, showRsLine, tradeExecutions);
+        markersPluginRef.current.setMarkers(markers);
       }
 
       if (resolvedTime && verticalLineRef.current) {
@@ -2169,7 +2205,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     } else {
       renderLegend(null, null, symbol);
     }
-  }, [chartData, height, asOfDate, symbol, setupName, chartTimeframe]);
+  }, [chartData, height, asOfDate, symbol, setupName, chartTimeframe, tradeExecutions]);
 
   // Handle immediate toggle of RS Line and Blue Dot markers
   useEffect(() => {
@@ -2212,19 +2248,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       }
 
       if (markersPluginRef.current) {
-        const blueDotMarkers = [];
-        currentData.forEach((d) => {
-          if (d.is_rs_blue_dot) {
-            blueDotMarkers.push({
-              time: d.time,
-              position: 'aboveBar',
-              color: '#38bdf8',
-              shape: 'circle',
-              size: 0.6,
-            });
-          }
-        });
-        markersPluginRef.current.setMarkers(blueDotMarkers);
+        const markers = getCombinedTradeMarkers(currentData, true, tradeExecutions);
+        markersPluginRef.current.setMarkers(markers);
       }
     } else {
       if (seriesRef.current.rsLineSeries.options().visible !== false) {
@@ -2240,10 +2265,53 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       }
 
       if (markersPluginRef.current) {
-        markersPluginRef.current.setMarkers([]);
+        const markers = getCombinedTradeMarkers(currentData, false, tradeExecutions);
+        markersPluginRef.current.setMarkers(markers);
       }
     }
-  }, [showRsLine]);
+  }, [showRsLine, tradeExecutions]);
+
+  // Handle trade price lines (Entry, Stop, Exit)
+  useEffect(() => {
+    if (!seriesRef.current?.candlestickSeries) return;
+    const cs = seriesRef.current.candlestickSeries;
+    tradePriceLinesRef.current.forEach((pl) => {
+      try { cs.removePriceLine(pl); } catch (e) {}
+    });
+    tradePriceLinesRef.current = [];
+    if (tradePriceLines) {
+      if (tradePriceLines.avg_entry && !isNaN(Number(tradePriceLines.avg_entry))) {
+        tradePriceLinesRef.current.push(cs.createPriceLine({
+          price: Number(tradePriceLines.avg_entry),
+          color: '#38bdf8',
+          lineWidth: 1,
+          lineStyle: LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: `Entry: $${Number(tradePriceLines.avg_entry).toFixed(2)}`,
+        }));
+      }
+      if (tradePriceLines.initial_stop && !isNaN(Number(tradePriceLines.initial_stop))) {
+        tradePriceLinesRef.current.push(cs.createPriceLine({
+          price: Number(tradePriceLines.initial_stop),
+          color: '#f59e0b',
+          lineWidth: 1,
+          lineStyle: LineStyle.Dotted,
+          axisLabelVisible: true,
+          title: `Stop: $${Number(tradePriceLines.initial_stop).toFixed(2)}`,
+        }));
+      }
+      if (tradePriceLines.avg_exit && !isNaN(Number(tradePriceLines.avg_exit))) {
+        tradePriceLinesRef.current.push(cs.createPriceLine({
+          price: Number(tradePriceLines.avg_exit),
+          color: '#a855f7',
+          lineWidth: 1,
+          lineStyle: LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: `Exit: $${Number(tradePriceLines.avg_exit).toFixed(2)}`,
+        }));
+      }
+    }
+  }, [tradePriceLines]);
 
   // Clean up chart instance on component unmount & handle container resize
   useEffect(() => {

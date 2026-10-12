@@ -131,6 +131,8 @@ class DatabaseManager:
                     sma_200_80d_ago DOUBLE,
                     sma_200_100d_ago DOUBLE,
                     is_52w_high BOOLEAN,
+                    vol_52w_high BIGINT,
+                    is_52w_high_vol BOOLEAN,
                     ret_1m DOUBLE,
                     ret_3m DOUBLE,
                     ret_6m DOUBLE,
@@ -225,6 +227,8 @@ class DatabaseManager:
                 ("low_cheat_base_depth", "DOUBLE"),
                 ("stage2_days", "INTEGER"),
                 ("weinstein_stage", "INTEGER"),
+                ("vol_52w_high", "BIGINT"),
+                ("is_52w_high_vol", "BOOLEAN"),
             ]
             for col_name, col_type in new_cols:
                 try:

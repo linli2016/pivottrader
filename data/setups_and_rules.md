@@ -29,6 +29,22 @@
 
 7. The definition of a Pocket Pivot is the current up day’s volume must be larger than any of the down volume days in the prior 10 days.
 
+8. **Top-Down Buying Checklist (Stan Weinstein Rules):**
+   1. **First, the market trend to be bullish:** Overall market environment must be in a confirmed uptrend (Market Pulse / Composite Market Light green, major indexes above 21 EMA and rising 200 SMA).
+   2. **Second, the groups should be positive:** Focus on leading sectors and positive industry groups in Stage 2 with positive Mansfield Relative Strength vs S&P 500.
+   3. **In addition, the chart from that favorable group must be breaking out into Stage 2 with a minimum of resistance overhead:** The stock must be emerging from a sound base into Stage 2, with clear runway and no heavy overhead supply traps immediately above.
+   4. **Finally, volume most definitely must confirm the breakout:** Volume must expand substantially on breakout day (e.g. RelVol $\ge 1.5\text{x}$ - $2.5\text{x}$ or Pocket Pivot volume) validating institutional demand.
+
+9. **Quick Reference Guide on Buying (Stan Weinstein Rules):**
+   1. Check the major trend of the overall market;
+   2. Uncover the few groups that look best technically;
+   3. Make a list of those stocks in the favourable groups that have bullish patterns but are now in trading ranges. Write down the price that each would need to breakout.
+   4. Narrow down the list. Discard those that have overhead resistance nearby.
+   5. Narrow the list further by checking relative strength.
+   6. Put in your buy-stop orders for half of your position for those few stocks that meet our buying criteria. Use buy-stop orders on a good-til-canceled (GTC) basis.
+   7. If volume is favourable on the breakout and contracts on the decline, buy your other half position on a pullback toward the initial breakout.
+   8. If the volume pattern is negative (not high enough on breakout), sell the stock on the first rally. If it fails to rally and falls back below the breakout point, immediately dump it.
+
 ---
 
 ## 🎯 My Setups
@@ -148,15 +164,30 @@ This method can also be traded by anticipating the breakout but I don’t find i
 
 ## 📝 Trader Notes & Review Checklist
 
-- [ ] Is the overall market environment favorable?
-- [ ] Is the stock in a Stage 2 uptrend with high RS Rank?
-- [ ] Is there a clear, tight pivot level with drying volume?
-- [ ] Is my risk defined before placing the order?
-- [ ] Did I record the trade entry rationale in my journal?
+### 🎯 4-Step Stage 2 Breakout Checklist (Stan Weinstein Rules)
+- [ ] **1. Market Trend:** First, the market trend to be bullish. (Market Pulse / Composite Market Light green, major indexes above 21 EMA & rising 200 SMA)
+- [ ] **2. Group Strength:** Second, the groups should be positive. (Industry Radar showing Stage 2 leadership & positive Mansfield RS)
+- [ ] **3. Stage 2 Breakout & Minimal Overhead:** In addition, the chart from that favorable group must be breaking out into Stage 2 with a minimum of resistance overhead. (Clean consolidation breakout with clear price runway)
+- [ ] **4. Volume Confirmation:** Finally, volume most definitely must confirm the breakout. (Explosive volume surge validating institutional demand)
 
+### 🛒 Quick Reference Guide on Buying (Stan Weinstein Rules)
+- [ ] **1. Market Trend:** Check the major trend of the overall market.
+- [ ] **2. Best Technical Groups:** Uncover the few groups that look best technically.
+- [ ] **3. Bullish Trading Ranges:** Make a list of those stocks in the favourable groups that have bullish patterns but are now in trading ranges. Write down the price that each would need to breakout.
+- [ ] **4. Overhead Resistance:** Narrow down the list. Discard those that have overhead resistance nearby.
+- [ ] **5. Relative Strength:** Narrow the list further by checking relative strength.
+- [ ] **6. Initial Buy-Stop (Half Position):** Put in your buy-stop orders for half of your position for those few stocks that meet our buying criteria. Use buy-stop orders on a good-til-canceled (GTC) basis.
+- [ ] **7. Pullback Add (Other Half):** If volume is favourable on the breakout and contracts on the decline, buy your other half position on a pullback toward the initial breakout.
+- [ ] **8. Negative Volume Exit:** If the volume pattern is negative (not high enough on breakout), sell the stock on the first rally. If it fails to rally and falls back below the breakout point, immediately dump it.
+
+### 🛡️ Execution & Risk Discipline
+- [ ] **Risk Defined:** Is my risk defined before placing the order? (0.5%–1.0% equity risk; stop-loss at LOD or pivot low $\le 5\text{--}7\%$)
+- [ ] **Base Quality:** Is there a clear, tight pivot level with drying volume prior to breakout?
+- [ ] **Journaling:** Did I record the trade entry rationale in my journal?
 
 ---
 ## References
+- Stan Weinstein: Secrets for Profiting in Bull and Bear Markets (Classic Stage Analysis & Top-Down Rules)
 - 3 TIMELESS setups that have made me TENS OF MILLIONS! [view](https://qullamaggie.com/my-3-timeless-setups-that-have-made-me-tens-of-millions/)
 - Mastering the Minervini Low Cheat Entry   [view](https://thesetupfactory.substack.com/p/mastering-the-minervini-low-cheat)
 - What is a valid Breakout? [view](

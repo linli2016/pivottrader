@@ -350,6 +350,34 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "volume",
         "description": "50-day average dollar volume"
     },
+    "IS_52W_HIGH_VOL": {
+        "sql": "COALESCE(b.is_52w_high_vol, false)",
+        "type": "boolean",
+        "label": "52W High Volume",
+        "category": "volume",
+        "description": "Stock traded highest single-day volume in trailing 52 weeks (past year)"
+    },
+    "HIGHEST_VOL_1Y": {
+        "sql": "COALESCE(b.is_52w_high_vol, false)",
+        "type": "boolean",
+        "label": "Highest Vol 1Y",
+        "category": "volume",
+        "description": "Stock traded highest single-day volume in trailing 52 weeks (past year)"
+    },
+    "HVE": {
+        "sql": "COALESCE(b.is_52w_high_vol, false)",
+        "type": "boolean",
+        "label": "Highest Volume Ever (1Y)",
+        "category": "volume",
+        "description": "Stock traded highest single-day volume in trailing 52 weeks (past year)"
+    },
+    "VOL_52W_HIGH": {
+        "sql": "b.vol_52w_high",
+        "type": "numeric",
+        "label": "52W High Volume Level",
+        "category": "volume",
+        "description": "Peak share volume level over trailing 52 weeks"
+    },
 
     # ---------------- Trend, RS & Momentum ----------------
     "STAGE": {
@@ -894,6 +922,48 @@ ALIAS_CATALOG: Dict[str, Dict[str, Any]] = {
         "label": "IPO Base",
         "category": "pattern",
         "description": "Accumulation base in recent IPOs (< 350 trading days)"
+    },
+    "HIGHEST_VOLUME_1Y": {
+        "expr": "HIGHEST_VOL_1Y",
+        "type": "boolean",
+        "label": "Highest Volume in 1 Year",
+        "category": "volume",
+        "description": "Highest volume day in trailing 52 weeks"
+    },
+    "HIGHEST_VOLUME_EVER": {
+        "expr": "HIGHEST_VOL_1Y",
+        "type": "boolean",
+        "label": "Highest Volume Ever",
+        "category": "volume",
+        "description": "Highest volume day in trailing 52 weeks"
+    },
+    "MAXV_1Y": {
+        "expr": "HIGHEST_VOL_1Y",
+        "type": "boolean",
+        "label": "Max Volume in 1 Year",
+        "category": "volume",
+        "description": "Highest volume day in trailing 52 weeks (TC2000 style)"
+    },
+    "MAXV250": {
+        "expr": "HIGHEST_VOL_1Y",
+        "type": "boolean",
+        "label": "Max Volume 250d",
+        "category": "volume",
+        "description": "Highest volume day in 250 trading days (TC2000 style)"
+    },
+    "MAXV252": {
+        "expr": "HIGHEST_VOL_1Y",
+        "type": "boolean",
+        "label": "Max Volume 252d",
+        "category": "volume",
+        "description": "Highest volume day in 252 trading days (TC2000 style)"
+    },
+    "HIGHEST_VOLUME_BREAKOUT": {
+        "expr": "C >= 5.0 AND DOLLAR_VOL >= 5000000 AND HIGHEST_VOL_1Y AND C >= O * 1.025 AND ((IS_52W_HIGH AND CLOSE_RANGE >= 0.75) OR (DIST_52W_HIGH <= 15.0 AND CLOSE_RANGE >= 0.70))",
+        "type": "boolean",
+        "label": "Highest Volume Ever Breakout",
+        "category": "pattern",
+        "description": "Breakout on 52-week peak volume with strong closing range"
     }
 }
 

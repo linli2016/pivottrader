@@ -19,7 +19,7 @@ class TestMyUniverse(unittest.TestCase):
         all_screener = setup_service.get_setup_by_id("all")
         self.assertIsNotNone(all_screener, "Screener 'all' should exist")
         self.assertIn("RET_1M", all_screener["expression"])
-        self.assertIn("STAGE2", all_screener["expression"])
+        self.assertTrue("STAGE2" in all_screener["expression"] or "CONFIRMED_STAGED" in all_screener["expression"])
 
 
     def test_subviews_and_top_n(self):

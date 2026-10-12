@@ -5,6 +5,7 @@ from datetime import datetime, date, timedelta
 from collections import defaultdict
 from .config import config_service
 from .setup_service import setup_service
+from application.engine.expression import ScanExpressionEngine
 from application.engine.market_regime import get_qullamaggie_daily_lookup
 
 
@@ -658,8 +659,70 @@ class ModelBookService:
 
         base_params = [buffer_start_str, start_date_str, end_date_str, min_price, min_volume_50d, min_dollar_vol] + rs_params
 
+        # Check if setup_type or screener defines an expression in setups.yaml
+        setup_def = setup_service.get_setup_by_id(setup_type)
+        screener_expr = None
+        if setup_def:
+            if effective_filters.get("sub_setup_id"):
+                sub_id = effective_filters.get("sub_setup_id")
+                for sub in setup_def.get("sub_setups", []):
+                    if isinstance(sub, dict) and sub.get("id") == sub_id and sub.get("expression"):
+                        screener_expr = sub["expression"]
+                        break
+            if not screener_expr:
+                screener_expr = setup_def.get("expression")
+        if not screener_expr and effective_filters.get("expression"):
+            screener_expr = effective_filters.get("expression")
+
         # Setup-specific queries
-        if setup_type == "power_play":
+        if screener_expr and setup_type not in (
+            "power_play", "breakout", "breakouts", "episodic_pivot", "ipo_base", "vcp", "parabolic", "low_cheat"
+        ):
+            where_sql, _, _, _, _, _ = ScanExpressionEngine.transpile_to_sql(screener_expr, table_alias="d")
+            query = f"""
+            WITH numbered AS (
+                SELECT 
+                    d.*,
+                    s.name, s.sector, s.industry, s.asset_type,
+                    LAG(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as lag_c1,
+                    LAG(d.close, 2) OVER (PARTITION BY d.symbol ORDER BY d.date) as lag_c2,
+                    LAG(d.open, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as lag_o1,
+                    LAG(d.high, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as lag_h1,
+                    LAG(d.low, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as lag_l1,
+                    LAG(d.volume, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as lag_v1,
+                    MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) as max_high_20d,
+                    MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) as min_low_20d,
+                    LEAD(d.date, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_date,
+                    LEAD(d.open, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_open,
+                    LEAD(d.high, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_high,
+                    LEAD(d.low, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_low,
+                    LEAD(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_close
+                FROM daily_bars d
+                LEFT JOIN symbols s ON d.symbol = s.symbol
+                WHERE d.date >= CAST(? AS DATE)
+                  AND (s.asset_type IS NULL OR UPPER(s.asset_type) NOT LIKE '%ETF%')
+                  AND (s.industry IS NULL OR UPPER(s.industry) NOT LIKE '%ETF%')
+                  AND d.symbol NOT IN ('SPY', 'QQQ', 'IWM', 'XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC')
+            ),
+            candidates AS (
+                SELECT *,
+                    (max_high_20d - min_low_20d) / NULLIF(max_high_20d, 0) * 100 as drawdown_pct
+                FROM numbered d
+                WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE)
+                  AND {where_sql}
+            )
+            SELECT 
+                symbol, date, open, high, low, close, volume,
+                name, sector, industry,
+                COALESCE(rs_score, 0.0) as runup_pct, drawdown_pct as base_depth_pct,
+                rs_score, adr_20d, COALESCE(max_high_20d, high) as pivot_price,
+                next_date, next_open, next_high, next_low, next_close
+            FROM candidates
+            ORDER BY symbol, date ASC;
+            """
+            return query, [buffer_start_str, start_date_str, end_date_str]
+
+        elif setup_type == "power_play":
             runup_thresh = float(effective_filters.get("min_pp_runup", 100.0))
             depth_thresh = float(effective_filters.get("max_pp_drawdown", 25.0))
             min_pp_days = int(effective_filters.get("min_pp_days_since_peak", 10))
