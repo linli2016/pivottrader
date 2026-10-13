@@ -1027,13 +1027,7 @@ class DatabaseService:
 
                             # Calculate EMA 10, EMA 20 & EMA 50 dynamically if not present
                             if c.get("ema_10") is None or c.get("ema_20") is None or c.get("ema_50") is None:
-                                def _calc_ema(prices, span):
-                                    if len(prices) < span: return None
-                                    k = 2.0 / (span + 1.0)
-                                    val = prices[0]
-                                    for p in prices[1:]:
-                                        val = p * k + val * (1.0 - k)
-                                    return round(val, 2)
+                                from application.engine.indicators import calculate_ema as _calc_ema
 
                                 ema_10_val = _calc_ema(cl_list, 10)
                                 ema_20_val = _calc_ema(cl_list, 20)

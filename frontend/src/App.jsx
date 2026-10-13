@@ -1,20 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import DashboardTab from './components/DashboardTab';
 import CandidatesTab from './components/CandidatesTab';
 import InspectorTab from './components/InspectorTab';
-import SqlConsoleTab from './components/SqlConsoleTab';
 import SettingsTab from './components/SettingsTab';
 import SectorCompareTab from './components/SectorCompareTab';
 import StockDetailDrawer from './components/StockDetailDrawer';
 import WatchlistsTab from './components/WatchlistsTab';
-import SetupsAndRulesTab from './components/SetupsAndRulesTab';
-import ModelBookTab from './components/ModelBookTab';
-import LearnTab from './components/LearnTab';
 import LeaderboardTab from './components/LeaderboardTab';
-import JournalTab from './components/JournalTab';
 
-
-const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
+// Code-split secondary heavy tabs to improve initial bundle loading
+const SqlConsoleTab = lazy(() => import('./components/SqlConsoleTab'));
+const SetupsAndRulesTab = lazy(() => import('./components/SetupsAndRulesTab'));
+const ModelBookTab = lazy(() => import('./components/ModelBookTab'));
+const LearnTab = lazy(() => import('./components/LearnTab'));
+const JournalTab = lazy(() => import('./components/JournalTab'));
+import { api, API_BASE } from './utils/api';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -887,37 +887,47 @@ function App() {
         )}
 
         {activeTab === 'sql' && (
-          <SqlConsoleTab
-            sqlQuery={sqlQuery}
-            setSqlQuery={setSqlQuery}
-            loadingSql={loadingSql}
-            sqlResult={sqlResult}
-            handleRunSQL={handleRunSQL}
-          />
+          <Suspense fallback={<div className="tab-loading-spinner" style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>Loading SQL Console...</div>}>
+            <SqlConsoleTab
+              sqlQuery={sqlQuery}
+              setSqlQuery={setSqlQuery}
+              loadingSql={loadingSql}
+              sqlResult={sqlResult}
+              handleRunSQL={handleRunSQL}
+            />
+          </Suspense>
         )}
 
         {activeTab === 'journal' && (
-          <JournalTab onSelectStock={handleSelectStock} />
+          <Suspense fallback={<div className="tab-loading-spinner" style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>Loading Trade Journal...</div>}>
+            <JournalTab onSelectStock={handleSelectStock} />
+          </Suspense>
         )}
 
         {activeTab === 'model-book' && (
-          <ModelBookTab
-            onSelectStock={handleSelectStock}
-            watchlists={watchlists}
-            fetchWatchlists={fetchWatchlists}
-            setupsConfig={setupsConfig}
-          />
+          <Suspense fallback={<div className="tab-loading-spinner" style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>Loading Model Book...</div>}>
+            <ModelBookTab
+              onSelectStock={handleSelectStock}
+              watchlists={watchlists}
+              fetchWatchlists={fetchWatchlists}
+              setupsConfig={setupsConfig}
+            />
+          </Suspense>
         )}
 
         {activeTab === 'setups-rules' && (
-          <SetupsAndRulesTab />
+          <Suspense fallback={<div className="tab-loading-spinner" style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>Loading Playbook...</div>}>
+            <SetupsAndRulesTab />
+          </Suspense>
         )}
 
         {activeTab === 'learn' && (
-          <LearnTab
-            setActiveTab={setActiveTab}
-            onSelectSetup={handleSelectSetup}
-          />
+          <Suspense fallback={<div className="tab-loading-spinner" style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>Loading Learn...</div>}>
+            <LearnTab
+              setActiveTab={setActiveTab}
+              onSelectSetup={handleSelectSetup}
+            />
+          </Suspense>
         )}
 
         {activeTab === 'settings' && (

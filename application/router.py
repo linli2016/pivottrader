@@ -11,9 +11,31 @@ from application.services.group_radar_service import GroupRadarService
 from application.services.leaderboard_service import LeaderboardService
 from application.services.journal_service import journal_service
 from application.providers.ibkr_flex_prov import FlexError
+from application.routers.watchlists import (
+    router as watchlists_router,
+    WatchlistCreateSchema,
+    WatchlistUpdateSchema,
+    WatchlistItemAddSchema,
+    WatchlistBatchRemoveSchema,
+)
+from application.routers.stocks import (
+    router as stocks_router,
+    get_stock_detail,
+    get_stock_prices,
+    get_stock_financials,
+    get_stock_earnings,
+    get_stock_peers,
+    get_stock_options_profile,
+)
+from application.routers.model_book import router as model_book_router
+from application.routers.journal import router as journal_router
 
 logger = logging.getLogger("pivottrader.api")
 router = APIRouter()
+router.include_router(watchlists_router)
+router.include_router(stocks_router)
+router.include_router(model_book_router)
+router.include_router(journal_router)
 
 ROUTER_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(ROUTER_DIR)
@@ -198,77 +220,6 @@ def get_candidates(date: Optional[str] = None, expression: Optional[str] = None)
         return Response(content=json.dumps(data), media_type="application/json")
     except Exception as e:
         logger.error(f"Error in get_candidates: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/api/stocks/{symbol}")
-def get_stock_detail(symbol: str):
-    """Retrieve metadata and quarterly financials for a symbol."""
-    try:
-        res = db_service.get_stock_detail(symbol)
-        if not res:
-            raise HTTPException(status_code=404, detail="Symbol not found")
-        if not res.get("themes"):
-            matched = theme_service.get_themes_for_symbol(symbol)
-            res["themes"] = matched
-            res["theme"] = matched[0] if matched else None
-            if "metadata" in res and isinstance(res["metadata"], dict):
-                res["metadata"]["themes"] = matched
-                res["metadata"]["theme"] = matched[0] if matched else None
-        return res
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in get_stock_detail({symbol}): {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/api/stocks/{symbol}/prices")
-def get_stock_prices(symbol: str, limit: Optional[int] = None, timeframe: str = "daily"):
-    """Retrieve historical daily or weekly price bars for charting."""
-    try:
-        return db_service.get_stock_prices(symbol, limit, timeframe=timeframe)
-    except Exception as e:
-        logger.error(f"Error in get_stock_prices({symbol}): {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/api/stocks/{symbol}/financials")
-def get_stock_financials(symbol: str):
-    """Retrieve detailed yearly and quarterly financials for a symbol."""
-    try:
-        res = db_service.get_stock_financials(symbol)
-        if not res:
-            raise HTTPException(status_code=404, detail="Symbol not found")
-        return res
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in get_stock_financials({symbol}): {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/api/stocks/{symbol}/earnings")
-def get_stock_earnings(symbol: str, fetch_live: bool = False):
-    """Retrieve historical and upcoming earnings dates, estimates, and EPS surprises for a symbol."""
-    try:
-        return db_service.get_stock_earnings(symbol, fetch_live=fetch_live)
-    except Exception as e:
-        logger.error(f"Error in get_stock_earnings({symbol}): {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/api/stocks/{symbol}/peers")
-def get_stock_peers(symbol: str, limit: int = 6):
-    """Retrieve industry peer stocks ranked by relative strength."""
-    try:
-        return db_service.get_industry_peers(symbol, limit)
-    except Exception as e:
-        logger.error(f"Error in get_stock_peers({symbol}): {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/api/stocks/{symbol}/options-profile")
-def get_stock_options_profile(symbol: str, expiration: Optional[str] = "near_term"):
-    """Retrieve Options Open Interest (OI) profile, Call Wall, and Put Wall."""
-    try:
-        return options_service.get_options_profile(symbol, expiration)
-    except Exception as e:
-        logger.error(f"Error in get_stock_options_profile({symbol}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/config")
@@ -510,120 +461,6 @@ def delete_theme(name: str):
         logger.error(f"Error in delete_theme: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-# ----------------- Watchlist Endpoints -----------------
-
-@router.get("/api/watchlists")
-def get_watchlists():
-    """Retrieve all user watchlists and item counts."""
-    try:
-        return db_service.get_watchlists()
-    except Exception as e:
-        logger.error(f"Error in get_watchlists: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/api/watchlists")
-def create_watchlist(payload: WatchlistCreateSchema):
-    """Create a new watchlist."""
-    try:
-        return db_service.create_watchlist(payload.name)
-    except Exception as e:
-        logger.error(f"Error in create_watchlist: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.put("/api/watchlists/{watchlist_id}")
-def update_watchlist(watchlist_id: int, payload: WatchlistUpdateSchema):
-    """Rename a watchlist."""
-    try:
-        return db_service.update_watchlist(watchlist_id, payload.name)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error in update_watchlist({watchlist_id}): {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.delete("/api/watchlists/{watchlist_id}")
-def delete_watchlist(watchlist_id: int):
-    """Delete a watchlist."""
-    try:
-        return db_service.delete_watchlist(watchlist_id)
-    except Exception as e:
-        logger.error(f"Error in delete_watchlist({watchlist_id}): {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/api/watchlists/{watchlist_id}/items")
-def get_watchlist_items(watchlist_id: int):
-    """Get all ticker items in a specific watchlist."""
-    try:
-        return db_service.get_watchlist_items(watchlist_id)
-    except Exception as e:
-        logger.error(f"Error in get_watchlist_items({watchlist_id}): {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/api/watchlists/{watchlist_id}/items")
-def add_watchlist_item(watchlist_id: int, payload: WatchlistItemAddSchema):
-    """Add a stock symbol or batch of symbols to a specific watchlist."""
-    try:
-        if payload.symbols:
-            count = db_service.add_watchlist_items_batch(watchlist_id, payload.symbols)
-            return {"status": "ok", "added_count": count, "watchlist_id": watchlist_id}
-        if payload.symbol:
-            return db_service.add_watchlist_item(watchlist_id, payload.symbol)
-        raise HTTPException(status_code=400, detail="Either 'symbol' or 'symbols' must be provided")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in add_watchlist_item: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/api/watchlists/{watchlist_id}/items/batch")
-def add_watchlist_items_batch_endpoint(watchlist_id: int, payload: WatchlistItemAddSchema):
-    """Add a batch of stock symbols to a specific watchlist."""
-    try:
-        symbols = payload.symbols or ([payload.symbol] if payload.symbol else [])
-        count = db_service.add_watchlist_items_batch(watchlist_id, symbols)
-        return {"status": "ok", "added_count": count, "watchlist_id": watchlist_id}
-    except Exception as e:
-        logger.error(f"Error in add_watchlist_items_batch: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.delete("/api/watchlists/{watchlist_id}/items")
-def clear_watchlist_items(watchlist_id: int):
-    """Clear all stock symbols from a watchlist."""
-    try:
-        return db_service.clear_watchlist_items(watchlist_id)
-    except Exception as e:
-        logger.error(f"Error in clear_watchlist_items({watchlist_id}): {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.delete("/api/watchlists/{watchlist_id}/items/{symbol}")
-def remove_watchlist_item(watchlist_id: int, symbol: str):
-    """Remove a single stock symbol from a watchlist."""
-    try:
-        return db_service.remove_watchlist_item(watchlist_id, symbol)
-    except Exception as e:
-        logger.error(f"Error in remove_watchlist_item({symbol}): {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/api/watchlists/{watchlist_id}/items/remove-batch")
-def remove_watchlist_items_batch_endpoint(watchlist_id: int, payload: WatchlistBatchRemoveSchema):
-    """Remove a batch of stock symbols from a specific watchlist."""
-    try:
-        count = db_service.remove_watchlist_items_batch(watchlist_id, payload.symbols)
-        return {"status": "ok", "removed_count": count, "watchlist_id": watchlist_id}
-    except Exception as e:
-        logger.error(f"Error in remove_watchlist_items_batch: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.delete("/api/watchlists/{watchlist_id}/items/batch")
-def delete_watchlist_items_batch_endpoint(watchlist_id: int, payload: WatchlistBatchRemoveSchema):
-    """Remove a batch of stock symbols from a specific watchlist."""
-    try:
-        count = db_service.remove_watchlist_items_batch(watchlist_id, payload.symbols)
-        return {"status": "ok", "removed_count": count, "watchlist_id": watchlist_id}
-    except Exception as e:
-        logger.error(f"Error in delete_watchlist_items_batch: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
 # ----------------- Setups & Rules Playbook Endpoints -----------------
 
 def _resolve_setups_and_rules_path() -> str:
@@ -671,207 +508,3 @@ def save_chart_screenshot_endpoint(payload: ChartScreenshotSchema):
         return res
     except Exception as e:
         logger.error(f"Error saving chart screenshot: {e}", exc_info=True)
-# ----------------- Model Book / Winner Study Endpoints -----------------
-
-@router.post("/api/model-book/scan")
-def scan_model_book_endpoint(payload: ModelBookScanSchema):
-    """Scan historical setups and return winners with forward metrics."""
-    try:
-        data = model_book_service.scan_setups(
-            setup_type=payload.setup_type,
-            target_gain_pct=payload.target_gain_pct,
-            stop_loss_pct=payload.stop_loss_pct if payload.stop_loss_pct is not None else payload.max_drawdown_limit,
-            ema_exit_type=payload.ema_exit_type,
-            start_date=payload.start_date,
-            end_date=payload.end_date,
-            forward_days=payload.forward_days,
-            max_drawdown_limit=payload.max_drawdown_limit,
-            min_price=payload.min_price,
-            min_volume_50d=payload.min_volume_50d,
-            min_runup_pct=payload.min_runup_pct,
-            max_base_depth=payload.max_base_depth,
-            episode_window_days=payload.episode_window_days,
-            sub_setup_id=payload.sub_setup_id,
-            filters=payload.filters
-        )
-        return data
-    except Exception as e:
-        logger.error(f"Error in scan_model_book_endpoint: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ----------------- Saved Model Book Trades Endpoints -----------------
-
-@router.get("/api/model-book/saved")
-def get_saved_model_book_trades():
-    """Retrieve all saved model book trades."""
-    try:
-        return saved_trades_service.load_saved_trades()
-    except Exception as e:
-        logger.error(f"Error in get_saved_model_book_trades: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/api/model-book/saved")
-def save_model_book_trade(payload: SavedTradeCreateSchema):
-    """Save or update a model book trade."""
-    try:
-        res = saved_trades_service.save_trade(payload.model_dump())
-        return res
-    except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
-    except Exception as e:
-        logger.error(f"Error in save_model_book_trade: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.delete("/api/model-book/saved/{trade_id}")
-def delete_saved_model_book_trade(trade_id: str):
-    """Delete a saved model book trade by ID."""
-    try:
-        deleted = saved_trades_service.delete_saved_trade(trade_id)
-        if not deleted:
-            raise HTTPException(status_code=404, detail="Trade not found")
-        return {"status": "success", "id": trade_id}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in delete_saved_model_book_trade: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.put("/api/model-book/saved/{trade_id}/notes")
-def update_saved_trade_notes_endpoint(trade_id: str, payload: SavedTradeNotesSchema):
-    """Update trader notes for a saved trade."""
-    try:
-        updated = saved_trades_service.update_notes(trade_id, payload.notes)
-        if not updated:
-            raise HTTPException(status_code=404, detail="Trade not found")
-        return updated
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in update_saved_trade_notes_endpoint: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.put("/api/model-book/saved/{trade_id}/trigger-date")
-def update_saved_trade_trigger_date_endpoint(trade_id: str, payload: SavedTradeTriggerDateSchema):
-    """Update trigger date for a saved trade."""
-    try:
-        updated = saved_trades_service.update_trigger_date(trade_id, payload.setup_date)
-        if not updated:
-            raise HTTPException(status_code=404, detail="Trade not found")
-        return updated
-    except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in update_saved_trade_trigger_date_endpoint: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.put("/api/model-book/saved/{trade_id}/setup-type")
-def update_saved_trade_setup_type_endpoint(trade_id: str, payload: SavedTradeSetupTypeSchema):
-    """Update setup type and name for a saved trade."""
-    try:
-        updated = saved_trades_service.update_setup_type(trade_id, payload.setup_type, payload.setup_name)
-        if not updated:
-            raise HTTPException(status_code=404, detail="Trade not found")
-        return updated
-    except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in update_saved_trade_setup_type_endpoint: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ----------------- Trading Journal (IBKR Flex) Endpoints -----------------
-
-class JournalFlexConfigSchema(BaseModel):
-    token: Optional[str] = None
-    query_id: Optional[str] = None
-
-class JournalNotesSchema(BaseModel):
-    notes: str = ""
-    tags: Optional[List[str]] = None
-    initial_stop: Optional[float] = None
-
-@router.get("/api/journal/config")
-def get_journal_config():
-    """Return Flex Query settings (token is masked)."""
-    return journal_service.get_flex_config()
-
-@router.put("/api/journal/config")
-def update_journal_config(payload: JournalFlexConfigSchema):
-    """Save the Flex Web Service token and Activity Flex Query ID to data/ibkr_flex.json."""
-    try:
-        return journal_service.update_flex_config(payload.token, payload.query_id)
-    except Exception as e:
-        logger.error(f"Error in update_journal_config: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/api/journal/sync")
-def sync_journal():
-    """Fetch the Activity Flex statement from IBKR and upsert executions."""
-    try:
-        return journal_service.sync_from_flex()
-    except FlexError as fe:
-        raise HTTPException(status_code=400, detail=str(fe))
-    except Exception as e:
-        logger.error(f"Error in sync_journal: {e}", exc_info=True)
-        raise HTTPException(status_code=502, detail=f"IBKR Flex sync failed: {e}")
-
-class JournalIgnoreSchema(BaseModel):
-    reason: Optional[str] = ""
-
-@router.get("/api/journal")
-def get_journal(start: Optional[str] = None, end: Optional[str] = None,
-                symbol: Optional[str] = None, account: Optional[str] = None,
-                include_ignored: bool = False):
-    """Round-trip trades, statistics, monthly/yearly P&L and equity curve (filtered by close date)."""
-    try:
-        return journal_service.get_journal(start=start, end=end, symbol=symbol, account=account, include_ignored=include_ignored)
-    except Exception as e:
-        logger.error(f"Error in get_journal: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/api/positions")
-def get_open_positions():
-    """Retrieve currently open trading positions from IBKR Journal."""
-    try:
-        trades = journal_service.get_trades(include_ignored=False)
-        return [t for t in trades if t.get("status") == "OPEN"]
-    except Exception as e:
-        logger.error(f"Error in get_open_positions: {e}", exc_info=True)
-        return []
-
-@router.put("/api/journal/trades/{trade_id}/notes")
-def update_journal_notes(trade_id: str, payload: JournalNotesSchema):
-    """Save notes, tags, and initial stop price for a round-trip trade."""
-    try:
-        return journal_service.update_notes(trade_id, payload.notes, payload.tags, initial_stop=payload.initial_stop)
-    except Exception as e:
-        logger.error(f"Error in update_journal_notes: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/api/journal/trades/{trade_id}/ignore")
-def ignore_journal_trade(trade_id: str, payload: Optional[JournalIgnoreSchema] = None):
-    """Exclude an unrelated trade from journal statistics, charts, and default trade list."""
-    try:
-        reason = payload.reason if payload else ""
-        return journal_service.ignore_trade(trade_id, reason=reason or "")
-    except Exception as e:
-        logger.error(f"Error in ignore_journal_trade: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.delete("/api/journal/trades/{trade_id}/ignore")
-def unignore_journal_trade(trade_id: str):
-    """Restore an excluded trade back into journal calculations and history."""
-    try:
-        return journal_service.unignore_trade(trade_id)
-    except Exception as e:
-        logger.error(f"Error in unignore_journal_trade: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-

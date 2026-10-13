@@ -1,13 +1,5 @@
 from typing import List, Any
-
-def _calculate_ema(prices: List[float], span: int) -> float:
-    if not prices or len(prices) < span:
-        return None
-    k = 2.0 / (span + 1.0)
-    ema = prices[0]
-    for p in prices[1:]:
-        ema = p * k + ema * (1.0 - k)
-    return round(ema, 2)
+from application.engine.indicators import calculate_ema as _calculate_ema
 
 def detect_breakout(
     highs: List[float],

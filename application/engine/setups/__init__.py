@@ -5,8 +5,12 @@ Contains specialized technical screener detectors for chart patterns:
 - Volatility Contraction Pattern (VCP)
 - Episodic Pivots (EP)
 - Parabolic Extension (Short & Long Climax)
+- Power Play
+- Breakout
+- Low Cheat
 """
 
+from application.engine.setups.base import BaseSetupDetector, SetupRegistry
 from application.engine.setups.vcp import detect_vcp
 from application.engine.setups.episodic_pivot import detect_episodic_pivot
 from application.engine.setups.parabolic_extension import detect_parabolic_extension
@@ -14,7 +18,40 @@ from application.engine.setups.power_play import detect_power_play
 from application.engine.setups.breakout import detect_breakout
 from application.engine.setups.low_cheat import detect_low_cheat, detect_cheat
 
+# Register setup classes for polymorphic detection
+@SetupRegistry.register("vcp")
+class VCPDetector(BaseSetupDetector):
+    def detect(self, **kwargs):
+        return detect_vcp(**kwargs)
+
+@SetupRegistry.register("episodic_pivot")
+class EpisodicPivotDetector(BaseSetupDetector):
+    def detect(self, **kwargs):
+        return detect_episodic_pivot(**kwargs)
+
+@SetupRegistry.register("parabolic_extension")
+class ParabolicExtensionDetector(BaseSetupDetector):
+    def detect(self, **kwargs):
+        return detect_parabolic_extension(**kwargs)
+
+@SetupRegistry.register("power_play")
+class PowerPlayDetector(BaseSetupDetector):
+    def detect(self, **kwargs):
+        return detect_power_play(**kwargs)
+
+@SetupRegistry.register("breakout")
+class BreakoutDetector(BaseSetupDetector):
+    def detect(self, **kwargs):
+        return detect_breakout(**kwargs)
+
+@SetupRegistry.register("low_cheat")
+class LowCheatDetector(BaseSetupDetector):
+    def detect(self, **kwargs):
+        return detect_low_cheat(**kwargs)
+
 __all__ = [
+    "BaseSetupDetector",
+    "SetupRegistry",
     "detect_vcp",
     "detect_episodic_pivot",
     "detect_parabolic_extension",

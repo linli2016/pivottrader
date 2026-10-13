@@ -166,14 +166,7 @@ class LeaderboardService:
                         if c is not None:
                             sym_history[s].append(float(c))
 
-                    def _calc_ema(prices, span):
-                        if len(prices) < span:
-                            return None
-                        k = 2.0 / (span + 1.0)
-                        val = prices[0]
-                        for p in prices[1:]:
-                            val = p * k + val * (1.0 - k)
-                        return round(val, 2)
+                    from application.engine.indicators import calculate_ema as _calc_ema
 
                     records = [
                         (s, _calc_ema(p, 10), _calc_ema(p, 20), _calc_ema(p, 50))
