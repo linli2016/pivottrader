@@ -55,6 +55,7 @@ export default function GroupChart({
   showGroupName = false,
   showStageBadge = true,
   showStageBias = false,
+  isCompact = false,
   onDataLoaded = null,
   children = null
 }) {
@@ -323,6 +324,7 @@ export default function GroupChart({
     if (!data || !data.stage_summary) {
       return {
         badge: 'Stage 1',
+        short: 'Stage 1',
         label: 'Stage 1: Basing Area',
         accent: '#38bdf8',
         bg: 'rgba(56, 189, 248, 0.12)',
@@ -334,6 +336,7 @@ export default function GroupChart({
     const cfg = STAGE_CONFIG[badge] || STAGE_CONFIG['Stage 1'];
     return {
       badge,
+      short: cfg.short || badge,
       label: cfg.label,
       accent: cfg.accent,
       bg: cfg.bg,
@@ -361,15 +364,16 @@ export default function GroupChart({
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            gap: '12px',
-            padding: '8px 16px',
+            flexWrap: isCompact ? 'wrap' : 'nowrap',
+            gap: isCompact ? '6px' : '12px',
+            padding: isCompact ? '6px 10px' : '8px 16px',
             borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
             background: 'rgba(255, 255, 255, 0.02)'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flexShrink: 0 }}>
             {showGroupName && groupName && (
-              <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#ffffff', whiteSpace: 'nowrap' }}>
+              <h3 style={{ margin: 0, fontSize: isCompact ? '12px' : '14px', fontWeight: 700, color: '#ffffff', whiteSpace: 'nowrap' }}>
                 {groupName}
               </h3>
             )}
@@ -379,19 +383,21 @@ export default function GroupChart({
                   fontSize: '11px',
                   fontWeight: 700,
                   textTransform: 'uppercase',
-                  padding: '3px 10px',
+                  padding: isCompact ? '2px 8px' : '3px 10px',
                   borderRadius: '12px',
                   background: stageInfo.bg,
                   color: stageInfo.accent,
                   border: `1px solid ${stageInfo.border}`,
                   letterSpacing: '0.02em',
-                  whiteSpace: 'nowrap'
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0
                 }}
+                title={stageInfo.label}
               >
-                {stageInfo.label}
+                {isCompact ? (stageInfo.short || stageInfo.badge || stageInfo.label) : stageInfo.label}
               </span>
             )}
-            {showStageBias && (
+            {showStageBias && !isCompact && (
               <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 500, whiteSpace: 'nowrap' }}>
                 {stageInfo.bias}
               </span>
@@ -399,8 +405,10 @@ export default function GroupChart({
           </div>
 
           {/* Timeframe Switcher (Weekly vs Daily) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginRight: '4px' }}>Timeframe:</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            {!isCompact && (
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginRight: '4px' }}>Timeframe:</span>
+            )}
             <div
               style={{
                 display: 'inline-flex',
@@ -418,14 +426,14 @@ export default function GroupChart({
                   color: timeframe === 'weekly' ? '#38bdf8' : 'var(--text-secondary)',
                   border: 'none',
                   borderRadius: '4px',
-                  padding: '3px 9px',
-                  fontSize: '11px',
+                  padding: isCompact ? '2px 7px' : '3px 9px',
+                  fontSize: isCompact ? '10px' : '11px',
                   fontWeight: 600,
                   cursor: 'pointer'
                 }}
                 title="Stan Weinstein canonical 40-week Stage Analysis"
               >
-                Weekly (40w SMA)
+                {isCompact ? 'Weekly (40w)' : 'Weekly (40w SMA)'}
               </button>
               <button
                 type="button"
@@ -435,14 +443,14 @@ export default function GroupChart({
                   color: timeframe === 'daily' ? '#38bdf8' : 'var(--text-muted)',
                   border: 'none',
                   borderRadius: '4px',
-                  padding: '3px 9px',
-                  fontSize: '11px',
+                  padding: isCompact ? '2px 7px' : '3px 9px',
+                  fontSize: isCompact ? '10px' : '11px',
                   fontWeight: 600,
                   cursor: 'pointer'
                 }}
                 title="Daily 200-day SMA inflection timing"
               >
-                Daily (200d SMA)
+                {isCompact ? 'Daily' : 'Daily (200d SMA)'}
               </button>
             </div>
           </div>
@@ -497,13 +505,15 @@ export default function GroupChart({
             position: 'absolute',
             bottom: '6px',
             left: '12px',
-            fontSize: '10.5px',
+            fontSize: isCompact ? '9.5px' : '10.5px',
             color: 'var(--text-secondary)',
             pointerEvents: 'none',
             fontFamily: 'var(--font-mono)'
           }}
         >
-          Mansfield Relative Strength vs S&P 500 (Zero line = market parity)
+          {isCompact
+            ? 'Mansfield RS vs SPY'
+            : 'Mansfield Relative Strength vs S&P 500 (Zero line = market parity)'}
         </div>
       </div>
 

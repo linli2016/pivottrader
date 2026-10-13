@@ -2469,9 +2469,9 @@ export default function ModelBookTab({
       </div>
 
       {/* Split View: Left Chart & Notes + Right List */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr minmax(320px, 28%)', gap: '16px', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr minmax(320px, 28%)', gap: '16px', alignItems: 'stretch' }}>
         {/* Left Column: Chart & Study Notes */}
-        <div className="glass-card" style={{ minWidth: 0, padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', minHeight: '650px' }}>
+        <div className="glass-card" style={{ minWidth: 0, padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {selectedSavedTrade ? (
             <>
               {/* Header Banner */}
@@ -2649,7 +2649,7 @@ export default function ModelBookTab({
               </div>
 
               {/* Candlestick Chart */}
-              <div style={{ width: '100%', position: 'relative' }}>
+              <div style={{ width: '100%', height: '580px', minHeight: '580px', position: 'relative' }}>
                 {/* Sleek top loading indicator line (zero screen blackout) */}
                 {loadingSavedPrices && (
                   <div style={{
@@ -2669,7 +2669,7 @@ export default function ModelBookTab({
                 {savedTradePrices && savedTradePrices.length > 0 ? (
                   <CandlestickChart
                     data={savedTradePrices}
-                    height={500}
+                    height={580}
                     asOfDate={displayedSavedTrade?.setup_date || selectedSavedTrade.setup_date}
                     symbol={displayedSavedTrade?.symbol || selectedSavedTrade.symbol}
                     setupName={displayedSavedTrade?.setup_name || displayedSavedTrade?.setup_type || selectedSavedTrade.setup_name || selectedSavedTrade.setup_type}
@@ -2678,11 +2678,11 @@ export default function ModelBookTab({
                     showPriceLine={false}
                   />
                 ) : loadingSavedPrices ? (
-                  <div style={{ height: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                  <div style={{ height: '580px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
                     <span className="spin-icon" style={{ marginRight: '8px' }}>⟳</span> Loading prices for {selectedSavedTrade?.symbol}...
                   </div>
                 ) : (
-                  <div style={{ height: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                  <div style={{ height: '580px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
                     No historical prices available for {selectedSavedTrade?.symbol}.
                   </div>
                 )}
@@ -2752,7 +2752,7 @@ export default function ModelBookTab({
               </div>
             </>
           ) : (
-            <div style={{ height: '520px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', gap: '12px' }}>
+            <div style={{ height: '580px', minHeight: '580px', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', gap: '12px' }}>
               <span style={{ fontSize: '48px' }}>⭐️</span>
               <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>My Saved Model Book</h3>
               <p style={{ margin: 0, fontSize: '13.5px', maxWidth: '450px', textAlign: 'center', color: 'var(--text-secondary)' }}>
@@ -2765,18 +2765,19 @@ export default function ModelBookTab({
         </div>
 
         {/* Right Column: Saved Trades List */}
-        <div className="glass-card" style={{ minWidth: 0, padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
-              Saved Setups
-            </span>
-            <span style={{ fontSize: '11px', color: '#38bdf8', fontWeight: '600' }}>
-              {filteredSavedTrades.length} Entries
-            </span>
-          </div>
+        <div className="glass-card" style={{ minWidth: 0, position: 'relative', height: '100%', boxSizing: 'border-box' }}>
+          <div style={{ position: 'absolute', inset: 0, padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                Saved Setups
+              </span>
+              <span style={{ fontSize: '11px', color: '#38bdf8', fontWeight: '600' }}>
+                {filteredSavedTrades.length} Entries
+              </span>
+            </div>
 
-          {/* Saved Trades Table */}
-          <div className="custom-scrollbar" style={{ height: '640px', maxHeight: '640px', overflowX: 'hidden', overflowY: 'auto', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'rgba(0, 0, 0, 0.2)' }}>
+            {/* Saved Trades Table */}
+            <div className="custom-scrollbar" style={{ flex: 1, minHeight: 0, overflowX: 'hidden', overflowY: 'auto', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'rgba(0, 0, 0, 0.2)' }}>
             <table className="data-table compact-table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed' }}>
               <thead>
                 <tr>
@@ -2868,6 +2869,7 @@ export default function ModelBookTab({
         </div>
       </div>
     </div>
+  </div>
   )}
 
     </div>

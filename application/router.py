@@ -207,6 +207,13 @@ def get_stock_detail(symbol: str):
         res = db_service.get_stock_detail(symbol)
         if not res:
             raise HTTPException(status_code=404, detail="Symbol not found")
+        if not res.get("themes"):
+            matched = theme_service.get_themes_for_symbol(symbol)
+            res["themes"] = matched
+            res["theme"] = matched[0] if matched else None
+            if "metadata" in res and isinstance(res["metadata"], dict):
+                res["metadata"]["themes"] = matched
+                res["metadata"]["theme"] = matched[0] if matched else None
         return res
     except HTTPException:
         raise
@@ -826,6 +833,16 @@ def get_journal(start: Optional[str] = None, end: Optional[str] = None,
     except Exception as e:
         logger.error(f"Error in get_journal: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/positions")
+def get_open_positions():
+    """Retrieve currently open trading positions from IBKR Journal."""
+    try:
+        trades = journal_service.get_trades(include_ignored=False)
+        return [t for t in trades if t.get("status") == "OPEN"]
+    except Exception as e:
+        logger.error(f"Error in get_open_positions: {e}", exc_info=True)
+        return []
 
 @router.put("/api/journal/trades/{trade_id}/notes")
 def update_journal_notes(trade_id: str, payload: JournalNotesSchema):

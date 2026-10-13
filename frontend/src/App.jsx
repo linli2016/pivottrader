@@ -675,20 +675,32 @@ function App() {
                 </span>
               </li>
 
-              {/* 4. Watchlists */}
+              {/* 4. Market Watching */}
               <li
                 className={`nav-item ${activeTab === 'watchlists' ? 'active' : ''}`}
                 onClick={() => setActiveTab('watchlists')}
-                title="4. My Watchlists"
+                title="4. Market Watching"
               >
                 <div className="nav-item-content">
-                  <span className="nav-icon">⭐️</span>
-                  <span className="nav-label">4. My Watchlists</span>
+                  <span className="nav-icon">📊</span>
+                  <span className="nav-label">4. Market Watching</span>
                 </div>
                 <span className="nav-badge emerald">{watchlists.reduce((sum, w) => sum + (w.item_count || 0), 0)}</span>
               </li>
 
-              {/* 5. Stock Inspector */}
+              {/* 5. Model Book Study */}
+              <li
+                className={`nav-item ${activeTab === 'model-book' ? 'active' : ''}`}
+                onClick={() => setActiveTab('model-book')}
+                title="5. Model Book Study (Historical Winners)"
+              >
+                <div className="nav-item-content">
+                  <span className="nav-icon">📚</span>
+                  <span className="nav-label">5. Model Book Study</span>
+                </div>
+              </li>
+
+              {/* 6. Stock Inspector */}
               <li
                 className={`nav-item ${activeTab === 'inspector' ? 'active' : ''}`}
                 onClick={() => {
@@ -698,11 +710,11 @@ function App() {
                     handleInspectorSearch(selectedStock.symbol);
                   }
                 }}
-                title="5. Stock Inspector"
+                title="6. Stock Inspector"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">🔍</span>
-                  <span className="nav-label">5. Stock Inspector</span>
+                  <span className="nav-label">6. Stock Inspector</span>
                 </div>
               </li>
             </ul>
@@ -719,16 +731,6 @@ function App() {
                 <div className="nav-item-content">
                   <span className="nav-icon">📓</span>
                   <span className="nav-label">Trading Journal</span>
-                </div>
-              </li>
-              <li
-                className={`nav-item ${activeTab === 'model-book' ? 'active' : ''}`}
-                onClick={() => setActiveTab('model-book')}
-                title="Model Book Study (Historical Winners)"
-              >
-                <div className="nav-item-content">
-                  <span className="nav-icon">📚</span>
-                  <span className="nav-label">Model Book Study</span>
                 </div>
               </li>
               <li

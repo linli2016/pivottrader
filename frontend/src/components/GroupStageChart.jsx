@@ -33,6 +33,7 @@ export default function GroupStageChart({
       showHeader={true}
       showStageBadge={true}
       onDataLoaded={setStageData}
+      isCompact={isCompact}
     >
       {/* Constituent Leaders Row */}
       {breadth && breadth.leaders && breadth.leaders.length > 0 && !isCompact && (

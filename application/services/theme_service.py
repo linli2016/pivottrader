@@ -188,6 +188,19 @@ class ThemeService:
                 return t
         return None
 
+    def get_themes_for_symbol(self, symbol: str) -> List[str]:
+        """Retrieves a list of theme names that contain the given symbol (case-insensitive)."""
+        if not symbol:
+            return []
+        target = symbol.strip().upper()
+        themes = self.load_themes()
+        matched = []
+        for t in themes:
+            raw_syms = t.get("symbols", []) or []
+            if any(s.strip().upper() == target for s in raw_syms if isinstance(s, str)):
+                matched.append(t.get("name"))
+        return matched
+
     def create_or_update_theme(self, name: str, description: str, symbols: List[str]) -> Dict[str, Any]:
         """Creates or updates a theme."""
         clean_name = name.strip()

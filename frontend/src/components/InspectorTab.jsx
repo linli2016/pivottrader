@@ -1,6 +1,7 @@
 import React from 'react';
 import CandlestickChart from './CandlestickChart';
 import VcpFootprintCard from './VcpFootprintCard';
+import GroupStageChart from './GroupStageChart';
 
 export default function InspectorTab({
   inspectorSymbol,
@@ -12,6 +13,26 @@ export default function InspectorTab({
   handleInspectorSearch,
   inspectorInputRef,
 }) {
+  const [previewGroupModal, setPreviewGroupModal] = React.useState(null);
+
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && previewGroupModal) {
+        setPreviewGroupModal(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [previewGroupModal]);
+
+  const sector = inspectorDetail?.metadata?.sector || inspectorDetail?.sector;
+  const industry = inspectorDetail?.metadata?.industry || inspectorDetail?.industry;
+  const rawThemes = inspectorDetail?.themes || inspectorDetail?.metadata?.themes;
+  const themes = React.useMemo(() => {
+    if (Array.isArray(rawThemes) && rawThemes.length > 0) return rawThemes;
+    const singleTheme = inspectorDetail?.theme || inspectorDetail?.metadata?.theme;
+    return singleTheme ? [singleTheme] : [];
+  }, [rawThemes, inspectorDetail?.theme, inspectorDetail?.metadata?.theme]);
   const inspectorEarningsBadge = React.useMemo(() => {
     const dt = inspectorDetail?.next_earnings_date || inspectorDetail?.metadata?.next_earnings_date;
     if (!dt) return null;
@@ -125,14 +146,155 @@ export default function InspectorTab({
       {inspectorDetail && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           {/* Meta details */}
-          <div className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <h2 style={{ fontSize: '26px', color: 'var(--accent-color)', fontWeight: '700' }}>
-                {inspectorDetail.metadata.symbol}
-              </h2>
-              <span style={{ fontSize: '16px', fontWeight: '500', color: 'var(--text-secondary)' }}>
-                {inspectorDetail.metadata.name || 'Company Name Not Available'}
-              </span>
+          <div className="glass-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <h2 style={{ fontSize: '26px', color: 'var(--accent-color)', fontWeight: '700', margin: 0, lineHeight: 1.1 }}>
+                  {inspectorDetail.metadata.symbol}
+                </h2>
+                <span style={{ fontSize: '16px', fontWeight: '500', color: 'var(--text-secondary)' }}>
+                  {inspectorDetail.metadata.name || 'Company Name Not Available'}
+                </span>
+              </div>
+
+              {/* Classification: Sector / Industry / Theme with Group Chart trigger */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '2px' }}>
+                {/* Sector Button */}
+                {sector ? (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewGroupModal({ groupType: 'sectors', groupName: sector })}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '3px 10px',
+                      borderRadius: '6px',
+                      background: 'rgba(168, 85, 247, 0.12)',
+                      border: '1px solid rgba(168, 85, 247, 0.35)',
+                      color: '#c084fc',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                    className="hover-brighten"
+                    title={`Click to view Stan Weinstein Stage Analysis Chart for Sector: ${sector}`}
+                  >
+                    <span>🏛️ Sector: {sector}</span>
+                    <span style={{ fontSize: '11px', opacity: 0.85 }}>📈 Chart</span>
+                  </button>
+                ) : (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '3px 10px',
+                      borderRadius: '6px',
+                      background: 'rgba(255, 255, 255, 0.04)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      color: 'var(--text-muted)',
+                      fontSize: '12px',
+                      fontWeight: 500
+                    }}
+                  >
+                    🏛️ Sector: N/A
+                  </span>
+                )}
+
+                {/* Industry Button */}
+                {industry ? (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewGroupModal({ groupType: 'industries', groupName: industry })}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '3px 10px',
+                      borderRadius: '6px',
+                      background: 'rgba(56, 189, 248, 0.12)',
+                      border: '1px solid rgba(56, 189, 248, 0.35)',
+                      color: '#38bdf8',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                    className="hover-brighten"
+                    title={`Click to view Stan Weinstein Stage Analysis Chart for Industry: ${industry}`}
+                  >
+                    <span>🏭 Industry: {industry}</span>
+                    <span style={{ fontSize: '11px', opacity: 0.85 }}>📈 Chart</span>
+                  </button>
+                ) : (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '3px 10px',
+                      borderRadius: '6px',
+                      background: 'rgba(255, 255, 255, 0.04)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      color: 'var(--text-muted)',
+                      fontSize: '12px',
+                      fontWeight: 500
+                    }}
+                  >
+                    🏭 Industry: N/A
+                  </span>
+                )}
+
+                {/* Theme(s) Button */}
+                {themes.length > 0 ? (
+                  themes.map((thm) => (
+                    <button
+                      key={thm}
+                      type="button"
+                      onClick={() => setPreviewGroupModal({ groupType: 'themes', groupName: thm })}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '3px 10px',
+                        borderRadius: '6px',
+                        background: 'rgba(16, 185, 129, 0.12)',
+                        border: '1px solid rgba(16, 185, 129, 0.35)',
+                        color: '#34d399',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                      className="hover-brighten"
+                      title={`Click to view Stan Weinstein Stage Analysis Chart for Narrative Theme: ${thm}`}
+                    >
+                      <span>⚡ Theme: {thm}</span>
+                      <span style={{ fontSize: '11px', opacity: 0.85 }}>📈 Chart</span>
+                    </button>
+                  ))
+                ) : (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '3px 10px',
+                      borderRadius: '6px',
+                      background: 'rgba(255, 255, 255, 0.04)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      color: 'var(--text-muted)',
+                      fontSize: '12px',
+                      fontWeight: 500
+                    }}
+                    title="No thematic basket mapped for this stock"
+                  >
+                    ⚡ Theme: None
+                  </span>
+                )}
+              </div>
             </div>
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
               <span className="pill pill-success" style={{ background: 'rgba(16, 185, 129, 0.2)', color: 'var(--accent-success)' }}>
@@ -366,6 +528,146 @@ export default function InspectorTab({
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Stan Weinstein Group Stage Chart Reference */}
+      {previewGroupModal && (
+        <div
+          className="full-page-modal-backdrop"
+          onClick={() => setPreviewGroupModal(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.78)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+        >
+          <div
+            className="glass-card custom-scrollbar"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '960px',
+              maxWidth: '96vw',
+              maxHeight: '92vh',
+              overflowY: 'auto',
+              background: '#0e1422',
+              border: '1px solid rgba(56, 189, 248, 0.35)',
+              borderRadius: '14px',
+              padding: '20px 24px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              boxShadow: '0 24px 50px rgba(0, 0, 0, 0.75)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                  <span style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    STAN WEINSTEIN STAGE ANALYSIS · {previewGroupModal.groupType === 'sectors' ? 'SECTOR' : previewGroupModal.groupType === 'themes' ? 'THEME' : 'INDUSTRY'}
+                  </span>
+                </div>
+                <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 800, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>{previewGroupModal.groupType === 'sectors' ? '🏛️' : previewGroupModal.groupType === 'themes' ? '⚡' : '🏭'}</span>
+                  <span>{previewGroupModal.groupName}</span>
+                </h3>
+              </div>
+
+              {/* Group Quick Toggles & Close Button */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {sector && (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewGroupModal({ groupType: 'sectors', groupName: sector })}
+                    style={{
+                      background: previewGroupModal.groupType === 'sectors' && previewGroupModal.groupName === sector ? 'rgba(168, 85, 247, 0.3)' : 'rgba(255, 255, 255, 0.06)',
+                      border: `1px solid ${previewGroupModal.groupType === 'sectors' && previewGroupModal.groupName === sector ? '#c084fc' : 'rgba(255, 255, 255, 0.15)'}`,
+                      borderRadius: '5px',
+                      color: previewGroupModal.groupType === 'sectors' && previewGroupModal.groupName === sector ? '#ffffff' : '#c084fc',
+                      padding: '4px 10px',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🏛️ Sector: {sector}
+                  </button>
+                )}
+                {industry && (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewGroupModal({ groupType: 'industries', groupName: industry })}
+                    style={{
+                      background: previewGroupModal.groupType === 'industries' && previewGroupModal.groupName === industry ? 'rgba(56, 189, 248, 0.3)' : 'rgba(255, 255, 255, 0.06)',
+                      border: `1px solid ${previewGroupModal.groupType === 'industries' && previewGroupModal.groupName === industry ? '#38bdf8' : 'rgba(255, 255, 255, 0.15)'}`,
+                      borderRadius: '5px',
+                      color: previewGroupModal.groupType === 'industries' && previewGroupModal.groupName === industry ? '#ffffff' : '#38bdf8',
+                      padding: '4px 10px',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🏭 Industry: {industry}
+                  </button>
+                )}
+                {themes && themes.map((thm) => (
+                  <button
+                    key={thm}
+                    type="button"
+                    onClick={() => setPreviewGroupModal({ groupType: 'themes', groupName: thm })}
+                    style={{
+                      background: previewGroupModal.groupType === 'themes' && previewGroupModal.groupName === thm ? 'rgba(16, 185, 129, 0.3)' : 'rgba(255, 255, 255, 0.06)',
+                      border: `1px solid ${previewGroupModal.groupType === 'themes' && previewGroupModal.groupName === thm ? '#10b981' : 'rgba(255, 255, 255, 0.15)'}`,
+                      borderRadius: '5px',
+                      color: previewGroupModal.groupType === 'themes' && previewGroupModal.groupName === thm ? '#ffffff' : '#34d399',
+                      padding: '4px 10px',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ⚡ {thm}
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={() => setPreviewGroupModal(null)}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '5px',
+                    color: 'var(--text-secondary)',
+                    padding: '5px 12px',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    marginLeft: '6px'
+                  }}
+                >
+                  ✕ Close
+                </button>
+              </div>
+            </div>
+
+            <GroupStageChart
+              groupType={previewGroupModal.groupType}
+              groupName={previewGroupModal.groupName}
+              onSelectStock={(sym) => {
+                setPreviewGroupModal(null);
+                if (setInspectorSymbol) setInspectorSymbol(sym);
+                if (handleInspectorSearch) handleInspectorSearch(sym);
+              }}
+              height={440}
+              isCompact={false}
+            />
           </div>
         </div>
       )}

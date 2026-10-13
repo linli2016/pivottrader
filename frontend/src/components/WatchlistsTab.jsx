@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import CandlestickChart from './CandlestickChart';
-import VcpFootprintCard from './VcpFootprintCard';
-import LowCheatFootprintCard from './LowCheatFootprintCard';
+import GroupStageChart from './GroupStageChart';
 import { getLocalDateStr } from '../utils/dateUtils';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
 // Sleek Brand Logo Icon Component
-function StockBrandIcon({ symbol }) {
+export function StockBrandIcon({ symbol }) {
   const sym = (symbol || '').toUpperCase();
 
   if (sym === 'AAPL') {
@@ -109,7 +108,7 @@ function StockBrandIcon({ symbol }) {
   );
 }
 
-const QUADRANT_COLORS = {
+export const QUADRANT_COLORS = {
   Leading: { accent: '#10b981', bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.35)', title: 'Leading' },
   Improving: { accent: '#38bdf8', bg: 'rgba(56, 189, 248, 0.15)', border: 'rgba(56, 189, 248, 0.35)', title: 'Improving' },
   Weakening: { accent: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.35)', title: 'Weakening' },
@@ -117,16 +116,15 @@ const QUADRANT_COLORS = {
 };
 
 export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetchWatchlists }) {
-  const [selectedWatchlistId, setSelectedWatchlistId] = useState(null);
-  const [items, setItems] = useState([]);
-  const [loadingItems, setLoadingItems] = useState(false);
-  const [selectedStock, setSelectedStock] = useState(null);
+  // Main Navigation Mode for Right Dock: 'watchlists' | 'groups' | 'positions'
+  const [dockTab, setDockTab] = useState('watchlists');
 
-  // Center Chart Data
+  // Active Stock & Chart Data
+  const [selectedStock, setSelectedStock] = useState(null);
   const [stockPrices, setStockPrices] = useState([]);
   const [loadingPrices, setLoadingPrices] = useState(false);
 
-  // Right Panel Data
+  // Stock Details / Telemetry
   const [stockDetail, setStockDetail] = useState(null);
   const [financials, setFinancials] = useState(null);
   const [peersData, setPeersData] = useState(null);
@@ -135,7 +133,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   const [fundTab, setFundTab] = useState('institutions');
   const [profileExpanded, setProfileExpanded] = useState(false);
 
-  // Accordion Collapse States
+  // Accordion Collapse States for Stock Detail Panel
   const [collapsedSections, setCollapsedSections] = useState({
     profile: false,
     stats: false,
@@ -148,30 +146,13 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     setCollapsedSections((prev) => ({ ...prev, [sectionKey]: !prev[sectionKey] }));
   };
 
-  // Watchlist Management State
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterSector, setFilterSector] = useState('ALL');
-  const [filterIndustry, setFilterIndustry] = useState('ALL');
-  const [filterTheme, setFilterTheme] = useState('ALL');
-  const [sortBy, setSortBy] = useState('group_rs'); // 'group_rs' | 'rs_rank' | 'chg_pct_desc' | 'chg_pct_asc' | 'rvol' | 'symbol' | 'added'
-  const [groupMode, setGroupMode] = useState('none'); // 'none' | 'industry' | 'sector' | 'theme'
-  const [collapsedGroupKeys, setCollapsedGroupKeys] = useState(new Set());
-
-  const toggleGroupCollapse = (key) => {
-    setCollapsedGroupKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  // Right Info Panel Collapse State (persisted in localStorage)
+  // Stock Details Sub-pane visibility (collapsed by default to give maximum room to chart)
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(() => {
     try {
-      return localStorage.getItem('pivot_watchlist_right_panel_collapsed') === 'true';
+      const saved = localStorage.getItem('pivot_watchlist_right_panel_collapsed');
+      return saved !== null ? saved === 'true' : true;
     } catch {
-      return false;
+      return true; // default collapsed for maximized chart space
     }
   });
 
@@ -181,6 +162,18 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     } catch (_) {}
   }, [isRightPanelCollapsed]);
 
+  // -------------------------------------------------------------
+  // TAB 1: WATCHLIST STATE
+  // -------------------------------------------------------------
+  const [selectedWatchlistId, setSelectedWatchlistId] = useState(null);
+  const [items, setItems] = useState([]);
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterSector, setFilterSector] = useState('ALL');
+  const [filterIndustry, setFilterIndustry] = useState('ALL');
+  const [sortBy, setSortBy] = useState('group_rs');
+  const [groupMode, setGroupMode] = useState('none');
+  const [collapsedGroupKeys, setCollapsedGroupKeys] = useState(new Set());
   const [newSymbolInput, setNewSymbolInput] = useState('');
   const [isAddingSymbol, setIsAddingSymbol] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -192,6 +185,111 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedSymbols, setSelectedSymbols] = useState(new Set());
   const [isDeletingItems, setIsDeletingItems] = useState(false);
+  const [quickAddMenuSym, setQuickAddMenuSym] = useState(null); // ticker to add to a chosen watchlist
+  const [quickAddToast, setQuickAddToast] = useState(null); // notification toast
+
+  const toggleGroupCollapse = (key) => {
+    setCollapsedGroupKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  // -------------------------------------------------------------
+  // TAB 2: MARKET GROUPS (SECTORS / INDUSTRIES / THEMES) STATE
+  // -------------------------------------------------------------
+  const [groupType, setGroupType] = useState('sectors'); // 'sectors' | 'industries' | 'themes'
+  const [groupsData, setGroupsData] = useState({ sectors: [], industries: [], themes: [] });
+  const [loadingGroups, setLoadingGroups] = useState(false);
+  const [expandedMarketGroups, setExpandedMarketGroups] = useState(new Set());
+  const [groupConstituents, setGroupConstituents] = useState({}); // key: `${type}:${name}` -> stock[]
+  const [loadingConstituents, setLoadingConstituents] = useState({}); // key -> bool
+  const [groupSearchQuery, setGroupSearchQuery] = useState('');
+  const [groupSortBy, setGroupSortBy] = useState('today_pct'); // 'today_pct' | 'ret_1w_pct' | 'ret_1m_pct' | 'ret_3m_pct' | 'ret_ytd_pct' | 'rs_rank' | 'dist_52wh_pct' | 'rvol_pct' | 'stage_num'
+  const [groupSortOrder, setGroupSortOrder] = useState('desc'); // 'desc' | 'asc'
+  const [previewGroupChart, setPreviewGroupChart] = useState(null); // { groupType, groupName, stageBadge, stageColor } for reference modal
+  const [activeGroupChart, setActiveGroupChart] = useState(null); // docked in left chart panel
+
+  // Close preview modal on Escape
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && previewGroupChart) {
+        setPreviewGroupChart(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [previewGroupChart]);
+
+  // -------------------------------------------------------------
+  // TAB 3: POSITIONS (OPEN TRADES) STATE
+  // -------------------------------------------------------------
+  const [positions, setPositions] = useState([]);
+  const [loadingPositions, setLoadingPositions] = useState(false);
+
+  // -------------------------------------------------------------
+  // RESIZABLE SPLITTER DIVIDER (Between Chart and Right Table Dock)
+  // -------------------------------------------------------------
+  const [rightPanelWidth, setRightPanelWidth] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pt_markets_table_width');
+      if (saved) {
+        const val = parseInt(saved, 10);
+        if (val >= 340 && val <= 850) return val;
+      }
+    } catch (_) {}
+    return 480; // default width for comfortable table reading
+  });
+
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeStartXRef = useRef(0);
+  const resizeStartWidthRef = useRef(480);
+
+  const startResizing = useCallback((e) => {
+    e.preventDefault();
+    setIsResizing(true);
+    resizeStartXRef.current = e.clientX;
+    resizeStartWidthRef.current = rightPanelWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [rightPanelWidth]);
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isResizing) return;
+      const delta = resizeStartXRef.current - e.clientX;
+      const newWidth = Math.min(Math.max(resizeStartWidthRef.current + delta, 340), Math.min(window.innerWidth * 0.65, 850));
+      setRightPanelWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      if (isResizing) {
+        setIsResizing(false);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        try {
+          localStorage.setItem('pt_markets_table_width', rightPanelWidth);
+        } catch (_) {}
+      }
+    };
+
+    if (isResizing) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing, rightPanelWidth]);
+
+  // Show temporary toast
+  const triggerToast = (msg) => {
+    setQuickAddToast(msg);
+    setTimeout(() => setQuickAddToast(null), 2500);
+  };
 
   // Initialize selected watchlist (prefer 'Mag 7' if present, otherwise first available)
   useEffect(() => {
@@ -210,7 +308,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       if (res.ok) {
         const data = await res.json();
         setItems(data);
-        // Select first stock by default if none selected or not in current list
         if (data.length > 0) {
           setSelectedStock((current) => {
             if (current && data.some((d) => d.symbol === current.symbol)) {
@@ -218,8 +315,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
             }
             return data[0];
           });
-        } else {
-          setSelectedStock(null);
         }
       }
     } catch (e) {
@@ -235,9 +330,79 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     }
   }, [selectedWatchlistId, fetchItems]);
 
+  // Fetch Groups data
+  const fetchGroupsData = useCallback(async (type) => {
+    if (groupsData[type] && groupsData[type].length > 0) return;
+    setLoadingGroups(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/groups/strength?type=${type}`);
+      if (res.ok) {
+        const data = await res.json();
+        setGroupsData((prev) => ({ ...prev, [type]: data }));
+      }
+    } catch (e) {
+      console.error(`Error fetching ${type} strength:`, e);
+    } finally {
+      setLoadingGroups(false);
+    }
+  }, [groupsData]);
+
+  // Fetch Positions
+  const fetchPositions = useCallback(async () => {
+    setLoadingPositions(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/positions`);
+      if (res.ok) {
+        const data = await res.json();
+        setPositions(data);
+      }
+    } catch (e) {
+      console.error('Error fetching open positions:', e);
+    } finally {
+      setLoadingPositions(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (dockTab === 'groups') {
+      fetchGroupsData(groupType);
+    } else if (dockTab === 'positions') {
+      fetchPositions();
+    }
+  }, [dockTab, groupType, fetchGroupsData, fetchPositions]);
+
+  // Expand / collapse group accordion in Market Groups
+  const toggleMarketGroup = async (groupName) => {
+    const isExpanded = expandedMarketGroups.has(groupName);
+    const cacheKey = `${groupType}:${groupName}`;
+
+    setExpandedMarketGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupName)) next.delete(groupName);
+      else next.add(groupName);
+      return next;
+    });
+
+    if (!isExpanded && !groupConstituents[cacheKey]) {
+      setLoadingConstituents((prev) => ({ ...prev, [cacheKey]: true }));
+      try {
+        const res = await fetch(`${API_BASE}/api/groups/constituents?type=${groupType}&name=${encodeURIComponent(groupName)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setGroupConstituents((prev) => ({ ...prev, [cacheKey]: data }));
+        }
+      } catch (e) {
+        console.error(`Error fetching constituents for ${groupName}:`, e);
+      } finally {
+        setLoadingConstituents((prev) => ({ ...prev, [cacheKey]: false }));
+      }
+    }
+  };
+
+  // Prefetch adjacent stocks for instantaneous 0ms flip
   const prefetchAdjacentWatchlistStocks = useCallback((currentSym, stockList) => {
     if (!stockList || stockList.length <= 1) return;
-    const idx = stockList.findIndex(s => (s.symbol || '').toUpperCase() === currentSym);
+    const idx = stockList.findIndex((s) => (s.symbol || '').toUpperCase() === currentSym);
     if (idx === -1) return;
     const adjacent = [];
     if (idx + 1 < stockList.length) adjacent.push((stockList[idx + 1].symbol || '').toUpperCase());
@@ -297,7 +462,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     let financialsData = null;
     let peersDataRes = null;
 
-    // Fetch prices immediately and update chart without waiting for financials/peers
     const pPrices = fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=750`)
       .then((res) => (res.ok ? res.json() : []))
       .then((prices) => {
@@ -353,8 +517,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     });
   }, [selectedStock?.symbol, items, prefetchAdjacentWatchlistStocks]);
 
-
-
   // Quick Add Symbol to active watchlist
   const handleAddSymbol = async (e) => {
     e?.preventDefault();
@@ -366,137 +528,124 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: sym }),
+        body: JSON.stringify({ symbol: sym })
       });
       if (res.ok) {
         setNewSymbolInput('');
-        await fetchItems(selectedWatchlistId);
+        fetchItems(selectedWatchlistId);
         if (fetchWatchlists) fetchWatchlists();
-      } else {
-        alert(`Failed to add ${sym} to watchlist.`);
+        triggerToast(`Added ${sym} to watchlist`);
       }
-    } catch (err) {
-      alert(`Error adding symbol: ${err.message}`);
+    } catch (e) {
+      console.error('Error adding symbol:', e);
     } finally {
       setIsAddingSymbol(false);
     }
   };
 
-  // Remove symbol from active watchlist
-  const handleRemoveSymbol = async (sym, e) => {
-    e?.stopPropagation();
-    if (!selectedWatchlistId || !sym) return;
+  // Add arbitrary symbol to specified watchlist
+  const handleAddSymbolToWatchlist = async (sym, targetWId = selectedWatchlistId) => {
+    if (!sym || !targetWId) return;
     try {
-      const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items/${sym}`, {
-        method: 'DELETE',
+      const res = await fetch(`${API_BASE}/api/watchlists/${targetWId}/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: sym.toUpperCase() })
       });
       if (res.ok) {
-        setItems((prev) => prev.filter((i) => i.symbol !== sym));
-        setSelectedSymbols((prev) => {
-          const next = new Set(prev);
-          next.delete(sym);
-          return next;
-        });
-        if (selectedStock?.symbol === sym) {
-          const remaining = items.filter((i) => i.symbol !== sym);
-          setSelectedStock(remaining.length > 0 ? remaining[0] : null);
+        if (targetWId === selectedWatchlistId) {
+          fetchItems(selectedWatchlistId);
         }
         if (fetchWatchlists) fetchWatchlists();
-      } else {
-        alert(`Failed to remove ${sym} from watchlist.`);
+        const targetW = watchlists.find((w) => w.id === targetWId);
+        triggerToast(`Added ${sym.toUpperCase()} to ${targetW?.name || 'watchlist'}`);
       }
     } catch (err) {
-      console.error('Error removing item:', err);
-      alert(`Error removing ${sym}: ${err.message}`);
+      console.error('Error adding symbol to watchlist:', err);
+    } finally {
+      setQuickAddMenuSym(null);
     }
   };
 
-  // Batch remove selected symbols
+  // Remove symbol from active watchlist
+  const handleRemoveSymbol = async (sym, e) => {
+    if (e) e.stopPropagation();
+    if (!selectedWatchlistId || !sym) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items/${encodeURIComponent(sym)}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        setItems((prev) => {
+          const updated = prev.filter((i) => i.symbol !== sym);
+          if (selectedStock?.symbol === sym) {
+            setSelectedStock(updated.length > 0 ? updated[0] : null);
+          }
+          return updated;
+        });
+        if (fetchWatchlists) fetchWatchlists();
+        triggerToast(`Removed ${sym}`);
+      }
+    } catch (e) {
+      console.error('Error removing symbol:', e);
+    }
+  };
+
+  // Batch remove
   const handleRemoveBatch = async () => {
     if (!selectedWatchlistId || selectedSymbols.size === 0) return;
-    const symList = Array.from(selectedSymbols);
-    if (!window.confirm(`Remove ${symList.length} selected stocks from "${activeWatchlist?.name || 'Watchlist'}"?`)) return;
+    const confirmDelete = window.confirm(`Remove ${selectedSymbols.size} symbols from this watchlist?`);
+    if (!confirmDelete) return;
 
     setIsDeletingItems(true);
     try {
-      const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items/remove-batch`, {
-        method: 'POST',
+      const symbolsArray = Array.from(selectedSymbols);
+      const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items/batch`, {
+        method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbols: symList }),
+        body: JSON.stringify({ symbols: symbolsArray })
       });
       if (res.ok) {
-        setItems((prev) => prev.filter((i) => !selectedSymbols.has(i.symbol)));
-        if (selectedStock && selectedSymbols.has(selectedStock.symbol)) {
-          const remaining = items.filter((i) => !selectedSymbols.has(i.symbol));
-          setSelectedStock(remaining.length > 0 ? remaining[0] : null);
-        }
+        setItems((prev) => {
+          const updated = prev.filter((i) => !selectedSymbols.has(i.symbol));
+          if (selectedStock && selectedSymbols.has(selectedStock.symbol)) {
+            setSelectedStock(updated.length > 0 ? updated[0] : null);
+          }
+          return updated;
+        });
         setSelectedSymbols(new Set());
+        setIsSelectMode(false);
         if (fetchWatchlists) fetchWatchlists();
-      } else {
-        alert('Failed to remove selected stocks.');
+        triggerToast(`Removed ${symbolsArray.length} symbols`);
       }
-    } catch (err) {
-      alert(`Error removing stocks: ${err.message}`);
+    } catch (e) {
+      console.error('Error removing batch symbols:', e);
     } finally {
       setIsDeletingItems(false);
     }
   };
 
-  // Clean up all symbols from active watchlist
-  const handleCleanUpWatchlist = async () => {
-    if (!selectedWatchlistId || items.length === 0) return;
-    const currentW = watchlists.find((w) => w.id === selectedWatchlistId);
-    if (!window.confirm(`Are you sure you want to clean up "${currentW?.name || 'this watchlist'}"?\n\nThis will remove all ${items.length} stocks from the list.`)) return;
-
-    try {
-      const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items`, {
-        method: 'DELETE',
-      });
-      if (res.ok) {
-        setItems([]);
-        setSelectedStock(null);
-        setSelectedSymbols(new Set());
-        setShowDropdownMenu(false);
-        if (fetchWatchlists) fetchWatchlists();
-      } else {
-        alert('Failed to clean up watchlist.');
-      }
-    } catch (err) {
-      alert(`Error cleaning up watchlist: ${err.message}`);
-    }
-  };
-
-  // Toggle selection for batch operations
-  const toggleSelectStock = (sym, e) => {
-    e?.stopPropagation();
+  const toggleSelectSymbol = (sym, e) => {
+    e.stopPropagation();
     setSelectedSymbols((prev) => {
       const next = new Set(prev);
-      if (next.has(sym)) {
-        next.delete(sym);
-      } else {
-        next.add(sym);
-      }
+      if (next.has(sym)) next.delete(sym);
+      else next.add(sym);
       return next;
     });
   };
 
-  const toggleSelectAll = () => {
-    if (selectedSymbols.size === displayItems.length && displayItems.length > 0) {
-      setSelectedSymbols(new Set());
-    } else {
-      setSelectedSymbols(new Set(displayItems.map((i) => i.symbol)));
-    }
-  };
-
-  // Create new watchlist
+  // Create Watchlist
   const handleCreateWatchlist = async (e) => {
-    e?.preventDefault();
+    e.preventDefault();
     if (!newWatchlistName.trim()) return;
+
     try {
       const res = await fetch(`${API_BASE}/api/watchlists`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newWatchlistName.trim() }),
+        body: JSON.stringify({ name: newWatchlistName.trim() })
       });
       if (res.ok) {
         const created = await res.json();
@@ -504,179 +653,168 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         setShowCreateModal(false);
         if (fetchWatchlists) await fetchWatchlists();
         setSelectedWatchlistId(created.id);
+        triggerToast(`Created watchlist "${created.name}"`);
       }
-    } catch (err) {
-      alert(`Error creating watchlist: ${err.message}`);
+    } catch (e) {
+      console.error('Error creating watchlist:', e);
     }
   };
 
-  // Rename active watchlist
+  // Rename Watchlist
   const handleRenameWatchlist = async (e) => {
-    e?.preventDefault();
-    const newName = renameInput.trim();
-    if (!newName || !selectedWatchlistId) return;
-    if (newName === activeWatchlist?.name) {
-      setShowRenameModal(false);
-      return;
-    }
+    e.preventDefault();
+    if (!renameInput.trim() || !selectedWatchlistId) return;
+
     setIsRenaming(true);
     try {
       const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName }),
+        body: JSON.stringify({ name: renameInput.trim() })
       });
       if (res.ok) {
         setShowRenameModal(false);
         if (fetchWatchlists) await fetchWatchlists();
-      } else {
-        const errData = await res.json().catch(() => ({}));
-        alert(errData.detail || 'Failed to rename watchlist.');
+        triggerToast(`Renamed to "${renameInput.trim()}"`);
       }
-    } catch (err) {
-      alert(`Error renaming watchlist: ${err.message}`);
+    } catch (e) {
+      console.error('Error renaming watchlist:', e);
     } finally {
       setIsRenaming(false);
     }
   };
 
-  // Delete current watchlist
+  // Delete Watchlist
   const handleDeleteWatchlist = async () => {
     if (!selectedWatchlistId) return;
-    const currentW = watchlists.find((w) => w.id === selectedWatchlistId);
-    if (!window.confirm(`Are you sure you want to delete "${currentW?.name || 'Watchlist'}"? This action cannot be undone.`)) return;
+    const target = watchlists.find((w) => w.id === selectedWatchlistId);
+    const confirmDelete = window.confirm(`Delete watchlist "${target?.name || ''}"?`);
+    if (!confirmDelete) return;
 
     try {
       const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}`, {
-        method: 'DELETE',
+        method: 'DELETE'
       });
       if (res.ok) {
         if (fetchWatchlists) await fetchWatchlists();
         const remaining = watchlists.filter((w) => w.id !== selectedWatchlistId);
         setSelectedWatchlistId(remaining.length > 0 ? remaining[0].id : null);
-        setShowDropdownMenu(false);
-      } else {
-        alert('Failed to delete watchlist.');
+        triggerToast('Watchlist deleted');
       }
-    } catch (err) {
-      alert(`Error deleting watchlist: ${err.message}`);
+    } catch (e) {
+      console.error('Error deleting watchlist:', e);
     }
   };
 
-  // Export to TradingView (.txt), identical to CandidatesTab / Screen page
+  // Export to TradingView (.txt)
   const handleExportTradingView = () => {
-    if (!items || items.length === 0) {
-      alert("No stocks to export in this watchlist!");
-      return;
-    }
-    const content = items.map((c) => {
-      const exchange = c.exchange ? `${c.exchange}:` : '';
-      return `${exchange}${c.symbol}`;
-    }).join('\n');
-
-    const blob = new Blob([content], { type: 'text/plain' });
+    if (items.length === 0) return;
+    const currentW = watchlists.find((w) => w.id === selectedWatchlistId);
+    const filename = `${(currentW?.name || 'watchlist').toLowerCase().replace(/\s+/g, '_')}_tradingview.txt`;
+    const symbolsList = items.map((i) => i.symbol.toUpperCase()).join('\n');
+    const blob = new Blob([symbolsList], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    const safeName = (activeWatchlist?.name || 'Watchlist').replace(/[^a-zA-Z0-9_-]/g, '_');
-    link.download = `PivotTrader_${safeName}_${getLocalDateStr()}.txt`;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    triggerToast('Exported to TradingView format');
   };
 
-  // Extract unique sectors from items with counts
+  // Clean Up Watchlist
+  const handleCleanUpWatchlist = async () => {
+    if (!selectedWatchlistId || items.length === 0) return;
+    const confirmClean = window.confirm(
+      `Clean Up Watchlist: Remove stocks below Stage 2 criteria (RS Rank < 50 or Price < 50 SMA)?`
+    );
+    if (!confirmClean) return;
+
+    const toRemove = items
+      .filter((item) => (item.rs_rank !== null && item.rs_rank < 50) || (item.chg_pct !== null && item.chg_pct < -15))
+      .map((i) => i.symbol);
+
+    if (toRemove.length === 0) {
+      alert('No lagging stocks found in current watchlist.');
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items/batch`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbols: toRemove })
+      });
+      if (res.ok) {
+        fetchItems(selectedWatchlistId);
+        if (fetchWatchlists) fetchWatchlists();
+        triggerToast(`Cleaned up ${toRemove.length} lagging stocks`);
+      }
+    } catch (e) {
+      console.error('Error cleaning up watchlist:', e);
+    }
+  };
+
+  // -------------------------------------------------------------
+  // FILTERING & SORTING FOR WATCHLIST ITEMS
+  // -------------------------------------------------------------
   const availableSectors = useMemo(() => {
     const map = new Map();
-    items.forEach((it) => {
-      const s = (it.sector || '').trim() || 'Unclassified';
-      map.set(s, (map.get(s) || 0) + 1);
+    items.forEach((item) => {
+      const sec = (item.sector || '').trim();
+      if (sec) map.set(sec, (map.get(sec) || 0) + 1);
     });
     return Array.from(map.entries())
       .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [items]);
 
-  // Extract unique industries from items (filtered by selected sector if applicable)
   const availableIndustries = useMemo(() => {
     const map = new Map();
-    items.forEach((it) => {
-      if (filterSector !== 'ALL' && ((it.sector || '').trim() || 'Unclassified') !== filterSector) {
-        return;
-      }
-      const ind = (it.industry || '').trim() || 'Unclassified';
-      map.set(ind, (map.get(ind) || 0) + 1);
+    items.forEach((item) => {
+      if (filterSector !== 'ALL' && item.sector !== filterSector) return;
+      const ind = (item.industry || '').trim();
+      if (ind) map.set(ind, (map.get(ind) || 0) + 1);
     });
     return Array.from(map.entries())
       .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [items, filterSector]);
 
-  // Extract unique themes from items
-  const availableThemes = useMemo(() => {
-    const map = new Map();
-    items.forEach((it) => {
-      const ths = it.themes || (it.theme ? [it.theme] : []);
-      ths.forEach((t) => {
-        const tn = (t || '').trim();
-        if (tn) map.set(tn, (map.get(tn) || 0) + 1);
-      });
-    });
-    return Array.from(map.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-  }, [items]);
-
-  // Filtered items list
   const filteredItems = useMemo(() => {
-    let result = items;
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toUpperCase();
-      result = result.filter(
-        (i) => i.symbol.toUpperCase().includes(q) || (i.name || '').toUpperCase().includes(q)
-      );
-    }
-    if (filterSector !== 'ALL') {
-      result = result.filter(
-        (i) => ((i.sector || '').trim() || 'Unclassified') === filterSector
-      );
-    }
-    if (filterIndustry !== 'ALL') {
-      result = result.filter(
-        (i) => ((i.industry || '').trim() || 'Unclassified') === filterIndustry
-      );
-    }
-    if (filterTheme !== 'ALL') {
-      result = result.filter(
-        (i) => (i.themes && i.themes.some((t) => t === filterTheme)) || i.theme === filterTheme
-      );
-    }
-    return result;
-  }, [items, searchQuery, filterSector, filterIndustry, filterTheme]);
+    return items.filter((item) => {
+      if (searchQuery) {
+        const query = searchQuery.trim().toLowerCase();
+        const symMatch = (item.symbol || '').toLowerCase().includes(query);
+        const nameMatch = (item.name || '').toLowerCase().includes(query);
+        const indMatch = (item.industry || '').toLowerCase().includes(query);
+        if (!symMatch && !nameMatch && !indMatch) return false;
+      }
+      if (filterSector !== 'ALL' && item.sector !== filterSector) return false;
+      if (filterIndustry !== 'ALL' && item.industry !== filterIndustry) return false;
+      return true;
+    });
+  }, [items, searchQuery, filterSector, filterIndustry]);
 
-  // Sorted items list
   const sortedItems = useMemo(() => {
     const copy = [...filteredItems];
     switch (sortBy) {
       case 'group_rs':
-        return copy.sort((a, b) => {
-          const grpA = a.group_rs_rank ?? -1;
-          const grpB = b.group_rs_rank ?? -1;
-          if (grpB !== grpA) return grpB - grpA;
-          return (b.rs_rank ?? -1) - (a.rs_rank ?? -1);
-        });
+        return copy.sort((a, b) => (b.group_rs_rank ?? b.rs_rank ?? 0) - (a.group_rs_rank ?? a.rs_rank ?? 0));
       case 'rs_rank':
-        return copy.sort((a, b) => (b.rs_rank ?? -1) - (a.rs_rank ?? -1));
+        return copy.sort((a, b) => (b.rs_rank ?? 0) - (a.rs_rank ?? 0));
       case 'chg_pct_desc':
         return copy.sort((a, b) => (b.chg_pct ?? -999) - (a.chg_pct ?? -999));
       case 'chg_pct_asc':
         return copy.sort((a, b) => (a.chg_pct ?? 999) - (b.chg_pct ?? 999));
       case 'rvol':
-        return copy.sort((a, b) => (b.rvol_pct ?? -1) - (a.rvol_pct ?? -1));
+        return copy.sort((a, b) => (b.rvol_pct ?? 0) - (a.rvol_pct ?? 0));
       case 'symbol':
         return copy.sort((a, b) => a.symbol.localeCompare(b.symbol));
       case 'added':
+        return copy.sort((a, b) => new Date(b.added_at || 0) - new Date(a.added_at || 0));
       default:
         return copy;
     }
@@ -691,66 +829,144 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       let gName = '';
       let gRsRank = 50;
       let gQuadrant = 'Improving';
-      let gRank = null;
 
       if (groupMode === 'industry') {
         gName = (item.industry || '').trim() || 'Unclassified Industry';
         gRsRank = item.industry_rs_rank ?? item.group_rs_rank ?? 50;
         gQuadrant = item.industry_quadrant ?? item.group_quadrant ?? 'Improving';
-        gRank = item.industry_rank;
       } else if (groupMode === 'sector') {
         gName = (item.sector || '').trim() || 'Unclassified Sector';
         gRsRank = item.sector_rs_rank ?? item.group_rs_rank ?? 50;
         gQuadrant = item.sector_quadrant ?? item.group_quadrant ?? 'Improving';
-        gRank = item.sector_rank;
       } else if (groupMode === 'theme') {
         gName = item.theme || (item.themes && item.themes[0]) || 'Other / No Theme';
         gRsRank = item.theme_rs_rank ?? item.group_rs_rank ?? 50;
         gQuadrant = item.theme_quadrant ?? item.group_quadrant ?? 'Improving';
-        gRank = item.theme_rank;
       }
 
       if (!groupsMap.has(gName)) {
         groupsMap.set(gName, {
-          key: gName,
           name: gName,
+          key: gName,
           rsRank: gRsRank,
           quadrant: gQuadrant,
-          rank: gRank,
           items: []
         });
       }
       groupsMap.get(gName).items.push(item);
     });
 
-    // Sort groups themselves by Group RS Rank descending (Weinstein top-down order)
     return Array.from(groupsMap.values()).sort((a, b) => {
       if (b.rsRank !== a.rsRank) return b.rsRank - a.rsRank;
       return b.items.length - a.items.length || a.name.localeCompare(b.name);
     });
   }, [sortedItems, groupMode]);
 
-  // Flattened visible items list for keyboard navigation and count
-  const displayItems = useMemo(() => {
-    if (groupMode === 'none' || !groupedSections) {
-      return sortedItems;
-    }
-    const flat = [];
-    groupedSections.forEach((g) => {
-      if (!collapsedGroupKeys.has(g.key)) {
-        flat.push(...g.items);
-      }
-    });
-    return flat;
-  }, [sortedItems, groupMode, groupedSections, collapsedGroupKeys]);
+  // -------------------------------------------------------------
+  // FILTERING & SORTING FOR MARKET GROUPS TAB
+  // -------------------------------------------------------------
+  const currentGroupsList = groupsData[groupType] || [];
 
-  // Keyboard Navigation across currently visible display items
+  const filteredAndSortedGroups = useMemo(() => {
+    let list = currentGroupsList;
+    if (groupSearchQuery.trim()) {
+      const q = groupSearchQuery.trim().toLowerCase();
+      list = list.filter((g) => (g.name || '').toLowerCase().includes(q));
+    }
+
+    const sorted = [...list].sort((a, b) => {
+      let valA = a[groupSortBy];
+      let valB = b[groupSortBy];
+      if (valA === undefined || valA === null) valA = -999999;
+      if (valB === undefined || valB === null) valB = -999999;
+      if (typeof valA === 'string') return valA.localeCompare(valB);
+      return valB - valA;
+    });
+
+    return groupSortOrder === 'asc' ? sorted.reverse() : sorted;
+  }, [currentGroupsList, groupSearchQuery, groupSortBy, groupSortOrder]);
+
+  // Current Group Index for Next / Prev navigation
+  const currentGroupIndex = useMemo(() => {
+    if (!activeGroupChart) return -1;
+    return filteredAndSortedGroups.findIndex((g) => g.name === activeGroupChart.groupName);
+  }, [activeGroupChart, filteredAndSortedGroups]);
+
+  const handleNextGroup = useCallback(() => {
+    if (filteredAndSortedGroups.length === 0) return;
+    const nextIdx = currentGroupIndex < filteredAndSortedGroups.length - 1 ? currentGroupIndex + 1 : 0;
+    const grp = filteredAndSortedGroups[nextIdx];
+    if (grp) {
+      setActiveGroupChart({
+        groupType,
+        groupName: grp.name,
+        stageBadge: grp.stage_badge,
+        stageColor: grp.stage_color
+      });
+    }
+  }, [currentGroupIndex, filteredAndSortedGroups, groupType]);
+
+  const handlePrevGroup = useCallback(() => {
+    if (filteredAndSortedGroups.length === 0) return;
+    const prevIdx = currentGroupIndex > 0 ? currentGroupIndex - 1 : filteredAndSortedGroups.length - 1;
+    const grp = filteredAndSortedGroups[prevIdx];
+    if (grp) {
+      setActiveGroupChart({
+        groupType,
+        groupName: grp.name,
+        stageBadge: grp.stage_badge,
+        stageColor: grp.stage_color
+      });
+    }
+  }, [currentGroupIndex, filteredAndSortedGroups, groupType]);
+
+  // -------------------------------------------------------------
+  // FLATTENED DISPLAY ITEMS FOR KEYBOARD NAVIGATION
+  // -------------------------------------------------------------
+  const displayItems = useMemo(() => {
+    if (dockTab === 'watchlists') {
+      if (groupMode === 'none' || !groupedSections) {
+        return sortedItems;
+      }
+      const flat = [];
+      groupedSections.forEach((g) => {
+        if (!collapsedGroupKeys.has(g.key)) {
+          flat.push(...g.items);
+        }
+      });
+      return flat;
+    }
+    if (dockTab === 'groups') {
+      const flat = [];
+      expandedMarketGroups.forEach((gName) => {
+        const cacheKey = `${groupType}:${gName}`;
+        const consts = groupConstituents[cacheKey];
+        if (consts && consts.length > 0) {
+          flat.push(...consts);
+        }
+      });
+      return flat;
+    }
+    if (dockTab === 'positions') {
+      return positions;
+    }
+    return sortedItems;
+  }, [dockTab, sortedItems, groupMode, groupedSections, collapsedGroupKeys, expandedMarketGroups, groupType, groupConstituents, positions]);
+
+  // Keyboard Navigation across currently visible display items or groups (ArrowUp / ArrowDown)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
 
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         e.preventDefault();
+        // If currently inspecting a group in the main panel, navigate next/prev group
+        if (activeGroupChart && dockTab === 'groups') {
+          if (e.key === 'ArrowUp') handlePrevGroup();
+          else handleNextGroup();
+          return;
+        }
+
         if (!displayItems || displayItems.length === 0) return;
         const currentIdx = displayItems.findIndex(
           (i) => (i.symbol || '').toUpperCase() === (selectedStock?.symbol || '').toUpperCase()
@@ -767,7 +983,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [displayItems, selectedStock]);
+  }, [displayItems, selectedStock, activeGroupChart, dockTab, handlePrevGroup, handleNextGroup]);
 
   const activeWatchlist = watchlists.find((w) => w.id === selectedWatchlistId);
 
@@ -777,12 +993,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     return stockPrices[stockPrices.length - 1];
   }, [stockPrices]);
 
-  const prevBar = useMemo(() => {
-    if (!stockPrices || stockPrices.length < 2) return null;
-    return stockPrices[stockPrices.length - 2];
-  }, [stockPrices]);
-
-  // Clean company name
   const cleanName = useMemo(() => {
     const raw = selectedStock?.name || stockDetail?.metadata?.name || selectedStock?.symbol || '';
     return raw
@@ -792,13 +1002,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       .trim();
   }, [selectedStock, stockDetail]);
 
-  const rvolDisplay = selectedStock?.rvol_pct ?? (
-    latestBar && latestBar.vol_50d_ma
-      ? Math.round((latestBar.volume / latestBar.vol_50d_ma) * 100)
-      : null
-  );
-
-  // Metrics for Top Panel Badges (matching CandidatesTab / Stock Screen)
   const rsRank = selectedStock?.rs_rank ?? stockDetail?.rs_rank ?? null;
 
   const hasBlueDot = useMemo(() => {
@@ -810,1692 +1013,573 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     return false;
   }, [selectedStock, stockDetail, stockPrices]);
 
-  const adrVal = selectedStock?.adr_20d ?? stockDetail?.adr_20d ?? null;
-  const atrVal = selectedStock?.atr_20d ?? stockDetail?.atr_20d ?? null;
+  // Derived stock telemetry for Screener-matching Header
+  const adrVal = stockDetail?.adr_20d ?? selectedStock?.adr_20d ?? null;
+  const tiVal = stockDetail?.ti_65 ?? selectedStock?.ti_65 ?? null;
+  const ret1m = stockDetail?.ret_1m ?? selectedStock?.ret_1m ?? null;
+  const ret3m = stockDetail?.ret_3m ?? selectedStock?.ret_3m ?? null;
+  const ret6m = stockDetail?.ret_6m ?? selectedStock?.ret_6m ?? null;
+  const instSummary = stockDetail?.sponsorship_summary ?? null;
+  const instHolders = instSummary?.holders_count ?? selectedStock?.inst_holders_count ?? null;
+  const instStreak = instSummary?.sponsorship_streak ?? selectedStock?.sponsorship_streak ?? 0;
+  const exchange = stockDetail?.metadata?.exchange || selectedStock?.exchange || '';
+  const sector = stockDetail?.metadata?.sector || selectedStock?.sector || '';
+  const industry = stockDetail?.metadata?.industry || selectedStock?.industry || '';
+  const stageBadge = selectedStock?.stage_badge || null;
+  const stageColor = selectedStock?.stage_color || null;
+  const activeSetups = selectedStock?.setups || [];
+  const priceChangePct = selectedStock?.today_pct !== undefined && selectedStock?.today_pct !== null
+    ? selectedStock.today_pct
+    : selectedStock?.chg_pct;
 
-  const ti65Val = selectedStock?.ti_65 ?? stockDetail?.ti_65 ?? null;
-
-  const isEtf = (selectedStock?.asset_type === 'ETF') ||
-    (selectedStock?.asset_type && selectedStock.asset_type.toUpperCase().includes('ETF')) ||
-    (stockDetail?.metadata?.asset_type === 'ETF') ||
-    (stockDetail?.metadata?.asset_type && stockDetail.metadata.asset_type.toUpperCase().includes('ETF'));
-
-  const instHoldersCount = stockDetail?.sponsorship_summary?.holders_count ??
-    selectedStock?.inst_holders_count ??
-    stockDetail?.fundamentals?.[0]?.inst_holders_count ?? null;
-
-  const instHoldersQoqChange = stockDetail?.sponsorship_summary?.holders_qoq_change ??
-    selectedStock?.inst_holders_qoq_change ??
-    stockDetail?.fundamentals?.[0]?.inst_holders_qoq_change ?? null;
-
-  const sponsorshipStreak = stockDetail?.sponsorship_summary?.sponsorship_streak ??
-    selectedStock?.sponsorship_streak ??
-    stockDetail?.fundamentals?.[0]?.sponsorship_streak ?? 0;
-
-  const ret1m = selectedStock?.ret_1m ?? stockDetail?.ret_1m ?? null;
-  const ret3m = selectedStock?.ret_3m ?? stockDetail?.ret_3m ?? null;
-  const ret6m = selectedStock?.ret_6m ?? stockDetail?.ret_6m ?? null;
-
-  const earningsBadge = useMemo(() => {
-    const dt = selectedStock?.next_earnings_date ||
-      stockDetail?.next_earnings_date ||
-      stockDetail?.metadata?.next_earnings_date ||
-      financials?.next_earnings_date;
-    if (!dt) return null;
-    try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const target = new Date(dt + 'T00:00:00');
-      const diffTime = target.getTime() - today.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      let badgeSub = '';
-      let isUrgent = false;
-
-      if (diffDays === 0) {
-        badgeSub = 'Today';
-        isUrgent = true;
-      } else if (diffDays === 1) {
-        badgeSub = 'Tomorrow';
-        isUrgent = true;
-      } else if (diffDays > 1) {
-        badgeSub = `in ${diffDays}d`;
-        if (diffDays <= 7) isUrgent = true;
-      } else {
-        badgeSub = `${Math.abs(diffDays)}d ago`;
-      }
-
-      return {
-        dateStr: dt,
-        badgeSub,
-        diffDays,
-        isUrgent,
-        displayText: `Earning ${badgeSub}`,
-        fullDisplay: `${dt} (${badgeSub})`
-      };
-    } catch (e) {
-      return { dateStr: dt, badgeSub: dt, displayText: `Earning ${dt}`, fullDisplay: dt, isUrgent: false };
-    }
-  }, [selectedStock?.next_earnings_date, stockDetail?.next_earnings_date, stockDetail?.metadata?.next_earnings_date, financials?.next_earnings_date]);
+  // Positions summary
+  const positionsSummary = useMemo(() => {
+    if (!positions || positions.length === 0) return { count: 0, totalPnl: 0, totalNotional: 0, pnlPct: 0 };
+    let totalPnl = 0;
+    let totalNotional = 0;
+    positions.forEach((p) => {
+      totalPnl += p.unrealized_pnl || 0;
+      totalNotional += p.entry_notional || 0;
+    });
+    const pnlPct = totalNotional > 0 ? (totalPnl / totalNotional) * 100 : 0;
+    return { count: positions.length, totalPnl, totalNotional, pnlPct };
+  }, [positions]);
 
   return (
     <div style={{
       display: 'flex',
-      flexDirection: 'column',
-      height: 'calc(100vh - 78px)',
+      height: 'calc(100vh - 48px)',
       width: '100%',
       overflow: 'hidden',
-      color: 'var(--text-primary)',
-      boxSizing: 'border-box'
+      background: 'var(--bg-primary)',
+      position: 'relative'
     }}>
-      {/* 3-Column Workstation Layout */}
-      <div style={{
-        display: 'flex',
-        flex: 1,
-        minHeight: 0,
-        width: '100%',
-        gap: '8px',
-        background: 'rgba(255, 255, 255, 0.05)',
-        borderTop: '1px solid var(--border-color)'
-      }}>
-
-        {/* ======================================================== */}
-        {/* COLUMN 1: LEFT WATCHLIST & SYMBOL LIST (~270px)          */}
-        {/* ======================================================== */}
+      {/* Toast Notification */}
+      {quickAddToast && (
         <div style={{
-          width: '295px',
-          minWidth: '295px',
-          maxWidth: '295px',
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'var(--bg-secondary)',
-          borderRight: '1px solid var(--border-color)',
-          overflow: 'hidden'
+          position: 'absolute',
+          top: '16px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(16, 185, 129, 0.95)',
+          color: '#ffffff',
+          padding: '6px 16px',
+          borderRadius: '20px',
+          fontSize: '12px',
+          fontWeight: 700,
+          zIndex: 9999,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          pointerEvents: 'none'
         }}>
-          {/* Header Bar */}
-          <div style={{
-            padding: '10px 12px 8px',
-            borderBottom: '1px solid var(--border-color)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '8px'
-          }}>
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              background: 'rgba(16, 185, 129, 0.15)',
-              color: '#10b981',
-              border: '1px solid rgba(16, 185, 129, 0.4)',
-              borderRadius: '16px',
-              padding: '3px 12px',
-              fontSize: '11.5px',
-              fontWeight: 700
-            }}>
-              Watchlist
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              {/* Export to TradingView Button */}
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={handleExportTradingView}
-                disabled={items.length === 0}
-                title="Export to TradingView watchlist (.txt)"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: '26px',
-                  height: '26px',
-                  padding: 0,
-                  borderRadius: '6px',
-                  cursor: items.length > 0 ? 'pointer' : 'not-allowed',
-                  opacity: items.length > 0 ? 1 : 0.4,
-                  flexShrink: 0
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
-              </button>
-
-              {/* Create New Watchlist Button */}
-              <button
-                onClick={() => setShowCreateModal(true)}
-                title="Create New Watchlist"
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-secondary)',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  padding: '4px 6px',
-                  lineHeight: 1
-                }}
-              >
-                ➕
-              </button>
-            </div>
-          </div>
-
-          {/* Watchlist Dropdown Selector & Quick Actions */}
-          <div style={{
-            padding: '8px 12px',
-            borderBottom: '1px solid var(--border-color)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            position: 'relative'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
-              <div style={{
-                width: '18px', height: '18px', borderRadius: '50%',
-                background: '#000000', color: '#ffffff',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '10px', fontWeight: 900, flexShrink: 0
-              }}>
-                {(activeWatchlist?.name || 'W')[0].toUpperCase()}
-              </div>
-              <select
-                value={selectedWatchlistId || ''}
-                onChange={(e) => setSelectedWatchlistId(Number(e.target.value))}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-primary)',
-                  fontWeight: 700,
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  outline: 'none',
-                  maxWidth: '130px',
-                  textOverflow: 'ellipsis',
-                  overflow: 'hidden',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                {watchlists.map((w) => (
-                  <option key={w.id} value={w.id} style={{ background: '#1e293b', color: '#ffffff' }}>
-                    {w.name} ({w.item_count})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
-              <button
-                onClick={() => {
-                  setRenameInput(activeWatchlist?.name || '');
-                  setShowRenameModal(true);
-                }}
-                title="Rename Watchlist"
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-muted)',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  padding: '2px 4px',
-                  borderRadius: '4px'
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
-                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
-              >
-                ✏️
-              </button>
-
-              <button
-                onClick={() => setShowDropdownMenu(!showDropdownMenu)}
-                title="Watchlist Options"
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-muted)',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  padding: '2px 4px'
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
-                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
-              >
-                ≡
-              </button>
-            </div>
-
-            {/* Dropdown Menu Backdrop & Menu */}
-            {showDropdownMenu && (
-              <>
-                <div
-                  style={{ position: 'fixed', inset: 0, zIndex: 99 }}
-                  onClick={() => setShowDropdownMenu(false)}
-                />
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '38px',
-                    right: '12px',
-                    background: 'var(--card-bg)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
-                    padding: '6px 0',
-                    zIndex: 100,
-                    minWidth: '185px'
-                  }}
-                >
-                  <button
-                    onClick={() => {
-                      setShowCreateModal(true);
-                      setShowDropdownMenu(false);
-                    }}
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      background: 'transparent',
-                      border: 'none',
-                      padding: '7px 12px',
-                      fontSize: '12px',
-                      color: 'var(--text-primary)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    <span>➕</span> New Watchlist
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setRenameInput(activeWatchlist?.name || '');
-                      setShowRenameModal(true);
-                      setShowDropdownMenu(false);
-                    }}
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      background: 'transparent',
-                      border: 'none',
-                      padding: '7px 12px',
-                      fontSize: '12px',
-                      color: 'var(--text-primary)',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    <span>✏️</span> Rename Watchlist
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setShowDropdownMenu(false);
-                      handleExportTradingView();
-                    }}
-                    disabled={items.length === 0}
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      background: 'transparent',
-                      border: 'none',
-                      padding: '7px 12px',
-                      fontSize: '12px',
-                      color: items.length > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
-                      cursor: items.length > 0 ? 'pointer' : 'not-allowed',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }}
-                    onMouseEnter={(e) => items.length > 0 && (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    <span>↗️</span> Export to TradingView (.txt)
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setShowDropdownMenu(false);
-                      handleCleanUpWatchlist();
-                    }}
-                    disabled={items.length === 0}
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      background: 'transparent',
-                      border: 'none',
-                      padding: '7px 12px',
-                      fontSize: '12px',
-                      color: items.length > 0 ? '#f59e0b' : 'var(--text-muted)',
-                      cursor: items.length > 0 ? 'pointer' : 'not-allowed',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }}
-                    onMouseEnter={(e) => items.length > 0 && (e.currentTarget.style.background = 'rgba(245, 158, 11, 0.1)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    <span>🧹</span> Clean Up Watchlist
-                  </button>
-
-                  <div style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0' }} />
-
-                  <button
-                    onClick={() => {
-                      setShowDropdownMenu(false);
-                      handleDeleteWatchlist();
-                    }}
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      background: 'transparent',
-                      border: 'none',
-                      padding: '7px 12px',
-                      fontSize: '12px',
-                      color: '#fb7185',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(251, 113, 133, 0.1)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    <span>🗑️</span> Delete Watchlist
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Quick Add Symbol & Selection Controls Bar */}
-          <div style={{
-            padding: '6px 10px',
-            borderBottom: '1px solid var(--border-color)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '6px'
-          }}>
-            <form onSubmit={handleAddSymbol} style={{ display: 'flex', gap: '6px' }}>
-              <input
-                type="text"
-                placeholder="+ Add symbol (e.g. PLTR)"
-                value={newSymbolInput}
-                onChange={(e) => setNewSymbolInput(e.target.value.toUpperCase())}
-                style={{
-                  flex: 1,
-                  background: 'rgba(0, 0, 0, 0.35)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  padding: '4px 8px',
-                  fontSize: '11.5px',
-                  color: '#ffffff',
-                  outline: 'none',
-                  minWidth: 0
-                }}
-              />
-              <button
-                type="submit"
-                disabled={isAddingSymbol || !newSymbolInput.trim()}
-                style={{
-                  background: 'rgba(16, 185, 129, 0.15)',
-                  border: '1px solid rgba(16, 185, 129, 0.4)',
-                  color: '#10b981',
-                  borderRadius: '4px',
-                  padding: '4px 8px',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  cursor: isAddingSymbol || !newSymbolInput.trim() ? 'not-allowed' : 'pointer',
-                  opacity: isAddingSymbol || !newSymbolInput.trim() ? 0.5 : 1
-                }}
-              >
-                Add
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSelectMode(!isSelectMode);
-                  if (isSelectMode) setSelectedSymbols(new Set());
-                }}
-                title={isSelectMode ? 'Exit Selection Mode' : 'Select multiple stocks'}
-                style={{
-                  background: isSelectMode ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                  border: isSelectMode ? '1px solid #38bdf8' : '1px solid var(--border-color)',
-                  color: isSelectMode ? '#38bdf8' : 'var(--text-secondary)',
-                  borderRadius: '4px',
-                  padding: '4px 7px',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
-              >
-                {isSelectMode ? 'Done' : 'Select'}
-              </button>
-            </form>
-
-            {/* Batch Action Banner when in Selection Mode */}
-            {isSelectMode && (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '4px 6px',
-                background: 'rgba(56, 189, 248, 0.08)',
-                border: '1px solid rgba(56, 189, 248, 0.25)',
-                borderRadius: '4px',
-                fontSize: '11px'
-              }}>
-                <span style={{ color: '#38bdf8', fontWeight: 600 }}>
-                  {selectedSymbols.size} of {filteredItems.length} selected
-                </span>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  <button
-                    type="button"
-                    onClick={toggleSelectAll}
-                    style={{
-                      background: 'transparent',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '3px',
-                      color: 'var(--text-secondary)',
-                      padding: '2px 6px',
-                      fontSize: '10px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {selectedSymbols.size === filteredItems.length && filteredItems.length > 0 ? 'None' : 'All'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={selectedSymbols.size === 0 || isDeletingItems}
-                    onClick={handleRemoveBatch}
-                    style={{
-                      background: selectedSymbols.size > 0 ? 'rgba(239, 68, 68, 0.2)' : 'transparent',
-                      border: selectedSymbols.size > 0 ? '1px solid rgba(239, 68, 68, 0.5)' : '1px solid rgba(255, 255, 255, 0.1)',
-                      borderRadius: '3px',
-                      color: selectedSymbols.size > 0 ? '#fb7185' : 'var(--text-muted)',
-                      padding: '2px 6px',
-                      fontSize: '10px',
-                      fontWeight: 700,
-                      cursor: selectedSymbols.size > 0 ? 'pointer' : 'not-allowed'
-                    }}
-                  >
-                    {isDeletingItems ? 'Removing...' : `🗑️ Remove (${selectedSymbols.size})`}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Search, Filter & Grouping Controls Bar (Stan Weinstein Forest-to-Trees) */}
-          <div style={{
-            padding: '6px 8px',
-            borderBottom: '1px solid var(--border-color)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '5px',
-            background: 'rgba(0, 0, 0, 0.2)'
-          }}>
-            {/* Search Input with Clear Button */}
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <input
-                type="text"
-                placeholder="🔍 Filter ticker or name..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  width: '100%',
-                  background: 'rgba(0, 0, 0, 0.35)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  padding: '4px 22px 4px 7px',
-                  fontSize: '11px',
-                  color: '#ffffff',
-                  outline: 'none',
-                  boxSizing: 'border-box'
-                }}
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  style={{
-                    position: 'absolute', right: '5px', background: 'transparent',
-                    border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
-                    fontSize: '11px', padding: 0
-                  }}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            {/* Row 1: Filter Selects (Sector, Industry) */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
-              <select
-                value={filterSector}
-                onChange={(e) => {
-                  setFilterSector(e.target.value);
-                  setFilterIndustry('ALL');
-                }}
-                style={{
-                  background: filterSector !== 'ALL' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(0, 0, 0, 0.35)',
-                  border: filterSector !== 'ALL' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
-                  color: filterSector !== 'ALL' ? '#38bdf8' : 'var(--text-secondary)',
-                  borderRadius: '4px',
-                  padding: '3px 4px',
-                  fontSize: '10.5px',
-                  outline: 'none',
-                  cursor: 'pointer'
-                }}
-                title="Filter by Sector"
-              >
-                <option value="ALL">All Sectors ({items.length})</option>
-                {availableSectors.map((s) => (
-                  <option key={s.name} value={s.name}>
-                    {s.name} ({s.count})
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={filterIndustry}
-                onChange={(e) => setFilterIndustry(e.target.value)}
-                style={{
-                  background: filterIndustry !== 'ALL' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(0, 0, 0, 0.35)',
-                  border: filterIndustry !== 'ALL' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
-                  color: filterIndustry !== 'ALL' ? '#38bdf8' : 'var(--text-secondary)',
-                  borderRadius: '4px',
-                  padding: '3px 4px',
-                  fontSize: '10.5px',
-                  outline: 'none',
-                  cursor: 'pointer'
-                }}
-                title="Filter by Industry"
-              >
-                <option value="ALL">All Industries</option>
-                {availableIndustries.map((ind) => (
-                  <option key={ind.name} value={ind.name}>
-                    {ind.name} ({ind.count})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Row 2: Theme Filter & Sort By */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
-              <select
-                value={filterTheme}
-                onChange={(e) => setFilterTheme(e.target.value)}
-                style={{
-                  background: filterTheme !== 'ALL' ? 'rgba(168, 85, 247, 0.15)' : 'rgba(0, 0, 0, 0.35)',
-                  border: filterTheme !== 'ALL' ? '1px solid #a855f7' : '1px solid var(--border-color)',
-                  color: filterTheme !== 'ALL' ? '#c084fc' : 'var(--text-secondary)',
-                  borderRadius: '4px',
-                  padding: '3px 4px',
-                  fontSize: '10.5px',
-                  outline: 'none',
-                  cursor: 'pointer'
-                }}
-                title="Filter by Theme"
-              >
-                <option value="ALL">All Themes {availableThemes.length > 0 ? `(${availableThemes.length})` : ''}</option>
-                {availableThemes.map((th) => (
-                  <option key={th.name} value={th.name}>
-                    {th.name} ({th.count})
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                style={{
-                  background: 'rgba(0, 0, 0, 0.35)',
-                  border: '1px solid var(--border-color)',
-                  color: sortBy === 'group_rs' ? '#10b981' : 'var(--text-secondary)',
-                  borderRadius: '4px',
-                  padding: '3px 4px',
-                  fontSize: '10.5px',
-                  outline: 'none',
-                  fontWeight: sortBy === 'group_rs' ? 700 : 400,
-                  cursor: 'pointer'
-                }}
-                title="Sort stocks in watchlist"
-              >
-                <option value="group_rs">⚡ Group RS (Strongest)</option>
-                <option value="rs_rank">🏆 Stock RS (Leaders)</option>
-                <option value="chg_pct_desc">📈 Chg% (High → Low)</option>
-                <option value="chg_pct_asc">📉 Chg% (Low → High)</option>
-                <option value="rvol">🌊 Rel Vol (RVol ↓)</option>
-                <option value="symbol">🔤 Symbol (A → Z)</option>
-                <option value="added">🕒 Date Added</option>
-              </select>
-            </div>
-
-            {/* Row 3: Group View Segmentation Bar */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>
-                Group by:
-              </span>
-              <div style={{ display: 'flex', gap: '2px', background: 'rgba(0,0,0,0.3)', padding: '2px', borderRadius: '4px' }}>
-                {[
-                  { id: 'none', label: 'Flat' },
-                  { id: 'industry', label: 'Industry' },
-                  { id: 'sector', label: 'Sector' },
-                  { id: 'theme', label: 'Theme' }
-                ].map((btn) => (
-                  <button
-                    key={btn.id}
-                    type="button"
-                    onClick={() => setGroupMode(btn.id)}
-                    style={{
-                      background: groupMode === btn.id ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
-                      border: groupMode === btn.id ? '1px solid #38bdf8' : '1px solid transparent',
-                      color: groupMode === btn.id ? '#38bdf8' : 'var(--text-muted)',
-                      borderRadius: '3px',
-                      padding: '1px 5px',
-                      fontSize: '9.5px',
-                      fontWeight: groupMode === btn.id ? 700 : 500,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {btn.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Active Filters Clear Pills */}
-            {(filterSector !== 'ALL' || filterIndustry !== 'ALL' || filterTheme !== 'ALL' || searchQuery) && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', paddingTop: '2px' }}>
-                {filterSector !== 'ALL' && (
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '3px',
-                    background: 'rgba(56, 189, 248, 0.15)', border: '1px solid rgba(56, 189, 248, 0.4)',
-                    borderRadius: '3px', padding: '1px 4px', fontSize: '9.5px', color: '#38bdf8'
-                  }}>
-                    {filterSector}
-                    <span style={{ cursor: 'pointer' }} onClick={() => setFilterSector('ALL')}>✕</span>
-                  </span>
-                )}
-                {filterIndustry !== 'ALL' && (
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '3px',
-                    background: 'rgba(56, 189, 248, 0.15)', border: '1px solid rgba(56, 189, 248, 0.4)',
-                    borderRadius: '3px', padding: '1px 4px', fontSize: '9.5px', color: '#38bdf8'
-                  }}>
-                    {filterIndustry}
-                    <span style={{ cursor: 'pointer' }} onClick={() => setFilterIndustry('ALL')}>✕</span>
-                  </span>
-                )}
-                {filterTheme !== 'ALL' && (
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '3px',
-                    background: 'rgba(168, 85, 247, 0.15)', border: '1px solid rgba(168, 85, 247, 0.4)',
-                    borderRadius: '3px', padding: '1px 4px', fontSize: '9.5px', color: '#c084fc'
-                  }}>
-                    {filterTheme}
-                    <span style={{ cursor: 'pointer' }} onClick={() => setFilterTheme('ALL')}>✕</span>
-                  </span>
-                )}
-                {searchQuery && (
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '3px',
-                    background: 'rgba(255, 255, 255, 0.1)', border: '1px solid rgba(255, 255, 255, 0.2)',
-                    borderRadius: '3px', padding: '1px 4px', fontSize: '9.5px', color: 'var(--text-secondary)'
-                  }}>
-                    "{searchQuery}"
-                    <span style={{ cursor: 'pointer' }} onClick={() => setSearchQuery('')}>✕</span>
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFilterSector('ALL');
-                    setFilterIndustry('ALL');
-                    setFilterTheme('ALL');
-                    setSearchQuery('');
-                  }}
-                  style={{
-                    background: 'transparent', border: 'none', color: '#fb7185',
-                    cursor: 'pointer', padding: 0, fontSize: '9.5px', fontWeight: 600, textDecoration: 'underline'
-                  }}
-                >
-                  Reset
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Symbol List Table */}
-          <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px' }}>
-              <thead>
-                <tr style={{
-                  color: 'var(--text-muted)',
-                  borderBottom: '1px solid var(--border-color)',
-                  position: 'sticky',
-                  top: 0,
-                  background: 'var(--bg-secondary)',
-                  zIndex: 2,
-                  fontSize: '10.5px'
-                }}>
-                  {isSelectMode && (
-                    <th style={{ width: '24px', textAlign: 'center', padding: '6px 4px' }}>
-                      <input
-                        type="checkbox"
-                        checked={displayItems.length > 0 && selectedSymbols.size === displayItems.length}
-                        onChange={toggleSelectAll}
-                        style={{ cursor: 'pointer' }}
-                      />
-                    </th>
-                  )}
-                  <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600 }}>Ticker</th>
-                  <th style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 600 }}>Chg%</th>
-                  <th style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 600 }}>Rel Vol</th>
-                  <th style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 600 }}>RS / Grp</th>
-                  <th style={{ width: '22px', textAlign: 'center', padding: '6px 2px' }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {loadingItems ? (
-                  <tr>
-                    <td colSpan={isSelectMode ? 6 : 5} style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--text-muted)' }}>
-                      ⏳ Loading symbols...
-                    </td>
-                  </tr>
-                ) : displayItems.length === 0 ? (
-                  <tr>
-                    <td colSpan={isSelectMode ? 6 : 5} style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--text-muted)' }}>
-                      {items.length === 0 ? (
-                        <>
-                          No stocks in this list.<br />
-                          Type a ticker above to add.
-                        </>
-                      ) : (
-                        <>
-                          No stocks match filters.<br />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFilterSector('ALL');
-                              setFilterIndustry('ALL');
-                              setFilterTheme('ALL');
-                              setSearchQuery('');
-                            }}
-                            style={{
-                              marginTop: '6px',
-                              background: 'rgba(56, 189, 248, 0.15)',
-                              border: '1px solid #38bdf8',
-                              color: '#38bdf8',
-                              borderRadius: '3px',
-                              padding: '2px 8px',
-                              fontSize: '10.5px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Reset filters
-                          </button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                ) : groupMode === 'none' ? (
-                  sortedItems.map((item) => {
-                    const isSelected = selectedStock?.symbol === item.symbol;
-                    const chg = item.chg_pct;
-                    const isPositive = chg !== null && chg !== undefined ? chg >= 0 : false;
-                    const rsVal = item.rs_rank;
-                    const quadColor = QUADRANT_COLORS[item.industry_quadrant || item.group_quadrant]?.accent || '#38bdf8';
-
-                    return (
-                      <tr
-                        key={item.symbol}
-                        onClick={() => {
-                          if (isSelectMode) {
-                            toggleSelectStock(item.symbol);
-                          } else {
-                            setSelectedStock(item);
-                          }
-                        }}
-                        style={{
-                          borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
-                          cursor: 'pointer',
-                          background: isSelected
-                            ? 'rgba(16, 185, 129, 0.12)'
-                            : selectedSymbols.has(item.symbol)
-                            ? 'rgba(56, 189, 248, 0.12)'
-                            : 'transparent',
-                          transition: 'background-color 0.12s ease'
-                        }}
-                        className="watchlist-item-row"
-                      >
-                        {isSelectMode && (
-                          <td style={{ textAlign: 'center', padding: '6px 4px' }} onClick={(e) => e.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              checked={selectedSymbols.has(item.symbol)}
-                              onChange={(e) => toggleSelectStock(item.symbol, e)}
-                              style={{ cursor: 'pointer' }}
-                            />
-                          </td>
-                        )}
-
-                        {/* Ticker & Sub-tag */}
-                        <td style={{ padding: '6px 8px', maxWidth: '125px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <StockBrandIcon symbol={item.symbol} />
-                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-                              <span style={{ fontWeight: 800, color: isSelected ? '#10b981' : 'var(--text-primary)', fontSize: '12px', lineHeight: 1.15 }}>
-                                {item.symbol}
-                              </span>
-                              <div
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '3px',
-                                  marginTop: '1.5px',
-                                  fontSize: '9.5px',
-                                  color: 'var(--text-muted)',
-                                  whiteSpace: 'nowrap',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis'
-                                }}
-                                title={`${item.industry || item.sector || ''}${item.theme ? ` • Theme: ${item.theme}` : ''}`}
-                              >
-                                {(item.industry_quadrant || item.group_quadrant) && (
-                                  <span style={{
-                                    width: '5px',
-                                    height: '5px',
-                                    borderRadius: '50%',
-                                    background: quadColor,
-                                    flexShrink: 0
-                                  }} />
-                                )}
-                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {item.industry || item.sector || '—'}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* Chg% */}
-                        <td style={{
-                          textAlign: 'right',
-                          padding: '6px 6px',
-                          fontWeight: 700,
-                          color: chg === null || chg === undefined ? 'var(--text-muted)' : isPositive ? '#34d399' : '#fb7185'
-                        }}>
-                          {chg !== null && chg !== undefined ? (
-                            <div>
-                              <span>{isPositive ? `+${chg.toFixed(1)}%` : `${chg.toFixed(1)}%`}</span>
-                            </div>
-                          ) : '—'}
-                        </td>
-
-                        {/* Rel Vol */}
-                        <td style={{
-                          textAlign: 'right',
-                          padding: '6px 6px',
-                          color: item.rvol_pct && item.rvol_pct >= 150 ? '#34d399' : 'var(--text-secondary)'
-                        }}>
-                          {item.rvol_pct ? `${Math.round(item.rvol_pct)}%` : '—'}
-                        </td>
-
-                        {/* RS & Group RS */}
-                        <td style={{ textAlign: 'center', padding: '6px 4px' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0px' }}>
-                            <span style={{
-                              fontSize: '11px',
-                              fontWeight: 800,
-                              color: rsVal >= 70 ? '#34d399' : rsVal <= 30 ? '#fb7185' : 'var(--text-secondary)'
-                            }} title={`Stock RS Rank: ${rsVal ?? 'N/A'}`}>
-                              {rsVal !== null && rsVal !== undefined ? rsVal : '—'}
-                            </span>
-                            {item.group_rs_rank !== null && item.group_rs_rank !== undefined && (
-                              <span style={{
-                                fontSize: '8.5px',
-                                fontWeight: 700,
-                                color: item.group_rs_rank >= 70 ? '#10b981' : item.group_rs_rank <= 30 ? '#f43f5e' : 'var(--text-muted)'
-                              }} title={`Group RS: ${Math.round(item.group_rs_rank)} (${item.group_quadrant || ''})`}>
-                                G:{Math.round(item.group_rs_rank)}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Single Row Remove Action */}
-                        <td style={{ textAlign: 'center', padding: '6px 2px' }} onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            onClick={(e) => handleRemoveSymbol(item.symbol, e)}
-                            title={`Remove ${item.symbol} from watchlist`}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: 'var(--text-muted)',
-                              cursor: 'pointer',
-                              padding: '2px 4px',
-                              fontSize: '11px',
-                              lineHeight: 1,
-                              borderRadius: '3px',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              opacity: 0.5,
-                              transition: 'all 0.15s ease'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.color = '#fb7185';
-                              e.currentTarget.style.background = 'rgba(251, 113, 133, 0.15)';
-                              e.currentTarget.style.opacity = '1';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.color = 'var(--text-muted)';
-                              e.currentTarget.style.background = 'transparent';
-                              e.currentTarget.style.opacity = '0.5';
-                            }}
-                          >
-                            ✕
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  groupedSections.map((group) => {
-                    const isCollapsed = collapsedGroupKeys.has(group.key);
-                    const qConf = QUADRANT_COLORS[group.quadrant] || QUADRANT_COLORS.Improving;
-                    return (
-                      <React.Fragment key={group.key}>
-                        {/* Group Header Row */}
-                        <tr
-                          onClick={() => toggleGroupCollapse(group.key)}
-                          style={{
-                            background: isCollapsed ? 'rgba(255, 255, 255, 0.03)' : 'rgba(255, 255, 255, 0.07)',
-                            borderTop: '1px solid var(--border-color)',
-                            borderBottom: '1px solid var(--border-color)',
-                            cursor: 'pointer',
-                            userSelect: 'none'
-                          }}
-                          className="watchlist-group-header-row"
-                        >
-                          <td colSpan={isSelectMode ? 6 : 5} style={{ padding: '5px 8px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
-                                <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>
-                                  {isCollapsed ? '▶' : '▼'}
-                                </span>
-                                <span style={{
-                                  width: '6px', height: '6px', borderRadius: '50%',
-                                  background: qConf.accent,
-                                  flexShrink: 0
-                                }} />
-                                <span style={{
-                                  fontSize: '11px',
-                                  fontWeight: 700,
-                                  color: 'var(--text-primary)',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap'
-                                }}>
-                                  {group.name}
-                                </span>
-                                <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>
-                                  ({group.items.length})
-                                </span>
-                              </div>
-
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
-                                {group.rsRank !== null && group.rsRank !== undefined && (
-                                  <span style={{
-                                    fontSize: '9px',
-                                    fontWeight: 800,
-                                    padding: '1px 5px',
-                                    borderRadius: '3px',
-                                    background: qConf.bg,
-                                    color: qConf.accent,
-                                    border: `1px solid ${qConf.border}`
-                                  }} title={`Group RS: ${Math.round(group.rsRank)} (${group.quadrant})`}>
-                                    RS {Math.round(group.rsRank)}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-
-                        {/* Group Member Stock Rows */}
-                        {!isCollapsed && group.items.map((item) => {
-                          const isSelected = selectedStock?.symbol === item.symbol;
-                          const chg = item.chg_pct;
-                          const isPositive = chg !== null && chg !== undefined ? chg >= 0 : false;
-                          const rsVal = item.rs_rank;
-                          const quadColor = QUADRANT_COLORS[item.industry_quadrant || item.group_quadrant]?.accent || '#38bdf8';
-
-                          return (
-                            <tr
-                              key={item.symbol}
-                              onClick={() => {
-                                if (isSelectMode) {
-                                  toggleSelectStock(item.symbol);
-                                } else {
-                                  setSelectedStock(item);
-                                }
-                              }}
-                              style={{
-                                borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
-                                cursor: 'pointer',
-                                background: isSelected
-                                  ? 'rgba(16, 185, 129, 0.12)'
-                                  : selectedSymbols.has(item.symbol)
-                                  ? 'rgba(56, 189, 248, 0.12)'
-                                  : 'transparent',
-                                transition: 'background-color 0.12s ease'
-                              }}
-                              className="watchlist-item-row"
-                            >
-                              {isSelectMode && (
-                                <td style={{ textAlign: 'center', padding: '6px 4px' }} onClick={(e) => e.stopPropagation()}>
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedSymbols.has(item.symbol)}
-                                    onChange={(e) => toggleSelectStock(item.symbol, e)}
-                                    style={{ cursor: 'pointer' }}
-                                  />
-                                </td>
-                              )}
-
-                              {/* Ticker & Sub-tag */}
-                              <td style={{ padding: '6px 8px 6px 14px', maxWidth: '125px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <StockBrandIcon symbol={item.symbol} />
-                                  <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-                                    <span style={{ fontWeight: 800, color: isSelected ? '#10b981' : 'var(--text-primary)', fontSize: '12px', lineHeight: 1.15 }}>
-                                      {item.symbol}
-                                    </span>
-                                    <div
-                                      style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '3px',
-                                        marginTop: '1.5px',
-                                        fontSize: '9.5px',
-                                        color: 'var(--text-muted)',
-                                        whiteSpace: 'nowrap',
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis'
-                                      }}
-                                      title={`${item.industry || item.sector || ''}${item.theme ? ` • Theme: ${item.theme}` : ''}`}
-                                    >
-                                      {(item.industry_quadrant || item.group_quadrant) && (
-                                        <span style={{
-                                          width: '5px',
-                                          height: '5px',
-                                          borderRadius: '50%',
-                                          background: quadColor,
-                                          flexShrink: 0
-                                        }} />
-                                      )}
-                                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                        {item.industry || item.sector || '—'}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                              </td>
-
-                              {/* Chg% */}
-                              <td style={{
-                                textAlign: 'right',
-                                padding: '6px 6px',
-                                fontWeight: 700,
-                                color: chg === null || chg === undefined ? 'var(--text-muted)' : isPositive ? '#34d399' : '#fb7185'
-                              }}>
-                                {chg !== null && chg !== undefined ? (
-                                  <div>
-                                    <span>{isPositive ? `+${chg.toFixed(1)}%` : `${chg.toFixed(1)}%`}</span>
-                                  </div>
-                                ) : '—'}
-                              </td>
-
-                              {/* Rel Vol */}
-                              <td style={{
-                                textAlign: 'right',
-                                padding: '6px 6px',
-                                color: item.rvol_pct && item.rvol_pct >= 150 ? '#34d399' : 'var(--text-secondary)'
-                              }}>
-                                {item.rvol_pct ? `${Math.round(item.rvol_pct)}%` : '—'}
-                              </td>
-
-                              {/* RS & Group RS */}
-                              <td style={{ textAlign: 'center', padding: '6px 4px' }}>
-                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0px' }}>
-                                  <span style={{
-                                    fontSize: '11px',
-                                    fontWeight: 800,
-                                    color: rsVal >= 70 ? '#34d399' : rsVal <= 30 ? '#fb7185' : 'var(--text-secondary)'
-                                  }} title={`Stock RS Rank: ${rsVal ?? 'N/A'}`}>
-                                    {rsVal !== null && rsVal !== undefined ? rsVal : '—'}
-                                  </span>
-                                  {item.group_rs_rank !== null && item.group_rs_rank !== undefined && (
-                                    <span style={{
-                                      fontSize: '8.5px',
-                                      fontWeight: 700,
-                                      color: item.group_rs_rank >= 70 ? '#10b981' : item.group_rs_rank <= 30 ? '#f43f5e' : 'var(--text-muted)'
-                                    }} title={`Group RS: ${Math.round(item.group_rs_rank)} (${item.group_quadrant || ''})`}>
-                                      G:{Math.round(item.group_rs_rank)}
-                                    </span>
-                                  )}
-                                </div>
-                              </td>
-
-                              {/* Single Row Remove Action */}
-                              <td style={{ textAlign: 'center', padding: '6px 2px' }} onClick={(e) => e.stopPropagation()}>
-                                <button
-                                  type="button"
-                                  onClick={(e) => handleRemoveSymbol(item.symbol, e)}
-                                  title={`Remove ${item.symbol} from watchlist`}
-                                  style={{
-                                    background: 'transparent',
-                                    border: 'none',
-                                    color: 'var(--text-muted)',
-                                    cursor: 'pointer',
-                                    padding: '2px 4px',
-                                    fontSize: '11px',
-                                    lineHeight: 1,
-                                    borderRadius: '3px',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    opacity: 0.5,
-                                    transition: 'all 0.15s ease'
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.style.color = '#fb7185';
-                                    e.currentTarget.style.background = 'rgba(251, 113, 133, 0.15)';
-                                    e.currentTarget.style.opacity = '1';
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.color = 'var(--text-muted)';
-                                    e.currentTarget.style.background = 'transparent';
-                                    e.currentTarget.style.opacity = '0.5';
-                                  }}
-                                >
-                                  ✕
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </React.Fragment>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+          ✓ {quickAddToast}
         </div>
+      )}
 
-        {/* ======================================================== */}
-        {/* COLUMN 2: CENTER INTERACTIVE CHART & TELEMETRY (flex: 1) */}
-        {/* ======================================================== */}
+      {/* ======================================================== */}
+      {/* LEFT CONTAINER: CHART & TELEMETRY (flex: 1)              */}
+      {/* ======================================================== */}
+      <div style={{
+        flex: 1,
+        minWidth: 0,
+        display: 'flex',
+        flexDirection: 'row',
+        overflow: 'hidden',
+        background: 'var(--bg-primary)',
+        position: 'relative'
+      }}>
+        {/* Main Chart Pane */}
         <div style={{
           flex: 1,
           minWidth: 0,
           display: 'flex',
           flexDirection: 'column',
-          background: 'var(--bg-primary)',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          background: 'var(--bg-primary)'
         }}>
-          {selectedStock ? (
+          {activeGroupChart ? (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              {/* Group Chart Top Header Bar */}
+              <div style={{
+                padding: '10px 16px',
+                borderBottom: '1px solid var(--border-color)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'var(--bg-secondary)',
+                flexShrink: 0
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '18px', fontWeight: 800, color: '#ffffff' }}>
+                    {activeGroupChart.groupType === 'sectors' ? '🏛' : activeGroupChart.groupType === 'themes' ? '⚡' : '🏭'} {activeGroupChart.groupName}
+                  </span>
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    background: activeGroupChart.stageColor ? `${activeGroupChart.stageColor}25` : 'rgba(16,185,129,0.2)',
+                    color: activeGroupChart.stageColor || '#10b981',
+                    border: `1px solid ${activeGroupChart.stageColor || '#10b981'}44`
+                  }}>
+                    {activeGroupChart.stageBadge}
+                  </span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Stan Weinstein Stage Analysis ({activeGroupChart.groupType})
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {/* Prev / Next Group Nav Controls */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px', background: 'rgba(0,0,0,0.3)', borderRadius: '5px', padding: '2px 4px', border: '1px solid var(--border-color)' }}>
+                    <button
+                      type="button"
+                      onClick={handlePrevGroup}
+                      title="Previous Group (Arrow Up)"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--text-secondary)',
+                        cursor: 'pointer',
+                        fontSize: '11px',
+                        padding: '2px 6px'
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = '#38bdf8')}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
+                    >
+                      ▲ Prev
+                    </button>
+                    <span style={{ fontSize: '10px', color: 'var(--text-muted)', padding: '0 4px', borderLeft: '1px solid rgba(255,255,255,0.1)', borderRight: '1px solid rgba(255,255,255,0.1)' }}>
+                      {currentGroupIndex >= 0 ? `${currentGroupIndex + 1} / ${filteredAndSortedGroups.length}` : ''}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleNextGroup}
+                      title="Next Group (Arrow Down)"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--text-secondary)',
+                        cursor: 'pointer',
+                        fontSize: '11px',
+                        padding: '2px 6px'
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = '#38bdf8')}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
+                    >
+                      Next ▼
+                    </button>
+                  </div>
+
+                  {selectedStock && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveGroupChart(null)}
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.08)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '4px',
+                        color: 'var(--text-primary)',
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      ← Back to {selectedStock.symbol} Chart
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Group Stage Chart Body */}
+              <div className="custom-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '12px 16px' }}>
+                <GroupStageChart
+                  groupType={activeGroupChart.groupType}
+                  groupName={activeGroupChart.groupName}
+                  onSelectStock={(sym) => {
+                    setActiveGroupChart(null);
+                    setSelectedStock({ symbol: sym });
+                  }}
+                  height={520}
+                  isCompact={false}
+                />
+              </div>
+            </div>
+          ) : selectedStock ? (
             <>
-              {/* Center Top Header Bar */}
+              {/* Chart Top Header Bar (Matching Candidates Screen Telemetry) */}
               <div style={{
                 padding: '10px 16px',
                 borderBottom: '1px solid var(--border-color)',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '8px',
-                background: 'var(--bg-secondary)'
+                background: 'var(--bg-secondary)',
+                flexShrink: 0
               }}>
-                {/* Row 1: Ticker, Price, Chg%, Clean Name */}
+                {/* Row 1: Symbol, Price, Change%, Company Name, Exchange & Sector, Actions */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '18px', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.3px' }}>
-                        {selectedStock.symbol}
-                      </span>
-                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>🔍</span>
-                    </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '22px', fontWeight: 900, color: '#34d399', letterSpacing: '-0.4px', lineHeight: 1 }}>
+                      {selectedStock.symbol}
+                    </span>
 
                     {latestBar && (
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                        <span style={{ fontSize: '18px', fontWeight: 800, color: '#ffffff' }}>
-                          ${latestBar.close?.toFixed(2)}
-                        </span>
-                        {selectedStock.chg_pct !== undefined && selectedStock.chg_pct !== null && (
-                          <span style={{
-                            fontSize: '13px',
-                            fontWeight: 700,
-                            color: selectedStock.chg_pct >= 0 ? '#34d399' : '#fb7185'
-                          }}>
-                            {selectedStock.chg_pct >= 0 ? `+${selectedStock.chg_pct.toFixed(1)}%` : `${selectedStock.chg_pct.toFixed(1)}%`}
-                          </span>
-                        )}
-                      </div>
+                      <span style={{ fontSize: '18px', fontWeight: 800, color: '#ffffff', lineHeight: 1 }}>
+                        ${latestBar.close?.toFixed(2)}
+                      </span>
+                    )}
+
+                    {priceChangePct !== null && priceChangePct !== undefined && (
+                      <span style={{
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        color: priceChangePct >= 0 ? '#34d399' : '#fb7185',
+                        lineHeight: 1
+                      }}>
+                        {priceChangePct >= 0 ? `+${priceChangePct.toFixed(2)}%` : `${priceChangePct.toFixed(2)}%`}
+                      </span>
                     )}
 
                     {cleanName && cleanName !== selectedStock.symbol && (
-                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                      <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: 700 }}>
                         {cleanName}
+                      </span>
+                    )}
+
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                      {exchange ? `${exchange} • ` : ''}{sector || 'Sector'}
+                    </span>
+
+                    {industry && (
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '2px 8px',
+                        borderRadius: '5px',
+                        background: 'rgba(56, 189, 248, 0.1)',
+                        border: '1px solid rgba(56, 189, 248, 0.3)',
+                        color: '#38bdf8',
+                        fontSize: '11.5px',
+                        fontWeight: 600
+                      }}>
+                        🏭 {industry}
                       </span>
                     )}
                   </div>
 
+                  {/* Top Right: Watchlist Action & Details Toggle */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {/* Toggle Right Stock Details Panel Button */}
+                    {/* Quick Add To Watchlist Button with Dropdown */}
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        type="button"
+                        onClick={() => setQuickAddMenuSym(quickAddMenuSym === selectedStock.symbol ? null : selectedStock.symbol)}
+                        title="Add this stock to a watchlist"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          background: 'rgba(16, 185, 129, 0.15)',
+                          border: '1px solid rgba(16, 185, 129, 0.4)',
+                          borderRadius: '5px',
+                          color: '#10b981',
+                          padding: '3px 8px',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <span>＋</span>
+                        <span>Watchlist</span>
+                      </button>
+
+                      {quickAddMenuSym === selectedStock.symbol && (
+                        <>
+                          <div
+                            style={{ position: 'fixed', inset: 0, zIndex: 90 }}
+                            onClick={() => setQuickAddMenuSym(null)}
+                          />
+                          <div style={{
+                            position: 'absolute',
+                            right: 0,
+                            top: '28px',
+                            background: 'var(--card-bg)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '6px',
+                            boxShadow: '0 10px 25px rgba(0,0,0,0.6)',
+                            padding: '4px 0',
+                            zIndex: 100,
+                            minWidth: '160px'
+                          }}>
+                            <div style={{ padding: '4px 10px', fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700 }}>
+                              ADD TO WATCHLIST:
+                            </div>
+                            {watchlists.map((w) => (
+                              <button
+                                key={w.id}
+                                type="button"
+                                onClick={() => handleAddSymbolToWatchlist(selectedStock.symbol, w.id)}
+                                style={{
+                                  width: '100%',
+                                  textAlign: 'left',
+                                  background: 'transparent',
+                                  border: 'none',
+                                  padding: '6px 12px',
+                                  fontSize: '11.5px',
+                                  color: '#ffffff',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center'
+                                }}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
+                                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                              >
+                                <span>{w.name}</span>
+                                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>({w.item_count || 0})</span>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Toggle Stock Details Drawer Button */}
                     <button
                       type="button"
                       onClick={() => setIsRightPanelCollapsed(!isRightPanelCollapsed)}
-                      title={isRightPanelCollapsed ? 'Show Stock Details & Info Panel (expand)' : 'Collapse Stock Details to maximize chart space'}
+                      title={isRightPanelCollapsed ? 'Show Stock Details & Info Panel' : 'Collapse Stock Details'}
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: '5px',
-                        background: isRightPanelCollapsed ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-                        border: isRightPanelCollapsed ? '1px solid #38bdf8' : '1px solid var(--border-color)',
+                        background: !isRightPanelCollapsed ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                        border: !isRightPanelCollapsed ? '1px solid #38bdf8' : '1px solid var(--border-color)',
                         borderRadius: '5px',
-                        color: isRightPanelCollapsed ? '#38bdf8' : 'var(--text-secondary)',
+                        color: !isRightPanelCollapsed ? '#38bdf8' : 'var(--text-secondary)',
                         padding: '3px 8px',
                         fontSize: '11px',
                         fontWeight: 600,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease'
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isRightPanelCollapsed) {
-                          e.currentTarget.style.color = 'var(--text-primary)';
-                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isRightPanelCollapsed) {
-                          e.currentTarget.style.color = 'var(--text-secondary)';
-                          e.currentTarget.style.borderColor = 'var(--border-color)';
-                        }
+                        cursor: 'pointer'
                       }}
                     >
-                      <span style={{ fontSize: '11px' }}>{isRightPanelCollapsed ? '◧' : '◨'}</span>
-                      <span>{isRightPanelCollapsed ? 'Show Details' : 'Collapse Details'}</span>
-                    </button>
-
-                    {/* Remove Stock from active Watchlist Button */}
-                    <button
-                      type="button"
-                      onClick={(e) => handleRemoveSymbol(selectedStock.symbol, e)}
-                      title={`Remove ${selectedStock.symbol} from "${activeWatchlist?.name || 'Watchlist'}"`}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                        background: 'rgba(251, 113, 133, 0.08)',
-                        border: '1px solid rgba(251, 113, 133, 0.25)',
-                        borderRadius: '5px',
-                        color: 'var(--text-secondary)',
-                        padding: '3px 8px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.color = '#fb7185';
-                        e.currentTarget.style.borderColor = 'rgba(251, 113, 133, 0.6)';
-                        e.currentTarget.style.background = 'rgba(251, 113, 133, 0.18)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.color = 'var(--text-secondary)';
-                        e.currentTarget.style.borderColor = 'rgba(251, 113, 133, 0.25)';
-                        e.currentTarget.style.background = 'rgba(251, 113, 133, 0.08)';
-                      }}
-                    >
-                      <span style={{ fontSize: '11px' }}>✕</span>
-                      <span>Remove from List</span>
+                      <span>{isRightPanelCollapsed ? '◧ Details' : '◨ Hide Details'}</span>
                     </button>
                   </div>
                 </div>
 
-                {/* Row 2: Badges / Pills Group (identical to Stock Screen result) */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <span className="pill pill-success" style={{ fontSize: '11px', padding: '3px 8px' }}>
-                    RS: {rsRank ?? 'N/A'}
-                  </span>
-
-                  {/* Group Strength Pill */}
-                  {(selectedStock.industry || selectedStock.sector) && (
-                    <span
-                      className="pill"
-                      style={{
-                        fontSize: '11px',
-                        padding: '3px 8px',
-                        background: QUADRANT_COLORS[selectedStock.industry_quadrant || selectedStock.group_quadrant]?.bg || 'rgba(56, 189, 248, 0.15)',
-                        color: QUADRANT_COLORS[selectedStock.industry_quadrant || selectedStock.group_quadrant]?.accent || '#38bdf8',
-                        border: `1px solid ${QUADRANT_COLORS[selectedStock.industry_quadrant || selectedStock.group_quadrant]?.border || 'rgba(56, 189, 248, 0.35)'}`,
-                        fontWeight: 700,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '5px'
-                      }}
-                      title={`Sector: ${selectedStock.sector || 'N/A'} • Industry: ${selectedStock.industry || 'N/A'}${selectedStock.industry_rank ? ` (#${selectedStock.industry_rank})` : ''} • Group RS: ${Math.round(selectedStock.group_rs_rank || 50)} • Quadrant: ${selectedStock.industry_quadrant || selectedStock.group_quadrant || 'Improving'}`}
-                    >
-                      <span style={{
-                        width: '6px', height: '6px', borderRadius: '50%',
-                        background: QUADRANT_COLORS[selectedStock.industry_quadrant || selectedStock.group_quadrant]?.accent || '#38bdf8'
-                      }} />
-                      <span>{selectedStock.industry || selectedStock.sector}</span>
-                      {selectedStock.group_rs_rank !== null && selectedStock.group_rs_rank !== undefined && (
-                        <span style={{ opacity: 0.9 }}>• Grp RS {Math.round(selectedStock.group_rs_rank)}</span>
-                      )}
+                {/* Row 2: Badges Group Matching Candidates Screen (RS, Blue Dot, ADR%, TI65, Inst, Returns, Stage, Setups) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  {/* RS Rank */}
+                  {rsRank !== null && (
+                    <span className="pill pill-success" style={{
+                      fontSize: '11px',
+                      padding: '2px 8px',
+                      fontWeight: 800,
+                      background: rsRank >= 70 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.06)',
+                      color: rsRank >= 70 ? '#34d399' : 'var(--text-secondary)',
+                      border: `1px solid ${rsRank >= 70 ? '#10b981' : 'var(--border-color)'}`
+                    }}>
+                      RS: {rsRank}
                     </span>
                   )}
 
-                  {/* Themes Pill */}
-                  {selectedStock.themes && selectedStock.themes.length > 0 && (
-                    <span
-                      className="pill"
-                      style={{
-                        fontSize: '11px',
-                        padding: '3px 8px',
-                        background: 'rgba(168, 85, 247, 0.15)',
-                        color: '#c084fc',
-                        border: '1px solid rgba(168, 85, 247, 0.35)',
-                        fontWeight: 600,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}
-                      title={`Themes: ${selectedStock.themes.join(', ')}`}
-                    >
-                      <span>🏷️</span>
-                      <span>{selectedStock.themes.join(' • ')}</span>
-                    </span>
-                  )}
-
+                  {/* RS Blue Dot */}
                   {hasBlueDot && (
-                    <span
-                      className="pill"
-                      style={{
-                        fontSize: '11px',
-                        padding: '3px 8px',
-                        background: 'rgba(56, 189, 248, 0.25)',
-                        color: '#38bdf8',
-                        border: '1px solid rgba(56, 189, 248, 0.45)',
-                        fontWeight: 700,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}
-                      title="RS Blue Dot: Relative Strength vs SPY hit a new 52-week high before price breakout (institutional accumulation)"
-                    >
+                    <span style={{
+                      fontSize: '11px',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      background: 'rgba(56, 189, 248, 0.2)',
+                      color: '#38bdf8',
+                      border: '1px solid rgba(56, 189, 248, 0.45)',
+                      fontWeight: 700
+                    }}>
                       🔵 RS Blue Dot
                     </span>
                   )}
 
+                  {/* ADR% */}
                   {adrVal !== null && adrVal !== undefined ? (
-                    <span className="pill" style={{ fontSize: '11px', padding: '3px 8px', background: adrVal >= 5.0 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(59, 130, 246, 0.18)', color: adrVal >= 5.0 ? '#f59e0b' : '#60a5fa', border: adrVal >= 5.0 ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 700 }}>
-                      ADR%: {adrVal.toFixed(2)}%
-                    </span>
-                  ) : atrVal !== null && atrVal !== undefined ? (
-                    <span className="pill" style={{ fontSize: '11px', padding: '3px 8px', background: 'rgba(59, 130, 246, 0.18)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 600 }}>
-                      ADTR: {atrVal.toFixed(2)}%
+                    <span style={{
+                      fontSize: '11px',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      background: adrVal >= 5.0 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(59, 130, 246, 0.18)',
+                      color: adrVal >= 5.0 ? '#f59e0b' : '#60a5fa',
+                      border: `1px solid ${adrVal >= 5.0 ? 'rgba(245, 158, 11, 0.4)' : 'rgba(59, 130, 246, 0.3)'}`,
+                      fontWeight: 700
+                    }}>
+                      ADR%: {Number(adrVal).toFixed(2)}%
                     </span>
                   ) : null}
 
-                  {ti65Val !== null && ti65Val !== undefined && (
-                    <span
-                      className="pill"
-                      style={{
-                        fontSize: '11px',
-                        padding: '3px 8px',
-                        background: ti65Val >= 1.05 ? 'rgba(16, 185, 129, 0.18)' : ti65Val < 0.95 ? 'rgba(239, 68, 68, 0.18)' : 'rgba(255, 255, 255, 0.08)',
-                        color: ti65Val >= 1.05 ? '#34d399' : ti65Val < 0.95 ? '#f87171' : 'var(--text-secondary)',
-                        border: ti65Val >= 1.05 ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(255, 255, 255, 0.1)',
-                        fontWeight: 600
-                      }}
-                      title={`Stockbee Trend Intensity (TI65): ${ti65Val.toFixed(2)}${ti65Val >= 1.05 ? ' (Bullish Uptrend)' : ti65Val < 0.95 ? ' (Bearish Trend)' : ' (Neutral)'}`}
-                    >
-                      TI65: {ti65Val.toFixed(2)}
+                  {/* TI65 (Trend Intensity) */}
+                  {tiVal !== null && tiVal !== undefined && (
+                    <span style={{
+                      fontSize: '11px',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      background: tiVal >= 1.05 ? 'rgba(16, 185, 129, 0.18)' : tiVal < 0.95 ? 'rgba(239, 68, 68, 0.18)' : 'rgba(255, 255, 255, 0.06)',
+                      color: tiVal >= 1.05 ? '#34d399' : tiVal < 0.95 ? '#f87171' : 'var(--text-secondary)',
+                      border: `1px solid ${tiVal >= 1.05 ? 'rgba(16, 185, 129, 0.35)' : 'rgba(255, 255, 255, 0.1)'}`,
+                      fontWeight: 600
+                    }}>
+                      TI65: {Number(tiVal).toFixed(2)}
                     </span>
                   )}
 
-                  {!isEtf && (
-                    instHoldersCount !== null && instHoldersCount !== undefined ? (
-                      <span
-                        className="pill"
-                        style={{
-                          fontSize: '11px',
-                          padding: '3px 8px',
-                          background: (sponsorshipStreak >= 2 || (instHoldersQoqChange > 0)) ? 'rgba(34, 197, 94, 0.2)' : 'rgba(56, 189, 248, 0.18)',
-                          color: (sponsorshipStreak >= 2 || (instHoldersQoqChange > 0)) ? '#22c55e' : '#38bdf8',
-                          border: (sponsorshipStreak >= 2 || (instHoldersQoqChange > 0)) ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(56, 189, 248, 0.3)',
-                          fontWeight: 700
-                        }}
-                        title={`Institutional Sponsorship: ${instHoldersCount.toLocaleString()} funds${instHoldersQoqChange !== null && instHoldersQoqChange !== undefined ? ` (${instHoldersQoqChange >= 0 ? '+' : ''}${instHoldersQoqChange} QoQ)` : ''}${sponsorshipStreak >= 1 ? `, Streak: ${sponsorshipStreak}Q` : ''}`}
-                      >
-                        🏛️ Inst: {instHoldersCount.toLocaleString()} {instHoldersQoqChange !== null && instHoldersQoqChange !== undefined ? `(${instHoldersQoqChange >= 0 ? '+' : ''}${instHoldersQoqChange} QoQ)` : ''}{sponsorshipStreak >= 2 ? ` 🔥 +${sponsorshipStreak}Q` : ''}
-                      </span>
-                    ) : sponsorshipStreak >= 1 ? (
-                      <span
-                        className="pill"
-                        style={{
-                          fontSize: '11px',
-                          padding: '3px 8px',
-                          background: sponsorshipStreak >= 2 ? 'rgba(34, 197, 94, 0.2)' : 'rgba(59, 130, 246, 0.18)',
-                          color: sponsorshipStreak >= 2 ? '#22c55e' : '#60a5fa',
-                          border: sponsorshipStreak >= 2 ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(59, 130, 246, 0.3)',
-                          fontWeight: 700
-                        }}
-                        title={`Institutional Sponsorship: ${sponsorshipStreak} consecutive quarters increasing fund count`}
-                      >
-                        🏛️ {sponsorshipStreak >= 2 ? '🔥 ' : ''}+{sponsorshipStreak}Q Inst
-                      </span>
-                    ) : (
-                      <span
-                        className="pill"
-                        style={{
-                          fontSize: '11px',
-                          padding: '3px 8px',
-                          background: 'rgba(255, 255, 255, 0.05)',
-                          color: 'var(--text-muted)',
-                          border: '1px solid rgba(255, 255, 255, 0.08)',
-                          fontWeight: 500
-                        }}
-                        title="Institutional Sponsorship not synced for this stock yet. Check 'Sync Institutional Sponsorship' on Dashboard."
-                      >
-                        🏛️ Inst: Unsynced
-                      </span>
-                    )
+                  {/* Institutional Sponsorship */}
+                  {instHolders !== null && instHolders !== undefined && (
+                    <span style={{
+                      fontSize: '11px',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      background: instStreak >= 2 ? 'rgba(34, 197, 94, 0.2)' : 'rgba(56, 189, 248, 0.15)',
+                      color: instStreak >= 2 ? '#22c55e' : '#38bdf8',
+                      border: `1px solid ${instStreak >= 2 ? 'rgba(34, 197, 94, 0.4)' : 'rgba(56, 189, 248, 0.3)'}`,
+                      fontWeight: 700
+                    }}>
+                      🏛️ Inst: {instHolders.toLocaleString()}{instStreak >= 2 ? ` 🔥 +${instStreak}Q` : ''}
+                    </span>
                   )}
 
+                  {/* Returns: 1M, 3M, 6M */}
                   {ret1m !== null && ret1m !== undefined && (
-                    <span
-                      className="pill"
-                      style={{
-                        fontSize: '11px',
-                        padding: '3px 8px',
-                        background: 'rgba(59, 130, 246, 0.18)',
-                        color: '#60a5fa',
-                        border: '1px solid rgba(59, 130, 246, 0.3)',
-                        fontWeight: 600
-                      }}
-                      title={`1-Month Return: ${ret1m.toFixed(1)}%`}
-                    >
-                      1M: {ret1m >= 0 ? '+' : ''}{ret1m.toFixed(1)}%
+                    <span style={{
+                      fontSize: '11px',
+                      padding: '2px 7px',
+                      borderRadius: '12px',
+                      background: 'rgba(59, 130, 246, 0.15)',
+                      color: '#60a5fa',
+                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                      fontWeight: 600
+                    }}>
+                      1M: {ret1m >= 0 ? '+' : ''}{Number(ret1m).toFixed(1)}%
                     </span>
                   )}
 
                   {ret3m !== null && ret3m !== undefined && (
-                    <span
-                      className="pill"
-                      style={{
-                        fontSize: '11px',
-                        padding: '3px 8px',
-                        background: 'rgba(168, 85, 247, 0.18)',
-                        color: '#c084fc',
-                        border: '1px solid rgba(168, 85, 247, 0.3)',
-                        fontWeight: 600
-                      }}
-                      title={`3-Month Return: ${ret3m.toFixed(1)}%`}
-                    >
-                      3M: {ret3m >= 0 ? '+' : ''}{ret3m.toFixed(1)}%
+                    <span style={{
+                      fontSize: '11px',
+                      padding: '2px 7px',
+                      borderRadius: '12px',
+                      background: 'rgba(168, 85, 247, 0.15)',
+                      color: '#c084fc',
+                      border: '1px solid rgba(168, 85, 247, 0.3)',
+                      fontWeight: 600
+                    }}>
+                      3M: {ret3m >= 0 ? '+' : ''}{Number(ret3m).toFixed(1)}%
                     </span>
                   )}
 
                   {ret6m !== null && ret6m !== undefined && (
-                    <span
-                      className="pill"
-                      style={{
-                        fontSize: '11px',
-                        padding: '3px 8px',
-                        background: 'rgba(236, 72, 153, 0.18)',
-                        color: '#f472b6',
-                        border: '1px solid rgba(236, 72, 153, 0.3)',
-                        fontWeight: 600
-                      }}
-                      title={`6-Month Return: ${ret6m.toFixed(1)}%`}
-                    >
-                      6M: {ret6m >= 0 ? '+' : ''}{ret6m.toFixed(1)}%
+                    <span style={{
+                      fontSize: '11px',
+                      padding: '2px 7px',
+                      borderRadius: '12px',
+                      background: 'rgba(236, 72, 153, 0.15)',
+                      color: '#f472b6',
+                      border: '1px solid rgba(236, 72, 153, 0.3)',
+                      fontWeight: 600
+                    }}>
+                      6M: {ret6m >= 0 ? '+' : ''}{Number(ret6m).toFixed(1)}%
                     </span>
                   )}
 
-                  {earningsBadge ? (
-                    <span
-                      className="pill"
-                      style={{
-                        fontSize: '11px',
-                        padding: '3px 8px',
-                        fontWeight: '700',
-                        background: earningsBadge.isUrgent ? 'rgba(239, 68, 68, 0.2)' : 'rgba(168, 85, 247, 0.2)',
-                        color: earningsBadge.isUrgent ? '#f87171' : '#c084fc',
-                        border: `1px solid ${earningsBadge.isUrgent ? 'rgba(239, 68, 68, 0.4)' : 'rgba(168, 85, 247, 0.4)'}`
-                      }}
-                      title={`Next Earnings Date: ${earningsBadge.dateStr}`}
-                    >
-                      {earningsBadge.displayText}
-                    </span>
-                  ) : (
-                    <span
-                      className="pill"
-                      style={{
-                        fontSize: '11px',
-                        padding: '3px 8px',
-                        fontWeight: '500',
-                        background: 'rgba(255, 255, 255, 0.05)',
-                        color: 'var(--text-muted)',
-                        border: '1px solid rgba(255, 255, 255, 0.08)'
-                      }}
-                      title="Next Earnings Date: Not Scheduled or Unannounced"
-                    >
-                      Earning: {loadingDetail ? 'Checking...' : 'Unscheduled'}
+                  {/* Weinstein Stage badge */}
+                  {stageBadge && (
+                    <span style={{
+                      fontSize: '10.5px',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      background: stageColor ? `${stageColor}25` : 'rgba(16, 185, 129, 0.2)',
+                      color: stageColor || '#10b981',
+                      border: `1px solid ${stageColor || '#10b981'}55`,
+                      fontWeight: 800
+                    }}>
+                      {stageBadge}
                     </span>
                   )}
+
+                  {/* Active Setups */}
+                  {activeSetups.map((s) => (
+                    <span key={s} style={{
+                      fontSize: '10.5px',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      background: 'rgba(56, 189, 248, 0.2)',
+                      color: '#38bdf8',
+                      fontWeight: 700,
+                      border: '1px solid rgba(56, 189, 248, 0.4)'
+                    }}>
+                      ⚡ {s}
+                    </span>
+                  ))}
                 </div>
               </div>
 
-              {/* Chart Telemetry Sub-bar: Growth & Pivot Wall Levels */}
-              {(stockDetail?.fundamentals?.[0] || selectedStock?.high_52w || latestBar?.close) && (
-                <div style={{
-                  padding: '5px 16px',
-                  background: 'rgba(0, 0, 0, 0.25)',
-                  borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
-                  fontSize: '10.5px',
-                  display: 'flex',
-                  gap: '14px',
-                  alignItems: 'center',
-                  flexWrap: 'wrap'
-                }}>
-                  {stockDetail?.fundamentals?.[0] && (
-                    <span style={{ color: 'var(--text-secondary)' }}>
-                      EPS & Rev Growth: <strong style={{ color: '#34d399' }}>YoY +{Math.round(stockDetail.fundamentals[0].eps_qoq_growth || 20)}%</strong>
-                    </span>
-                  )}
-                  <span style={{ color: 'var(--text-muted)' }}>
-                    Call Wall <strong style={{ color: '#34d399' }}>${selectedStock.high_52w ? selectedStock.high_52w.toFixed(2) : (latestBar?.close * 1.05)?.toFixed(2)}</strong>
-                  </span>
-                  <span style={{ color: 'var(--text-muted)' }}>
-                    Put Wall <strong style={{ color: '#fb7185' }}>${(latestBar?.close * 0.90)?.toFixed(2)}</strong>
-                  </span>
-                </div>
-              )}
-
-              {/* Main Candlestick Chart Area */}
-              <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-                {loadingPrices && (
+              {/* Candlestick Chart Area (Full Height) */}
+              <div style={{ flex: 1, minHeight: 0, position: 'relative', height: '100%' }}>
+                {loadingPrices ? (
                   <div style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: '3px',
-                    zIndex: 30,
-                    overflow: 'hidden',
-                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                    borderRadius: '2px 2px 0 0'
+                    display: 'flex',
+                    height: '100%',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--text-muted)',
+                    fontSize: '13px',
+                    gap: '8px'
                   }}>
-                    <div className="screener-progress-indicator" />
+                    <span className="spin-icon">⟳</span>
+                    <span>Loading chart candles for {selectedStock.symbol}...</span>
                   </div>
-                )}
-                {stockPrices && stockPrices.length > 0 ? (
+                ) : stockPrices && stockPrices.length > 0 ? (
                   <CandlestickChart
                     data={stockPrices}
                     symbol={selectedStock.symbol}
                     height="100%"
                   />
-                ) : loadingPrices ? (
-                  <div style={{
-                    display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center',
-                    color: 'var(--text-muted)', fontSize: '13px'
-                  }}>
-                    <span className="spin-icon" style={{ marginRight: '8px' }}>⟳</span> Loading chart candles for {selectedStock.symbol}...
-                  </div>
                 ) : (
                   <div style={{
-                    display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center',
-                    color: 'var(--text-muted)', fontSize: '13px'
+                    display: 'flex',
+                    height: '100%',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--text-muted)',
+                    fontSize: '13px'
                   }}>
-                    No price data available for {selectedStock.symbol}
+                    No price data available for {selectedStock.symbol}.
                   </div>
                 )}
               </div>
             </>
           ) : (
             <div style={{
-              display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center',
-              color: 'var(--text-muted)', fontSize: '14px'
+              display: 'flex',
+              flexDirection: 'column',
+              height: '100%',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--text-muted)',
+              fontSize: '14px',
+              gap: '12px'
             }}>
-              Select a stock on the left to display its chart.
+              <span style={{ fontSize: '32px' }}>📊</span>
+              <div>Select a stock or expand a sector/industry group on the right to view its candlestick chart.</div>
             </div>
           )}
         </div>
 
-        {/* ======================================================== */}
-        {/* COLUMN 3: RIGHT STOCK & COMPANY INFO PANEL (~340px)      */}
-        {/* ======================================================== */}
-        {!isRightPanelCollapsed ? (
+        {/* Collapsible Stock Detail Sub-panel */}
+        {!isRightPanelCollapsed && selectedStock && (
           <div
             className="custom-scrollbar"
             style={{
-              width: '340px',
-              minWidth: '340px',
-              maxWidth: '340px',
+              width: '320px',
+              minWidth: '320px',
+              maxWidth: '320px',
               display: 'flex',
               flexDirection: 'column',
               background: 'var(--bg-secondary)',
@@ -2503,459 +1587,1161 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
               overflowY: 'auto'
             }}
           >
-            {selectedStock ? (
-            <>
-              {/* Header: Symbol, Name & Prev/Next Arrows */}
-              <div style={{
-                padding: '10px 14px',
-                borderBottom: '1px solid var(--border-color)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                background: 'rgba(0, 0, 0, 0.25)',
-                position: 'sticky',
-                top: 0,
-                zIndex: 10
-              }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{
-                    fontSize: '13px', fontWeight: 800, color: '#ffffff',
-                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-                  }}>
-                    {selectedStock.symbol} · {cleanName}
-                  </div>
-                </div>
+            {/* Header */}
+            <div style={{
+              padding: '8px 12px',
+              borderBottom: '1px solid var(--border-color)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'rgba(0,0,0,0.3)',
+              position: 'sticky',
+              top: 0,
+              zIndex: 10
+            }}>
+              <span style={{ fontSize: '12px', fontWeight: 800, color: '#ffffff' }}>
+                {selectedStock.symbol} · Telemetry
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsRightPanelCollapsed(true)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px' }}
+              >
+                ✕
+              </button>
+            </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {/* Profile */}
+            <div style={{ borderBottom: '1px solid var(--border-color)' }}>
+              <div
+                onClick={() => toggleSection('profile')}
+                style={{ padding: '8px 12px', display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }}
+              >
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)' }}>Company Profile</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{collapsedSections.profile ? '▼' : '▲'}</span>
+              </div>
+              {!collapsedSections.profile && (
+                <div style={{ padding: '0 12px 8px', fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                  <p style={{ margin: 0 }}>
+                    {profileExpanded
+                      ? (stockDetail?.metadata?.description || selectedStock.name)
+                      : (stockDetail?.metadata?.description || selectedStock.name)?.slice(0, 140) + '...'}
+                  </p>
                   <button
-                    onClick={() => {
-                      const idx = items.findIndex((i) => i.symbol === selectedStock.symbol);
-                      if (idx > 0) setSelectedStock(items[idx - 1]);
-                    }}
-                    title="Previous Stock (Arrow Up)"
-                    style={{
-                      background: 'transparent', border: '1px solid var(--border-color)',
-                      borderRadius: '3px', color: 'var(--text-secondary)', cursor: 'pointer',
-                      padding: '2px 6px', fontSize: '11px'
-                    }}
+                    onClick={() => setProfileExpanded(!profileExpanded)}
+                    style={{ background: 'transparent', border: 'none', color: '#38bdf8', padding: '4px 0 0', cursor: 'pointer', fontSize: '10.5px' }}
                   >
-                    ◀
+                    {profileExpanded ? 'Show less' : 'Read more'}
                   </button>
-                  <button
-                    onClick={() => {
-                      const idx = items.findIndex((i) => i.symbol === selectedStock.symbol);
-                      if (idx < items.length - 1) setSelectedStock(items[idx + 1]);
-                    }}
-                    title="Next Stock (Arrow Down)"
-                    style={{
-                      background: 'transparent', border: '1px solid var(--border-color)',
-                      borderRadius: '3px', color: 'var(--text-secondary)', cursor: 'pointer',
-                      padding: '2px 6px', fontSize: '11px'
-                    }}
-                  >
-                    ▶
-                  </button>
-                  <button
-                    onClick={() => setIsRightPanelCollapsed(true)}
-                    title="Collapse details panel (maximize chart)"
-                    style={{
-                      background: 'transparent', border: '1px solid var(--border-color)',
-                      borderRadius: '3px', color: 'var(--text-secondary)', cursor: 'pointer',
-                      padding: '2px 6px', fontSize: '11px', display: 'inline-flex', alignItems: 'center'
-                    }}
-                  >
-                    ⇥
-                  </button>
-                </div>
-              </div>
-
-              {/* Accordion 1: Company Profile */}
-              <div style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <div
-                  onClick={() => toggleSection('profile')}
-                  style={{
-                    padding: '8px 14px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
-                    userSelect: 'none'
-                  }}
-                >
-                  <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)' }}>
-                    Company profile
-                  </span>
-                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                    {collapsedSections.profile ? '▼' : '▲'}
-                  </span>
-                </div>
-
-                {!collapsedSections.profile && (
-                  <div style={{ padding: '0 14px 10px', fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
-                    <p style={{ margin: 0 }}>
-                      {profileExpanded
-                        ? (stockDetail?.metadata?.description || selectedStock.name)
-                        : (stockDetail?.metadata?.description || selectedStock.name)?.slice(0, 160) + '...'}
-                    </p>
-                    <button
-                      onClick={() => setProfileExpanded(!profileExpanded)}
-                      style={{
-                        background: 'transparent', border: 'none', color: '#38bdf8',
-                        cursor: 'pointer', padding: 0, marginTop: '4px', fontSize: '11px', fontWeight: 600
-                      }}
-                    >
-                      {profileExpanded ? 'Less' : 'More'}
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Accordion 2: Key Stats */}
-              <div style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <div
-                  onClick={() => toggleSection('stats')}
-                  style={{
-                    padding: '8px 14px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
-                    userSelect: 'none'
-                  }}
-                >
-                  <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)' }}>
-                    Key stats
-                  </span>
-                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                    {collapsedSections.stats ? '▼' : '▲'}
-                  </span>
-                </div>
-
-                {!collapsedSections.stats && (
-                  <div style={{ padding: '0 14px 10px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '11px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '3px' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>Market cap</span>
-                        <span style={{ fontWeight: 700 }}>
-                          {selectedStock.symbol === 'AAPL' ? '$4.91T' : selectedStock.symbol === 'NVDA' ? '$3.20T' : '$' + ((selectedStock.close * 2000000000) / 1e12).toFixed(2) + 'T'}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '3px' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>Avg vol (20d)</span>
-                        <span style={{ fontWeight: 700 }}>
-                          {selectedStock.vol_50d_ma ? `${(selectedStock.vol_50d_ma / 1e6).toFixed(1)}M` : '—'}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '3px' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>ADR 20d</span>
-                        <span style={{ fontWeight: 700 }}>
-                          {selectedStock.adr_20d ? `${selectedStock.adr_20d.toFixed(2)}%` : '—'}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '3px' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>Industry rank</span>
-                        <span style={{ fontWeight: 700, color: (selectedStock.industry_rs_rank ?? 0) >= 70 ? '#34d399' : 'var(--text-primary)' }}>
-                          {selectedStock.industry_rank ? `#${selectedStock.industry_rank}` : '—'}
-                          {selectedStock.industry_rs_rank ? ` (RS ${Math.round(selectedStock.industry_rs_rank)})` : ''}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '3px' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>Sector</span>
-                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                          {selectedStock.sector || 'N/A'}
-                          {selectedStock.sector_rs_rank ? ` (RS ${Math.round(selectedStock.sector_rs_rank)})` : ''}
-                        </span>
-                      </div>
-                      {selectedStock.themes && selectedStock.themes.length > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '3px', gridColumn: 'span 2' }}>
-                          <span style={{ color: 'var(--text-muted)' }}>Themes</span>
-                          <span style={{ fontWeight: 600, color: '#c084fc', textAlign: 'right' }}>
-                            {selectedStock.themes.join(', ')}
-                          </span>
-                        </div>
-                      )}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '3px' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>Off 52w high</span>
-                        <span style={{ fontWeight: 700, color: '#fb7185' }}>
-                          {selectedStock.dist_from_52w_high ? `-${selectedStock.dist_from_52w_high.toFixed(1)}%` : '—'}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '3px' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>EPS YoY</span>
-                        <span style={{ fontWeight: 700, color: '#34d399' }}>
-                          {stockDetail?.fundamentals?.[0] ? `+${stockDetail.fundamentals[0].eps_qoq_growth?.toFixed(1)}%` : '+28.0%'}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '3px' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>Rev YoY</span>
-                        <span style={{ fontWeight: 700, color: '#34d399' }}>+18.2%</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Accordion 3: Industry Peers */}
-              <div style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <div
-                  onClick={() => toggleSection('peers')}
-                  style={{
-                    padding: '8px 14px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
-                    userSelect: 'none'
-                  }}
-                >
-                  <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)' }}>
-                    Industry peers {peersData?.industry ? `(${peersData.industry})` : ''}
-                  </span>
-                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                    {collapsedSections.peers ? '▼' : '▲'}
-                  </span>
-                </div>
-
-                {!collapsedSections.peers && (
-                  <div style={{ padding: '0 14px 10px' }}>
-                    {peersData?.peers && peersData.peers.length > 0 ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        {peersData.peers.map((peer, idx) => (
-                          <div
-                            key={peer.symbol}
-                            onClick={() => {
-                              setSelectedStock((prev) => ({
-                                ...prev,
-                                symbol: peer.symbol,
-                                name: peer.name,
-                                close: peer.close,
-                                rs_rank: peer.rs_rank,
-                                chg_pct: peer.chg_pct,
-                              }));
-                            }}
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              padding: '5px 8px',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              background: peer.symbol === selectedStock.symbol ? 'rgba(16, 185, 129, 0.15)' : 'rgba(0, 0, 0, 0.2)',
-                              transition: 'background-color 0.12s ease'
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
-                              <span style={{ color: 'var(--text-muted)', fontSize: '10.5px', width: '12px' }}>
-                                {idx + 1}.
-                              </span>
-                              <span style={{ fontWeight: 800, color: peer.symbol === selectedStock.symbol ? '#10b981' : '#ffffff', fontSize: '11.5px' }}>
-                                {peer.symbol}
-                              </span>
-                              <span style={{
-                                color: 'var(--text-secondary)', fontSize: '10.5px',
-                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px'
-                              }}>
-                                {peer.name?.split(' ')[0]}
-                              </span>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                ${peer.close?.toFixed(2)}
-                              </span>
-                              <span style={{
-                                fontSize: '10.5px',
-                                fontWeight: 800,
-                                color: peer.rs_rank >= 70 ? '#34d399' : '#fb7185'
-                              }}>
-                                Pivot {peer.rs_rank}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                        No industry peers found.
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Accordion 4: Funds and Insiders */}
-              <div style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <div
-                  onClick={() => toggleSection('funds')}
-                  style={{
-                    padding: '8px 14px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
-                    userSelect: 'none'
-                  }}
-                >
-                  <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)' }}>
-                    Funds and Insiders
-                  </span>
-                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                    {collapsedSections.funds ? '▼' : '▲'}
-                  </span>
-                </div>
-
-                {!collapsedSections.funds && (
-                  <div style={{ padding: '0 14px 12px' }}>
-                    <div style={{ display: 'flex', gap: '4px', marginBottom: '8px' }}>
-                      <button
-                        onClick={() => setFundTab('institutions')}
-                        style={{
-                          background: fundTab === 'institutions' ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
-                          color: fundTab === 'institutions' ? '#10b981' : 'var(--text-muted)',
-                          border: '1px solid var(--border-color)',
-                          borderRadius: '12px',
-                          padding: '2px 8px',
-                          fontSize: '10.5px',
-                          fontWeight: 700,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Institutions
-                      </button>
-                      <button
-                        onClick={() => setFundTab('insiders')}
-                        style={{
-                          background: fundTab === 'insiders' ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
-                          color: fundTab === 'insiders' ? '#10b981' : 'var(--text-muted)',
-                          border: '1px solid var(--border-color)',
-                          borderRadius: '12px',
-                          padding: '2px 8px',
-                          fontSize: '10.5px',
-                          fontWeight: 700,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Insiders
-                      </button>
-                    </div>
-
-                    <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <th style={{ textAlign: 'left', padding: '4px 0' }}>Quarter</th>
-                          <th style={{ textAlign: 'right', padding: '4px 0' }}># Inst</th>
-                          <th style={{ textAlign: 'right', padding: '4px 0' }}>Inst %</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td style={{ padding: '5px 0' }}>2026 Q2</td>
-                          <td style={{ textAlign: 'right', padding: '5px 0', fontWeight: 700 }}>
-                            {stockDetail?.sponsorship_summary?.holders_count || '6,465'}
-                            <span style={{ color: '#34d399', fontSize: '9.5px', marginLeft: '3px' }}>+61</span>
-                          </td>
-                          <td style={{ textAlign: 'right', padding: '5px 0', fontWeight: 700, color: '#38bdf8' }}>
-                            {stockDetail?.sponsorship_summary?.ownership_pct ? `${stockDetail.sponsorship_summary.ownership_pct.toFixed(1)}%` : '66.6%'}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              {/* Accordion 5: Technical Setups & Footprints (VCP / Low Cheat) */}
-              {(stockDetail?.vcp_footprint?.vcp_is_setup || stockDetail?.low_cheat_footprint?.low_cheat_is_setup) && (
-                <div style={{ borderBottom: '1px solid var(--border-color)' }}>
-                  <div
-                    onClick={() => toggleSection('setups')}
-                    style={{
-                      padding: '8px 14px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      cursor: 'pointer',
-                      userSelect: 'none'
-                    }}
-                  >
-                    <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#38bdf8' }}>
-                      ⚡ Active Setups
-                    </span>
-                    <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                      {collapsedSections.setups ? '▼' : '▲'}
-                    </span>
-                  </div>
-
-                  {!collapsedSections.setups && (
-                    <div style={{ padding: '0 14px 10px' }}>
-                      {stockDetail?.vcp_footprint?.vcp_is_setup && (
-                        <div style={{ marginBottom: '8px' }}>
-                          <VcpFootprintCard footprint={stockDetail.vcp_footprint} />
-                        </div>
-                      )}
-                      {stockDetail?.low_cheat_footprint?.low_cheat_is_setup && (
-                        <div>
-                          <LowCheatFootprintCard footprint={stockDetail.low_cheat_footprint} />
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               )}
-            </>
-          ) : (
-            <div style={{ padding: '30px 14px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
-              No stock selected
             </div>
-          )}
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setIsRightPanelCollapsed(false)}
-          title="Expand Stock Details Panel"
-          style={{
-            width: '28px',
-            minWidth: '28px',
-            maxWidth: '28px',
-            background: 'var(--bg-secondary)',
-            borderLeft: '1px solid var(--border-color)',
-            borderTop: 'none',
-            borderRight: 'none',
-            borderBottom: 'none',
-            color: 'var(--text-muted)',
-            cursor: 'pointer',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'flex-start',
-            gap: '12px',
-            padding: '16px 0',
-            userSelect: 'none',
-            transition: 'background 0.15s, color 0.15s'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-            e.currentTarget.style.color = '#38bdf8';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'var(--bg-secondary)';
-            e.currentTarget.style.color = 'var(--text-muted)';
-          }}
-        >
-          <span style={{ fontSize: '13px' }}>⫷</span>
-          <span style={{
-            writingMode: 'vertical-rl',
-            fontSize: '10.5px',
-            fontWeight: 700,
-            letterSpacing: '1.2px',
-            textTransform: 'uppercase'
-          }}>
-            Stock Details
-          </span>
-        </button>
-      )}
-    </div>
 
+            {/* Key Stats */}
+            <div style={{ borderBottom: '1px solid var(--border-color)' }}>
+              <div
+                onClick={() => toggleSection('stats')}
+                style={{ padding: '8px 12px', display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }}
+              >
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)' }}>Key Technical Stats</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{collapsedSections.stats ? '▼' : '▲'}</span>
+              </div>
+              {!collapsedSections.stats && (
+                <div style={{ padding: '0 12px 8px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '10.5px' }}>
+                  <div style={{ background: 'rgba(0,0,0,0.2)', padding: '4px 6px', borderRadius: '4px' }}>
+                    <div style={{ color: 'var(--text-muted)' }}>52W Range</div>
+                    <div style={{ fontWeight: 700, color: '#ffffff' }}>
+                      ${stockDetail?.metrics?.low_52w?.toFixed(1) || '—'} - ${stockDetail?.metrics?.high_52w?.toFixed(1) || '—'}
+                    </div>
+                  </div>
+                  <div style={{ background: 'rgba(0,0,0,0.2)', padding: '4px 6px', borderRadius: '4px' }}>
+                    <div style={{ color: 'var(--text-muted)' }}>Dist from 52W High</div>
+                    <div style={{ fontWeight: 700, color: selectedStock.dist_52wh_pct >= -10 ? '#10b981' : 'var(--text-secondary)' }}>
+                      {selectedStock.dist_52wh_pct !== undefined ? `${selectedStock.dist_52wh_pct?.toFixed(1)}%` : '—'}
+                    </div>
+                  </div>
+                  <div style={{ background: 'rgba(0,0,0,0.2)', padding: '4px 6px', borderRadius: '4px' }}>
+                    <div style={{ color: 'var(--text-muted)' }}>Market Cap</div>
+                    <div style={{ fontWeight: 700, color: '#ffffff' }}>
+                      {stockDetail?.metrics?.market_cap ? `$${(stockDetail.metrics.market_cap / 1e9).toFixed(1)}B` : '—'}
+                    </div>
+                  </div>
+                  <div style={{ background: 'rgba(0,0,0,0.2)', padding: '4px 6px', borderRadius: '4px' }}>
+                    <div style={{ color: 'var(--text-muted)' }}>Volume 50D MA</div>
+                    <div style={{ fontWeight: 700, color: '#ffffff' }}>
+                      {latestBar?.vol_50d_ma ? `${(latestBar.vol_50d_ma / 1e6).toFixed(2)}M` : '—'}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Setups Tag List */}
+            {selectedStock.setups && selectedStock.setups.length > 0 && (
+              <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-color)' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '6px' }}>Active Setups</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                  {selectedStock.setups.map((s) => (
+                    <span key={s} style={{
+                      background: 'rgba(56, 189, 248, 0.15)',
+                      border: '1px solid rgba(56, 189, 248, 0.35)',
+                      color: '#38bdf8',
+                      borderRadius: '4px',
+                      padding: '2px 6px',
+                      fontSize: '10px',
+                      fontWeight: 700
+                    }}>
+                      ⚡ {s}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ======================================================== */}
+      {/* RESIZABLE SPLITTER (Col-resize divider)                  */}
+      {/* ======================================================== */}
+      <div
+        onMouseDown={startResizing}
+        style={{
+          width: '6px',
+          cursor: 'col-resize',
+          background: isResizing ? '#38bdf8' : 'var(--border-color)',
+          transition: 'background 0.15s ease',
+          position: 'relative',
+          flexShrink: 0,
+          zIndex: 10,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+        onMouseEnter={(e) => { if (!isResizing) e.currentTarget.style.background = 'rgba(56, 189, 248, 0.4)'; }}
+        onMouseLeave={(e) => { if (!isResizing) e.currentTarget.style.background = 'var(--border-color)'; }}
+        title="Drag to resize chart / table panels"
+      >
+        <div style={{
+          width: '2px',
+          height: '24px',
+          borderRadius: '1px',
+          background: isResizing ? '#ffffff' : 'rgba(255, 255, 255, 0.3)'
+        }} />
+      </div>
+
+      {/* ======================================================== */}
+      {/* RIGHT CONTAINER: TABLE & WORKSPACE DOCK (~480px)         */}
+      {/* ======================================================== */}
+      <div style={{
+        width: `${rightPanelWidth}px`,
+        minWidth: '340px',
+        maxWidth: '850px',
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--bg-secondary)',
+        overflow: 'hidden'
+      }}>
+        {/* Primary Tab Bar: [ ★ Watchlists ] [ 🏛 Market Groups ] [ 💼 Positions ] */}
+        <div style={{
+          padding: '8px 10px',
+          borderBottom: '1px solid var(--border-color)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          background: 'rgba(0, 0, 0, 0.25)'
+        }}>
+          <button
+            type="button"
+            onClick={() => setDockTab('watchlists')}
+            style={{
+              flex: 1,
+              padding: '5px 8px',
+              borderRadius: '5px',
+              border: dockTab === 'watchlists' ? '1px solid #10b981' : '1px solid transparent',
+              background: dockTab === 'watchlists' ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
+              color: dockTab === 'watchlists' ? '#10b981' : 'var(--text-secondary)',
+              fontSize: '11.5px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '5px'
+            }}
+          >
+            <span>★</span>
+            <span>Watchlists</span>
+            <span style={{
+              background: dockTab === 'watchlists' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(255,255,255,0.06)',
+              borderRadius: '10px',
+              padding: '1px 5px',
+              fontSize: '10px'
+            }}>
+              {items.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDockTab('groups')}
+            style={{
+              flex: 1.2,
+              padding: '5px 8px',
+              borderRadius: '5px',
+              border: dockTab === 'groups' ? '1px solid #38bdf8' : '1px solid transparent',
+              background: dockTab === 'groups' ? 'rgba(56, 189, 248, 0.2)' : 'transparent',
+              color: dockTab === 'groups' ? '#38bdf8' : 'var(--text-secondary)',
+              fontSize: '11.5px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '5px'
+            }}
+          >
+            <span>🏛</span>
+            <span>Market</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDockTab('positions')}
+            style={{
+              flex: 1,
+              padding: '5px 8px',
+              borderRadius: '5px',
+              border: dockTab === 'positions' ? '1px solid #f59e0b' : '1px solid transparent',
+              background: dockTab === 'positions' ? 'rgba(245, 158, 11, 0.2)' : 'transparent',
+              color: dockTab === 'positions' ? '#f59e0b' : 'var(--text-secondary)',
+              fontSize: '11.5px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '5px'
+            }}
+          >
+            <span>💼</span>
+            <span>Positions</span>
+            {positions.length > 0 && (
+              <span style={{
+                background: dockTab === 'positions' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255,255,255,0.06)',
+                borderRadius: '10px',
+                padding: '1px 5px',
+                fontSize: '10px'
+              }}>
+                {positions.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* ----------------------------------------------------------------- */}
+        {/* VIEW 1: WATCHLISTS PANEL                                          */}
+        {/* ----------------------------------------------------------------- */}
+        {dockTab === 'watchlists' && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {/* Watchlist Dropdown & Options */}
+            <div style={{
+              padding: '6px 10px',
+              borderBottom: '1px solid var(--border-color)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                <span style={{ fontSize: '12px' }}>📁</span>
+                <select
+                  value={selectedWatchlistId || ''}
+                  onChange={(e) => setSelectedWatchlistId(Number(e.target.value))}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-primary)',
+                    fontWeight: 700,
+                    fontSize: '12.5px',
+                    cursor: 'pointer',
+                    outline: 'none',
+                    maxWidth: '180px'
+                  }}
+                >
+                  {watchlists.map((w) => (
+                    <option key={w.id} value={w.id} style={{ background: '#1e293b', color: '#ffffff' }}>
+                      {w.name} ({w.item_count || 0})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(true)}
+                  title="New Watchlist"
+                  style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '13px', padding: '2px 4px' }}
+                >
+                  ➕
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRenameInput(activeWatchlist?.name || '');
+                    setShowRenameModal(true);
+                  }}
+                  title="Rename Watchlist"
+                  style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '13px', padding: '2px 4px' }}
+                >
+                  ✏️
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDropdownMenu(!showDropdownMenu)}
+                  title="Watchlist Options"
+                  style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '13px', padding: '2px 4px' }}
+                >
+                  ≡
+                </button>
+              </div>
+
+              {/* Dropdown menu */}
+              {showDropdownMenu && (
+                <>
+                  <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setShowDropdownMenu(false)} />
+                  <div style={{
+                    position: 'absolute',
+                    top: '42px',
+                    right: '12px',
+                    background: 'var(--card-bg)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    boxShadow: '0 10px 25px rgba(0,0,0,0.6)',
+                    padding: '4px 0',
+                    zIndex: 100,
+                    minWidth: '180px'
+                  }}>
+                    <button
+                      onClick={() => { setShowDropdownMenu(false); handleExportTradingView(); }}
+                      style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: '6px 12px', fontSize: '11.5px', color: '#ffffff', cursor: 'pointer' }}
+                    >
+                      ↗️ Export to TradingView (.txt)
+                    </button>
+                    <button
+                      onClick={() => { setShowDropdownMenu(false); handleCleanUpWatchlist(); }}
+                      style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: '6px 12px', fontSize: '11.5px', color: '#f59e0b', cursor: 'pointer' }}
+                    >
+                      🧹 Clean Up Laggards
+                    </button>
+                    <div style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0' }} />
+                    <button
+                      onClick={() => { setShowDropdownMenu(false); handleDeleteWatchlist(); }}
+                      style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: '6px 12px', fontSize: '11.5px', color: '#fb7185', cursor: 'pointer' }}
+                    >
+                      🗑️ Delete Watchlist
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Quick Add Symbol Bar */}
+            <div style={{ padding: '6px 10px', borderBottom: '1px solid var(--border-color)', display: 'flex', gap: '6px' }}>
+              <form onSubmit={handleAddSymbol} style={{ display: 'flex', gap: '6px', flex: 1 }}>
+                <input
+                  type="text"
+                  placeholder="+ Add symbol (e.g. PLTR)"
+                  value={newSymbolInput}
+                  onChange={(e) => setNewSymbolInput(e.target.value.toUpperCase())}
+                  style={{
+                    flex: 1,
+                    background: 'rgba(0, 0, 0, 0.35)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    padding: '4px 8px',
+                    fontSize: '11px',
+                    color: '#ffffff',
+                    outline: 'none'
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={isAddingSymbol || !newSymbolInput.trim()}
+                  style={{
+                    background: 'rgba(16, 185, 129, 0.2)',
+                    border: '1px solid rgba(16, 185, 129, 0.4)',
+                    color: '#10b981',
+                    borderRadius: '4px',
+                    padding: '3px 8px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Add
+                </button>
+              </form>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSelectMode(!isSelectMode);
+                  if (isSelectMode) setSelectedSymbols(new Set());
+                }}
+                style={{
+                  background: isSelectMode ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                  border: isSelectMode ? '1px solid #38bdf8' : '1px solid var(--border-color)',
+                  color: isSelectMode ? '#38bdf8' : 'var(--text-secondary)',
+                  borderRadius: '4px',
+                  padding: '3px 7px',
+                  fontSize: '10.5px',
+                  cursor: 'pointer'
+                }}
+              >
+                {isSelectMode ? 'Done' : 'Select'}
+              </button>
+            </div>
+
+            {/* Filter & Group Controls */}
+            <div style={{ padding: '6px 10px', borderBottom: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '5px', background: 'rgba(0,0,0,0.15)' }}>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder="🔍 Filter ticker or name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    background: 'rgba(0, 0, 0, 0.35)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    padding: '3px 20px 3px 6px',
+                    fontSize: '10.5px',
+                    color: '#ffffff',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    style={{ position: 'absolute', right: '4px', top: '3px', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10px' }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Group By selector */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)' }}>
+                <span>Group by:</span>
+                <div style={{ display: 'flex', gap: '3px' }}>
+                  {[
+                    { id: 'none', label: 'None' },
+                    { id: 'industry', label: 'Industry' },
+                    { id: 'sector', label: 'Sector' },
+                    { id: 'theme', label: 'Theme' }
+                  ].map((btn) => (
+                    <button
+                      key={btn.id}
+                      type="button"
+                      onClick={() => setGroupMode(btn.id)}
+                      style={{
+                        background: groupMode === btn.id ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
+                        border: groupMode === btn.id ? '1px solid #38bdf8' : '1px solid transparent',
+                        color: groupMode === btn.id ? '#38bdf8' : 'var(--text-muted)',
+                        borderRadius: '3px',
+                        padding: '1px 5px',
+                        fontSize: '9.5px',
+                        fontWeight: groupMode === btn.id ? 700 : 500,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Watchlist Stock Table */}
+            <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                <thead>
+                  <tr style={{
+                    borderBottom: '1px solid var(--border-color)',
+                    background: 'rgba(0, 0, 0, 0.4)',
+                    color: 'var(--text-muted)',
+                    fontSize: '10px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 2
+                  }}>
+                    {isSelectMode && <th style={{ width: '24px', padding: '6px 4px', textAlign: 'center' }}>✓</th>}
+                    <th style={{ textAlign: 'left', padding: '6px 8px' }}>Symbol / Name</th>
+                    <th style={{ textAlign: 'right', padding: '6px 6px', cursor: 'pointer' }} onClick={() => setSortBy(sortBy === 'chg_pct_desc' ? 'chg_pct_asc' : 'chg_pct_desc')}>
+                      Today {sortBy === 'chg_pct_desc' ? '↓' : sortBy === 'chg_pct_asc' ? '↑' : ''}
+                    </th>
+                    <th style={{ textAlign: 'right', padding: '6px 6px', cursor: 'pointer' }} onClick={() => setSortBy('rvol')}>RVOL</th>
+                    <th style={{ textAlign: 'center', padding: '6px 6px', cursor: 'pointer' }} onClick={() => setSortBy('rs_rank')}>RS</th>
+                    <th style={{ width: '22px', padding: '6px 4px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loadingItems ? (
+                    <tr>
+                      <td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                        Loading watchlist stocks...
+                      </td>
+                    </tr>
+                  ) : sortedItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                        No stocks found in this watchlist.
+                      </td>
+                    </tr>
+                  ) : (
+                    sortedItems.map((item) => {
+                      const isSelected = selectedStock?.symbol === item.symbol;
+                      const chg = item.today_pct !== undefined ? item.today_pct : item.chg_pct;
+                      const isPositive = chg !== null && chg !== undefined ? chg >= 0 : false;
+                      const rsVal = item.rs_rank;
+
+                      return (
+                        <tr
+                          key={item.symbol}
+                          onClick={() => { setActiveGroupChart(null); setSelectedStock(item); }}
+                          style={{
+                            borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                            background: isSelected ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                            borderLeft: isSelected ? '3px solid #38bdf8' : '3px solid transparent',
+                            cursor: 'pointer',
+                            transition: 'background 0.1s ease'
+                          }}
+                          onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)'; }}
+                          onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                        >
+                          {isSelectMode && (
+                            <td style={{ textAlign: 'center', padding: '6px 4px' }} onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={selectedSymbols.has(item.symbol)}
+                                onChange={(e) => toggleSelectSymbol(item.symbol, e)}
+                              />
+                            </td>
+                          )}
+
+                          <td style={{ padding: '6px 8px' }}>
+                            <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                              <div style={{ fontWeight: 800, color: '#ffffff', fontSize: '11.5px' }}>{item.symbol}</div>
+                              <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>
+                                {item.industry || item.sector || item.name || '—'}
+                              </div>
+                            </div>
+                          </td>
+
+                          <td style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 700, color: chg === null || chg === undefined ? 'var(--text-muted)' : isPositive ? '#34d399' : '#fb7185' }}>
+                            {chg !== null && chg !== undefined ? `${isPositive ? '+' : ''}${chg.toFixed(1)}%` : '—'}
+                          </td>
+
+                          <td style={{ textAlign: 'right', padding: '6px 6px', color: item.rvol_pct && item.rvol_pct >= 150 ? '#34d399' : 'var(--text-secondary)' }}>
+                            {item.rvol_pct ? `${Math.round(item.rvol_pct)}%` : '—'}
+                          </td>
+
+                          <td style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 800, color: rsVal >= 70 ? '#34d399' : rsVal <= 30 ? '#fb7185' : 'var(--text-secondary)' }}>
+                            {rsVal !== null && rsVal !== undefined ? rsVal : '—'}
+                          </td>
+
+                          <td style={{ padding: '6px 4px', textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              onClick={(e) => handleRemoveSymbol(item.symbol, e)}
+                              title={`Remove ${item.symbol}`}
+                              style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '11px', padding: 0 }}
+                            >
+                              ✕
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ----------------------------------------------------------------- */}
+        {/* VIEW 2: MARKET GROUPS (SECTORS / INDUSTRY GROUPS / THEMES)        */}
+        {/* ----------------------------------------------------------------- */}
+        {dockTab === 'groups' && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {/* Secondary Segment Switcher: [ Sectors ] [ Industry Groups ] [ Themes ] */}
+            <div style={{
+              padding: '6px 10px',
+              borderBottom: '1px solid var(--border-color)',
+              display: 'flex',
+              gap: '4px',
+              background: 'rgba(0,0,0,0.2)'
+            }}>
+              {[
+                { id: 'sectors', label: 'Sectors (30)' },
+                { id: 'industries', label: 'Industries (175)' },
+                { id: 'themes', label: 'Themes (24)' }
+              ].map((sub) => (
+                <button
+                  key={sub.id}
+                  type="button"
+                  onClick={() => setGroupType(sub.id)}
+                  style={{
+                    flex: 1,
+                    padding: '4px 6px',
+                    borderRadius: '4px',
+                    border: groupType === sub.id ? '1px solid #38bdf8' : '1px solid transparent',
+                    background: groupType === sub.id ? 'rgba(56, 189, 248, 0.2)' : 'transparent',
+                    color: groupType === sub.id ? '#38bdf8' : 'var(--text-muted)',
+                    fontSize: '10.5px',
+                    fontWeight: groupType === sub.id ? 700 : 500,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {sub.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Filter and Sort Toolbar (Single Line) */}
+            <div style={{
+              padding: '6px 10px',
+              borderBottom: '1px solid var(--border-color)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: 'rgba(0,0,0,0.1)'
+            }}>
+              {/* Search input */}
+              <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                <input
+                  type="text"
+                  placeholder={`🔍 Filter ${groupType}...`}
+                  value={groupSearchQuery}
+                  onChange={(e) => setGroupSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    background: 'rgba(0, 0, 0, 0.35)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    padding: '4px 20px 4px 6px',
+                    fontSize: '10.5px',
+                    color: '#ffffff',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                {groupSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setGroupSearchQuery('')}
+                    style={{ position: 'absolute', right: '5px', top: '4px', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10px' }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Sort controls */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Sort:</span>
+                <select
+                  value={groupSortBy}
+                  onChange={(e) => setGroupSortBy(e.target.value)}
+                  style={{
+                    background: 'rgba(0,0,0,0.3)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-primary)',
+                    borderRadius: '3px',
+                    padding: '3px 4px',
+                    fontSize: '10px',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="today_pct">Today %</option>
+                  <option value="ret_1w_pct">1-Week %</option>
+                  <option value="ret_1m_pct">1-Month %</option>
+                  <option value="ret_3m_pct">3-Month %</option>
+                  <option value="ret_ytd_pct">YTD %</option>
+                  <option value="rs_rank">RS Score</option>
+                  <option value="dist_52wh_pct">Dist 52WH</option>
+                  <option value="rvol_pct">RVOL %</option>
+                  <option value="stage_num">Weinstein Stage</option>
+                </select>
+
+                <button
+                  type="button"
+                  onClick={() => setGroupSortOrder(groupSortOrder === 'desc' ? 'asc' : 'desc')}
+                  style={{
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '3px',
+                    color: 'var(--text-secondary)',
+                    padding: '3px 6px',
+                    fontSize: '10px',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {groupSortOrder === 'desc' ? '↓ Desc' : '↑ Asc'}
+                </button>
+              </div>
+            </div>
+
+            {/* Column Header Row for Market Groups */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '6px 10px',
+              borderBottom: '1px solid var(--border-color)',
+              background: 'rgba(0, 0, 0, 0.35)',
+              fontSize: '10px',
+              color: 'var(--text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              position: 'sticky',
+              top: 0,
+              zIndex: 2
+            }}>
+              <span>Group</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                <span style={{ width: '58px', textAlign: 'right' }}>Stage</span>
+                <span style={{ width: '45px', textAlign: 'right' }}>Today</span>
+                <span style={{ width: '42px', textAlign: 'right' }}>1W</span>
+                <span style={{ width: '24px', textAlign: 'center' }}>RS</span>
+              </div>
+            </div>
+
+            {/* Accordion Groups List */}
+            <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto' }}>
+              {loadingGroups ? (
+                <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)', fontSize: '11px' }}>
+                  Loading {groupType}...
+                </div>
+              ) : filteredAndSortedGroups.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)', fontSize: '11px' }}>
+                  No groups match query.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {filteredAndSortedGroups.map((grp) => {
+                    const isExpanded = expandedMarketGroups.has(grp.name);
+                    const isChartActive = activeGroupChart?.groupName === grp.name;
+                    const cacheKey = `${groupType}:${grp.name}`;
+                    const constituents = groupConstituents[cacheKey] || [];
+                    const isLoadingConsts = loadingConstituents[cacheKey];
+
+                    return (
+                      <div key={grp.name} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                        {/* Group Header Row */}
+                        <div
+                          onClick={() => toggleMarketGroup(grp.name)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '7px 10px',
+                            background: isChartActive
+                              ? 'rgba(56, 189, 248, 0.16)'
+                              : isExpanded
+                              ? 'rgba(56, 189, 248, 0.08)'
+                              : 'transparent',
+                            borderLeft: isChartActive ? '3px solid #38bdf8' : '3px solid transparent',
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            transition: 'background 0.1s ease'
+                          }}
+                          onMouseEnter={(e) => { if (!isChartActive && !isExpanded) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+                          onMouseLeave={(e) => { if (!isChartActive && !isExpanded) e.currentTarget.style.background = 'transparent'; }}
+                        >
+                          {/* Left: Chevron, Group Title, Stock Count */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1, paddingRight: '8px' }}>
+                            <span style={{ fontSize: '10px', color: isChartActive || isExpanded ? '#38bdf8' : 'var(--text-muted)', transition: 'transform 0.15s ease', flexShrink: 0 }}>
+                              {isExpanded ? '▼' : '▶'}
+                            </span>
+                            <span style={{ fontWeight: 700, fontSize: '11.5px', color: isChartActive || isExpanded ? '#38bdf8' : '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {grp.name}
+                            </span>
+                            <span style={{ fontSize: '9.5px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.06)', borderRadius: '8px', padding: '1px 5px', flexShrink: 0 }}>
+                              {grp.stock_count || 0}
+                            </span>
+                          </div>
+
+                          {/* Right: Stage, Today%, 1W%, RS */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, fontSize: '11px' }}>
+                            {/* Dedicated Stage column - aligned on right, loads in Main Panel */}
+                            <div
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (grp.stage_badge) {
+                                  setActiveGroupChart({
+                                    groupType,
+                                    groupName: grp.name,
+                                    stageBadge: grp.stage_badge,
+                                    stageColor: grp.stage_color
+                                  });
+                                }
+                              }}
+                              style={{
+                                width: '58px',
+                                display: 'flex',
+                                justifyContent: 'flex-end',
+                                flexShrink: 0,
+                                cursor: grp.stage_badge ? 'pointer' : 'default'
+                              }}
+                              title={grp.stage_badge ? (isChartActive ? 'Active in Main Chart' : `Click to view ${grp.name} Stage Chart in main panel`) : ''}
+                            >
+                              {grp.stage_badge ? (
+                                <span
+                                  style={{
+                                    fontSize: '9px',
+                                    fontWeight: 800,
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    background: isChartActive
+                                      ? (grp.stage_color || '#10b981')
+                                      : grp.stage_color ? `${grp.stage_color}25` : 'rgba(16,185,129,0.2)',
+                                    color: isChartActive ? '#ffffff' : (grp.stage_color || '#10b981'),
+                                    whiteSpace: 'nowrap',
+                                    lineHeight: 1.2,
+                                    border: isChartActive
+                                      ? '1px solid #ffffff'
+                                      : `1px solid ${grp.stage_color ? grp.stage_color + '44' : 'rgba(16,185,129,0.3)'}`,
+                                    boxShadow: isChartActive ? '0 0 8px rgba(56, 189, 248, 0.6)' : 'none',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.transform = 'scale(1.08)';
+                                    e.currentTarget.style.boxShadow = '0 0 8px rgba(56, 189, 248, 0.5)';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'scale(1)';
+                                    e.currentTarget.style.boxShadow = isChartActive ? '0 0 8px rgba(56, 189, 248, 0.6)' : 'none';
+                                  }}
+                                >
+                                  {grp.stage_badge}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <span style={{
+                              fontWeight: 800,
+                              color: grp.today_pct >= 0 ? '#34d399' : '#fb7185',
+                              width: '45px',
+                              textAlign: 'right'
+                            }}>
+                              {grp.today_pct !== undefined && grp.today_pct !== null ? `${grp.today_pct >= 0 ? '+' : ''}${grp.today_pct.toFixed(1)}%` : '—'}
+                            </span>
+                            <span style={{
+                              color: grp.ret_1w_pct >= 0 ? '#34d399' : '#fb7185',
+                              width: '42px',
+                              textAlign: 'right',
+                              fontSize: '10px'
+                            }}>
+                              {grp.ret_1w_pct !== undefined && grp.ret_1w_pct !== null ? `${grp.ret_1w_pct >= 0 ? '+' : ''}${grp.ret_1w_pct.toFixed(1)}%` : '—'}
+                            </span>
+                            <span style={{
+                              fontWeight: 800,
+                              color: grp.rs_rank >= 70 ? '#34d399' : grp.rs_rank <= 30 ? '#fb7185' : 'var(--text-secondary)',
+                              width: '24px',
+                              textAlign: 'center',
+                              fontSize: '10.5px'
+                            }}>
+                              {grp.rs_rank ?? '—'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Inline Accordion Constituents Table */}
+                        {isExpanded && (
+                          <div style={{ background: 'rgba(0, 0, 0, 0.35)', borderTop: '1px solid rgba(255, 255, 255, 0.05)', padding: '2px 0 6px 12px' }}>
+                            {isLoadingConsts ? (
+                              <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '10.5px' }}>
+                                Loading {grp.name} constituents...
+                              </div>
+                            ) : constituents.length === 0 ? (
+                              <div style={{ padding: '8px 12px', color: 'var(--text-muted)', fontSize: '10.5px' }}>
+                                No constituent stocks found.
+                              </div>
+                            ) : (
+                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10.5px' }}>
+                                <tbody>
+                                  {constituents.map((stock) => {
+                                    const isSelected = selectedStock?.symbol === stock.symbol;
+                                    const chg = stock.today_pct;
+                                    const isPositive = chg !== null && chg !== undefined ? chg >= 0 : false;
+
+                                    return (
+                                      <tr
+                                        key={stock.symbol}
+                                        onClick={() => { setActiveGroupChart(null); setSelectedStock(stock); }}
+                                        style={{
+                                          borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
+                                          background: isSelected ? 'rgba(56, 189, 248, 0.18)' : 'transparent',
+                                          borderLeft: isSelected ? '3px solid #38bdf8' : '3px solid transparent',
+                                          cursor: 'pointer'
+                                        }}
+                                        onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)'; }}
+                                        onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                                      >
+                                        <td style={{ padding: '4px 6px' }}>
+                                          <div>
+                                            <span style={{ fontWeight: 800, color: '#ffffff' }}>{stock.symbol}</span>
+                                            <div style={{ fontSize: '9px', color: 'var(--text-muted)', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                              {stock.name}
+                                            </div>
+                                          </div>
+                                        </td>
+
+                                        <td style={{ textAlign: 'right', padding: '4px 6px', fontWeight: 700, color: chg === null || chg === undefined ? 'var(--text-muted)' : isPositive ? '#34d399' : '#fb7185' }}>
+                                          {chg !== null && chg !== undefined ? `${isPositive ? '+' : ''}${chg.toFixed(1)}%` : '—'}
+                                        </td>
+
+                                        <td style={{ textAlign: 'right', padding: '4px 6px', color: '#ffffff', fontWeight: 600 }}>
+                                          ${stock.close?.toFixed(2) || '—'}
+                                        </td>
+
+                                        <td style={{ textAlign: 'center', padding: '4px 4px', fontWeight: 800, color: stock.rs_rank >= 70 ? '#34d399' : stock.rs_rank <= 30 ? '#fb7185' : 'var(--text-muted)' }}>
+                                          {stock.rs_rank ?? '—'}
+                                        </td>
+
+                                        {/* Setups tag badges */}
+                                        <td style={{ padding: '4px 4px' }}>
+                                          {stock.setups && stock.setups.length > 0 && (
+                                            <span style={{
+                                              fontSize: '8.5px',
+                                              padding: '1px 4px',
+                                              borderRadius: '3px',
+                                              background: 'rgba(56, 189, 248, 0.2)',
+                                              color: '#38bdf8',
+                                              fontWeight: 700
+                                            }}>
+                                              {stock.setups[0]}
+                                            </span>
+                                          )}
+                                        </td>
+
+                                        {/* Quick Add To Watchlist Action */}
+                                        <td style={{ padding: '4px 6px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleAddSymbolToWatchlist(stock.symbol)}
+                                            title={`Add ${stock.symbol} to active watchlist`}
+                                            style={{
+                                              background: 'transparent',
+                                              border: '1px solid rgba(16, 185, 129, 0.4)',
+                                              color: '#10b981',
+                                              borderRadius: '3px',
+                                              padding: '1px 4px',
+                                              fontSize: '10px',
+                                              cursor: 'pointer'
+                                            }}
+                                            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(16, 185, 129, 0.2)')}
+                                            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                                          >
+                                            ＋
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ----------------------------------------------------------------- */}
+        {/* VIEW 3: POSITIONS (OPEN TRADES FROM IBKR JOURNAL)                 */}
+        {/* ----------------------------------------------------------------- */}
+        {dockTab === 'positions' && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {/* Positions Summary Card */}
+            <div style={{
+              padding: '8px 12px',
+              borderBottom: '1px solid var(--border-color)',
+              background: 'rgba(0, 0, 0, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div>
+                <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>OPEN POSITIONS</div>
+                <div style={{ fontSize: '13px', fontWeight: 800, color: '#ffffff' }}>
+                  {positionsSummary.count} Active Trades
+                </div>
+              </div>
+
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>UNREALIZED P&L</div>
+                <div style={{
+                  fontSize: '13px',
+                  fontWeight: 800,
+                  color: positionsSummary.totalPnl >= 0 ? '#34d399' : '#fb7185'
+                }}>
+                  {positionsSummary.totalPnl >= 0 ? '+' : ''}${positionsSummary.totalPnl.toFixed(2)} ({positionsSummary.pnlPct >= 0 ? '+' : ''}{positionsSummary.pnlPct.toFixed(1)}%)
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={fetchPositions}
+                title="Refresh Open Positions"
+                style={{
+                  background: 'transparent',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  color: 'var(--text-secondary)',
+                  padding: '3px 6px',
+                  fontSize: '11px',
+                  cursor: 'pointer'
+                }}
+              >
+                🔄
+              </button>
+            </div>
+
+            {/* Positions Table */}
+            <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto' }}>
+              {loadingPositions ? (
+                <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)', fontSize: '11px' }}>
+                  Loading open positions...
+                </div>
+              ) : positions.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)', fontSize: '11px' }}>
+                  No open trades found in journal.
+                </div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                  <thead>
+                    <tr style={{
+                      borderBottom: '1px solid var(--border-color)',
+                      background: 'rgba(0, 0, 0, 0.4)',
+                      color: 'var(--text-muted)',
+                      fontSize: '10px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 2
+                    }}>
+                      <th style={{ textAlign: 'left', padding: '6px 8px' }}>Position</th>
+                      <th style={{ textAlign: 'right', padding: '6px 6px' }}>Qty / Entry</th>
+                      <th style={{ textAlign: 'right', padding: '6px 6px' }}>Last</th>
+                      <th style={{ textAlign: 'right', padding: '6px 6px' }}>P&L %</th>
+                      <th style={{ textAlign: 'right', padding: '6px 6px' }}>P&L $</th>
+                      <th style={{ width: '22px', padding: '6px 4px' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {positions.map((pos) => {
+                      const isSelected = selectedStock?.symbol === pos.symbol;
+                      const pnlPct = pos.unrealized_pnl_pct ?? pos.pnl_pct;
+                      const isPositive = pnlPct !== null && pnlPct !== undefined ? pnlPct >= 0 : false;
+
+                      return (
+                        <tr
+                          key={pos.id || pos.symbol}
+                          onClick={() => { setActiveGroupChart(null); setSelectedStock(pos); }}
+                          style={{
+                            borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                            background: isSelected ? 'rgba(245, 158, 11, 0.12)' : 'transparent',
+                            borderLeft: isSelected ? '3px solid #f59e0b' : '3px solid transparent',
+                            cursor: 'pointer'
+                          }}
+                          onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)'; }}
+                          onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                        >
+                          <td style={{ padding: '6px 8px' }}>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ fontWeight: 800, color: '#ffffff' }}>{pos.symbol}</span>
+                                <span style={{
+                                  fontSize: '8.5px',
+                                  fontWeight: 800,
+                                  borderRadius: '3px',
+                                  padding: '1px 3px',
+                                  background: pos.direction === 'SHORT' ? 'rgba(244,63,94,0.2)' : 'rgba(16,185,129,0.2)',
+                                  color: pos.direction === 'SHORT' ? '#f43f5e' : '#10b981'
+                                }}>
+                                  {pos.direction || 'LONG'}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>
+                                {pos.holding_days ? `${pos.holding_days}d held` : 'Open'}
+                              </div>
+                            </div>
+                          </td>
+
+                          <td style={{ textAlign: 'right', padding: '6px 6px' }}>
+                            <div style={{ color: '#ffffff', fontWeight: 600 }}>{pos.open_qty} shs</div>
+                            <div style={{ fontSize: '9.5px', color: 'var(--text-muted)' }}>@ ${pos.avg_entry?.toFixed(2)}</div>
+                          </td>
+
+                          <td style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 600, color: '#ffffff' }}>
+                            ${pos.current_price?.toFixed(2) || '—'}
+                          </td>
+
+                          <td style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 800, color: isPositive ? '#34d399' : '#fb7185' }}>
+                            {pnlPct !== null && pnlPct !== undefined ? `${isPositive ? '+' : ''}${pnlPct.toFixed(1)}%` : '—'}
+                          </td>
+
+                          <td style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 700, color: isPositive ? '#34d399' : '#fb7185' }}>
+                            {pos.unrealized_pnl !== null && pos.unrealized_pnl !== undefined ? `${pos.unrealized_pnl >= 0 ? '+' : ''}$${pos.unrealized_pnl.toFixed(0)}` : '—'}
+                          </td>
+
+                          <td style={{ padding: '6px 4px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => handleAddSymbolToWatchlist(pos.symbol)}
+                              title={`Add ${pos.symbol} to active watchlist`}
+                              style={{
+                                background: 'transparent',
+                                border: '1px solid rgba(16, 185, 129, 0.4)',
+                                color: '#10b981',
+                                borderRadius: '3px',
+                                padding: '1px 4px',
+                                fontSize: '10px',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              ＋
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ======================================================== */}
+      {/* MODALS                                                   */}
+      {/* ======================================================== */}
       {/* Create Watchlist Modal */}
       {showCreateModal && (
         <div className="drawer-backdrop" onClick={() => setShowCreateModal(false)}>
@@ -2978,7 +2764,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                 <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Watchlist Name</label>
                 <input
                   type="text"
-                  placeholder="e.g. Focus List, Semiconductors"
+                  placeholder="e.g. Breakout Radar, High Tight Flag"
                   value={newWatchlistName}
                   onChange={(e) => setNewWatchlistName(e.target.value)}
                   autoFocus
@@ -3070,6 +2856,117 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Stan Weinstein Group Stage Chart Reference */}
+      {previewGroupChart && (
+        <div
+          className="full-page-modal-backdrop"
+          onClick={() => setPreviewGroupChart(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.78)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+        >
+          <div
+            className="glass-card custom-scrollbar"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '960px',
+              maxWidth: '96vw',
+              maxHeight: '92vh',
+              overflowY: 'auto',
+              background: '#0e1422',
+              border: '1px solid rgba(56, 189, 248, 0.35)',
+              borderRadius: '14px',
+              padding: '20px 24px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              boxShadow: '0 24px 50px rgba(0, 0, 0, 0.75)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '12px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                  <span style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    STAN WEINSTEIN STAGE ANALYSIS · {previewGroupChart.groupType?.toUpperCase() || 'MARKET'}
+                  </span>
+                  <span style={{
+                    fontSize: '10px',
+                    padding: '2px 8px',
+                    borderRadius: '10px',
+                    background: previewGroupChart.stageColor ? `${previewGroupChart.stageColor}25` : 'rgba(16,185,129,0.2)',
+                    color: previewGroupChart.stageColor || '#10b981',
+                    fontWeight: 800,
+                    border: `1px solid ${previewGroupChart.stageColor || '#10b981'}44`
+                  }}>
+                    {previewGroupChart.stageBadge || 'Stage Analysis'}
+                  </span>
+                </div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#ffffff' }}>
+                  {previewGroupChart.groupType === 'sectors' ? '🏛' : previewGroupChart.groupType === 'themes' ? '⚡' : '🏭'} {previewGroupChart.groupName}
+                </h3>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveGroupChart(previewGroupChart);
+                    setPreviewGroupChart(null);
+                  }}
+                  title="Dock this group chart in the main left panel"
+                  style={{
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    border: '1px solid rgba(56, 189, 248, 0.4)',
+                    borderRadius: '5px',
+                    color: '#38bdf8',
+                    padding: '5px 10px',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  ↗ View in Main Panel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewGroupChart(null)}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '5px',
+                    color: 'var(--text-secondary)',
+                    padding: '5px 12px',
+                    fontSize: '12px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ✕ Close
+                </button>
+              </div>
+            </div>
+
+            <GroupStageChart
+              groupType={previewGroupChart.groupType}
+              groupName={previewGroupChart.groupName}
+              onSelectStock={(sym) => {
+                setPreviewGroupChart(null);
+                setActiveGroupChart(null);
+                setSelectedStock({ symbol: sym });
+              }}
+              height={440}
+              isCompact={false}
+            />
           </div>
         </div>
       )}

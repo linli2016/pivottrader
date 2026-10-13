@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import RRGQuadrantChart from './RRGQuadrantChart';
 import GroupStageChart from './GroupStageChart';
 
@@ -109,6 +109,132 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
   const [themeFormDesc, setThemeFormDesc] = useState('');
   const [themeFormSymbols, setThemeFormSymbols] = useState('');
   const [savingTheme, setSavingTheme] = useState(false);
+
+  // Panel Width & Collapse state with localStorage persistence
+  const [isLeftCollapsed, setIsLeftCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('pt_radar_left_collapsed') === 'true';
+    } catch (_) {
+      return false;
+    }
+  });
+
+  const [isRightCollapsed, setIsRightCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('pt_radar_right_collapsed') === 'true';
+    } catch (_) {
+      return false;
+    }
+  });
+
+  const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
+    try {
+      const v = Number(localStorage.getItem('pt_radar_left_width'));
+      if (v >= 180 && v <= 520) return v;
+    } catch (_) {}
+    return 270;
+  });
+
+  const [rightPanelWidth, setRightPanelWidth] = useState(() => {
+    try {
+      const v = Number(localStorage.getItem('pt_radar_right_width'));
+      if (v >= 240 && v <= 680) return v;
+    } catch (_) {}
+    return 320;
+  });
+
+  const [isResizingLeft, setIsResizingLeft] = useState(false);
+  const [isResizingRight, setIsResizingRight] = useState(false);
+  const resizeStartXRef = useRef(0);
+  const resizeStartWidthRef = useRef(0);
+  const currentLeftWidthRef = useRef(leftPanelWidth);
+  currentLeftWidthRef.current = leftPanelWidth;
+  const currentRightWidthRef = useRef(rightPanelWidth);
+  currentRightWidthRef.current = rightPanelWidth;
+
+  const toggleLeftPanel = () => {
+    setIsLeftCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('pt_radar_left_collapsed', String(next));
+      } catch (_) {}
+      return next;
+    });
+  };
+
+  const toggleRightPanel = () => {
+    setIsRightCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('pt_radar_right_collapsed', String(next));
+      } catch (_) {}
+      return next;
+    });
+  };
+
+  const startResizingLeft = useCallback((e) => {
+    e.preventDefault();
+    setIsResizingLeft(true);
+    resizeStartXRef.current = e.clientX;
+    resizeStartWidthRef.current = currentLeftWidthRef.current;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  const startResizingRight = useCallback((e) => {
+    e.preventDefault();
+    setIsResizingRight(true);
+    resizeStartXRef.current = e.clientX;
+    resizeStartWidthRef.current = currentRightWidthRef.current;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (isResizingLeft) {
+        const delta = e.clientX - resizeStartXRef.current;
+        const newWidth = Math.min(Math.max(resizeStartWidthRef.current + delta, 180), Math.min(window.innerWidth * 0.45, 520));
+        currentLeftWidthRef.current = newWidth;
+        setLeftPanelWidth(newWidth);
+      } else if (isResizingRight) {
+        const delta = resizeStartXRef.current - e.clientX;
+        const newWidth = Math.min(Math.max(resizeStartWidthRef.current + delta, 240), Math.min(window.innerWidth * 0.55, 680));
+        currentRightWidthRef.current = newWidth;
+        setRightPanelWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (isResizingLeft) {
+        setIsResizingLeft(false);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        try {
+          localStorage.setItem('pt_radar_left_width', String(currentLeftWidthRef.current));
+        } catch (_) {}
+      }
+      if (isResizingRight) {
+        setIsResizingRight(false);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        try {
+          localStorage.setItem('pt_radar_right_width', String(currentRightWidthRef.current));
+        } catch (_) {}
+      }
+    };
+
+    if (isResizingLeft || isResizingRight) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+    }
+  }, [isResizingLeft, isResizingRight]);
 
   // Fetch group strength data
   const fetchGroupStrength = async (tab = activeTab, date = selectedDate) => {
@@ -1096,51 +1222,153 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
           </button>
         </div>
 
-        {stageFilter !== 'all' && (
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => setStageFilter('all')}
-            style={{ fontSize: '11px', padding: '2px 8px' }}
-          >
-            Reset Filter ✕
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {stageFilter !== 'all' && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setStageFilter('all')}
+              style={{ fontSize: '11px', padding: '2px 8px' }}
+            >
+              Reset Filter ✕
+            </button>
+          )}
+
+          {/* Panel Visibility Toggles */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', background: 'rgba(0, 0, 0, 0.4)', padding: '2px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.08)', gap: '2px' }}>
+            <button
+              type="button"
+              onClick={toggleLeftPanel}
+              style={{
+                background: !isLeftCollapsed ? 'rgba(56, 189, 248, 0.18)' : 'transparent',
+                color: !isLeftCollapsed ? '#38bdf8' : 'var(--text-muted)',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '3px 8px',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+              title={isLeftCollapsed ? 'Show Left Panel (Ranks)' : 'Hide Left Panel (Ranks)'}
+            >
+              <span>{isLeftCollapsed ? '▷' : '◀'}</span>
+              <span>Left Panel</span>
+            </button>
+            <button
+              type="button"
+              onClick={toggleRightPanel}
+              style={{
+                background: !isRightCollapsed ? 'rgba(56, 189, 248, 0.18)' : 'transparent',
+                color: !isRightCollapsed ? '#38bdf8' : 'var(--text-muted)',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '3px 8px',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+              title={isRightCollapsed ? 'Show Right Panel (Inspector)' : 'Hide Right Panel (Inspector)'}
+            >
+              <span>Right Panel</span>
+              <span>{isRightCollapsed ? '◁' : '▶'}</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* 3-Column Institutional Layout */}
       <div className="radar-3col-layout">
-        {/* LEFT COLUMN: Ranks List */}
-        <div className="radar-left-col">
-          <div className="radar-left-header">
-            <div className="radar-left-title">
-              <span>{activeTab === 'sectors' ? 'Sector' : activeTab === 'industries' ? 'Industry' : 'Theme'} ranks</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{filteredAndSortedGroups.length}</span>
-                <div style={{ display: 'inline-flex', gap: '3px' }}>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    style={{ padding: '1px 6px', fontSize: '10px', height: '22px', minWidth: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-                    onClick={handlePrevGroup}
-                    disabled={filteredAndSortedGroups.length === 0}
-                    title="Previous Group (↑ Up Arrow)"
-                  >
-                    ▲
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    style={{ padding: '1px 6px', fontSize: '10px', height: '22px', minWidth: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-                    onClick={handleNextGroup}
-                    disabled={filteredAndSortedGroups.length === 0}
-                    title="Next Group (↓ Down Arrow)"
-                  >
-                    ▼
-                  </button>
+        {/* LEFT COLUMN: Ranks List or Collapsed Strip */}
+        {isLeftCollapsed ? (
+          <div
+            onClick={toggleLeftPanel}
+            title="Expand Left Panel (Ranks)"
+            className="radar-collapsed-bar"
+            style={{
+              width: '28px',
+              minWidth: '28px',
+              maxWidth: '28px',
+              background: 'rgba(15, 23, 42, 0.75)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '10px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              padding: '14px 0',
+              gap: '12px',
+              cursor: 'pointer',
+              flexShrink: 0
+            }}
+          >
+            <span style={{ fontSize: '11px', color: '#38bdf8' }}>▶</span>
+            <span
+              style={{
+                writingMode: 'vertical-rl',
+                fontSize: '11px',
+                fontWeight: 700,
+                letterSpacing: '1.2px',
+                textTransform: 'uppercase',
+                color: 'var(--text-secondary)'
+              }}
+            >
+              {activeTab === 'sectors' ? 'Sectors' : activeTab === 'industries' ? 'Industries' : 'Themes'} ({filteredAndSortedGroups.length})
+            </span>
+          </div>
+        ) : (
+          <div
+            className="radar-left-col"
+            style={{
+              width: `${leftPanelWidth}px`,
+              minWidth: '180px',
+              maxWidth: '520px',
+              flexShrink: 0
+            }}
+          >
+            <div className="radar-left-header">
+              <div className="radar-left-title">
+                <span>{activeTab === 'sectors' ? 'Sector' : activeTab === 'industries' ? 'Industry' : 'Theme'} ranks</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{filteredAndSortedGroups.length}</span>
+                  <div style={{ display: 'inline-flex', gap: '3px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ padding: '1px 6px', fontSize: '10px', height: '22px', minWidth: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                      onClick={handlePrevGroup}
+                      disabled={filteredAndSortedGroups.length === 0}
+                      title="Previous Group (↑ Up Arrow)"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ padding: '1px 6px', fontSize: '10px', height: '22px', minWidth: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                      onClick={handleNextGroup}
+                      disabled={filteredAndSortedGroups.length === 0}
+                      title="Next Group (↓ Down Arrow)"
+                    >
+                      ▼
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ padding: '1px 6px', fontSize: '10px', height: '22px', minWidth: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}
+                      onClick={toggleLeftPanel}
+                      title="Hide Left Panel (◀)"
+                    >
+                      ◀
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
             <div className="radar-left-subtitle">Use ↑ / ↓ arrow keys or buttons to navigate.</div>
           </div>
 
@@ -1210,9 +1438,21 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
             })}
           </div>
         </div>
+      )}
 
-        {/* CENTER COLUMN: Main Canvas */}
-        <div className="radar-center-col">
+      {/* LEFT SPLITTER */}
+      {!isLeftCollapsed && (
+        <div
+          onMouseDown={startResizingLeft}
+          className={`radar-panel-splitter ${isResizingLeft ? 'active' : ''}`}
+          title="Drag to resize left ranks panel"
+        >
+          <div className="radar-splitter-bar" />
+        </div>
+      )}
+
+      {/* CENTER COLUMN: Main Canvas */}
+      <div className="radar-center-col" style={{ flex: 1, minWidth: 0 }}>
           <div className="radar-canvas-header">
             <div className="radar-migration-pills" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ color: 'var(--text-muted)', fontSize: '11px', marginRight: '4px' }}>Migrated:</span>
@@ -1459,7 +1699,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                 </th>
                 <th
                   onClick={() => handleSort('stage_num')}
-                  style={{ textAlign: 'center', padding: '10px 10px', cursor: 'pointer', width: '90px' }}
+                  style={{ textAlign: 'center', padding: '10px 12px', cursor: 'pointer', width: '105px', minWidth: '95px', whiteSpace: 'nowrap' }}
                   title="Stan Weinstein 4-Stage Status (Stage 1 Basing, Stage 2 Advancing, Stage 3 Topping, Stage 4 Declining)"
                 >
                   STAGE {sortBy === 'stage_num' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
@@ -1637,14 +1877,16 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                         </td>
 
                         {/* Weinstein Stage */}
-                        <td style={{ textAlign: 'center', padding: '11px 10px' }}>
+                        <td style={{ textAlign: 'center', padding: '11px 12px', whiteSpace: 'nowrap', minWidth: '95px' }}>
                           {group.stage_num ? (
                             <span
                               style={{
+                                display: 'inline-block',
                                 padding: '2px 8px',
                                 borderRadius: '4px',
                                 fontSize: '11px',
                                 fontWeight: 700,
+                                whiteSpace: 'nowrap',
                                 background: group.stage_num === 2 ? 'rgba(16, 185, 129, 0.2)' : group.stage_num === 1 ? 'rgba(56, 189, 248, 0.2)' : group.stage_num === 3 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(244, 63, 94, 0.2)',
                                 color: group.stage_num === 2 ? '#10b981' : group.stage_num === 1 ? '#38bdf8' : group.stage_num === 3 ? '#f59e0b' : '#f43f5e',
                                 border: `1px solid ${group.stage_num === 2 ? 'rgba(16, 185, 129, 0.4)' : 'rgba(255, 255, 255, 0.12)'}`
@@ -2247,8 +2489,64 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
         </div>
       </div>
 
-        {/* RIGHT COLUMN: Selection Inspector & Top Movers */}
-        <div className="radar-right-col">
+      {/* RIGHT SPLITTER */}
+      {!isRightCollapsed && (
+        <div
+          onMouseDown={startResizingRight}
+          className={`radar-panel-splitter ${isResizingRight ? 'active' : ''}`}
+          title="Drag to resize right inspector panel"
+        >
+          <div className="radar-splitter-bar" />
+        </div>
+      )}
+
+      {/* RIGHT COLUMN: Selection Inspector & Top Movers or Collapsed Strip */}
+      {isRightCollapsed ? (
+        <div
+          onClick={toggleRightPanel}
+          title="Expand Right Panel (Inspector)"
+          className="radar-collapsed-bar"
+          style={{
+            width: '28px',
+            minWidth: '28px',
+            maxWidth: '28px',
+            background: 'rgba(15, 23, 42, 0.75)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '10px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'flex-start',
+            padding: '14px 0',
+            gap: '12px',
+            cursor: 'pointer',
+            flexShrink: 0
+          }}
+        >
+          <span style={{ fontSize: '11px', color: '#38bdf8' }}>◀</span>
+          <span
+            style={{
+              writingMode: 'vertical-rl',
+              fontSize: '11px',
+              fontWeight: 700,
+              letterSpacing: '1.2px',
+              textTransform: 'uppercase',
+              color: 'var(--text-secondary)'
+            }}
+          >
+            Inspector &amp; Movers
+          </span>
+        </div>
+      ) : (
+        <div
+          className="radar-right-col"
+          style={{
+            width: `${rightPanelWidth}px`,
+            minWidth: '240px',
+            maxWidth: '680px',
+            flexShrink: 0
+          }}
+        >
           {/* Selected Group Card */}
           <div className="radar-inspector-card">
             <div className="radar-inspector-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2273,6 +2571,15 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                   title="Next Group (↓ Down Arrow)"
                 >
                   ▼
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ padding: '1px 6px', fontSize: '10px', height: '20px', minWidth: '20px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}
+                  onClick={toggleRightPanel}
+                  title="Hide Right Panel (▶)"
+                >
+                  ▶
                 </button>
               </div>
             </div>
@@ -2475,7 +2782,8 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
             </div>
           </div>
         </div>
-      </div>
+      )}
+    </div>
 
       {/* Theme Creation / Editing Modal */}
       {isThemeModalOpen && (

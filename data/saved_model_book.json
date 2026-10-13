@@ -1,5 +1,104 @@
 [
   {
+    "id": "4d88d989-a22a-4a79-9d9a-231263318319",
+    "symbol": "RSKD",
+    "setup_date": "2026-08-12",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T09:44:02.176772"
+  },
+  {
+    "id": "4a8f20de-9abc-4597-a8d4-737d35591fac",
+    "symbol": "QMCO",
+    "setup_date": "2026-08-11",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T09:43:41.498815"
+  },
+  {
+    "id": "15b01568-1e12-4202-8f6c-1ea93bc65706",
+    "symbol": "TWLO",
+    "setup_date": "2026-08-07",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T09:43:10.782148"
+  },
+  {
+    "id": "c0155323-43fb-434d-b374-df22d1f80a21",
+    "symbol": "IOVA",
+    "setup_date": "2026-08-06",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T09:42:44.332344"
+  },
+  {
+    "id": "233df4dc-ce37-442e-b37b-f1e35afb404b",
+    "symbol": "CAI",
+    "setup_date": "2026-08-06",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T09:42:07.613419"
+  },
+  {
+    "id": "84eaa025-ecf7-443a-9295-dbe6dd128d5f",
+    "symbol": "ZBRA",
+    "setup_date": "2026-08-04",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T09:41:44.327112"
+  },
+  {
+    "id": "a983c7ac-7904-4e48-8a7c-eb9877a2144e",
+    "symbol": "CDNA",
+    "setup_date": "2026-07-31",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BEARISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T09:40:54.919537"
+  },
+  {
+    "id": "187326ee-429b-49a0-a911-848448ea6ee7",
+    "symbol": "IQV",
+    "setup_date": "2026-07-28",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BEARISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T09:39:27.592855"
+  },
+  {
+    "id": "5a14ce84-8ecd-4be2-a3a5-fae20d021021",
+    "symbol": "CDNA",
+    "setup_date": "2026-07-16",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BEARISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:19:28.092030"
+  },
+  {
     "id": "589f3382-3b41-4aef-9feb-0502b1ee9bd8",
     "symbol": "SNOW",
     "setup_date": "2026-06-26",
@@ -58,6 +157,50 @@
     "saved_at": "2026-09-12T22:29:56.698602"
   },
   {
+    "id": "5bfcf4bc-0ece-48e7-b5ac-d0286abee85e",
+    "symbol": "PD",
+    "setup_date": "2026-05-29",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:18:23.686142"
+  },
+  {
+    "id": "7148015a-2edb-4c5d-b370-64ad0a2d4a0d",
+    "symbol": "OKTA",
+    "setup_date": "2026-05-29",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:18:15.284287"
+  },
+  {
+    "id": "616714e1-7e57-42d3-a217-278211d103d2",
+    "symbol": "HPE",
+    "setup_date": "2026-05-29",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:18:03.474903"
+  },
+  {
+    "id": "eb649eae-39f8-426d-a03f-03c38fe146c0",
+    "symbol": "SNOW",
+    "setup_date": "2026-05-28",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:17:34.989126"
+  },
+  {
     "id": "1e209c94-7f2f-49de-a21e-7a209d6fb2e6",
     "symbol": "KFRC",
     "setup_date": "2026-05-22",
@@ -68,6 +211,138 @@
     "tags": [],
     "saved_at": "2026-09-13T09:33:09.481372",
     "updated_at": "2026-09-13T09:37:01.465053"
+  },
+  {
+    "id": "eea4f2c5-2798-4100-a877-cef95aac6239",
+    "symbol": "SLS",
+    "setup_date": "2026-05-13",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:16:34.410198"
+  },
+  {
+    "id": "582b0978-f544-42b7-954c-a75438e49a82",
+    "symbol": "RAL",
+    "setup_date": "2026-05-12",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:16:02.886185"
+  },
+  {
+    "id": "ffc52468-912b-4abe-9599-4ec5c1e8d7de",
+    "symbol": "AMN",
+    "setup_date": "2026-05-08",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:15:01.403288"
+  },
+  {
+    "id": "23fc0658-67f8-411a-94a0-df5a90e4ebe4",
+    "symbol": "FTNT",
+    "setup_date": "2026-05-07",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:14:29.758169"
+  },
+  {
+    "id": "0054f548-2002-4732-98a0-86cf76ff97e9",
+    "symbol": "DDOG",
+    "setup_date": "2026-05-07",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:09:07.196259"
+  },
+  {
+    "id": "e2a6a4ac-0835-4ccf-a5c7-5f0c5a37c013",
+    "symbol": "VCYT",
+    "setup_date": "2026-05-06",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:08:15.301231"
+  },
+  {
+    "id": "7612b684-8873-4ab1-9a69-f5e36a6e6da9",
+    "symbol": "SMCI",
+    "setup_date": "2026-05-06",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:07:58.167460"
+  },
+  {
+    "id": "f59b8eab-7645-4890-92f2-49df11fb824c",
+    "symbol": "FTRE",
+    "setup_date": "2026-05-05",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:07:26.275555"
+  },
+  {
+    "id": "81776135-f82a-4859-ba51-e641ec09ba04",
+    "symbol": "TWLO",
+    "setup_date": "2026-05-01",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:06:53.921803"
+  },
+  {
+    "id": "f5223158-6ade-4038-96c5-fdd669480e37",
+    "symbol": "KFRC",
+    "setup_date": "2026-04-28",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:06:20.174135"
+  },
+  {
+    "id": "7f672f15-ec91-4d01-b6a0-ff90e50cb95a",
+    "symbol": "INTC",
+    "setup_date": "2026-04-24",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:06:05.669712"
+  },
+  {
+    "id": "d6fd1eb3-1885-4f21-9bb8-9703cf062085",
+    "symbol": "URI",
+    "setup_date": "2026-04-23",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:05:50.307913"
   },
   {
     "id": "ddf1f18c-e64f-4e04-ba39-064d14a5dcc9",
@@ -92,6 +367,17 @@
     "saved_at": "2026-09-12T22:26:46.423267"
   },
   {
+    "id": "7861d587-99d1-4f44-810b-d5243e651edc",
+    "symbol": "TH",
+    "setup_date": "2026-04-01",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BEARISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:05:04.712481"
+  },
+  {
     "id": "f7a9856b-ce9f-4308-a90a-3ec727d449a7",
     "symbol": "MOD",
     "setup_date": "2026-03-30",
@@ -101,6 +387,17 @@
     "notes": "",
     "tags": [],
     "saved_at": "2026-09-12T22:25:58.296871"
+  },
+  {
+    "id": "3d895d96-ffc8-4d40-aefe-eb359477663a",
+    "symbol": "NAVN",
+    "setup_date": "2026-03-26",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BEARISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:04:42.793655"
   },
   {
     "id": "b7dfe80c-ec14-46c8-ab73-37e51828bd7a",
@@ -147,6 +444,17 @@
     "saved_at": "2026-09-12T22:22:45.874037"
   },
   {
+    "id": "19235bf1-7e89-4848-bdd6-46870a285e04",
+    "symbol": "LWLG",
+    "setup_date": "2026-03-12",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BEARISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:04:33.590490"
+  },
+  {
     "id": "4ac4b567-99d3-46f7-9a81-f365604b3b54",
     "symbol": "PUMP",
     "setup_date": "2026-03-11",
@@ -170,6 +478,83 @@
     "saved_at": "2026-09-12T22:21:55.716119"
   },
   {
+    "id": "5a16854b-ea94-4bde-be9d-8b444561b8cd",
+    "symbol": "DELL",
+    "setup_date": "2026-02-27",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BEARISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:03:05.159381"
+  },
+  {
+    "id": "1c3f09c3-7dea-4921-bea0-c1c557adc82d",
+    "symbol": "YOU",
+    "setup_date": "2026-02-25",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:02:46.067223"
+  },
+  {
+    "id": "a38bfdfa-389f-4f1c-a4dd-77d57d6c1d4b",
+    "symbol": "SPHR",
+    "setup_date": "2026-02-12",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BEARISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:02:04.775441"
+  },
+  {
+    "id": "cb4ceaee-cac3-4b28-a1ea-1193b8bfd297",
+    "symbol": "FSLY",
+    "setup_date": "2026-02-12",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BEARISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:01:25.369781"
+  },
+  {
+    "id": "7b4f9828-0898-47ea-a6bf-73724565e638",
+    "symbol": "ICHR",
+    "setup_date": "2026-02-10",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BEARISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:00:27.621424"
+  },
+  {
+    "id": "92ea1dc7-49a2-44fa-bf9c-3972c560cc61",
+    "symbol": "ROIV",
+    "setup_date": "2026-02-06",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BEARISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T10:00:12.542828"
+  },
+  {
+    "id": "5223e297-04c9-450a-aee3-0896f33d1675",
+    "symbol": "MOD",
+    "setup_date": "2026-01-29",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T09:59:40.251125"
+  },
+  {
     "id": "84cab0c9-f12f-4a87-b0f3-35cfc1471739",
     "symbol": "SYRE",
     "setup_date": "2026-01-26",
@@ -190,6 +575,28 @@
     "notes": "",
     "tags": [],
     "saved_at": "2026-09-12T22:19:34.608320"
+  },
+  {
+    "id": "2cf84459-dcf2-43d1-b7b8-028e930898ed",
+    "symbol": "IBRX",
+    "setup_date": "2026-01-16",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T09:47:43.463145"
+  },
+  {
+    "id": "696fcac5-2998-4d6e-bdd3-16b9fb8418aa",
+    "symbol": "BDSX",
+    "setup_date": "2026-01-12",
+    "setup_type": "episodic_pivot",
+    "setup_name": "Episodic Pivot",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T09:47:17.870128"
   },
   {
     "id": "f853ebf6-d084-4c49-9989-4f4a07c94bec",

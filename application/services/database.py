@@ -1557,6 +1557,15 @@ class DatabaseService:
                 c_name = (meta[2] or symbol).split(" Common Stock")[0].split(" Class")[0]
                 company_desc = f"{c_name} operates in the {meta[6] or 'Equity'} sector ({meta[7] or 'Diversified'}), listed on the {meta[1]}."
 
+            themes = []
+            try:
+                if not hasattr(self, "theme_service") or self.theme_service is None:
+                    from application.services.theme_service import ThemeService
+                    self.theme_service = ThemeService()
+                themes = self.theme_service.get_themes_for_symbol(symbol)
+            except Exception as e:
+                logger.error(f"Error resolving themes for {symbol}: {e}")
+
             meta_dict = {
                 "symbol": meta[0],
                 "exchange": meta[1],
@@ -1566,6 +1575,8 @@ class DatabaseService:
                 "ipo_date": meta[5] if len(meta) > 5 else None,
                 "sector": meta[6] if len(meta) > 6 else None,
                 "industry": meta[7] if len(meta) > 7 else None,
+                "themes": themes,
+                "theme": themes[0] if themes else None,
                 "next_earnings_date": meta[8] if len(meta) > 8 else None,
                 "market_cap": meta[9] if len(meta) > 9 else None,
                 "description": company_desc
@@ -1741,7 +1752,11 @@ class DatabaseService:
                 "low_cheat_footprint": low_cheat_footprint,
                 "cheat_footprint": cheat_footprint,
                 "market_cap": meta_dict.get("market_cap"),
-                "next_earnings_date": meta_dict.get("next_earnings_date")
+                "next_earnings_date": meta_dict.get("next_earnings_date"),
+                "sector": meta_dict.get("sector"),
+                "industry": meta_dict.get("industry"),
+                "themes": themes,
+                "theme": themes[0] if themes else None
             }
 
 

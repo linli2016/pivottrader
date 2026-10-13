@@ -786,9 +786,9 @@ function compositeChartScreenshot(rawChartCanvas, {
 
   const bannerTextParts = [
     { text: symbol ? `${symbol}` : '', color: '#f8fafc', bold: true },
-    { text: isW ? '[1W]' : '[1D]', color: isW ? '#c084fc' : '#38bdf8', bold: true },
+    ...(isW ? [{ text: '[1W]', color: '#c084fc', bold: true }] : []),
     { text: date ? `(${date})` : '', color: '#94a3b8' },
-    { text: '  O', color: '#94a3b8' },
+    { text: ' O', color: '#94a3b8' },
     { text: open.toFixed(2), color: ohlcColor },
     { text: 'H', color: '#94a3b8' },
     { text: high.toFixed(2), color: ohlcColor },
@@ -1604,16 +1604,18 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     const isW = chartTimeframeRef.current === 'weekly';
 
     legendRef.current.innerHTML = `
-      <div style="display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.2;">
+      <div style="display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.2;">
         ${symbolStr ? `<span style="font-weight: 700; color: #f8fafc; margin-right: 2px;">${symbolStr}</span>` : ''}
-        <span style="background: ${isW ? 'rgba(168, 85, 247, 0.22)' : 'rgba(56, 189, 248, 0.18)'}; color: ${isW ? '#c084fc' : '#38bdf8'}; border: 1px solid ${isW ? 'rgba(168, 85, 247, 0.4)' : 'rgba(56, 189, 248, 0.35)'}; padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;">${isW ? '1W' : '1D'}</span>
-        <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">O</span><span style="color: ${ohlcColor}; font-weight: 600;">${open.toFixed(2)}</span></span>
-        <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">H</span><span style="color: ${ohlcColor}; font-weight: 600;">${high.toFixed(2)}</span></span>
-        <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">L</span><span style="color: ${ohlcColor}; font-weight: 600;">${low.toFixed(2)}</span></span>
-        <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">C</span><span style="color: ${ohlcColor}; font-weight: 600;">${close.toFixed(2)}</span></span>
+        ${isW ? `<span style="background: rgba(168, 85, 247, 0.22); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;">1W</span>` : ''}
+        <span style="display: inline-flex; align-items: center; gap: 5px;">
+          <span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">O</span><span style="color: ${ohlcColor}; font-weight: 600;">${open.toFixed(2)}</span></span>
+          <span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">H</span><span style="color: ${ohlcColor}; font-weight: 600;">${high.toFixed(2)}</span></span>
+          <span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">L</span><span style="color: ${ohlcColor}; font-weight: 600;">${low.toFixed(2)}</span></span>
+          <span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">C</span><span style="color: ${ohlcColor}; font-weight: 600;">${close.toFixed(2)}</span></span>
+        </span>
         <span style="color: ${changeColor}; font-weight: 700;">${changeSign}${change.toFixed(2)} (${changeSign}${changePct.toFixed(2)}%)</span>
-        <span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">Vol</span><span style="color: #38bdf8; font-weight: 600;">${volFormatted}</span></span>
-        ${hasRs ? `<span><span style="color: #94a3b8; font-weight: 600; margin-right: 3px;">RS</span><span style="color: #38bdf8; font-weight: 700;">${hasNormRs ? (bar.normalized_rs >= 0 ? '+' : '') + bar.normalized_rs.toFixed(2) : Number(bar.rs_line).toFixed(2)}</span></span>` : ''}
+        <span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">Vol</span><span style="color: #38bdf8; font-weight: 600;">${volFormatted}</span></span>
+        ${hasRs ? `<span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">RS</span><span style="color: #38bdf8; font-weight: 700;">${hasNormRs ? (bar.normalized_rs >= 0 ? '+' : '') + bar.normalized_rs.toFixed(2) : Number(bar.rs_line).toFixed(2)}</span></span>` : ''}
         ${isBlueDot ? `<span style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 1px 6px; border-radius: 4px; font-size: 10.5px; font-weight: 700;">🔵 RS Blue Dot</span>` : ''}
       </div>
     `;

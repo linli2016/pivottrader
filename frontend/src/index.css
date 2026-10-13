@@ -3381,38 +3381,66 @@ body {
   box-shadow: 0 2px 8px rgba(56, 189, 248, 0.25);
 }
 
-/* 3-Column Grid Container */
+/* 3-Column Layout Container with Resizable Splitters */
 .radar-3col-layout {
-  display: grid;
-  grid-template-columns: 270px minmax(0, 1fr) 300px;
-  gap: 16px;
+  display: flex;
+  flex-direction: row;
   align-items: stretch;
+  gap: 0;
   height: calc(100vh - 170px);
   min-height: 620px;
+  width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
-@media (max-width: 1400px) {
-  .radar-3col-layout {
-    grid-template-columns: 250px minmax(0, 1fr) 280px;
-    gap: 12px;
-  }
+.radar-panel-splitter {
+  width: 10px;
+  margin: 0 2px;
+  cursor: col-resize;
+  position: relative;
+  flex-shrink: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  transition: background 0.15s ease;
+  border-radius: 4px;
 }
 
-@media (max-width: 1180px) {
-  .radar-3col-layout {
-    grid-template-columns: 240px minmax(0, 1fr);
-    height: auto;
-  }
-  .radar-right-col {
-    grid-column: 1 / -1;
-  }
+.radar-panel-splitter:hover,
+.radar-panel-splitter.active {
+  background: rgba(56, 189, 248, 0.18);
 }
 
-@media (max-width: 860px) {
-  .radar-3col-layout {
-    grid-template-columns: 1fr;
-    height: auto;
-  }
+.radar-panel-splitter:hover .radar-splitter-bar,
+.radar-panel-splitter.active .radar-splitter-bar {
+  background: #38bdf8;
+  height: 48px;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+}
+
+.radar-splitter-bar {
+  width: 2px;
+  height: 32px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.2);
+  transition: all 0.15s ease;
+}
+
+.radar-collapsed-bar {
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.radar-collapsed-bar:hover {
+  background: rgba(30, 41, 59, 0.9) !important;
+  border-color: rgba(56, 189, 248, 0.45) !important;
+}
+
+.radar-collapsed-bar:hover span {
+  color: #38bdf8 !important;
 }
 
 /* Left Column: Ranks List */
@@ -3517,6 +3545,8 @@ body {
 
 /* Center Column: Main Canvas */
 .radar-center-col {
+  flex: 1;
+  min-width: 0;
   background: rgba(15, 23, 42, 0.65);
   border: 1px solid var(--border-color);
   border-radius: 12px;
