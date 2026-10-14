@@ -125,8 +125,15 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
 
   // Active Stock & Chart Data
   const [selectedStock, setSelectedStock] = useState(null);
+  const selectedStockRef = useRef(selectedStock);
+  useEffect(() => {
+    selectedStockRef.current = selectedStock;
+  }, [selectedStock]);
+
   const [stockPrices, setStockPrices] = useState([]);
+  const [displayedPricesSymbol, setDisplayedPricesSymbol] = useState(null);
   const [loadingPrices, setLoadingPrices] = useState(false);
+  const displayItemsRef = useRef([]);
 
   // Stock Details / Telemetry
   const [stockDetail, setStockDetail] = useState(null);
@@ -166,6 +173,22 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     } catch (_) {}
   }, [isRightPanelCollapsed]);
 
+  // Multi-Charts Layout (Daily on top, Monthly on bottom-left, Weekly on bottom-right)
+  const [showMultiCharts, setShowMultiCharts] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pivot_watchlist_multicharts');
+      return saved !== null ? saved === 'true' : true; // default true as requested
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('pivot_watchlist_multicharts', String(showMultiCharts));
+    } catch (_) {}
+  }, [showMultiCharts]);
+
   // -------------------------------------------------------------
   // TAB 1: WATCHLIST STATE
   // -------------------------------------------------------------
@@ -175,12 +198,8 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     return new Set((items || []).map((i) => i.symbol?.toUpperCase()).filter(Boolean));
   }, [items]);
   const [loadingItems, setLoadingItems] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterSector, setFilterSector] = useState('ALL');
-  const [filterIndustry, setFilterIndustry] = useState('ALL');
+  const [selectedIndustry, setSelectedIndustry] = useState('ALL');
   const [sortBy, setSortBy] = useState('group_rs');
-  const [groupMode, setGroupMode] = useState('none');
-  const [collapsedGroupKeys, setCollapsedGroupKeys] = useState(new Set());
   const [newSymbolInput, setNewSymbolInput] = useState('');
   const [isAddingSymbol, setIsAddingSymbol] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -194,15 +213,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   const [isDeletingItems, setIsDeletingItems] = useState(false);
   const [quickAddMenuSym, setQuickAddMenuSym] = useState(null); // ticker to add to a chosen watchlist
   const [quickAddToast, setQuickAddToast] = useState(null); // notification toast
-
-  const toggleGroupCollapse = (key) => {
-    setCollapsedGroupKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
 
   // -------------------------------------------------------------
   // TAB 2: MARKET GROUPS (SECTORS / INDUSTRIES / THEMES) STATE
@@ -336,6 +346,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
 
   useEffect(() => {
     if (selectedWatchlistId) {
+      setSelectedIndustry('ALL');
       fetchItems(selectedWatchlistId);
     }
   }, [selectedWatchlistId, fetchItems]);
@@ -411,38 +422,73 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
 
   // Prefetch adjacent stocks for instantaneous 0ms flip
   const prefetchAdjacentWatchlistStocks = useCallback((currentSym, stockList) => {
-    if (!stockList || stockList.length <= 1) return;
-    const idx = stockList.findIndex((s) => (s.symbol || '').toUpperCase() === currentSym);
+    const list = stockList || displayItemsRef.current || [];
+    if (!list || list.length <= 1) return;
+    const idx = list.findIndex((s) => (s.symbol || '').toUpperCase() === currentSym);
     if (idx === -1) return;
-    const adjacent = [];
-    if (idx + 1 < stockList.length) adjacent.push((stockList[idx + 1].symbol || '').toUpperCase());
-    if (idx - 1 >= 0) adjacent.push((stockList[idx - 1].symbol || '').toUpperCase());
-
-    adjacent.forEach(async (targetSym) => {
-      if (targetSym && !watchlistDataCacheRef.current.has(targetSym)) {
-        try {
-          const [pRes, dRes, fRes, peRes] = await Promise.all([
-            fetch(`${API_BASE}/api/stocks/${targetSym}/prices?limit=750`),
-            fetch(`${API_BASE}/api/stocks/${targetSym}`),
-            fetch(`${API_BASE}/api/stocks/${targetSym}/financials`),
-            fetch(`${API_BASE}/api/stocks/${targetSym}/peers?limit=6`)
-          ]);
-          const [prices, detail, fin, peers] = await Promise.all([
-            pRes.ok ? pRes.json() : [],
-            dRes.ok ? dRes.json() : null,
-            fRes.ok ? fRes.json() : null,
-            peRes.ok ? peRes.json() : null,
-          ]);
-          watchlistDataCacheRef.current.set(targetSym, { prices, detail, financials: fin, peersData: peers });
-        } catch (_) {}
+    const targets = [];
+    [-2, -1, 1, 2].forEach((offset) => {
+      const targetIdx = idx + offset;
+      if (targetIdx >= 0 && targetIdx < list.length) {
+        const s = (list[targetIdx].symbol || '').toUpperCase();
+        if (s && !watchlistDataCacheRef.current.has(s) && !targets.includes(s)) {
+          targets.push(s);
+        }
       }
     });
+
+    targets.forEach(async (targetSym) => {
+      try {
+        const [pRes, dRes, fRes, peRes] = await Promise.all([
+          fetch(`${API_BASE}/api/stocks/${targetSym}/prices?limit=1250`),
+          fetch(`${API_BASE}/api/stocks/${targetSym}`),
+          fetch(`${API_BASE}/api/stocks/${targetSym}/financials`),
+          fetch(`${API_BASE}/api/stocks/${targetSym}/peers?limit=6`)
+        ]);
+        const [prices, detail, fin, peers] = await Promise.all([
+          pRes.ok ? pRes.json() : [],
+          dRes.ok ? dRes.json() : null,
+          fRes.ok ? fRes.json() : null,
+          peRes.ok ? peRes.json() : null,
+        ]);
+        watchlistDataCacheRef.current.set(targetSym, { prices, detail, financials: fin, peersData: peers });
+      } catch (_) {}
+    });
   }, []);
+
+  // Centralized stock selection: updates immediately in one batch if cached, or triggers fetch without unmounting charts
+  const selectStock = useCallback((stock) => {
+    if (!stock?.symbol) {
+      setSelectedStock(null);
+      setStockPrices([]);
+      setDisplayedPricesSymbol(null);
+      setStockDetail(null);
+      setFinancials(null);
+      setPeersData(null);
+      return;
+    }
+    setActiveGroupChart(null);
+    setSelectedStock(stock);
+
+    const sym = stock.symbol.toUpperCase();
+    if (watchlistDataCacheRef.current.has(sym)) {
+      const cached = watchlistDataCacheRef.current.get(sym);
+      setStockPrices(cached.prices);
+      setDisplayedPricesSymbol(sym);
+      setStockDetail(cached.detail);
+      setFinancials(cached.financials);
+      setPeersData(cached.peersData);
+      setLoadingPrices(false);
+      setLoadingDetail(false);
+      prefetchAdjacentWatchlistStocks(sym, displayItemsRef.current);
+    }
+  }, [prefetchAdjacentWatchlistStocks]);
 
   // Fetch stock chart prices and telemetry when selected stock changes
   useEffect(() => {
     if (!selectedStock?.symbol) {
       setStockPrices([]);
+      setDisplayedPricesSymbol(null);
       setStockDetail(null);
       setFinancials(null);
       setPeersData(null);
@@ -455,12 +501,13 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     if (watchlistDataCacheRef.current.has(sym)) {
       const cached = watchlistDataCacheRef.current.get(sym);
       setStockPrices(cached.prices);
+      setDisplayedPricesSymbol(sym);
       setStockDetail(cached.detail);
       setFinancials(cached.financials);
       setPeersData(cached.peersData);
       setLoadingPrices(false);
       setLoadingDetail(false);
-      prefetchAdjacentWatchlistStocks(sym, items);
+      prefetchAdjacentWatchlistStocks(sym, displayItemsRef.current);
       return;
     }
 
@@ -472,37 +519,48 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     let financialsData = null;
     let peersDataRes = null;
 
-    const pPrices = fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=750`)
+    const pPrices = fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=1250`)
       .then((res) => (res.ok ? res.json() : []))
       .then((prices) => {
-        pricesData = prices;
-        setStockPrices(prices);
-        setLoadingPrices(false);
+        if (selectedStockRef.current?.symbol?.toUpperCase() === sym) {
+          pricesData = prices;
+          setStockPrices(prices);
+          setDisplayedPricesSymbol(sym);
+          setLoadingPrices(false);
+        }
         return prices;
       })
       .catch(() => {
-        setLoadingPrices(false);
+        if (selectedStockRef.current?.symbol?.toUpperCase() === sym) {
+          setLoadingPrices(false);
+        }
         return [];
       });
 
     const pDetail = fetch(`${API_BASE}/api/stocks/${sym}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((detail) => {
-        detailData = detail;
-        setStockDetail(detail);
-        setLoadingDetail(false);
+        if (selectedStockRef.current?.symbol?.toUpperCase() === sym) {
+          detailData = detail;
+          setStockDetail(detail);
+          setLoadingDetail(false);
+        }
         return detail;
       })
       .catch(() => {
-        setLoadingDetail(false);
+        if (selectedStockRef.current?.symbol?.toUpperCase() === sym) {
+          setLoadingDetail(false);
+        }
         return null;
       });
 
     const pFin = fetch(`${API_BASE}/api/stocks/${sym}/financials`)
       .then((res) => (res.ok ? res.json() : null))
       .then((fin) => {
-        financialsData = fin;
-        setFinancials(fin);
+        if (selectedStockRef.current?.symbol?.toUpperCase() === sym) {
+          financialsData = fin;
+          setFinancials(fin);
+        }
         return fin;
       })
       .catch(() => null);
@@ -510,8 +568,10 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     const pPeers = fetch(`${API_BASE}/api/stocks/${sym}/peers?limit=6`)
       .then((res) => (res.ok ? res.json() : null))
       .then((peers) => {
-        peersDataRes = peers;
-        setPeersData(peers);
+        if (selectedStockRef.current?.symbol?.toUpperCase() === sym) {
+          peersDataRes = peers;
+          setPeersData(peers);
+        }
         return peers;
       })
       .catch(() => null);
@@ -523,9 +583,9 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         financials: financialsData,
         peersData: peersDataRes
       });
-      prefetchAdjacentWatchlistStocks(sym, items);
+      prefetchAdjacentWatchlistStocks(sym, displayItemsRef.current);
     });
-  }, [selectedStock?.symbol, items, prefetchAdjacentWatchlistStocks]);
+  }, [selectedStock?.symbol, prefetchAdjacentWatchlistStocks]);
 
   // Quick Add Symbol to active watchlist
   const handleAddSymbol = async (e) => {
@@ -811,107 +871,56 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   // -------------------------------------------------------------
   // FILTERING & SORTING FOR WATCHLIST ITEMS
   // -------------------------------------------------------------
-  const availableSectors = useMemo(() => {
-    const map = new Map();
-    items.forEach((item) => {
-      const sec = (item.sector || '').trim();
-      if (sec) map.set(sec, (map.get(sec) || 0) + 1);
+  const industryCounts = useMemo(() => {
+    const counts = {};
+    (items || []).forEach((item) => {
+      const ind = (item.industry || item.group_name || item.sector || '').trim() || 'Unclassified';
+      counts[ind] = (counts[ind] || 0) + 1;
     });
-    return Array.from(map.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    return Object.entries(counts)
+      .map(([industry, count]) => ({ industry, count }))
+      .sort((a, b) => b.count - a.count || a.industry.localeCompare(b.industry));
   }, [items]);
 
-  const availableIndustries = useMemo(() => {
-    const map = new Map();
-    items.forEach((item) => {
-      if (filterSector !== 'ALL' && item.sector !== filterSector) return;
-      const ind = (item.industry || '').trim();
-      if (ind) map.set(ind, (map.get(ind) || 0) + 1);
-    });
-    return Array.from(map.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [items, filterSector]);
+  useEffect(() => {
+    if (selectedIndustry !== 'ALL' && !industryCounts.some(ic => ic.industry === selectedIndustry)) {
+      setSelectedIndustry('ALL');
+    }
+  }, [industryCounts, selectedIndustry]);
 
   const filteredItems = useMemo(() => {
+    if (!selectedIndustry || selectedIndustry === 'ALL') {
+      return items;
+    }
     return items.filter((item) => {
-      if (searchQuery) {
-        const query = searchQuery.trim().toLowerCase();
-        const symMatch = (item.symbol || '').toLowerCase().includes(query);
-        const nameMatch = (item.name || '').toLowerCase().includes(query);
-        const indMatch = (item.industry || '').toLowerCase().includes(query);
-        if (!symMatch && !nameMatch && !indMatch) return false;
-      }
-      if (filterSector !== 'ALL' && item.sector !== filterSector) return false;
-      if (filterIndustry !== 'ALL' && item.industry !== filterIndustry) return false;
-      return true;
+      const ind = (item.industry || item.group_name || item.sector || '').trim() || 'Unclassified';
+      return ind === selectedIndustry;
     });
-  }, [items, searchQuery, filterSector, filterIndustry]);
+  }, [items, selectedIndustry]);
 
   const sortedItems = useMemo(() => {
     const copy = [...filteredItems];
     switch (sortBy) {
+      case 'symbol':
+        return copy.sort((a, b) => (a.symbol || '').localeCompare(b.symbol || ''));
+      case 'symbol_desc':
+        return copy.sort((a, b) => (b.symbol || '').localeCompare(a.symbol || ''));
       case 'group_rs':
         return copy.sort((a, b) => (b.group_rs_rank ?? b.rs_rank ?? 0) - (a.group_rs_rank ?? a.rs_rank ?? 0));
       case 'rs_rank':
-        return copy.sort((a, b) => (b.rs_rank ?? 0) - (a.rs_rank ?? 0));
+        return copy.sort((a, b) => (b.rs_rank ?? -999) - (a.rs_rank ?? -999));
+      case 'rs_rank_asc':
+        return copy.sort((a, b) => (a.rs_rank ?? 999) - (b.rs_rank ?? 999));
       case 'chg_pct_desc':
-        return copy.sort((a, b) => (b.chg_pct ?? -999) - (a.chg_pct ?? -999));
+        return copy.sort((a, b) => ((b.today_pct ?? b.chg_pct) ?? -999) - ((a.today_pct ?? a.chg_pct) ?? -999));
       case 'chg_pct_asc':
-        return copy.sort((a, b) => (a.chg_pct ?? 999) - (b.chg_pct ?? 999));
-      case 'rvol':
-        return copy.sort((a, b) => (b.rvol_pct ?? 0) - (a.rvol_pct ?? 0));
-      case 'symbol':
-        return copy.sort((a, b) => a.symbol.localeCompare(b.symbol));
+        return copy.sort((a, b) => ((a.today_pct ?? a.chg_pct) ?? 999) - ((b.today_pct ?? b.chg_pct) ?? 999));
       case 'added':
         return copy.sort((a, b) => new Date(b.added_at || 0) - new Date(a.added_at || 0));
       default:
         return copy;
     }
   }, [filteredItems, sortBy]);
-
-  // Grouped items structure if groupMode !== 'none'
-  const groupedSections = useMemo(() => {
-    if (groupMode === 'none') return null;
-
-    const groupsMap = new Map();
-    sortedItems.forEach((item) => {
-      let gName = '';
-      let gRsRank = 50;
-      let gQuadrant = 'Improving';
-
-      if (groupMode === 'industry') {
-        gName = (item.industry || '').trim() || 'Unclassified Industry';
-        gRsRank = item.industry_rs_rank ?? item.group_rs_rank ?? 50;
-        gQuadrant = item.industry_quadrant ?? item.group_quadrant ?? 'Improving';
-      } else if (groupMode === 'sector') {
-        gName = (item.sector || '').trim() || 'Unclassified Sector';
-        gRsRank = item.sector_rs_rank ?? item.group_rs_rank ?? 50;
-        gQuadrant = item.sector_quadrant ?? item.group_quadrant ?? 'Improving';
-      } else if (groupMode === 'theme') {
-        gName = item.theme || (item.themes && item.themes[0]) || 'Other / No Theme';
-        gRsRank = item.theme_rs_rank ?? item.group_rs_rank ?? 50;
-        gQuadrant = item.theme_quadrant ?? item.group_quadrant ?? 'Improving';
-      }
-
-      if (!groupsMap.has(gName)) {
-        groupsMap.set(gName, {
-          name: gName,
-          key: gName,
-          rsRank: gRsRank,
-          quadrant: gQuadrant,
-          items: []
-        });
-      }
-      groupsMap.get(gName).items.push(item);
-    });
-
-    return Array.from(groupsMap.values()).sort((a, b) => {
-      if (b.rsRank !== a.rsRank) return b.rsRank - a.rsRank;
-      return b.items.length - a.items.length || a.name.localeCompare(b.name);
-    });
-  }, [sortedItems, groupMode]);
 
   // -------------------------------------------------------------
   // FILTERING & SORTING FOR MARKET GROUPS TAB
@@ -976,16 +985,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   // -------------------------------------------------------------
   const displayItems = useMemo(() => {
     if (dockTab === 'watchlists') {
-      if (groupMode === 'none' || !groupedSections) {
-        return sortedItems;
-      }
-      const flat = [];
-      groupedSections.forEach((g) => {
-        if (!collapsedGroupKeys.has(g.key)) {
-          flat.push(...g.items);
-        }
-      });
-      return flat;
+      return sortedItems;
     }
     if (dockTab === 'groups') {
       const flat = [];
@@ -1002,7 +1002,11 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       return positions;
     }
     return sortedItems;
-  }, [dockTab, sortedItems, groupMode, groupedSections, collapsedGroupKeys, expandedMarketGroups, groupType, groupConstituents, positions]);
+  }, [dockTab, sortedItems, expandedMarketGroups, groupType, groupConstituents, positions]);
+
+  useEffect(() => {
+    displayItemsRef.current = displayItems;
+  }, [displayItems]);
 
   // Keyboard Navigation across currently visible display items or groups (ArrowUp / ArrowDown)
   useEffect(() => {
@@ -1024,17 +1028,17 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         );
         if (e.key === 'ArrowUp') {
           const prevIdx = currentIdx > 0 ? currentIdx - 1 : displayItems.length - 1;
-          setSelectedStock(displayItems[prevIdx]);
+          selectStock(displayItems[prevIdx]);
         } else {
           const nextIdx = currentIdx < displayItems.length - 1 ? currentIdx + 1 : 0;
-          setSelectedStock(displayItems[nextIdx]);
+          selectStock(displayItems[nextIdx]);
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [displayItems, selectedStock, activeGroupChart, dockTab, handlePrevGroup, handleNextGroup]);
+  }, [displayItems, selectedStock, activeGroupChart, dockTab, handlePrevGroup, handleNextGroup, selectStock]);
 
   const activeWatchlist = watchlists.find((w) => w.id === selectedWatchlistId);
 
@@ -1079,9 +1083,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   const stageBadge = selectedStock?.stage_badge || null;
   const stageColor = selectedStock?.stage_color || null;
   const activeSetups = selectedStock?.setups || [];
-  const priceChangePct = selectedStock?.today_pct !== undefined && selectedStock?.today_pct !== null
-    ? selectedStock.today_pct
-    : selectedStock?.chg_pct;
 
   // Positions summary
   const positionsSummary = useMemo(() => {
@@ -1247,8 +1248,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                   groupType={activeGroupChart.groupType}
                   groupName={activeGroupChart.groupName}
                   onSelectStock={(sym) => {
-                    setActiveGroupChart(null);
-                    setSelectedStock({ symbol: sym });
+                    selectStock({ symbol: sym });
                   }}
                   height={520}
                   isCompact={false}
@@ -1267,29 +1267,19 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                 background: 'var(--bg-secondary)',
                 flexShrink: 0
               }}>
-                {/* Row 1: Symbol, Price, Change%, Company Name, Exchange & Sector, Actions */}
+                {/* Row 1: Symbol, Company Name, Exchange & Sector, Actions */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '22px', fontWeight: 900, color: '#34d399', letterSpacing: '-0.4px', lineHeight: 1 }}>
-                      {selectedStock.symbol}
-                    </span>
-
-                    {latestBar && (
-                      <span style={{ fontSize: '18px', fontWeight: 800, color: '#ffffff', lineHeight: 1 }}>
-                        ${latestBar.close?.toFixed(2)}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '22px', fontWeight: 900, color: '#34d399', letterSpacing: '-0.4px', lineHeight: 1 }}>
+                        {selectedStock.symbol}
                       </span>
-                    )}
-
-                    {priceChangePct !== null && priceChangePct !== undefined && (
-                      <span style={{
-                        fontSize: '13px',
-                        fontWeight: 700,
-                        color: priceChangePct >= 0 ? '#34d399' : '#fb7185',
-                        lineHeight: 1
-                      }}>
-                        {priceChangePct >= 0 ? `+${priceChangePct.toFixed(2)}%` : `${priceChangePct.toFixed(2)}%`}
-                      </span>
-                    )}
+                      {loadingPrices && (
+                        <span className="spin-icon" style={{ fontSize: '13px', color: '#38bdf8' }} title="Loading latest candles...">
+                          ⟳
+                        </span>
+                      )}
+                    </div>
 
                     {cleanName && cleanName !== selectedStock.symbol && (
                       <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: 700 }}>
@@ -1378,6 +1368,28 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                         </button>
                       );
                     })()}
+
+                    {/* Multi-Chart View (Daily + Monthly + Weekly) Toggle Button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowMultiCharts((prev) => !prev)}
+                      title={showMultiCharts ? 'Switch to Single Chart (Daily)' : 'Switch to 3-Charts Layout (Daily + Monthly + Weekly)'}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        background: showMultiCharts ? 'rgba(168, 85, 247, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                        border: showMultiCharts ? '1px solid #c084fc' : '1px solid var(--border-color)',
+                        borderRadius: '5px',
+                        color: showMultiCharts ? '#c084fc' : 'var(--text-secondary)',
+                        padding: '3px 8px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <span>{showMultiCharts ? '⊞ 3-Charts' : '⬚ 1-Chart'}</span>
+                    </button>
 
                     {/* Toggle Stock Details Drawer Button */}
                     <button
@@ -1554,9 +1566,89 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                 </div>
               </div>
 
-              {/* Candlestick Chart Area (Full Height) */}
-              <div style={{ flex: 1, minHeight: 0, position: 'relative', height: '100%' }}>
-                {loadingPrices ? (
+              {/* Candlestick Chart Area (Daily on top, Monthly on bottom-left, Weekly on bottom-right) */}
+              <div style={{ flex: 1, minHeight: 0, position: 'relative', height: '100%', display: 'flex', flexDirection: 'column' }}>
+                {stockPrices && stockPrices.length > 0 ? (
+                  <>
+                    {showMultiCharts ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', minHeight: 0 }}>
+                        {/* Top: Daily Chart (~70% vertical space) */}
+                        <div style={{ flex: '2.4 1 0%', minHeight: 0, position: 'relative', borderBottom: '1px solid var(--border-color)' }}>
+                          <CandlestickChart
+                            data={stockPrices}
+                            symbol={displayedPricesSymbol || selectedStock.symbol}
+                            timeframe="daily"
+                            showVolumeProfile={true}
+                            height="100%"
+                          />
+                        </div>
+
+                        {/* Bottom Split: Monthly (Left) & Weekly (Right) (~30% vertical space) */}
+                        <div style={{ flex: '1 1 0%', minHeight: 0, display: 'flex', flexDirection: 'row', width: '100%' }}>
+                          {/* Monthly Chart (Left Bottom) */}
+                          <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative', borderRight: '1px solid var(--border-color)' }}>
+                            <CandlestickChart
+                              data={stockPrices}
+                              symbol={displayedPricesSymbol || selectedStock.symbol}
+                              timeframe="monthly"
+                              hideTools={true}
+                              showVolumeProfile={false}
+                              showYearlyThumbnail={false}
+                              showRsLine={false}
+                              height="100%"
+                            />
+                          </div>
+
+                          {/* Weekly Chart (Right Bottom) */}
+                          <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
+                            <CandlestickChart
+                              data={stockPrices}
+                              symbol={displayedPricesSymbol || selectedStock.symbol}
+                              timeframe="weekly"
+                              hideTools={true}
+                              showVolumeProfile={false}
+                              showYearlyThumbnail={false}
+                              showRsLine={false}
+                              height="100%"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <CandlestickChart
+                        data={stockPrices}
+                        symbol={displayedPricesSymbol || selectedStock.symbol}
+                        height="100%"
+                      />
+                    )}
+
+                    {/* Subtle floating badge when updating prices in background without unmounting */}
+                    {loadingPrices && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '10px',
+                        right: '16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        background: 'rgba(15, 23, 42, 0.85)',
+                        backdropFilter: 'blur(4px)',
+                        border: '1px solid rgba(56, 189, 248, 0.35)',
+                        padding: '3px 10px',
+                        borderRadius: '14px',
+                        color: '#38bdf8',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        zIndex: 20,
+                        pointerEvents: 'none',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.4)'
+                      }}>
+                        <span className="spin-icon">⟳</span>
+                        <span>Updating {selectedStock.symbol}...</span>
+                      </div>
+                    )}
+                  </>
+                ) : loadingPrices ? (
                   <div style={{
                     display: 'flex',
                     height: '100%',
@@ -1569,12 +1661,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                     <span className="spin-icon">⟳</span>
                     <span>Loading chart candles for {selectedStock.symbol}...</span>
                   </div>
-                ) : stockPrices && stockPrices.length > 0 ? (
-                  <CandlestickChart
-                    data={stockPrices}
-                    symbol={selectedStock.symbol}
-                    height="100%"
-                  />
                 ) : (
                   <div style={{
                     display: 'flex',
@@ -2037,66 +2123,32 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
               </button>
             </div>
 
-            {/* Filter & Group Controls */}
-            <div style={{ padding: '6px 10px', borderBottom: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '5px', background: 'rgba(0,0,0,0.15)' }}>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type="text"
-                  placeholder="🔍 Filter ticker or name..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  style={{
-                    width: '100%',
-                    background: 'rgba(0, 0, 0, 0.35)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    padding: '3px 20px 3px 6px',
-                    fontSize: '10.5px',
-                    color: '#ffffff',
-                    boxSizing: 'border-box'
-                  }}
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    style={{ position: 'absolute', right: '4px', top: '3px', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '10px' }}
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-
-              {/* Group By selector */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)' }}>
-                <span>Group by:</span>
-                <div style={{ display: 'flex', gap: '3px' }}>
-                  {[
-                    { id: 'none', label: 'None' },
-                    { id: 'industry', label: 'Industry' },
-                    { id: 'sector', label: 'Sector' },
-                    { id: 'theme', label: 'Theme' }
-                  ].map((btn) => (
-                    <button
-                      key={btn.id}
-                      type="button"
-                      onClick={() => setGroupMode(btn.id)}
-                      style={{
-                        background: groupMode === btn.id ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
-                        border: groupMode === btn.id ? '1px solid #38bdf8' : '1px solid transparent',
-                        color: groupMode === btn.id ? '#38bdf8' : 'var(--text-muted)',
-                        borderRadius: '3px',
-                        padding: '1px 5px',
-                        fontSize: '9.5px',
-                        fontWeight: groupMode === btn.id ? 700 : 500,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {btn.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            {/* Industry/Group Filter Combobox */}
+            <div style={{ padding: '6px 10px', borderBottom: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.15)' }}>
+              <select
+                value={selectedIndustry}
+                onChange={(e) => setSelectedIndustry(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '5px 8px',
+                  background: 'rgba(30, 41, 59, 0.85)',
+                  color: selectedIndustry !== 'ALL' ? '#38bdf8' : 'var(--text-primary)',
+                  border: selectedIndustry !== 'ALL' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: selectedIndustry !== 'ALL' ? '600' : '400',
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+                title="Filter stocks by industry/group"
+              >
+                <option value="ALL">All Industry Groups ({items.length})</option>
+                {industryCounts.map(({ industry, count }) => (
+                  <option key={industry} value={industry}>
+                    {industry} ({count})
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Watchlist Stock Table */}
@@ -2115,25 +2167,37 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                     zIndex: 2
                   }}>
                     {isSelectMode && <th style={{ width: '24px', padding: '6px 4px', textAlign: 'center' }}>✓</th>}
-                    <th style={{ textAlign: 'left', padding: '6px 8px' }}>Symbol / Name</th>
-                    <th style={{ textAlign: 'right', padding: '6px 6px', cursor: 'pointer' }} onClick={() => setSortBy(sortBy === 'chg_pct_desc' ? 'chg_pct_asc' : 'chg_pct_desc')}>
+                    <th
+                      style={{ textAlign: 'left', padding: '6px 8px', cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => setSortBy(sortBy === 'symbol' ? 'symbol_desc' : 'symbol')}
+                    >
+                      Symbol / Name {sortBy === 'symbol' ? '↑' : sortBy === 'symbol_desc' ? '↓' : ''}
+                    </th>
+                    <th
+                      style={{ textAlign: 'right', padding: '6px 6px', cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => setSortBy(sortBy === 'chg_pct_desc' ? 'chg_pct_asc' : 'chg_pct_desc')}
+                    >
                       Today {sortBy === 'chg_pct_desc' ? '↓' : sortBy === 'chg_pct_asc' ? '↑' : ''}
                     </th>
-                    <th style={{ textAlign: 'right', padding: '6px 6px', cursor: 'pointer' }} onClick={() => setSortBy('rvol')}>RVOL</th>
-                    <th style={{ textAlign: 'center', padding: '6px 6px', cursor: 'pointer' }} onClick={() => setSortBy('rs_rank')}>RS</th>
+                    <th
+                      style={{ textAlign: 'center', padding: '6px 6px', cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => setSortBy(sortBy === 'rs_rank' ? 'rs_rank_asc' : 'rs_rank')}
+                    >
+                      RS {sortBy === 'rs_rank' ? '↓' : sortBy === 'rs_rank_asc' ? '↑' : ''}
+                    </th>
                     <th style={{ width: '22px', padding: '6px 4px' }}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {loadingItems ? (
                     <tr>
-                      <td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                      <td colSpan={isSelectMode ? 5 : 4} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
                         Loading watchlist stocks...
                       </td>
                     </tr>
                   ) : sortedItems.length === 0 ? (
                     <tr>
-                      <td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                      <td colSpan={isSelectMode ? 5 : 4} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
                         No stocks found in this watchlist.
                       </td>
                     </tr>
@@ -2147,7 +2211,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                       return (
                         <tr
                           key={item.symbol}
-                          onClick={() => { setActiveGroupChart(null); setSelectedStock(item); }}
+                          onClick={() => selectStock(item)}
                           style={{
                             borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
                             background: isSelected ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
@@ -2179,10 +2243,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
 
                           <td style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 700, color: chg === null || chg === undefined ? 'var(--text-muted)' : isPositive ? '#34d399' : '#fb7185' }}>
                             {chg !== null && chg !== undefined ? `${isPositive ? '+' : ''}${chg.toFixed(1)}%` : '—'}
-                          </td>
-
-                          <td style={{ textAlign: 'right', padding: '6px 6px', color: item.rvol_pct && item.rvol_pct >= 150 ? '#34d399' : 'var(--text-secondary)' }}>
-                            {item.rvol_pct ? `${Math.round(item.rvol_pct)}%` : '—'}
                           </td>
 
                           <td style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 800, color: rsVal >= 70 ? '#34d399' : rsVal <= 30 ? '#fb7185' : 'var(--text-secondary)' }}>
@@ -2520,7 +2580,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                                     return (
                                       <tr
                                         key={stock.symbol}
-                                        onClick={() => { setActiveGroupChart(null); setSelectedStock(stock); }}
+                                        onClick={() => selectStock(stock)}
                                         style={{
                                           borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
                                           background: isSelected ? 'rgba(56, 189, 248, 0.18)' : 'transparent',
@@ -2717,7 +2777,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                       return (
                         <tr
                           key={pos.id || pos.symbol}
-                          onClick={() => { setActiveGroupChart(null); setSelectedStock(pos); }}
+                          onClick={() => selectStock(pos)}
                           style={{
                             borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
                             background: isSelected ? 'rgba(245, 158, 11, 0.12)' : 'transparent',
@@ -3051,8 +3111,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
               groupName={previewGroupChart.groupName}
               onSelectStock={(sym) => {
                 setPreviewGroupChart(null);
-                setActiveGroupChart(null);
-                setSelectedStock({ symbol: sym });
+                selectStock({ symbol: sym });
               }}
               height={440}
               isCompact={false}

@@ -1864,6 +1864,51 @@ class DatabaseService:
                 bars_list = bars_list[-limit:]
             return bars_list
 
+        elif tf == "monthly":
+            with self.get_read_only_conn() as conn:
+                rows = conn.execute("""
+                    WITH sym_daily AS (
+                        SELECT date, open, high, low, close, volume, rs_rank, ti_65,
+                               date_trunc('month', date)::DATE as month_start
+                        FROM daily_bars 
+                        WHERE symbol = ?
+                    ),
+                    sym_ordered AS (
+                        SELECT * FROM sym_daily ORDER BY date ASC
+                    )
+                    SELECT 
+                        month_start as date,
+                        FIRST(open ORDER BY date ASC) as open,
+                        MAX(high) as high,
+                        MIN(low) as low,
+                        LAST(close ORDER BY date ASC) as close,
+                        SUM(volume) as volume,
+                        LAST(rs_rank ORDER BY date ASC) as rs_rank,
+                        LAST(ti_65 ORDER BY date ASC) as ti_65
+                    FROM sym_ordered
+                    GROUP BY month_start
+                    ORDER BY month_start ASC
+                """, [symbol]).fetchall()
+
+            bars_list = []
+            for r in rows:
+                d, o, h, l, cl, v, rs_r, ti = r
+                bars_list.append({
+                    "symbol": symbol,
+                    "time": d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else (str(d)[:10] if d else None),
+                    "open": float(o) if o is not None else 0.0,
+                    "high": float(h) if h is not None else 0.0,
+                    "low": float(l) if l is not None else 0.0,
+                    "close": float(cl) if cl is not None else 0.0,
+                    "volume": float(v) if v is not None else 0.0,
+                    "rs_rank": rs_r,
+                    "ti_65": ti,
+                })
+
+            if limit and len(bars_list) > limit:
+                bars_list = bars_list[-limit:]
+            return bars_list
+
         elif tf == "yearly":
             with self.get_read_only_conn() as conn:
                 rows = conn.execute("""

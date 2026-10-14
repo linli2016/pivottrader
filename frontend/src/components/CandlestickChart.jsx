@@ -138,6 +138,69 @@ export function aggregateDailyBarsToWeekly(dailyBars) {
   return weeklyBars;
 }
 
+// Helper to aggregate daily OHLCV bars into monthly bars (aligned to the 1st of each month)
+export function aggregateDailyBarsToMonthly(dailyBars) {
+  if (!dailyBars || dailyBars.length === 0) return [];
+
+  const monthlyMap = new Map();
+  for (let i = 0; i < dailyBars.length; i++) {
+    const bar = dailyBars[i];
+    if (!bar) continue;
+    const timeStr = typeof bar.time === 'string'
+      ? bar.time
+      : (bar.time?.year ? `${bar.time.year}-${String(bar.time.month).padStart(2, '0')}-${String(bar.time.day).padStart(2, '0')}` : String(bar.time));
+
+    const monthKey = `${timeStr.slice(0, 7)}-01`;
+    if (!monthlyMap.has(monthKey)) {
+      monthlyMap.set(monthKey, {
+        time: monthKey,
+        open: bar.open,
+        high: bar.high,
+        low: bar.low,
+        close: bar.close,
+        volume: bar.volume || 0,
+        rs_line: bar.rs_line ?? null,
+        is_rs_blue_dot: Boolean(bar.is_rs_blue_dot),
+        dailyDates: [timeStr],
+      });
+    } else {
+      const mBar = monthlyMap.get(monthKey);
+      mBar.high = Math.max(mBar.high, bar.high);
+      mBar.low = Math.min(mBar.low, bar.low);
+      mBar.close = bar.close;
+      mBar.volume += (bar.volume || 0);
+      if (bar.rs_line !== undefined && bar.rs_line !== null) {
+        mBar.rs_line = bar.rs_line;
+      }
+      if (bar.is_rs_blue_dot) {
+        mBar.is_rs_blue_dot = true;
+      }
+      mBar.dailyDates.push(timeStr);
+    }
+  }
+
+  const monthlyBars = Array.from(monthlyMap.values());
+  monthlyBars.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+
+  // Compute 12-month rolling RS Blue Dot on monthly closes if not already flagged
+  for (let i = 0; i < monthlyBars.length; i++) {
+    const startIdx = Math.max(0, i - 12);
+    let maxRs = -Infinity;
+    let maxClose = -Infinity;
+    for (let j = startIdx; j < i; j++) {
+      if (monthlyBars[j].rs_line !== null && monthlyBars[j].rs_line > maxRs) maxRs = monthlyBars[j].rs_line;
+      if (monthlyBars[j].close > maxClose) maxClose = monthlyBars[j].close;
+    }
+    if (i > 2 && monthlyBars[i].rs_line !== null && maxRs > -Infinity) {
+      if (monthlyBars[i].rs_line >= maxRs && monthlyBars[i].close < maxClose) {
+        monthlyBars[i].is_rs_blue_dot = true;
+      }
+    }
+  }
+
+  return monthlyBars;
+}
+
 export function getCombinedTradeMarkers(chartData, showRsLine, tradeExecutions) {
   const markers = [];
   if (showRsLine && Array.isArray(chartData)) {
@@ -313,8 +376,13 @@ export function getPanelMargins(containerHeight, showRs = true) {
 // Calculate responsive visible bars based on container width
 // For daily: ~147 bars (7 months) up to ~252 bars (>9-12 months).
 // For weekly: ~65-156 bars (1.5-3 years).
+// For monthly: ~36-144 bars (3-12 years).
 function getResponsiveVisibleBars(containerWidth, timeframe = 'daily') {
   const w = containerWidth || (typeof window !== 'undefined' ? window.innerWidth : 800);
+  if (timeframe === 'monthly') {
+    const bars = Math.round(w / 14);
+    return Math.max(36, Math.min(144, bars));
+  }
   if (timeframe === 'weekly') {
     const bars = Math.round(w / 8.5);
     return Math.max(65, Math.min(156, bars));
@@ -721,6 +789,8 @@ function compositeChartScreenshot(rawChartCanvas, {
       let idx = dataLookup?.timeMap?.get(targetDate);
       if (idx === undefined && dataLookup?.timeframe === 'weekly') {
         idx = dataLookup?.timeMap?.get(getMondayOfWeek(targetDate));
+      } else if (idx === undefined && dataLookup?.timeframe === 'monthly') {
+        idx = dataLookup?.timeMap?.get(`${targetDate.slice(0, 7)}-01`);
       }
       const curData = dataLookup?.data || [];
       if (item.time_of_day === 'amc' && idx !== undefined && idx + 1 < curData.length) {
@@ -782,13 +852,14 @@ function compositeChartScreenshot(rawChartCanvas, {
   const changeSign = isUp ? '+' : '';
   const volFormatted = formatVolume(volume);
   const isW = dataLookup?.timeframe === 'weekly';
+  const isM = dataLookup?.timeframe === 'monthly';
 
   const fontSize = Math.max(11 * scale, 12);
   ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
 
   const bannerTextParts = [
     { text: symbol ? `${symbol}` : '', color: '#f8fafc', bold: true },
-    ...(isW ? [{ text: '[1W]', color: '#c084fc', bold: true }] : []),
+    ...(isM ? [{ text: '[1M]', color: '#fbbf24', bold: true }] : (isW ? [{ text: '[1W]', color: '#c084fc', bold: true }] : [])),
     { text: date ? `(${date})` : '', color: '#94a3b8' },
     { text: ' O', color: '#94a3b8' },
     { text: open.toFixed(2), color: ohlcColor },
@@ -980,10 +1051,14 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   onScreenshotSaved = null,
   earnings = null,
   showPriceLine = true,
-  timeframe = null, // 'daily' | 'weekly' | null (controlled or uncontrolled)
+  timeframe = null, // 'daily' | 'weekly' | 'monthly' | null (controlled or uncontrolled)
   onTimeframeChange = null,
   tradeExecutions = null,
   tradePriceLines = null,
+  hideTools = false,
+  showVolumeProfile: showVolumeProfileProp = null, // boolean | null (controls Volume by Price bars)
+  showYearlyThumbnail: showYearlyThumbnailProp = null, // boolean | null (controls Mansfield Yearly Thumbnail)
+  showRsLine: showRsLineProp = null, // boolean | null (controls Relative Strength line)
 }, ref) {
   const rootContainerRef = useRef(null);
   const chartContainerRef = useRef();
@@ -1003,7 +1078,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   const prevDataRef = useRef(null);
   const prevTimeframeRef = useRef('daily');
 
-  // Timeframe state: 'daily' vs 'weekly'
+  // Timeframe state: 'daily' vs 'weekly' vs 'monthly'
   const [chartTimeframe, setChartTimeframe] = useState(() => {
     if (timeframe) return timeframe;
     try {
@@ -1017,13 +1092,14 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   chartTimeframeRef.current = chartTimeframe;
 
   useEffect(() => {
-    if (timeframe && (timeframe === 'daily' || timeframe === 'weekly')) {
+    if (timeframe && (timeframe === 'daily' || timeframe === 'weekly' || timeframe === 'monthly')) {
       setChartTimeframe(timeframe);
     }
   }, [timeframe]);
 
   const handleTimeframeChange = (newTf) => {
-    if (newTf !== 'daily' && newTf !== 'weekly') return;
+    if (newTf !== 'daily' && newTf !== 'weekly' && newTf !== 'monthly') return;
+    if (timeframe && !onTimeframeChange) return;
     setChartTimeframe(newTf);
     try {
       localStorage.setItem('pt_chart_timeframe', newTf);
@@ -1037,21 +1113,28 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   handleTimeframeChangeRef.current = handleTimeframeChange;
 
   const isWeekly = chartTimeframe === 'weekly';
+  const isMonthly = chartTimeframe === 'monthly';
 
-  // Compute active chart data: aggregated weekly bars in weekly mode, or original daily bars in daily mode,
+  // Compute active chart data: aggregated weekly bars in weekly mode, aggregated monthly bars in monthly mode, or original daily bars in daily mode,
   // enriched with normalized RS [-1.0, +1.0] for easy relative strength evaluation.
   const chartData = React.useMemo(() => {
     if (!data || data.length === 0) return [];
-    const baseBars = isWeekly ? aggregateDailyBarsToWeekly(data) : data;
+    let baseBars = data;
+    if (isMonthly) {
+      baseBars = aggregateDailyBarsToMonthly(data);
+    } else if (isWeekly) {
+      baseBars = aggregateDailyBarsToWeekly(data);
+    }
     return attachNormalizedRs(baseBars);
-  }, [data, isWeekly]);
+  }, [data, isWeekly, isMonthly]);
 
   const [savingScreenshot, setSavingScreenshot] = useState(false);
   const [screenshotSuccess, setScreenshotSuccess] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
 
-  // Volume Profile visibility state
-  const [showVolumeProfile, setShowVolumeProfile] = useState(true);
+  // Volume Profile (Volume by Price) visibility state
+  const [internalShowVolumeProfile, setInternalShowVolumeProfile] = useState(true);
+  const showVolumeProfile = typeof showVolumeProfileProp === 'boolean' ? showVolumeProfileProp : internalShowVolumeProfile;
 
   // Synchronize VolumeProfilePrimitive and POC price line whenever chartData or visibility changes
   useEffect(() => {
@@ -1111,16 +1194,17 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   }, [isLogScale]);
 
   // Stan Weinstein Mansfield Yearly Bar Chart State
-  const [showMansfieldYearly, setShowMansfieldYearly] = useState(() => {
+  const [internalShowMansfieldYearly, setInternalShowMansfieldYearly] = useState(() => {
     try {
       return localStorage.getItem('pt_show_mansfield_thumbnail') !== 'false';
     } catch {
       return true;
     }
   });
+  const showMansfieldYearly = typeof showYearlyThumbnailProp === 'boolean' ? showYearlyThumbnailProp : internalShowMansfieldYearly;
 
   const toggleMansfieldYearly = () => {
-    setShowMansfieldYearly((prev) => {
+    setInternalShowMansfieldYearly((prev) => {
       const next = !prev;
       try {
         localStorage.setItem('pt_show_mansfield_thumbnail', String(next));
@@ -1135,7 +1219,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   showMansfieldYearlyRef.current = showMansfieldYearly;
 
   // Relative Strength (RS) Line & Blue Dot Toggle State
-  const [showRsLine, setShowRsLine] = useState(() => {
+  const [internalShowRsLine, setInternalShowRsLine] = useState(() => {
     try {
       const saved = localStorage.getItem('pt_chart_show_rs_line');
       return saved !== null ? saved === 'true' : true;
@@ -1144,20 +1228,32 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     }
   });
 
+  const [weeklyMonthlyRsOverride, setWeeklyMonthlyRsOverride] = useState(false);
+
+  const showRsLine = typeof showRsLineProp === 'boolean'
+    ? showRsLineProp
+    : ((isWeekly || isMonthly) ? weeklyMonthlyRsOverride : internalShowRsLine);
+
   const showRsLineRef = useRef(showRsLine);
   showRsLineRef.current = showRsLine;
+  const rsPriceLinesRef = useRef([]);
+  const syncRsPriceLinesRef = useRef(null);
 
   // Collapsed toolbar: show extra buttons (measure, earnings, RS, VP, yearly, scale)
   const [showToolbarMore, setShowToolbarMore] = useState(false);
 
   const toggleRsLine = () => {
-    setShowRsLine((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem('pt_chart_show_rs_line', String(next));
-      } catch {}
-      return next;
-    });
+    if (isWeekly || isMonthly) {
+      setWeeklyMonthlyRsOverride((prev) => !prev);
+    } else {
+      setInternalShowRsLine((prev) => {
+        const next = !prev;
+        try {
+          localStorage.setItem('pt_chart_show_rs_line', String(next));
+        } catch {}
+        return next;
+      });
+    }
   };
 
 
@@ -1310,6 +1406,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       let idx = dataLookupRef.current.timeMap.get(tKey);
       if (idx === undefined && isWeekly) {
         idx = dataLookupRef.current.timeMap.get(getMondayOfWeek(tKey));
+      } else if (idx === undefined && isMonthly) {
+        idx = dataLookupRef.current.timeMap.get(`${tKey.slice(0, 7)}-01`);
       }
       if (idx !== undefined) {
         logical = idx + (typeof p.offsetFromBar === 'number' ? p.offsetFromBar : 0);
@@ -1346,6 +1444,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     let idx = timeMap.get(targetDate);
     if (idx === undefined && isWeekly) {
       idx = timeMap.get(getMondayOfWeek(targetDate));
+    } else if (idx === undefined && isMonthly) {
+      idx = timeMap.get(`${targetDate.slice(0, 7)}-01`);
     }
 
     // If report was After Market Close (amc), the market reaction occurred on the next trading session
@@ -1505,6 +1605,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           handleTimeframeChangeRef.current?.('daily');
         } else if (e.key === 'w' || e.key === 'W') {
           handleTimeframeChangeRef.current?.('weekly');
+        } else if (e.key === 'm' || e.key === 'M') {
+          handleTimeframeChangeRef.current?.('monthly');
         } else if (e.key === 'y' || e.key === 'Y') {
           toggleMansfieldYearlyRef.current?.();
         }
@@ -1608,11 +1710,14 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     const hasRs = hasNormRs || (bar.rs_line !== undefined && bar.rs_line !== null);
     const isBlueDot = Boolean(bar.is_rs_blue_dot);
     const isW = chartTimeframeRef.current === 'weekly';
+    const isM = chartTimeframeRef.current === 'monthly';
 
     legendRef.current.innerHTML = `
       <div style="display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.2;">
         ${symbolStr ? `<span style="font-weight: 700; color: #f8fafc; margin-right: 2px;">${symbolStr}</span>` : ''}
+        ${isM ? `<span style="background: rgba(245, 158, 11, 0.22); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;">1M</span>` : ''}
         ${isW ? `<span style="background: rgba(168, 85, 247, 0.22); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;">1W</span>` : ''}
+        ${chartTimeframeRef.current === 'daily' ? `<span style="background: rgba(56, 189, 248, 0.22); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;">1D</span>` : ''}
         <span style="display: inline-flex; align-items: center; gap: 5px;">
           <span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">O</span><span style="color: ${ohlcColor}; font-weight: 600;">${open.toFixed(2)}</span></span>
           <span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">H</span><span style="color: ${ohlcColor}; font-weight: 600;">${high.toFixed(2)}</span></span>
@@ -1620,9 +1725,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           <span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">C</span><span style="color: ${ohlcColor}; font-weight: 600;">${close.toFixed(2)}</span></span>
         </span>
         <span style="color: ${changeColor}; font-weight: 700;">${changeSign}${change.toFixed(2)} (${changeSign}${changePct.toFixed(2)}%)</span>
-        <span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">Vol</span><span style="color: #38bdf8; font-weight: 600;">${volFormatted}</span></span>
-        ${hasRs ? `<span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">RS</span><span style="color: #38bdf8; font-weight: 700;">${hasNormRs ? (bar.normalized_rs >= 0 ? '+' : '') + bar.normalized_rs.toFixed(2) : Number(bar.rs_line).toFixed(2)}</span></span>` : ''}
-        ${isBlueDot ? `<span style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 1px 6px; border-radius: 4px; font-size: 10.5px; font-weight: 700;">🔵 RS Blue Dot</span>` : ''}
+        ${hasRs && showRsLineRef.current ? `<span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">RS</span><span style="color: #38bdf8; font-weight: 700;">${hasNormRs ? (bar.normalized_rs >= 0 ? '+' : '') + bar.normalized_rs.toFixed(2) : Number(bar.rs_line).toFixed(2)}</span></span>` : ''}
+        ${isBlueDot && showRsLineRef.current ? `<span style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 1px 6px; border-radius: 4px; font-size: 10.5px; font-weight: 700;">🔵 RS Blue Dot</span>` : ''}
       </div>
     `;
   };
@@ -1852,6 +1956,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         priceLineVisible: false,
         lastValueVisible: false,
         crosshairMarkerVisible: true,
+        visible: showRsLine,
         title: '',
         autoscaleInfoProvider: () => ({
           priceRange: {
@@ -1876,6 +1981,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         priceLineVisible: false,
         lastValueVisible: false,
         crosshairMarkerVisible: false,
+        visible: showRsLine,
         autoscaleInfoProvider: () => ({
           priceRange: {
             minValue: -1.05,
@@ -1890,31 +1996,49 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         visible: false,
       });
 
-      // Price line reference guides for Normalized RS Panel [-1.0, +1.0]
-      rsLineSeries.createPriceLine({
-        price: 0.0,
-        color: 'rgba(255, 255, 255, 0.25)',
-        lineWidth: 1,
-        lineStyle: LineStyle.Dotted,
-        axisLabelVisible: false,
-        title: '0.0',
-      });
-      rsLineSeries.createPriceLine({
-        price: 1.0,
-        color: 'rgba(56, 189, 248, 0.2)',
-        lineWidth: 1,
-        lineStyle: LineStyle.Dashed,
-        axisLabelVisible: false,
-        title: '+1.0',
-      });
-      rsLineSeries.createPriceLine({
-        price: -1.0,
-        color: 'rgba(239, 68, 68, 0.2)',
-        lineWidth: 1,
-        lineStyle: LineStyle.Dashed,
-        axisLabelVisible: false,
-        title: '-1.0',
-      });
+      const syncRsPriceLines = (show) => {
+        if (!rsLineSeries) return;
+        if (show) {
+          if (rsPriceLinesRef.current.length === 0) {
+            rsPriceLinesRef.current = [
+              rsLineSeries.createPriceLine({
+                price: 0.0,
+                color: 'rgba(255, 255, 255, 0.25)',
+                lineWidth: 1,
+                lineStyle: LineStyle.Dotted,
+                axisLabelVisible: false,
+                title: '0.0',
+              }),
+              rsLineSeries.createPriceLine({
+                price: 1.0,
+                color: 'rgba(56, 189, 248, 0.2)',
+                lineWidth: 1,
+                lineStyle: LineStyle.Dashed,
+                axisLabelVisible: false,
+                title: '+1.0',
+              }),
+              rsLineSeries.createPriceLine({
+                price: -1.0,
+                color: 'rgba(239, 68, 68, 0.2)',
+                lineWidth: 1,
+                lineStyle: LineStyle.Dashed,
+                axisLabelVisible: false,
+                title: '-1.0',
+              }),
+            ];
+          }
+        } else {
+          rsPriceLinesRef.current.forEach((pl) => {
+            try { rsLineSeries.removePriceLine(pl); } catch (e) {}
+          });
+          rsPriceLinesRef.current = [];
+        }
+      };
+      syncRsPriceLinesRef.current = syncRsPriceLines;
+
+      if (showRsLine) {
+        syncRsPriceLines(true);
+      }
 
       // Attach Markers Plugin and Vertical Line Primitive
       const markersPlugin = createSeriesMarkers(candlestickSeries, []);
@@ -2047,7 +2171,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         }));
         volumeSeries.setData(volumeData);
 
-        const volPeriod = isWeekly ? 10 : 50;
+        const volPeriod = (isWeekly || isMonthly) ? 10 : 50;
         const ma50VolData = calculateSMA(chartData, volPeriod, 'volume');
         volumeMa50Series.setData(ma50VolData);
         if (volumeMa50Series.options().visible !== (ma50VolData.length > 0)) {
@@ -2084,6 +2208,33 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           sma220Series.setData(sma40Data);
           if (sma220Series.options().visible !== (sma40Data.length > 0)) {
             sma220Series.applyOptions({ visible: sma40Data.length > 0 });
+          }
+        } else if (isMonthly) {
+          // On monthly chart: show 10m (yellow) SMA and 20m (cyan) SMA, hide short EMAs & 40w
+          ema10Series.setData([]);
+          if (ema10Series.options().visible !== false) {
+            ema10Series.applyOptions({ visible: false });
+          }
+          ema20Series.setData([]);
+          if (ema20Series.options().visible !== false) {
+            ema20Series.applyOptions({ visible: false });
+          }
+
+          const sma10Data = calculateSMA(chartData, 10);
+          sma50Series.setData(sma10Data);
+          if (sma50Series.options().visible !== (sma10Data.length > 0)) {
+            sma50Series.applyOptions({ visible: sma10Data.length > 0 });
+          }
+
+          const sma20Data = calculateSMA(chartData, 20);
+          sma150Series.setData(sma20Data);
+          if (sma150Series.options().visible !== (sma20Data.length > 0)) {
+            sma150Series.applyOptions({ visible: sma20Data.length > 0 });
+          }
+
+          sma220Series.setData([]);
+          if (sma220Series.options().visible !== false) {
+            sma220Series.applyOptions({ visible: false });
           }
         } else {
           // On daily chart: show 10 EMA, 20 EMA, 50 SMA, 150 SMA, 200/220 SMA
@@ -2133,7 +2284,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           rsLineSeries.setData(rsData);
 
           if (seriesRef.current?.rsMa20Series) {
-            const rsMaData = showRsLine ? calculateRsSMA(rsData, chartTimeframeRef.current === 'weekly' ? 10 : 20) : [];
+            const rsMaData = showRsLine ? calculateRsSMA(rsData, (chartTimeframeRef.current === 'weekly' || chartTimeframeRef.current === 'monthly') ? 10 : 20) : [];
             if (seriesRef.current.rsMa20Series.options().visible !== showRsLine) {
               seriesRef.current.rsMa20Series.applyOptions({ visible: showRsLine });
             }
@@ -2183,8 +2334,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       // Render default (latest or as-of date) bar stats in legend
       renderLegend(defaultBar, defaultPrevBar, symbol);
 
-      const RIGHT_MARGIN_BARS = isWeekly ? 8 : 18;
-      const POST_AS_OF_BARS = isWeekly ? 12 : 40;
+      const RIGHT_MARGIN_BARS = isMonthly ? 4 : (isWeekly ? 8 : 18);
+      const POST_AS_OF_BARS = isMonthly ? 6 : (isWeekly ? 12 : 40);
 
       chartRef.current.timeScale().applyOptions({
         rightOffset: RIGHT_MARGIN_BARS,
@@ -2244,6 +2395,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         scaleMargins: margins.rs,
       });
     }
+
+    syncRsPriceLinesRef.current?.(showRsLine);
 
     if (showRsLine) {
       const rsData = currentData
@@ -2354,7 +2507,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           if (dataLookupRef.current?.data?.length > 0) {
             const currentData = dataLookupRef.current.data;
             const asOf = asOfIdxRef.current;
-            const visibleBars = getResponsiveVisibleBars(newWidth);
+            const visibleBars = getResponsiveVisibleBars(newWidth, chartTimeframeRef.current);
 
             if (!isUserPannedRef.current && asOf !== -1) {
               const targetTo = asOf + 40;
@@ -2824,88 +2977,112 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           borderRadius: '6px',
           padding: '4px 10px',
           boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
-          maxWidth: 'calc(100% - 330px)',
+          maxWidth: hideTools ? 'calc(100% - 24px)' : 'calc(100% - 330px)',
         }}
       />
 
       {/* Top-Right Chart Action Overlay (Timeframe Switcher, Drawing Tools, Measure & Screenshot Buttons) */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          right: '75px',
-          zIndex: 10,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '5px',
-          background: 'rgba(15, 23, 42, 0.82)',
-          padding: '3px 5px',
-          borderRadius: '8px',
-          border: 'none',
-          backdropFilter: 'blur(6px)',
-          WebkitBackdropFilter: 'blur(6px)',
-          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
-        }}
-      >
-        {/* Timeframe Switcher: Daily (D) vs Weekly (W) */}
+      {!hideTools && (
         <div
           style={{
-            display: 'inline-flex',
+            position: 'absolute',
+            top: 0,
+            right: '75px',
+            zIndex: 10,
+            display: 'flex',
             alignItems: 'center',
-            background: 'rgba(255, 255, 255, 0.06)',
-            borderRadius: '5px',
-            padding: '1px',
-            gap: '1px',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
+            gap: '5px',
+            background: 'rgba(15, 23, 42, 0.82)',
+            padding: '3px 5px',
+            borderRadius: '8px',
+            border: 'none',
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
           }}
         >
-          <button
-            type="button"
-            onClick={() => handleTimeframeChange('daily')}
-            title="Daily View (Hotkey: D)"
+          {/* Timeframe Switcher: Daily (D) vs Weekly (W) vs Monthly (M) */}
+          <div
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              padding: '0 7px',
-              height: '24px',
-              background: chartTimeframe === 'daily' ? 'rgba(56, 189, 248, 0.28)' : 'transparent',
-              border: chartTimeframe === 'daily' ? '1px solid #38bdf8' : '1px solid transparent',
-              color: chartTimeframe === 'daily' ? '#38bdf8' : '#94a3b8',
-              borderRadius: '4px',
-              fontSize: '11px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-              lineHeight: '22px',
+              background: 'rgba(255, 255, 255, 0.06)',
+              borderRadius: '5px',
+              padding: '1px',
+              gap: '1px',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
             }}
           >
-            D
-          </button>
-          <button
-            type="button"
-            onClick={() => handleTimeframeChange('weekly')}
-            title="Weekly Chart (Hotkey: W) — 10w (Yellow), 30w (Cyan), 40w (White) SMA"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '0 7px',
-              height: '24px',
-              background: chartTimeframe === 'weekly' ? 'rgba(168, 85, 247, 0.28)' : 'transparent',
-              border: chartTimeframe === 'weekly' ? '1px solid #c084fc' : '1px solid transparent',
-              color: chartTimeframe === 'weekly' ? '#c084fc' : '#94a3b8',
-              borderRadius: '4px',
-              fontSize: '11px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-              lineHeight: '22px',
-            }}
-          >
-            W
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={() => handleTimeframeChange('daily')}
+              title="Daily View (Hotkey: D)"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0 7px',
+                height: '24px',
+                background: chartTimeframe === 'daily' ? 'rgba(56, 189, 248, 0.28)' : 'transparent',
+                border: chartTimeframe === 'daily' ? '1px solid #38bdf8' : '1px solid transparent',
+                color: chartTimeframe === 'daily' ? '#38bdf8' : '#94a3b8',
+                borderRadius: '4px',
+                fontSize: '11px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                lineHeight: '22px',
+              }}
+            >
+              D
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTimeframeChange('weekly')}
+              title="Weekly Chart (Hotkey: W)"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0 7px',
+                height: '24px',
+                background: chartTimeframe === 'weekly' ? 'rgba(168, 85, 247, 0.28)' : 'transparent',
+                border: chartTimeframe === 'weekly' ? '1px solid #c084fc' : '1px solid transparent',
+                color: chartTimeframe === 'weekly' ? '#c084fc' : '#94a3b8',
+                borderRadius: '4px',
+                fontSize: '11px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                lineHeight: '22px',
+              }}
+            >
+              W
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTimeframeChange('monthly')}
+              title="Monthly Chart (Hotkey: M)"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0 7px',
+                height: '24px',
+                background: chartTimeframe === 'monthly' ? 'rgba(245, 158, 11, 0.28)' : 'transparent',
+                border: chartTimeframe === 'monthly' ? '1px solid #fbbf24' : '1px solid transparent',
+                color: chartTimeframe === 'monthly' ? '#fbbf24' : '#94a3b8',
+                borderRadius: '4px',
+                fontSize: '11px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                lineHeight: '22px',
+              }}
+            >
+              M
+            </button>
+          </div>
 
         {/* Separator between Timeframe and Tools */}
         <div style={{ width: '1px', height: '14px', background: 'rgba(255,255,255,0.12)', margin: '0 1px' }} />
@@ -3076,7 +3253,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           /* Volume Profile (Volume by Price) Toggle Button */
           <button
             type="button"
-            onClick={() => setShowVolumeProfile(!showVolumeProfile)}
+            onClick={() => setInternalShowVolumeProfile(!showVolumeProfile)}
             title={showVolumeProfile ? 'Hide Volume Profile (Volume by Price)' : 'Show Volume Profile (Volume by Price)'}
             style={{
               display: 'inline-flex',
@@ -3291,6 +3468,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           </button>
         )}
       </div>
+      )}
 
       {/* Floating Toast Notification Overlay */}
       {toastMessage && (
