@@ -1070,12 +1070,13 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   const showEarningsRef = useRef(showEarnings);
   showEarningsRef.current = showEarnings;
 
-  // Price Scale Mode: Arithmetic / Linear (PriceScaleMode.Normal = 0, default) vs Logarithmic (PriceScaleMode.Logarithmic = 1)
+  // Price Scale Mode: Logarithmic (PriceScaleMode.Logarithmic = 1, default) vs Arithmetic / Linear (PriceScaleMode.Normal = 0)
   const [isLogScale, setIsLogScale] = useState(() => {
     try {
-      return localStorage.getItem('pt_chart_scale_mode') === 'log';
+      const saved = localStorage.getItem('pt_chart_scale_mode');
+      return saved !== 'linear';
     } catch {
-      return false;
+      return true;
     }
   });
 
@@ -1748,7 +1749,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       const initialH = typeof height === 'number' ? height : (chartContainerRef.current?.clientHeight || 450);
       const initialMargins = getPanelMargins(initialH, showRsLine);
 
-      // Configure main price scale with arithmetic (linear) scale (mode: 0) by default and bottom margin for volume & RS panels
+      // Configure main price scale with logarithmic scale (mode: 1) by default and bottom margin for volume & RS panels
       chart.priceScale('right').applyOptions({
         mode: isLogScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
         scaleMargins: initialMargins.price,
@@ -3207,17 +3208,17 @@ const CandlestickChart = forwardRef(function CandlestickChart({
             padding: 0,
             background: showToolbarMore
               ? 'rgba(255,255,255,0.10)'
-              : (isMeasureModeActive || !showEarnings || !showRsLine || showVolumeProfile || isLogScale || !showMansfieldYearly)
+              : (isMeasureModeActive || !showEarnings || !showRsLine || showVolumeProfile || !isLogScale || !showMansfieldYearly)
                 ? 'rgba(56, 189, 248, 0.12)'
                 : 'rgba(255, 255, 255, 0.05)',
             border: showToolbarMore
               ? '1px solid rgba(255,255,255,0.3)'
-              : (isMeasureModeActive || !showEarnings || !showRsLine || showVolumeProfile || isLogScale || !showMansfieldYearly)
+              : (isMeasureModeActive || !showEarnings || !showRsLine || showVolumeProfile || !isLogScale || !showMansfieldYearly)
                 ? '1px solid rgba(56,189,248,0.4)'
                 : '1px solid rgba(255, 255, 255, 0.15)',
             color: showToolbarMore
               ? '#e2e8f0'
-              : (isMeasureModeActive || !showEarnings || !showRsLine || showVolumeProfile || isLogScale || !showMansfieldYearly)
+              : (isMeasureModeActive || !showEarnings || !showRsLine || showVolumeProfile || !isLogScale || !showMansfieldYearly)
                 ? '#38bdf8'
                 : '#94a3b8',
             borderRadius: '5px',

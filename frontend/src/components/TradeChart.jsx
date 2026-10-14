@@ -5,6 +5,7 @@ import {
   LineSeries,
   createSeriesMarkers,
   CrosshairMode,
+  PriceScaleMode,
   LineStyle,
 } from 'lightweight-charts';
 
@@ -95,6 +96,14 @@ export default function TradeChart({
     const width = container.clientWidth || 800;
     const height = 340;
 
+    const isLogScale = (() => {
+      try {
+        return localStorage.getItem('pt_chart_scale_mode') !== 'linear';
+      } catch {
+        return true;
+      }
+    })();
+
     const chart = createChart(container, {
       width,
       height,
@@ -119,6 +128,7 @@ export default function TradeChart({
       rightPriceScale: {
         borderColor: 'rgba(255, 255, 255, 0.1)',
         autoScale: true,
+        mode: isLogScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
       },
     });
 

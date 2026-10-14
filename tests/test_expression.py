@@ -405,6 +405,51 @@ class TestScanExpressionEngine(unittest.TestCase):
         aal_match = [c for c in cands if c["symbol"] == "AAL" and c["setup_date"] == "2026-01-02"]
         self.assertEqual(len(aal_match), 0, "AAL on 2026-01-02 should not match highest_volume_ever")
 
+    def test_weinstein_short_setups_and_aliases(self):
+        # 1. Test CONFIRMED_STAGE4 alias
+        res_s4 = ScanExpressionEngine.validate("CONFIRMED_STAGE4 AND C >= 5.0")
+        self.assertTrue(res_s4["valid"], res_s4.get("error"))
+        self.assertIn("b.close < b.sma_50", res_s4["sql"])
+        self.assertIn("b.sma_50 < b.sma_150", res_s4["sql"])
+        self.assertIn("b.sma_150 < b.sma_200", res_s4["sql"])
+
+        # 2. Test WEINSTEIN_BREAKDOWN alias
+        res_bd = ScanExpressionEngine.validate("WEINSTEIN_BREAKDOWN")
+        self.assertTrue(res_bd["valid"], res_bd.get("error"))
+        self.assertIn("b.weinstein_stage = 4", res_bd["sql"])
+        self.assertIn("b.close < b.sma_150", res_bd["sql"])
+
+        # 3. Test WEINSTEIN_PULLBACK alias
+        res_pb = ScanExpressionEngine.validate("WEINSTEIN_PULLBACK")
+        self.assertTrue(res_pb["valid"], res_pb.get("error"))
+        self.assertIn("b.lag_c1", res_pb["sql"])
+        self.assertTrue(res_pb["has_lags"])
+
+        # 4. Test STAGE4_CONTINUATION and IS_52W_LOW
+        res_cont = ScanExpressionEngine.validate("STAGE4_CONTINUATION")
+        self.assertTrue(res_cont["valid"], res_cont.get("error"))
+        self.assertIn("b.dist_from_52w_low", res_cont["sql"])
+
+        res_52w_low = ScanExpressionEngine.validate("IS_52W_LOW")
+        self.assertTrue(res_52w_low["valid"])
+        self.assertIn("b.dist_from_52w_low <= 3.0", res_52w_low["sql"])
+
+        # 5. Test DOWNSIDE_GAP
+        res_gap = ScanExpressionEngine.validate("DOWNSIDE_GAP")
+        self.assertTrue(res_gap["valid"], res_gap.get("error"))
+        self.assertIn("b.gap_pct", res_gap["sql"])
+        self.assertIn("(-7.0)", res_gap["sql"])
+
+        # 6. Test setups.yaml short folder screeners
+        from application.services.setup_service import setup_service
+        config = setup_service.get_setups_config()
+        short_folder = next((f for f in config.get("folders", []) if f.get("id") == "short"), None)
+        self.assertIsNotNone(short_folder, "Short folder must exist in setups.yaml")
+        self.assertEqual(len(short_folder.get("screeners", [])), 5)
+        for screener in short_folder["screeners"]:
+            val = ScanExpressionEngine.validate(screener["expression"])
+            self.assertTrue(val["valid"], f"Screener '{screener['id']}' expression failed: {val.get('error')}")
+
 if __name__ == "__main__":
     unittest.main()
 

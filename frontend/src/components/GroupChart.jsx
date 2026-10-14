@@ -5,6 +5,7 @@ import {
   LineSeries,
   HistogramSeries,
   CrosshairMode,
+  PriceScaleMode,
   LineStyle
 } from 'lightweight-charts';
 
@@ -118,6 +119,14 @@ export default function GroupChart({
     const container = containerRef.current;
     const chartHeight = height || 420;
 
+    const isLogScale = (() => {
+      try {
+        return localStorage.getItem('pt_chart_scale_mode') !== 'linear';
+      } catch {
+        return true;
+      }
+    })();
+
     const chart = createChart(container, {
       width: container.clientWidth || 600,
       height: chartHeight,
@@ -147,6 +156,7 @@ export default function GroupChart({
         }
       },
       rightPriceScale: {
+        mode: isLogScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
         scaleMargins: {
           top: 0.05,
           bottom: 0.32

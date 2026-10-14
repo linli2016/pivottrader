@@ -2,8 +2,12 @@ import os
 import tempfile
 import unittest
 
+from unittest.mock import MagicMock, patch
+
+import requests
+
 from application.providers.ibkr_flex_prov import (
-    parse_flex_trades, parse_flex_date, parse_flex_datetime, FlexError,
+    parse_flex_trades, parse_flex_date, parse_flex_datetime, FlexError, IBKRFlexClient,
 )
 from application.services.journal_service import (
     JournalService, build_round_trips, compute_statistics, compute_period_pnl, compute_equity_curve,
@@ -374,6 +378,50 @@ class TestJournalService(unittest.TestCase):
         self.assertEqual(stats["open_trades"], 1)
         self.assertAlmostEqual(stats["open_pnl"], 148.0)
         self.assertAlmostEqual(stats["avg_open_pnl_pct"], 14.8)
+
+
+class TestIBKRFlexClient(unittest.TestCase):
+    def test_get_retries_on_connection_error(self):
+        mock_session = MagicMock()
+        success_resp = MagicMock()
+        success_resp.content = b"<FlexQueryResponse></FlexQueryResponse>"
+        success_resp.raise_for_status.return_value = None
+
+        mock_session.get.side_effect = [
+            requests.exceptions.ConnectionError("Failed to resolve gdcdyn.interactivebrokers.com"),
+            success_resp,
+        ]
+
+        client = IBKRFlexClient("dummy_token", "12345", session=mock_session)
+        content = client._get("https://gdcdyn.interactivebrokers.com/test", {}, retries=2, backoff=0.01)
+        self.assertEqual(content, b"<FlexQueryResponse></FlexQueryResponse>")
+        self.assertEqual(mock_session.get.call_count, 2)
+
+    def test_get_statement_falls_back_to_base_url(self):
+        mock_session = MagicMock()
+        success_resp = MagicMock()
+        success_resp.content = b"<FlexQueryResponse></FlexQueryResponse>"
+        success_resp.raise_for_status.return_value = None
+
+        def side_effect(url, **kwargs):
+            if "gdcdyn" in url:
+                raise requests.exceptions.ConnectionError("DNS failure on gdcdyn")
+            return success_resp
+
+        mock_session.get.side_effect = side_effect
+
+        client = IBKRFlexClient("dummy_token", "12345", session=mock_session, base_url="https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService")
+        orig_get = client._get
+
+        def quick_get(url, params, **kwargs):
+            return orig_get(url, params, retries=1)
+
+        with patch.object(client, "_get", side_effect=quick_get):
+            content = client.get_statement(
+                "ref_999",
+                "https://gdcdyn.interactivebrokers.com/AccountManagement/FlexWebService/GetStatement",
+            )
+            self.assertEqual(content, b"<FlexQueryResponse></FlexQueryResponse>")
 
 
 if __name__ == "__main__":

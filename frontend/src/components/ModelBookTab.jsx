@@ -8,6 +8,7 @@ const SETUP_COLORS = {
   // Folders
   daily: '#38bdf8',
   weekly: '#a855f7',
+  short: '#f43f5e',
   others: '#94a3b8',
   // Daily Setups
   power_play: '#38bdf8',
@@ -17,9 +18,15 @@ const SETUP_COLORS = {
   standard: '#f59e0b',
   episodic_pivot: '#ec4899',
   parabolic: '#ef4444',
+  parabolic_short: '#ef4444',
   cup_and_handle: '#10b981',
   cheat: '#eab308',
   low_cheat: '#f97316',
+  // Short Setups
+  weinstein_breakdown: '#f43f5e',
+  weinstein_pullback: '#fb7185',
+  stage4_continuation: '#e11d48',
+  gap_breakdown: '#be123c',
   // Weekly Setups
   momentum: '#a855f7',
   leaders: '#a855f7',
@@ -49,6 +56,11 @@ const SETUP_CANONICAL_NAMES = {
   standard: 'QM Breakouts',
   episodic_pivot: 'Episodic Pivot',
   parabolic: 'Parabolic Short',
+  parabolic_short: 'Parabolic Short',
+  weinstein_breakdown: 'Stage 4 Breakdown',
+  weinstein_pullback: 'Pullback to 30W MA',
+  stage4_continuation: 'Stage 4 Continuation',
+  gap_breakdown: 'Downside Gap Breakdown',
   cup_and_handle: 'Cup and Handle',
   cheat: 'Cheat / 3-C',
   low_cheat: 'Low Cheat',
@@ -367,29 +379,29 @@ export default function ModelBookTab({
   const [viewMode, setViewMode] = useState('winners'); // 'winners' | 'all'
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRegime, setSelectedRegime] = useState('ALL'); // 'ALL' | 'BULLISH' | 'CAUTION' | 'BEARISH'
-  const [selectedSector, setSelectedSector] = useState('ALL');
+  const [selectedIndustry, setSelectedIndustry] = useState('ALL');
   const [sortField, setSortField] = useState('date');
   const [sortDirection, setSortDirection] = useState('asc');
 
-  // Sector Breakdown and Filtering
-  const sectorCounts = useMemo(() => {
+  // Industry/Group Breakdown and Filtering
+  const industryCounts = useMemo(() => {
     if (!scanResult) return [];
     const pool = viewMode === 'winners' ? (scanResult.winners || []) : (scanResult.all_candidates || []);
     const counts = {};
     pool.forEach(c => {
-      const s = c.sector && c.sector.trim() !== '' ? c.sector.trim() : 'Unclassified';
-      counts[s] = (counts[s] || 0) + 1;
+      const ind = (c.industry || c.group_name || '').trim() || 'Unclassified';
+      counts[ind] = (counts[ind] || 0) + 1;
     });
     return Object.entries(counts)
-      .map(([sector, count]) => ({ sector, count }))
-      .sort((a, b) => b.count - a.count || a.sector.localeCompare(b.sector));
+      .map(([industry, count]) => ({ industry, count }))
+      .sort((a, b) => b.count - a.count || a.industry.localeCompare(b.industry));
   }, [scanResult, viewMode]);
 
   useEffect(() => {
-    if (selectedSector !== 'ALL' && !sectorCounts.some(sc => sc.sector === selectedSector)) {
-      setSelectedSector('ALL');
+    if (selectedIndustry !== 'ALL' && !industryCounts.some(ic => ic.industry === selectedIndustry)) {
+      setSelectedIndustry('ALL');
     }
-  }, [sectorCounts, selectedSector]);
+  }, [industryCounts, selectedIndustry]);
 
   // Chart Viewer State
   const [selectedCandidate, setSelectedCandidate] = useState(null);
@@ -564,10 +576,10 @@ export default function ModelBookTab({
       list = list.filter(c => c.market_regime === selectedRegime);
     }
 
-    if (selectedSector !== 'ALL') {
+    if (selectedIndustry !== 'ALL') {
       list = list.filter(c => {
-        const s = c.sector && c.sector.trim() !== '' ? c.sector.trim() : 'Unclassified';
-        return s === selectedSector;
+        const ind = (c.industry || c.group_name || '').trim() || 'Unclassified';
+        return ind === selectedIndustry;
       });
     }
 
@@ -600,7 +612,7 @@ export default function ModelBookTab({
       if (numCmp !== 0) return numCmp;
       return (a.setup_date || a.date || '').localeCompare(b.setup_date || b.date || '');
     });
-  }, [scanResult, viewMode, searchTerm, selectedRegime, selectedSector, sortField, sortDirection]);
+  }, [scanResult, viewMode, searchTerm, selectedRegime, selectedIndustry, sortField, sortDirection]);
 
   const prefetchAdjacentCandidates = useCallback((currentCand) => {
     if (!currentCand || displayedCandidates.length === 0) return;
@@ -1287,17 +1299,21 @@ export default function ModelBookTab({
               ? 'rgba(56, 189, 248, 0.08)' 
               : activeFolderId === 'weekly' 
                 ? 'rgba(168, 85, 247, 0.08)' 
-                : 'rgba(148, 163, 184, 0.08)',
+                : activeFolderId === 'short'
+                  ? 'rgba(244, 63, 94, 0.08)'
+                  : 'rgba(148, 163, 184, 0.08)',
             border: activeFolderId === 'daily' 
               ? '1px solid rgba(56, 189, 248, 0.25)' 
               : activeFolderId === 'weekly' 
                 ? '1px solid rgba(168, 85, 247, 0.25)' 
-                : '1px solid rgba(148, 163, 184, 0.25)',
+                : activeFolderId === 'short'
+                  ? '1px solid rgba(244, 63, 94, 0.25)'
+                  : '1px solid rgba(148, 163, 184, 0.25)',
             borderRadius: '8px'
           }}>
             {curFolder.screeners.map((screener) => {
               const isSelected = activeScreenerId === screener.id || setupType === screener.id;
-              const screenerColor = SETUP_COLORS[screener.id] || (activeFolderId === 'daily' ? '#38bdf8' : (activeFolderId === 'weekly' ? '#a855f7' : '#94a3b8'));
+              const screenerColor = SETUP_COLORS[screener.id] || (activeFolderId === 'daily' ? '#38bdf8' : (activeFolderId === 'weekly' ? '#a855f7' : (activeFolderId === 'short' ? '#f43f5e' : '#94a3b8')));
 
               return (
                 <button
@@ -2166,31 +2182,31 @@ export default function ModelBookTab({
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              {/* Sector filter */}
+              {/* Industry / Group filter */}
               <select
-                value={selectedSector}
+                value={selectedIndustry}
                 onChange={e => {
-                  setSelectedSector(e.target.value);
+                  setSelectedIndustry(e.target.value);
                   setSelectedCandidate(null);
                 }}
                 style={{
                   padding: '4px 8px',
                   backgroundColor: 'rgba(0,0,0,0.3)',
-                  border: selectedSector !== 'ALL' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
+                  border: selectedIndustry !== 'ALL' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
                   borderRadius: '6px',
-                  color: selectedSector !== 'ALL' ? '#38bdf8' : 'var(--text-primary)',
+                  color: selectedIndustry !== 'ALL' ? '#38bdf8' : 'var(--text-primary)',
                   fontSize: '12px',
-                  fontWeight: selectedSector !== 'ALL' ? '600' : '400',
+                  fontWeight: selectedIndustry !== 'ALL' ? '600' : '400',
                   cursor: 'pointer'
                 }}
-                title="Filter candidates by sector"
+                title="Filter candidates by industry/group"
               >
                 <option value="ALL">
-                  All Sectors ({viewMode === 'winners' ? (scanResult?.winners?.length || 0) : (scanResult?.all_candidates?.length || 0)})
+                  All Industry Groups ({viewMode === 'winners' ? (scanResult?.winners?.length || 0) : (scanResult?.all_candidates?.length || 0)})
                 </option>
-                {sectorCounts.map(({ sector, count }) => (
-                  <option key={sector} value={sector}>
-                    {sector} ({count})
+                {industryCounts.map(({ industry, count }) => (
+                  <option key={industry} value={industry}>
+                    {industry} ({count})
                   </option>
                 ))}
               </select>

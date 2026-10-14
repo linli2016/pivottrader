@@ -450,6 +450,13 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "trend",
         "description": "Stock is currently at or within 3% of 52-week high"
     },
+    "IS_52W_LOW": {
+        "sql": "COALESCE(b.dist_from_52w_low <= 3.0, false)",
+        "type": "boolean",
+        "label": "Is 52w Low",
+        "category": "trend",
+        "description": "Stock is currently at or within 3% of 52-week low"
+    },
     "HIGH_52W": {
         "sql": "b.high_52w",
         "type": "numeric",
@@ -895,6 +902,57 @@ ALIAS_CATALOG: Dict[str, Dict[str, Any]] = {
         "label": "Stage 4 (Declining)",
         "category": "trend",
         "description": "Stan Weinstein Stage 4: Markdown downtrend below falling 30-week (150-day) moving average"
+    },
+    "CONFIRMED_STAGE4": {
+        "expr": (
+            "SMA_50 IS NOT NULL AND SMA_150 IS NOT NULL AND SMA_200 IS NOT NULL "
+            "AND C < SMA_50 AND SMA_50 < SMA_150 AND SMA_150 < SMA_200 "
+            "AND (SMA_200_20D_AGO IS NULL OR SMA_200 < SMA_200_20D_AGO) "
+            "AND (DIST_52W_LOW IS NULL OR DIST_52W_LOW <= 25.0)"
+        ),
+        "type": "boolean",
+        "label": "Confirmed Stage 4 Downtrend",
+        "category": "trend",
+        "description": "Weinstein Stage 4 Downtrend Template (Close < 50 < 150 < 200 SMA, declining 200 SMA, within 25% of 52w low)"
+    },
+    "WEINSTEIN_BREAKDOWN": {
+        "expr": (
+            "STAGE4 AND C < SMA_150 AND C < SMA_50 AND SMA_50 < SMA_150 "
+            "AND RS_RANK <= 40 AND CLOSE_RANGE <= 0.35"
+        ),
+        "type": "boolean",
+        "label": "Weinstein Stage 4 Breakdown",
+        "category": "pattern",
+        "description": "Primary Stage 3 to Stage 4 breakdown below falling 30-week (150-day) MA with weak close and lagging relative strength"
+    },
+    "WEINSTEIN_PULLBACK": {
+        "expr": (
+            "STAGE4 AND C < SMA_150 AND (SMA_150 - C) / SMA_150 <= 0.06 "
+            "AND C < C1 AND RS_RANK <= 35"
+        ),
+        "type": "boolean",
+        "label": "Weinstein Short Pullback",
+        "category": "pattern",
+        "description": "Second-chance short entry: reflexive bounce testing underside of falling 30-week (150-day) MA and rolling over"
+    },
+    "STAGE4_CONTINUATION": {
+        "expr": (
+            "STAGE4 AND RS_RANK <= 30 AND C < SMA_50 AND SMA_50 < SMA_150 "
+            "AND (DIST_52W_LOW <= 5.0 OR IS_52W_LOW) AND CLOSE_RANGE <= 0.35"
+        ),
+        "type": "boolean",
+        "label": "Stage 4 Continuation",
+        "category": "pattern",
+        "description": "Entrenched Stage 4 markdown continuation breaking down near 52-week low"
+    },
+    "DOWNSIDE_GAP": {
+        "expr": (
+            "GAP_PCT <= -7.0 AND REL_VOL >= 2.0 AND C < SMA_50 AND CLOSE_RANGE <= 0.35"
+        ),
+        "type": "boolean",
+        "label": "Downside Gap Breakdown",
+        "category": "pattern",
+        "description": "Severe downside distribution shock (negative catalyst gap-down on heavy volume)"
     },
     "LOW_CHEAT": {
         "expr": (

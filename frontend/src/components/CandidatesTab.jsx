@@ -8,6 +8,7 @@ const SETUP_COLORS = {
   // Folders
   daily: '#38bdf8',
   weekly: '#a855f7',
+  short: '#f43f5e',
   others: '#94a3b8',
   // Daily Setups
   power_play: '#38bdf8',
@@ -17,9 +18,15 @@ const SETUP_COLORS = {
   standard: '#f59e0b',
   episodic_pivot: '#ec4899',
   parabolic: '#ef4444',
+  parabolic_short: '#ef4444',
   cup_and_handle: '#10b981',
   cheat: '#eab308',
   low_cheat: '#f97316',
+  // Short Setups
+  weinstein_breakdown: '#f43f5e',
+  weinstein_pullback: '#fb7185',
+  stage4_continuation: '#e11d48',
+  gap_breakdown: '#be123c',
   // Weekly Setups
   momentum: '#a855f7',
   leaders: '#a855f7',
@@ -159,7 +166,7 @@ export default function CandidatesTab({
   const [showCheatSheet, setShowCheatSheet] = React.useState(false);
   const [showExpressionSection, setShowExpressionSection] = React.useState(false);
   const [exprValidation, setExprValidation] = React.useState({ valid: true, error: null });
-  const [selectedSector, setSelectedSector] = React.useState('ALL');
+  const [selectedIndustry, setSelectedIndustry] = React.useState('ALL');
   const [stage2OnlyFilter, setStage2OnlyFilter] = React.useState(false);
   const [previewGroupModal, setPreviewGroupModal] = React.useState(null);
 
@@ -227,38 +234,38 @@ export default function CandidatesTab({
     }, 10);
   };
 
-  // Sector Breakdown and Filtering
-  const sectorCounts = React.useMemo(() => {
+  // Industry/Group Breakdown and Filtering
+  const industryCounts = React.useMemo(() => {
     const counts = {};
     (filteredCandidates || []).forEach(c => {
-      const s = c.sector && c.sector.trim() !== '' ? c.sector.trim() : 'Unclassified';
-      counts[s] = (counts[s] || 0) + 1;
+      const ind = (c.industry || c.group_name || '').trim() || 'Unclassified';
+      counts[ind] = (counts[ind] || 0) + 1;
     });
     return Object.entries(counts)
-      .map(([sector, count]) => ({ sector, count }))
-      .sort((a, b) => b.count - a.count || a.sector.localeCompare(b.sector));
+      .map(([industry, count]) => ({ industry, count }))
+      .sort((a, b) => b.count - a.count || a.industry.localeCompare(b.industry));
   }, [filteredCandidates]);
 
   const displayedCandidates = React.useMemo(() => {
     let list = filteredCandidates || [];
-    if (selectedSector && selectedSector !== 'ALL') {
+    if (selectedIndustry && selectedIndustry !== 'ALL') {
       list = list.filter(c => {
-        const s = c.sector && c.sector.trim() !== '' ? c.sector.trim() : 'Unclassified';
-        return s === selectedSector;
+        const ind = (c.industry || c.group_name || '').trim() || 'Unclassified';
+        return ind === selectedIndustry;
       });
     }
     if (stage2OnlyFilter) {
       list = list.filter(c => c.industry_stage_num === 2 || (typeof c.group_stage_badge === 'string' && c.group_stage_badge.includes('Stage 2')));
     }
     return list;
-  }, [filteredCandidates, selectedSector, stage2OnlyFilter]);
+  }, [filteredCandidates, selectedIndustry, stage2OnlyFilter]);
 
-  // Reset selected sector if no longer present in candidates list
+  // Reset selected industry if no longer present in candidates list
   React.useEffect(() => {
-    if (selectedSector !== 'ALL' && !sectorCounts.some(sc => sc.sector === selectedSector)) {
-      setSelectedSector('ALL');
+    if (selectedIndustry !== 'ALL' && !industryCounts.some(ic => ic.industry === selectedIndustry)) {
+      setSelectedIndustry('ALL');
     }
-  }, [sectorCounts, selectedSector]);
+  }, [industryCounts, selectedIndustry]);
 
   // Keep browseIndex within bounds when list changes
   React.useEffect(() => {
@@ -895,19 +902,23 @@ export default function CandidatesTab({
               ? 'rgba(56, 189, 248, 0.08)' 
               : activeFolderId === 'weekly' 
                 ? 'rgba(168, 85, 247, 0.08)' 
-                : 'rgba(148, 163, 184, 0.08)',
+                : activeFolderId === 'short'
+                  ? 'rgba(244, 63, 94, 0.08)'
+                  : 'rgba(148, 163, 184, 0.08)',
             border: activeFolderId === 'daily' 
               ? '1px solid rgba(56, 189, 248, 0.25)' 
               : activeFolderId === 'weekly' 
                 ? '1px solid rgba(168, 85, 247, 0.25)' 
-                : '1px solid rgba(148, 163, 184, 0.25)',
+                : activeFolderId === 'short'
+                  ? '1px solid rgba(244, 63, 94, 0.25)'
+                  : '1px solid rgba(148, 163, 184, 0.25)',
             borderRadius: '8px',
             marginTop: '2px'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
               {curFolder.screeners.map((screener) => {
                 const isActive = activeScreenerId === screener.id || (activeExpression && screener.expression?.trim() === activeExpression?.trim());
-                const screenerColor = SETUP_COLORS[screener.id] || (activeFolderId === 'daily' ? '#38bdf8' : (activeFolderId === 'weekly' ? '#a855f7' : '#94a3b8'));
+                const screenerColor = SETUP_COLORS[screener.id] || (activeFolderId === 'daily' ? '#38bdf8' : (activeFolderId === 'weekly' ? '#a855f7' : (activeFolderId === 'short' ? '#f43f5e' : '#94a3b8')));
 
                 return (
                   <button
@@ -1144,9 +1155,9 @@ export default function CandidatesTab({
         </div>
       ) : displayedCandidates.length === 0 ? (
         <div className="glass-card" style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-secondary)', marginTop: '20px' }}>
-          <p>No candidates found in sector <strong>"{selectedSector}"</strong>.</p>
-          <button className="btn btn-secondary btn-sm" onClick={() => setSelectedSector('ALL')} style={{ marginTop: '10px' }}>
-            Show All Sectors ({filteredCandidates.length})
+          <p>No candidates found in industry/group <strong>"{selectedIndustry}"</strong>.</p>
+          <button className="btn btn-secondary btn-sm" onClick={() => setSelectedIndustry('ALL')} style={{ marginTop: '10px' }}>
+            Show All Industry Groups ({filteredCandidates.length})
           </button>
         </div>
       ) : (
@@ -1529,7 +1540,7 @@ export default function CandidatesTab({
           <div className="glass-card browse-side-col">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexShrink: 0 }}>
               <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent-color)', textTransform: 'uppercase', margin: 0 }}>
-                Total ({displayedCandidates.length}{selectedSector !== 'ALL' ? ` / ${filteredCandidates.length}` : ''})
+                Total ({displayedCandidates.length}{selectedIndustry !== 'ALL' ? ` / ${filteredCandidates.length}` : ''})
               </h4>
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <button
@@ -1602,32 +1613,32 @@ export default function CandidatesTab({
               </div>
             </div>
 
-            {/* Sector Filter & Weinstein Stage 2 Quick Filter */}
+            {/* Industry/Group Filter & Weinstein Stage 2 Quick Filter */}
             <div style={{ marginBottom: '8px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '5px' }}>
               <select
-                value={selectedSector}
+                value={selectedIndustry}
                 onChange={(e) => {
-                  setSelectedSector(e.target.value);
+                  setSelectedIndustry(e.target.value);
                   setBrowseIndex(0);
                 }}
                 style={{
                   width: '100%',
                   padding: '5px 8px',
                   background: 'rgba(30, 41, 59, 0.85)',
-                  color: selectedSector !== 'ALL' ? '#38bdf8' : 'var(--text-primary)',
-                  border: selectedSector !== 'ALL' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
+                  color: selectedIndustry !== 'ALL' ? '#38bdf8' : 'var(--text-primary)',
+                  border: selectedIndustry !== 'ALL' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
                   borderRadius: '6px',
                   fontSize: '11.5px',
-                  fontWeight: selectedSector !== 'ALL' ? '600' : '400',
+                  fontWeight: selectedIndustry !== 'ALL' ? '600' : '400',
                   outline: 'none',
                   cursor: 'pointer'
                 }}
-                title="Filter candidates by sector"
+                title="Filter candidates by industry/group"
               >
-                <option value="ALL">All Sectors ({filteredCandidates.length})</option>
-                {sectorCounts.map(({ sector, count }) => (
-                  <option key={sector} value={sector}>
-                    {sector} ({count})
+                <option value="ALL">All Industry Groups ({filteredCandidates.length})</option>
+                {industryCounts.map(({ industry, count }) => (
+                  <option key={industry} value={industry}>
+                    {industry} ({count})
                   </option>
                 ))}
               </select>

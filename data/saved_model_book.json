@@ -588,6 +588,28 @@
     "saved_at": "2026-10-13T09:47:43.463145"
   },
   {
+    "id": "6f3b1442-3c56-4095-b767-bb2c4dad7492",
+    "symbol": "AMN",
+    "setup_date": "2026-01-14",
+    "setup_type": "highest_volume_ever",
+    "setup_name": "Highest Volume Ever",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T14:36:29.546021"
+  },
+  {
+    "id": "0cc03ac1-c76d-47e7-b479-5c4d7487843a",
+    "symbol": "TTMI",
+    "setup_date": "2026-01-13",
+    "setup_type": "highest_volume_ever",
+    "setup_name": "Highest Volume Ever",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T14:35:49.668052"
+  },
+  {
     "id": "696fcac5-2998-4d6e-bdd3-16b9fb8418aa",
     "symbol": "BDSX",
     "setup_date": "2026-01-12",
@@ -597,6 +619,28 @@
     "notes": "",
     "tags": [],
     "saved_at": "2026-10-13T09:47:17.870128"
+  },
+  {
+    "id": "401b8310-341b-4c68-b5de-aa0351655782",
+    "symbol": "ELVN",
+    "setup_date": "2026-01-08",
+    "setup_type": "highest_volume_ever",
+    "setup_name": "Highest Volume Ever",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T14:34:33.538216"
+  },
+  {
+    "id": "5b96b708-bc8e-4a9f-b429-89c228b056cc",
+    "symbol": "AXTI",
+    "setup_date": "2026-01-07",
+    "setup_type": "highest_volume_ever",
+    "setup_name": "Highest Volume Ever",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-13T14:33:50.295485"
   },
   {
     "id": "f853ebf6-d084-4c49-9989-4f4a07c94bec",

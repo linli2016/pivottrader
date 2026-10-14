@@ -55,10 +55,27 @@ class IBKRFlexClient:
         self.max_wait = max_wait
         self.base_url = base_url.rstrip("/")
 
-    def _get(self, url: str, params: Dict[str, str]) -> bytes:
-        resp = self.session.get(url, params=params, headers={"User-Agent": USER_AGENT}, timeout=60)
-        resp.raise_for_status()
-        return resp.content
+    def _get(self, url: str, params: Dict[str, str], retries: int = 3, backoff: float = 1.0) -> bytes:
+        last_exc: Optional[Exception] = None
+        for attempt in range(retries):
+            try:
+                resp = self.session.get(url, params=params, headers={"User-Agent": USER_AGENT}, timeout=60)
+                resp.raise_for_status()
+                return resp.content
+            except requests.RequestException as e:
+                last_exc = e
+                if attempt < retries - 1:
+                    sleep_time = backoff * (2 ** attempt)
+                    logger.warning(
+                        f"Request to {url} failed ({e}); retrying in {sleep_time:.1f}s "
+                        f"(attempt {attempt + 1}/{retries})..."
+                    )
+                    time.sleep(sleep_time)
+                else:
+                    raise
+        if last_exc:
+            raise last_exc
+        raise FlexError("Failed to fetch data from IBKR Flex Web Service")
 
     def send_request(self) -> Tuple[str, str]:
         content = self._get(
@@ -79,8 +96,20 @@ class IBKRFlexClient:
 
     def get_statement(self, ref_code: str, url: str) -> bytes:
         deadline = time.monotonic() + self.max_wait
+        fallback_url = f"{self.base_url}/GetStatement"
+        current_url = url
         while True:
-            content = self._get(url, {"t": self.token, "q": ref_code, "v": FLEX_VERSION})
+            try:
+                content = self._get(current_url, {"t": self.token, "q": ref_code, "v": FLEX_VERSION})
+            except requests.RequestException as e:
+                if current_url != fallback_url:
+                    logger.warning(
+                        f"Failed to fetch statement from {current_url} ({e}); "
+                        f"falling back to base URL {fallback_url}"
+                    )
+                    current_url = fallback_url
+                    continue
+                raise
             root = _parse_xml(content)
             if root.tag == "FlexQueryResponse":
                 return content
