@@ -49,6 +49,17 @@ class SetupService:
         else:
             logger.error(f"Setups configuration file not found: {resolved_setups_path}")
 
+        def _parse_visible(val: Any) -> bool:
+            if val is None:
+                return True
+            if isinstance(val, bool):
+                return val
+            if isinstance(val, (int, float)):
+                return val != 0
+            if isinstance(val, str):
+                return val.strip().lower() not in ("false", "0", "no", "off")
+            return bool(val)
+
         setups_dict = raw_setups_data.get("setups", {}) if isinstance(raw_setups_data, dict) else {}
 
         # Convert setups dict to an ordered list based on display_order
@@ -59,16 +70,21 @@ class SetupService:
                 s_val.setdefault("display_order", 99)
                 s_val.setdefault("filters", {})
                 s_val.setdefault("visible_filters", [])
+                s_val["visible"] = _parse_visible(s_val.get("visible", True))
 
                 # Normalize sub_setups if defined
                 sub_setups_raw = s_val.get("sub_setups")
                 if isinstance(sub_setups_raw, list):
+                    for sub in sub_setups_raw:
+                        if isinstance(sub, dict):
+                            sub["visible"] = _parse_visible(sub.get("visible", True))
                     s_val["sub_setups"] = sub_setups_raw
                 elif isinstance(sub_setups_raw, dict):
                     normalized_subs = []
                     for sub_k, sub_v in sub_setups_raw.items():
                         if isinstance(sub_v, dict):
                             sub_v.setdefault("id", sub_k)
+                            sub_v["visible"] = _parse_visible(sub_v.get("visible", True))
                             normalized_subs.append(sub_v)
                     s_val["sub_setups"] = normalized_subs
 
@@ -92,16 +108,19 @@ class SetupService:
                 if isinstance(f_val, dict):
                     f_val.setdefault("id", f_key)
                     f_val.setdefault("display_order", 99)
+                    f_val["visible"] = _parse_visible(f_val.get("visible", True))
                     screeners_raw = f_val.get("screeners", [])
                     norm_screeners = []
                     if isinstance(screeners_raw, list):
                         for sc in screeners_raw:
                             if isinstance(sc, dict):
+                                sc["visible"] = _parse_visible(sc.get("visible", True))
                                 norm_screeners.append(sc)
                     elif isinstance(screeners_raw, dict):
                         for sc_k, sc_v in screeners_raw.items():
                             if isinstance(sc_v, dict):
                                 sc_v.setdefault("id", sc_k)
+                                sc_v["visible"] = _parse_visible(sc_v.get("visible", True))
                                 norm_screeners.append(sc_v)
                     f_val["screeners"] = norm_screeners
                     folders_list.append(f_val)
@@ -109,6 +128,12 @@ class SetupService:
             for f_val in folders_raw:
                 if isinstance(f_val, dict):
                     f_val.setdefault("display_order", 99)
+                    f_val["visible"] = _parse_visible(f_val.get("visible", True))
+                    screeners_raw = f_val.get("screeners", [])
+                    if isinstance(screeners_raw, list):
+                        for sc in screeners_raw:
+                            if isinstance(sc, dict):
+                                sc["visible"] = _parse_visible(sc.get("visible", True))
                     folders_list.append(f_val)
 
         folders_list.sort(key=lambda f: f.get("display_order", 99))
@@ -123,17 +148,42 @@ class SetupService:
         logger.info(f"Loaded {len(folders_list)} folders and {len(setups_list)} setups from {resolved_setups_path}")
         return self._cached_config
 
-    def get_setups_config(self) -> Dict[str, Any]:
+    def get_setups_config(self, visible_only: bool = False) -> Dict[str, Any]:
         """Returns the cached setups and filter definitions, auto-reloading if setups.yaml changed."""
         resolved_path = self._resolve_file_path(self.yaml_path)
         current_mtime = os.path.getmtime(resolved_path) if os.path.exists(resolved_path) else 0.0
         if not self._cached_config or current_mtime > getattr(self, "_last_mtime", 0.0):
-            return self.load_config()
-        return self._cached_config
+            self.load_config()
+
+        if not visible_only:
+            return self._cached_config
+
+        filtered_folders = []
+        for f in self._cached_config.get("folders", []):
+            if not f.get("visible", True):
+                continue
+            f_copy = dict(f)
+            f_copy["screeners"] = [sc for sc in f.get("screeners", []) if sc.get("visible", True)]
+            filtered_folders.append(f_copy)
+
+        filtered_setups = []
+        for s in self._cached_config.get("setups", []):
+            if not s.get("visible", True):
+                continue
+            s_copy = dict(s)
+            if "sub_setups" in s_copy:
+                s_copy["sub_setups"] = [sub for sub in s.get("sub_setups", []) if sub.get("visible", True)]
+            filtered_setups.append(s_copy)
+
+        return {
+            **self._cached_config,
+            "folders": filtered_folders,
+            "setups": filtered_setups,
+        }
 
     def get_setup_by_id(self, setup_id: str) -> Dict[str, Any]:
         """Returns the specific setup configuration by its ID, searching setups and folders."""
-        config = self.get_setups_config()
+        config = self.get_setups_config(visible_only=False)
         for s in config.get("setups", []):
             if s.get("id") == setup_id:
                 return s

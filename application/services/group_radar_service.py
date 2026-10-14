@@ -40,7 +40,7 @@ class GroupRadarService:
                 else:
                     raise
 
-    def _calc_group_stages(self, conn, group_type: str, target_date: str, sector: Optional[str] = None, limit_bars: int = 260) -> Dict[str, Dict[str, Any]]:
+    def _calc_group_stages(self, conn, group_type: str, target_date: str, sector: Optional[str] = None, limit_bars: int = 500) -> Dict[str, Dict[str, Any]]:
         """
         Calculates Stan Weinstein Stage, 40W / 200D MA slope, and Mansfield Relative Strength
         for all groups in batch (~150ms).
@@ -135,22 +135,49 @@ class GroupRadarService:
             with_ma AS (
                 SELECT *,
                     ROUND(AVG(close_idx) OVER (PARTITION BY grp_name ORDER BY date ROWS BETWEEN 199 PRECEDING AND CURRENT ROW), 2) as sma_200d,
-                    ROUND(AVG(rs_line) OVER (PARTITION BY grp_name ORDER BY date ROWS BETWEEN 199 PRECEDING AND CURRENT ROW), 4) as rs_sma_200d
+                    ROUND(AVG(rs_line) OVER (PARTITION BY grp_name ORDER BY date ROWS BETWEEN 199 PRECEDING AND CURRENT ROW), 4) as rs_sma_200d,
+                    ROUND(MAX(close_idx) OVER (PARTITION BY grp_name ORDER BY date ROWS BETWEEN 251 PRECEDING AND CURRENT ROW), 2) as high_52w
                 FROM daily_with_spy
             ),
             with_mansfield AS (
                 SELECT *,
                     ROUND(((rs_line / NULLIF(rs_sma_200d, 0)) - 1.0) * 100.0, 2) as mansfield_rs,
-                    ROUND((sma_200d - LAG(sma_200d, 20) OVER (PARTITION BY grp_name ORDER BY date)) / NULLIF(LAG(sma_200d, 20) OVER (PARTITION BY grp_name ORDER BY date), 0) * 100.0, 2) as ma_slope_pct
+                    ROUND((sma_200d - LAG(sma_200d, 20) OVER (PARTITION BY grp_name ORDER BY date)) / NULLIF(LAG(sma_200d, 20) OVER (PARTITION BY grp_name ORDER BY date), 0) * 100.0, 2) as ma_slope_pct,
+                    ROUND((close_idx - high_52w) / NULLIF(high_52w, 0) * 100.0, 2) as dist_52wh_pct
                 FROM with_ma
             ),
             latest AS (
-                SELECT grp_name, close_idx, sma_200d, rs_line, mansfield_rs, ma_slope_pct,
+                SELECT grp_name, close_idx, sma_200d, rs_line, mansfield_rs, ma_slope_pct, dist_52wh_pct,
                     CASE 
-                        WHEN close_idx > sma_200d AND ma_slope_pct > 0.05 AND mansfield_rs > 0 THEN 'Stage 2 (Advancing)'
-                        WHEN close_idx > sma_200d AND ma_slope_pct >= -0.15 THEN 'Stage 1 (Basing/Transition)'
-                        WHEN close_idx < sma_200d AND ma_slope_pct < -0.05 AND mansfield_rs < 0 THEN 'Stage 4 (Declining)'
-                        ELSE 'Stage 3 (Topping/Distribution)'
+                        -- 1. RISING MOVING AVERAGE: Bullish trend environment
+                        WHEN ma_slope_pct > 0.05 THEN
+                            CASE
+                                -- Price above or within normal 2% pullback of rising MA -> Stage 2 Advancing
+                                WHEN close_idx >= sma_200d * 0.98 THEN 'Stage 2 (Advancing)'
+                                -- Price dropped significantly below rising MA near highs -> Stage 3 distribution warning
+                                WHEN dist_52wh_pct >= -18.0 THEN 'Stage 3 (Topping/Distribution)'
+                                -- Otherwise breakdown below rising MA
+                                ELSE 'Stage 4 (Declining)'
+                            END
+
+                        -- 2. DECLINING MOVING AVERAGE: Bearish trend environment
+                        WHEN ma_slope_pct < -0.05 THEN
+                            CASE
+                                -- Price below declining MA -> Stage 4 Declining
+                                WHEN close_idx < sma_200d THEN 'Stage 4 (Declining)'
+                                -- Price rallied above declining MA near highs: topping churn vs base
+                                WHEN dist_52wh_pct >= -18.0 THEN 'Stage 3 (Topping/Distribution)'
+                                ELSE 'Stage 1 (Basing/Transition)'
+                            END
+
+                        -- 3. FLAT / NEUTRAL MOVING AVERAGE: Transition phase (-0.05 <= ma_slope_pct <= 0.05)
+                        ELSE
+                            CASE
+                                -- Top transition near 52w highs -> Stage 3 Topping / Distribution
+                                WHEN dist_52wh_pct >= -18.0 THEN 'Stage 3 (Topping/Distribution)'
+                                -- Bottom transition down from highs -> Stage 1 Basing / Accumulation
+                                ELSE 'Stage 1 (Basing/Transition)'
+                            END
                     END as stage,
                     ROW_NUMBER() OVER (PARTITION BY grp_name ORDER BY date DESC) as rn
                 FROM with_mansfield
@@ -1428,23 +1455,50 @@ class GroupRadarService:
                                 *,
                                 ROUND(AVG(close) OVER (ORDER BY date ROWS BETWEEN 39 PRECEDING AND CURRENT ROW), 2) as sma_40w,
                                 ROUND(AVG(close) OVER (ORDER BY date ROWS BETWEEN 9 PRECEDING AND CURRENT ROW), 2) as sma_10w,
-                                ROUND(AVG(rs_line) OVER (ORDER BY date ROWS BETWEEN 39 PRECEDING AND CURRENT ROW), 4) as rs_sma_40w
+                                ROUND(AVG(rs_line) OVER (ORDER BY date ROWS BETWEEN 39 PRECEDING AND CURRENT ROW), 4) as rs_sma_40w,
+                                ROUND(MAX(high) OVER (ORDER BY date ROWS BETWEEN 51 PRECEDING AND CURRENT ROW), 2) as high_52w
                             FROM weekly_with_spy
                         ),
                         with_mansfield AS (
                             SELECT 
                                 *,
                                 ROUND(((rs_line / NULLIF(rs_sma_40w, 0)) - 1.0) * 100.0, 2) as mansfield_rs,
-                                ROUND((sma_40w - LAG(sma_40w, 4) OVER (ORDER BY date)) / NULLIF(LAG(sma_40w, 4) OVER (ORDER BY date), 0) * 100.0, 2) as ma_slope_pct
+                                ROUND((sma_40w - LAG(sma_40w, 4) OVER (ORDER BY date)) / NULLIF(LAG(sma_40w, 4) OVER (ORDER BY date), 0) * 100.0, 2) as ma_slope_pct,
+                                ROUND((close - high_52w) / NULLIF(high_52w, 0) * 100.0, 2) as dist_52wh_pct
                             FROM with_ma
                         )
                         SELECT 
                             date::VARCHAR as date, open, high, low, close, volume, sma_40w, sma_10w, rs_line, mansfield_rs, ma_slope_pct,
                             CASE 
-                                WHEN close > sma_40w AND ma_slope_pct > 0.05 AND mansfield_rs > 0 THEN 'Stage 2 (Advancing)'
-                                WHEN close > sma_40w AND ma_slope_pct >= -0.15 THEN 'Stage 1 (Basing/Transition)'
-                                WHEN close < sma_40w AND ma_slope_pct < -0.05 AND mansfield_rs < 0 THEN 'Stage 4 (Declining)'
-                                ELSE 'Stage 3 (Topping/Distribution)'
+                                -- 1. RISING MOVING AVERAGE: Bullish trend environment
+                                WHEN ma_slope_pct > 0.05 THEN
+                                    CASE
+                                        -- Price above or within normal 2% pullback of rising MA -> Stage 2 Advancing
+                                        WHEN close >= sma_40w * 0.98 THEN 'Stage 2 (Advancing)'
+                                        -- Price dropped significantly below rising MA near highs -> Stage 3 distribution warning
+                                        WHEN dist_52wh_pct >= -18.0 THEN 'Stage 3 (Topping/Distribution)'
+                                        -- Otherwise breakdown below rising MA
+                                        ELSE 'Stage 4 (Declining)'
+                                    END
+
+                                -- 2. DECLINING MOVING AVERAGE: Bearish trend environment
+                                WHEN ma_slope_pct < -0.05 THEN
+                                    CASE
+                                        -- Price below declining MA -> Stage 4 Declining
+                                        WHEN close < sma_40w THEN 'Stage 4 (Declining)'
+                                        -- Price rallied above declining MA near highs: topping churn vs base
+                                        WHEN dist_52wh_pct >= -18.0 THEN 'Stage 3 (Topping/Distribution)'
+                                        ELSE 'Stage 1 (Basing/Transition)'
+                                    END
+
+                                -- 3. FLAT / NEUTRAL MOVING AVERAGE: Transition phase (-0.05 <= ma_slope_pct <= 0.05)
+                                ELSE
+                                    CASE
+                                        -- Top transition near 52w highs -> Stage 3 Topping / Distribution
+                                        WHEN dist_52wh_pct >= -18.0 THEN 'Stage 3 (Topping/Distribution)'
+                                        -- Bottom transition down from highs -> Stage 1 Basing / Accumulation
+                                        ELSE 'Stage 1 (Basing/Transition)'
+                                    END
                             END as stage
                         FROM with_mansfield 
                         ORDER BY date ASC;
@@ -1524,23 +1578,50 @@ class GroupRadarService:
                                 *,
                                 ROUND(AVG(close) OVER (ORDER BY date ROWS BETWEEN 199 PRECEDING AND CURRENT ROW), 2) as sma_200d,
                                 ROUND(AVG(close) OVER (ORDER BY date ROWS BETWEEN 49 PRECEDING AND CURRENT ROW), 2) as sma_50d,
-                                ROUND(AVG(rs_line) OVER (ORDER BY date ROWS BETWEEN 199 PRECEDING AND CURRENT ROW), 4) as rs_sma_200d
+                                ROUND(AVG(rs_line) OVER (ORDER BY date ROWS BETWEEN 199 PRECEDING AND CURRENT ROW), 4) as rs_sma_200d,
+                                ROUND(MAX(high) OVER (ORDER BY date ROWS BETWEEN 251 PRECEDING AND CURRENT ROW), 2) as high_52w
                             FROM daily_with_spy
                         ),
                         with_mansfield AS (
                             SELECT 
                                 *,
                                 ROUND(((rs_line / NULLIF(rs_sma_200d, 0)) - 1.0) * 100.0, 2) as mansfield_rs,
-                                ROUND((sma_200d - LAG(sma_200d, 20) OVER (ORDER BY date)) / NULLIF(LAG(sma_200d, 20) OVER (ORDER BY date), 0) * 100.0, 2) as ma_slope_pct
+                                ROUND((sma_200d - LAG(sma_200d, 20) OVER (ORDER BY date)) / NULLIF(LAG(sma_200d, 20) OVER (ORDER BY date), 0) * 100.0, 2) as ma_slope_pct,
+                                ROUND((close - high_52w) / NULLIF(high_52w, 0) * 100.0, 2) as dist_52wh_pct
                             FROM with_ma
                         )
                         SELECT 
                             date::VARCHAR as date, open, high, low, close, volume, sma_200d, sma_50d, rs_line, mansfield_rs, ma_slope_pct,
                             CASE 
-                                WHEN close > sma_200d AND ma_slope_pct > 0.05 AND mansfield_rs > 0 THEN 'Stage 2 (Advancing)'
-                                WHEN close > sma_200d AND ma_slope_pct >= -0.15 THEN 'Stage 1 (Basing/Transition)'
-                                WHEN close < sma_200d AND ma_slope_pct < -0.05 AND mansfield_rs < 0 THEN 'Stage 4 (Declining)'
-                                ELSE 'Stage 3 (Topping/Distribution)'
+                                -- 1. RISING MOVING AVERAGE: Bullish trend environment
+                                WHEN ma_slope_pct > 0.05 THEN
+                                    CASE
+                                        -- Price above or within normal 2% pullback of rising MA -> Stage 2 Advancing
+                                        WHEN close >= sma_200d * 0.98 THEN 'Stage 2 (Advancing)'
+                                        -- Price dropped significantly below rising MA near highs -> Stage 3 distribution warning
+                                        WHEN dist_52wh_pct >= -18.0 THEN 'Stage 3 (Topping/Distribution)'
+                                        -- Otherwise breakdown below rising MA
+                                        ELSE 'Stage 4 (Declining)'
+                                    END
+
+                                -- 2. DECLINING MOVING AVERAGE: Bearish trend environment
+                                WHEN ma_slope_pct < -0.05 THEN
+                                    CASE
+                                        -- Price below declining MA -> Stage 4 Declining
+                                        WHEN close < sma_200d THEN 'Stage 4 (Declining)'
+                                        -- Price rallied above declining MA near highs: topping churn vs base
+                                        WHEN dist_52wh_pct >= -18.0 THEN 'Stage 3 (Topping/Distribution)'
+                                        ELSE 'Stage 1 (Basing/Transition)'
+                                    END
+
+                                -- 3. FLAT / NEUTRAL MOVING AVERAGE: Transition phase (-0.05 <= ma_slope_pct <= 0.05)
+                                ELSE
+                                    CASE
+                                        -- Top transition near 52w highs -> Stage 3 Topping / Distribution
+                                        WHEN dist_52wh_pct >= -18.0 THEN 'Stage 3 (Topping/Distribution)'
+                                        -- Bottom transition down from highs -> Stage 1 Basing / Accumulation
+                                        ELSE 'Stage 1 (Basing/Transition)'
+                                    END
                             END as stage
                         FROM with_mansfield 
                         ORDER BY date ASC;

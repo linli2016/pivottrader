@@ -494,7 +494,7 @@ class JournalService:
 
     # ----- Flex credentials -----
 
-    def _load_flex_config(self) -> Dict[str, str]:
+    def _load_flex_config(self) -> Dict[str, Any]:
         if not os.path.exists(self.config_path):
             return {}
         try:
@@ -506,19 +506,78 @@ class JournalService:
 
     def get_flex_config(self) -> Dict[str, Any]:
         cfg = self._load_flex_config()
-        token = cfg.get("token") or ""
+        default_token = cfg.get("token") or ""
+        raw_queries = cfg.get("queries") or []
+
+        queries = []
+        if raw_queries:
+            for q in raw_queries:
+                qid = str(q.get("query_id") or "").strip()
+                if not qid:
+                    continue
+                q_token = q.get("token") or ""
+                effective_token = q_token or default_token
+                queries.append({
+                    "name": q.get("name") or f"Query {qid}",
+                    "query_id": qid,
+                    "has_token": bool(effective_token),
+                    "has_custom_token": bool(q_token),
+                    "token_masked": f"{'•' * 8}{effective_token[-4:]}" if len(effective_token) >= 4 else ("•" * len(effective_token)),
+                })
+        elif cfg.get("query_id"):
+            qid = str(cfg.get("query_id")).strip()
+            queries.append({
+                "name": "Primary Query",
+                "query_id": qid,
+                "has_token": bool(default_token),
+                "has_custom_token": False,
+                "token_masked": f"{'•' * 8}{default_token[-4:]}" if len(default_token) >= 4 else ("•" * len(default_token)),
+            })
+
+        has_any_token = bool(default_token or any(q["has_token"] for q in queries))
+        primary_qid = cfg.get("query_id") or (queries[0]["query_id"] if queries else "")
         return {
-            "query_id": cfg.get("query_id") or "",
-            "has_token": bool(token),
-            "token_masked": f"{'•' * 8}{token[-4:]}" if len(token) >= 4 else ("•" * len(token)),
+            "query_id": primary_qid,
+            "has_token": has_any_token,
+            "token_masked": f"{'•' * 8}{default_token[-4:]}" if len(default_token) >= 4 else ("•" * len(default_token)),
+            "queries": queries,
         }
 
-    def update_flex_config(self, token: Optional[str], query_id: Optional[str]) -> Dict[str, Any]:
+    def update_flex_config(
+        self,
+        token: Optional[str] = None,
+        query_id: Optional[str] = None,
+        queries: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
         cfg = self._load_flex_config()
-        if token is not None and token.strip():
+        existing_queries = {str(q.get("query_id")): q for q in (cfg.get("queries") or [])}
+
+        if token is not None and token.strip() and not set(token.strip()).issubset({"•", "*"}):
             cfg["token"] = token.strip()
         if query_id is not None:
             cfg["query_id"] = query_id.strip()
+
+        if queries is not None:
+            updated_queries = []
+            for q in queries:
+                qid = str(q.get("query_id") or "").strip()
+                if not qid:
+                    continue
+                q_tok = q.get("token")
+                # Preserve existing custom token if left blank or masked
+                if not q_tok or set(str(q_tok).strip()).issubset({"•", "*"}):
+                    q_tok = existing_queries.get(qid, {}).get("token") or ""
+                else:
+                    q_tok = str(q_tok).strip()
+                updated_queries.append({
+                    "name": str(q.get("name") or f"Query {qid}").strip(),
+                    "query_id": qid,
+                    "token": q_tok,
+                })
+            cfg["queries"] = updated_queries
+            if updated_queries and not cfg.get("query_id"):
+                cfg["query_id"] = updated_queries[0]["query_id"]
+
         os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
         with open(self.config_path, "w", encoding="utf-8") as f:
             json.dump(cfg, f, indent=2)
@@ -557,12 +616,104 @@ class JournalService:
             )
         return result
 
-    def sync_from_flex(self) -> Dict[str, Any]:
+    def sync_from_flex(self, target_query_id: Optional[str] = None) -> Dict[str, Any]:
         cfg = self._load_flex_config()
-        if not cfg.get("token") or not cfg.get("query_id"):
-            raise FlexError("Configure your IBKR Flex token and Query ID first")
-        content = IBKRFlexClient(cfg["token"], cfg["query_id"]).fetch_statement()
-        return self.import_statement(content)
+        default_token = cfg.get("token") or ""
+        raw_queries = cfg.get("queries") or []
+
+        query_targets: List[Dict[str, str]] = []
+        if raw_queries:
+            for q in raw_queries:
+                qid = str(q.get("query_id") or "").strip()
+                if not qid:
+                    continue
+                if target_query_id and qid != str(target_query_id).strip():
+                    continue
+                tok = q.get("token") or default_token
+                query_targets.append({
+                    "name": q.get("name") or f"Query {qid}",
+                    "query_id": qid,
+                    "token": tok,
+                })
+        elif cfg.get("query_id"):
+            qid = str(cfg.get("query_id")).strip()
+            if not target_query_id or qid == str(target_query_id).strip():
+                query_targets.append({
+                    "name": "Primary Query",
+                    "query_id": qid,
+                    "token": default_token,
+                })
+
+        if not query_targets:
+            raise FlexError("No IBKR Flex Queries configured. Please configure your token and Query ID first.")
+
+        all_executions: List[Dict[str, Any]] = []
+        total_skipped = 0
+        all_accounts = set()
+        has_fifo_pnl = False
+        query_results = []
+        errors = []
+
+        for qt in query_targets:
+            name = qt["name"]
+            qid = qt["query_id"]
+            tok = qt["token"]
+            if not tok:
+                err = f"Missing token for query '{name}' ({qid})"
+                errors.append(err)
+                query_results.append({"name": name, "query_id": qid, "status": "error", "error": err})
+                continue
+
+            try:
+                content = IBKRFlexClient(tok, qid).fetch_statement()
+                parsed = parse_flex_trades(content)
+                execs = parsed["executions"]
+                all_executions.extend(execs)
+                total_skipped += parsed.get("skipped", 0)
+                if parsed.get("has_fifo_pnl"):
+                    has_fifo_pnl = True
+                for a in parsed.get("accounts", []):
+                    all_accounts.add(a)
+                query_results.append({
+                    "name": name,
+                    "query_id": qid,
+                    "status": "success",
+                    "fetched": len(execs),
+                    "accounts": parsed.get("accounts", []),
+                })
+            except Exception as e:
+                logger.error(f"Failed to fetch Flex statement for query '{name}' ({qid}): {e}")
+                errors.append(f"{name} ({qid}): {e}")
+                query_results.append({"name": name, "query_id": qid, "status": "error", "error": str(e)})
+
+        if not query_results or (errors and len(errors) == len(query_targets)):
+            raise FlexError("Flex sync failed:\n" + "\n".join(errors))
+
+        with self._write_lock, self._connect() as conn:
+            before = conn.execute("SELECT COUNT(*) FROM executions").fetchone()[0]
+            placeholders = ",".join("?" for _ in EXEC_COLUMNS)
+            conn.executemany(
+                f"INSERT OR REPLACE INTO executions ({','.join(EXEC_COLUMNS)}) VALUES ({placeholders})",
+                [[e.get(c) for c in EXEC_COLUMNS] for e in all_executions],
+            )
+            after = conn.execute("SELECT COUNT(*) FROM executions").fetchone()[0]
+            result = {
+                "status": "success" if not errors else "partial",
+                "fetched": len(all_executions),
+                "new_executions": after - before,
+                "total_executions": after,
+                "skipped_non_stock": total_skipped,
+                "accounts": sorted(all_accounts),
+                "has_fifo_pnl": has_fifo_pnl,
+                "synced_at": datetime.now().isoformat(timespec="seconds"),
+                "query_results": query_results,
+                "errors": errors if errors else None,
+            }
+            conn.execute(
+                "INSERT OR REPLACE INTO journal_meta (key, value) VALUES ('last_sync', ?)",
+                [json.dumps(result)],
+            )
+        return result
 
     def get_last_sync(self) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
@@ -810,15 +961,19 @@ class JournalService:
         active_trades = [t for t in trades if not t.get("is_ignored")]
         all_execs = self.load_executions()
         ignored_map = self.load_ignored_trade_ids()
+        ignored_count = (
+            sum(1 for tid in ignored_map if tid.startswith(f"{account}:"))
+            if account else len(ignored_map)
+        )
         return {
             "trades": trades,
             "stats": compute_statistics(active_trades),
             "monthly": compute_period_pnl(active_trades, "month"),
             "yearly": compute_period_pnl(active_trades, "year"),
             "equity_curve": compute_equity_curve(active_trades),
-            "accounts": sorted({e["account_id"] for e in all_execs}),
-            "years": sorted({e["trade_date"][:4] for e in all_execs}, reverse=True),
-            "ignored_count": len(ignored_map),
+            "accounts": sorted({e["account_id"] for e in all_execs if e.get("account_id")}),
+            "years": sorted({e["trade_date"][:4] for e in all_execs if e.get("trade_date")}, reverse=True),
+            "ignored_count": ignored_count,
             "last_sync": self.get_last_sync(),
         }
 

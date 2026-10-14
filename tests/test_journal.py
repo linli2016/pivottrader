@@ -15,12 +15,12 @@ from application.services.journal_service import (
 
 
 def _trade_xml(trade_id, symbol, dt, qty, price, commission=-1.0, oc="O", fifo=0.0, level="EXECUTION",
-               asset="STK", conid="100", fx="1"):
+               asset="STK", conid="100", fx="1", account_id="U1"):
     buy_sell = "BUY" if qty > 0 else "SELL"
     proceeds = -qty * price
     net_cash = proceeds + commission
     return (
-        f'<Trade accountId="U1" currency="USD" fxRateToBase="{fx}" assetCategory="{asset}" symbol="{symbol}" '
+        f'<Trade accountId="{account_id}" currency="USD" fxRateToBase="{fx}" assetCategory="{asset}" symbol="{symbol}" '
         f'description="{symbol} INC" conid="{conid}" tradeID="{trade_id}" dateTime="{dt}" tradeDate="{dt[:8]}" '
         f'quantity="{qty}" tradePrice="{price}" proceeds="{proceeds}" ibCommission="{commission}" '
         f'netCash="{net_cash}" fifoPnlRealized="{fifo}" buySell="{buy_sell}" openCloseIndicator="{oc}" '
@@ -33,6 +33,14 @@ def _statement(*trades):
         '<FlexQueryResponse queryName="journal" type="AF"><FlexStatements count="1">'
         '<FlexStatement accountId="U1"><Trades>' + "".join(trades) + "</Trades></FlexStatement>"
         "</FlexStatements></FlexQueryResponse>"
+    ).encode()
+
+
+def _multi_statement(*statements):
+    return (
+        '<FlexQueryResponse queryName="journal" type="AF"><FlexStatements>'
+        + "".join(statements)
+        + "</FlexStatements></FlexQueryResponse>"
     ).encode()
 
 
@@ -378,6 +386,88 @@ class TestJournalService(unittest.TestCase):
         self.assertEqual(stats["open_trades"], 1)
         self.assertAlmostEqual(stats["open_pnl"], 148.0)
         self.assertAlmostEqual(stats["avg_open_pnl_pct"], 14.8)
+
+    def test_multi_account_support_and_filtering(self):
+        # XML containing trades for two accounts: U1 (Taxable) and U2 (Roth IRA)
+        stmt1 = '<FlexStatement accountId="U1"><Trades>' + "".join([
+            _trade_xml("1", "AAPL", "20240115;093512", 100, 10.0, account_id="U1"),
+            _trade_xml("2", "AAPL", "20240120;100000", -100, 15.0, oc="C", fifo=498.0, account_id="U1"),
+        ]) + '</Trades></FlexStatement>'
+        stmt2 = '<FlexStatement accountId="U2"><Trades>' + "".join([
+            _trade_xml("3", "AAPL", "20240116;093512", 50, 12.0, account_id="U2"),
+            _trade_xml("4", "AAPL", "20240122;100000", -50, 18.0, oc="C", fifo=298.0, account_id="U2"),
+            _trade_xml("5", "TSLA", "20240118;093512", 10, 200.0, conid="200", account_id="U2"),
+        ]) + '</Trades></FlexStatement>'
+
+        xml = _multi_statement(stmt1, stmt2)
+        res = self.svc.import_statement(xml)
+        self.assertEqual(res["accounts"], ["U1", "U2"])
+        self.assertEqual(res["new_executions"], 5)
+
+        # Journal with no account filter: shows all trades across both accounts
+        j_all = self.svc.get_journal()
+        self.assertEqual(len(j_all["trades"]), 3)
+        self.assertEqual(j_all["accounts"], ["U1", "U2"])
+        # Closed trades: 1 on U1 (pnl=498), 1 on U2 (pnl=298) -> total 796
+        self.assertAlmostEqual(j_all["stats"]["total_pnl"], 796.0)
+
+        # Filter by Account U1 only
+        j_u1 = self.svc.get_journal(account="U1")
+        self.assertEqual(len(j_u1["trades"]), 1)
+        self.assertEqual(j_u1["trades"][0]["symbol"], "AAPL")
+        self.assertEqual(j_u1["trades"][0]["account_id"], "U1")
+        self.assertAlmostEqual(j_u1["stats"]["total_pnl"], 498.0)
+        self.assertEqual(j_u1["accounts"], ["U1", "U2"])
+
+        # Filter by Account U2 only
+        j_u2 = self.svc.get_journal(account="U2")
+        self.assertEqual(len(j_u2["trades"]), 2)
+        self.assertTrue(all(t["account_id"] == "U2" for t in j_u2["trades"]))
+        self.assertAlmostEqual(j_u2["stats"]["total_pnl"], 298.0)
+
+    def test_multi_query_config_and_sync(self):
+        # Configure multiple queries
+        cfg = self.svc.update_flex_config(
+            token="default_secret_token",
+            queries=[
+                {"name": "Taxable Account", "query_id": "111111"},
+                {"name": "Roth IRA", "query_id": "222222", "token": "custom_token_2"},
+            ]
+        )
+        self.assertEqual(len(cfg["queries"]), 2)
+        self.assertEqual(cfg["queries"][0]["name"], "Taxable Account")
+        self.assertEqual(cfg["queries"][0]["query_id"], "111111")
+        self.assertFalse(cfg["queries"][0]["has_custom_token"])
+        self.assertTrue(cfg["queries"][1]["has_custom_token"])
+        self.assertTrue(cfg["queries"][1]["token_masked"].endswith("en_2"))
+
+        # Mock IBKRFlexClient to test multi-query sync
+        xml_q1 = _statement(
+            _trade_xml("101", "NVDA", "20240115;093512", 10, 100.0, account_id="U10"),
+            _trade_xml("102", "NVDA", "20240120;100000", -10, 120.0, oc="C", fifo=198.0, account_id="U10"),
+        )
+        xml_q2 = _statement(
+            _trade_xml("201", "AMZN", "20240116;093512", 20, 150.0, account_id="U20"),
+            _trade_xml("202", "AMZN", "20240122;100000", -20, 160.0, oc="C", fifo=198.0, account_id="U20"),
+        )
+
+        def mock_fetch(self_client):
+            if self_client.query_id == "111111":
+                return xml_q1
+            elif self_client.query_id == "222222":
+                return xml_q2
+            raise FlexError("Unknown query")
+
+        with patch.object(IBKRFlexClient, "fetch_statement", autospec=True, side_effect=mock_fetch):
+            sync_res = self.svc.sync_from_flex()
+            self.assertEqual(sync_res["status"], "success")
+            self.assertEqual(sync_res["fetched"], 4)
+            self.assertEqual(sync_res["accounts"], ["U10", "U20"])
+            self.assertEqual(len(sync_res["query_results"]), 2)
+
+        j = self.svc.get_journal()
+        self.assertEqual(j["accounts"], ["U10", "U20"])
+        self.assertEqual(len(j["trades"]), 2)
 
 
 class TestIBKRFlexClient(unittest.TestCase):

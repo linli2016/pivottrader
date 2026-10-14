@@ -152,10 +152,10 @@ class SavedTradeSetupTypeSchema(BaseModel):
 # ----------------- Endpoints -----------------
 
 @router.get("/api/setups")
-def get_setups():
+def get_setups(visible_only: bool = False):
     """Retrieve setup configurations and filter registry definitions."""
     try:
-        return setup_service.get_setups_config()
+        return setup_service.get_setups_config(visible_only=visible_only)
     except Exception as e:
         logger.error(f"Error in get_setups: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

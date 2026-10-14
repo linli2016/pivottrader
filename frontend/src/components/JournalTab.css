@@ -850,5 +850,108 @@
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+/* Multi-account & Multi-query styles */
+.jr-account-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+.jr-account-badge:hover {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: #f59e0b;
+}
+
+.jr-guide-callout {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--border-radius-md);
+  padding: 10px 14px;
+  font-size: 12.5px;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+.jr-guide-callout ul {
+  margin: 6px 0 0 16px;
+  padding: 0;
+}
+.jr-guide-callout li {
+  margin-bottom: 4px;
+}
+
+.jr-queries-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+.jr-queries-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.jr-queries-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.jr-query-card {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+}
+.jr-query-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.jr-query-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.jr-query-name-input {
+  flex: 1;
+  font-weight: 600;
+}
+.jr-query-remove-btn {
+  color: #fb7185;
+  font-size: 14px;
+  padding: 4px 8px;
+}
+.jr-query-remove-btn:hover {
+  background: rgba(244, 63, 94, 0.15);
+}
+.jr-query-card-fields {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 10px;
+}
+@media (max-width: 600px) {
+  .jr-query-card-fields {
+    grid-template-columns: 1fr;
+  }
+}
+.jr-field-compact {
+  gap: 4px;
+}
+.jr-field-compact .stat-label {
+  font-size: 10px;
+}
+
 
 

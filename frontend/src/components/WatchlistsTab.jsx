@@ -118,6 +118,10 @@ export const QUADRANT_COLORS = {
 export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetchWatchlists }) {
   // Main Navigation Mode for Right Dock: 'watchlists' | 'groups' | 'positions'
   const [dockTab, setDockTab] = useState('watchlists');
+  const dockTabRef = useRef(dockTab);
+  useEffect(() => {
+    dockTabRef.current = dockTab;
+  }, [dockTab]);
 
   // Active Stock & Chart Data
   const [selectedStock, setSelectedStock] = useState(null);
@@ -167,6 +171,9 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   // -------------------------------------------------------------
   const [selectedWatchlistId, setSelectedWatchlistId] = useState(null);
   const [items, setItems] = useState([]);
+  const activeWatchlistSymbols = useMemo(() => {
+    return new Set((items || []).map((i) => i.symbol?.toUpperCase()).filter(Boolean));
+  }, [items]);
   const [loadingItems, setLoadingItems] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSector, setFilterSector] = useState('ALL');
@@ -310,10 +317,13 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         setItems(data);
         if (data.length > 0) {
           setSelectedStock((current) => {
-            if (current && data.some((d) => d.symbol === current.symbol)) {
-              return current;
+            if (!current) {
+              return data[0];
             }
-            return data[0];
+            if (dockTabRef.current === 'watchlists' && !data.some((d) => d.symbol === current.symbol)) {
+              return data[0];
+            }
+            return current;
           });
         }
       }
@@ -579,7 +589,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       if (res.ok) {
         setItems((prev) => {
           const updated = prev.filter((i) => i.symbol !== sym);
-          if (selectedStock?.symbol === sym) {
+          if (dockTabRef.current === 'watchlists' && selectedStock?.symbol === sym) {
             setSelectedStock(updated.length > 0 ? updated[0] : null);
           }
           return updated;
@@ -589,6 +599,47 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       }
     } catch (e) {
       console.error('Error removing symbol:', e);
+    }
+  };
+
+  // Toggle symbol in active watchlist (matches Screen result page)
+  const handleToggleWatchlist = async (sym) => {
+    if (!selectedWatchlistId || !sym) return;
+    const symUpper = sym.toUpperCase();
+    const isSaved = activeWatchlistSymbols.has(symUpper);
+
+    try {
+      if (isSaved) {
+        const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items/${encodeURIComponent(symUpper)}`, {
+          method: 'DELETE'
+        });
+        if (res.ok) {
+          setItems((prev) => {
+            const updated = prev.filter((i) => i.symbol?.toUpperCase() !== symUpper);
+            if (dockTabRef.current === 'watchlists' && selectedStock?.symbol?.toUpperCase() === symUpper) {
+              setSelectedStock(updated.length > 0 ? updated[0] : null);
+            }
+            return updated;
+          });
+          if (fetchWatchlists) fetchWatchlists();
+          const targetW = watchlists.find((w) => w.id === selectedWatchlistId);
+          triggerToast(`Removed ${symUpper} from ${targetW?.name || 'watchlist'}`);
+        }
+      } else {
+        const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol: symUpper })
+        });
+        if (res.ok) {
+          fetchItems(selectedWatchlistId);
+          if (fetchWatchlists) fetchWatchlists();
+          const targetW = watchlists.find((w) => w.id === selectedWatchlistId);
+          triggerToast(`Added ${symUpper} to ${targetW?.name || 'watchlist'}`);
+        }
+      }
+    } catch (err) {
+      console.error('Error toggling watchlist item:', err);
     }
   };
 
@@ -1270,80 +1321,63 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
 
                   {/* Top Right: Watchlist Action & Details Toggle */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {/* Quick Add To Watchlist Button with Dropdown */}
-                    <div style={{ position: 'relative' }}>
-                      <button
-                        type="button"
-                        onClick={() => setQuickAddMenuSym(quickAddMenuSym === selectedStock.symbol ? null : selectedStock.symbol)}
-                        title="Add this stock to a watchlist"
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          background: 'rgba(16, 185, 129, 0.15)',
-                          border: '1px solid rgba(16, 185, 129, 0.4)',
-                          borderRadius: '5px',
-                          color: '#10b981',
-                          padding: '3px 8px',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <span>＋</span>
-                        <span>Watchlist</span>
-                      </button>
+                    {/* Watchlist Quick Action Controls (matches Screen result page) */}
+                    <select
+                      value={selectedWatchlistId || ''}
+                      onChange={(e) => setSelectedWatchlistId(Number(e.target.value))}
+                      style={{
+                        background: 'rgba(0, 0, 0, 0.4)',
+                        color: 'var(--text-primary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 'var(--border-radius-md)',
+                        padding: '5px 8px',
+                        fontSize: '11.5px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {watchlists.map((w) => (
+                        <option key={w.id} value={w.id} style={{ background: '#1e293b', color: '#ffffff' }}>
+                          ⭐️ {w.name}
+                        </option>
+                      ))}
+                    </select>
 
-                      {quickAddMenuSym === selectedStock.symbol && (
-                        <>
-                          <div
-                            style={{ position: 'fixed', inset: 0, zIndex: 90 }}
-                            onClick={() => setQuickAddMenuSym(null)}
-                          />
-                          <div style={{
-                            position: 'absolute',
-                            right: 0,
-                            top: '28px',
-                            background: 'var(--card-bg)',
-                            border: '1px solid var(--border-color)',
+                    {(() => {
+                      const isCurrentSaved = selectedStock && activeWatchlistSymbols.has(selectedStock.symbol.toUpperCase());
+                      return (
+                        <button
+                          className={`btn ${isCurrentSaved ? 'btn-secondary' : 'btn-primary'} btn-sm`}
+                          onClick={() => handleToggleWatchlist(selectedStock?.symbol)}
+                          disabled={!selectedStock}
+                          title={isCurrentSaved ? 'Saved in Watchlist (Click to remove)' : `Save ${selectedStock?.symbol || 'stock'} to Watchlist`}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '28px',
+                            height: '28px',
+                            padding: 0,
                             borderRadius: '6px',
-                            boxShadow: '0 10px 25px rgba(0,0,0,0.6)',
-                            padding: '4px 0',
-                            zIndex: 100,
-                            minWidth: '160px'
-                          }}>
-                            <div style={{ padding: '4px 10px', fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700 }}>
-                              ADD TO WATCHLIST:
-                            </div>
-                            {watchlists.map((w) => (
-                              <button
-                                key={w.id}
-                                type="button"
-                                onClick={() => handleAddSymbolToWatchlist(selectedStock.symbol, w.id)}
-                                style={{
-                                  width: '100%',
-                                  textAlign: 'left',
-                                  background: 'transparent',
-                                  border: 'none',
-                                  padding: '6px 12px',
-                                  fontSize: '11.5px',
-                                  color: '#ffffff',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center'
-                                }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
-                                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                              >
-                                <span>{w.name}</span>
-                                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>({w.item_count || 0})</span>
-                              </button>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
+                            transition: 'all 0.2s ease',
+                            background: isCurrentSaved ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255, 255, 255, 0.08)',
+                            color: isCurrentSaved ? '#34d399' : 'var(--text-secondary)',
+                            border: isCurrentSaved ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(255, 255, 255, 0.15)',
+                            cursor: selectedStock ? 'pointer' : 'not-allowed'
+                          }}
+                        >
+                          {isCurrentSaved ? (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="#34d399" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                            </svg>
+                          ) : (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="12" y1="5" x2="12" y2="19"></line>
+                              <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                          )}
+                        </button>
+                      );
+                    })()}
 
                     {/* Toggle Stock Details Drawer Button */}
                     <button
@@ -2533,26 +2567,47 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                                           )}
                                         </td>
 
-                                        {/* Quick Add To Watchlist Action */}
+                                        {/* Quick Add / Remove Watchlist Action */}
                                         <td style={{ padding: '4px 6px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                                          <button
-                                            type="button"
-                                            onClick={() => handleAddSymbolToWatchlist(stock.symbol)}
-                                            title={`Add ${stock.symbol} to active watchlist`}
-                                            style={{
-                                              background: 'transparent',
-                                              border: '1px solid rgba(16, 185, 129, 0.4)',
-                                              color: '#10b981',
-                                              borderRadius: '3px',
-                                              padding: '1px 4px',
-                                              fontSize: '10px',
-                                              cursor: 'pointer'
-                                            }}
-                                            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(16, 185, 129, 0.2)')}
-                                            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                                          >
-                                            ＋
-                                          </button>
+                                          {(() => {
+                                            const isStockSaved = activeWatchlistSymbols.has(stock.symbol.toUpperCase());
+                                            return (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleToggleWatchlist(stock.symbol)}
+                                                title={isStockSaved ? 'Saved in Watchlist (Click to remove)' : `Add ${stock.symbol} to active watchlist`}
+                                                style={{
+                                                  background: isStockSaved ? 'rgba(16, 185, 129, 0.25)' : 'transparent',
+                                                  border: isStockSaved ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(16, 185, 129, 0.4)',
+                                                  color: isStockSaved ? '#34d399' : '#10b981',
+                                                  borderRadius: '3px',
+                                                  padding: '1px 4px',
+                                                  fontSize: '10px',
+                                                  cursor: 'pointer',
+                                                  display: 'inline-flex',
+                                                  alignItems: 'center',
+                                                  justifyContent: 'center',
+                                                  minWidth: '20px',
+                                                  height: '18px',
+                                                  transition: 'all 0.15s ease'
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                  if (!isStockSaved) e.currentTarget.style.background = 'rgba(16, 185, 129, 0.2)';
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                  if (!isStockSaved) e.currentTarget.style.background = 'transparent';
+                                                }}
+                                              >
+                                                {isStockSaved ? (
+                                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="#34d399" stroke="#34d399" strokeWidth="2">
+                                                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                                                  </svg>
+                                                ) : (
+                                                  '＋'
+                                                )}
+                                              </button>
+                                            );
+                                          })()}
                                         </td>
                                       </tr>
                                     );
@@ -2686,6 +2741,18 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                                 }}>
                                   {pos.direction || 'LONG'}
                                 </span>
+                                {pos.account_id && (
+                                  <span style={{
+                                    fontSize: '8.5px',
+                                    fontWeight: 600,
+                                    borderRadius: '3px',
+                                    padding: '1px 4px',
+                                    background: 'rgba(255,255,255,0.08)',
+                                    color: 'var(--text-secondary)'
+                                  }} title={`IBKR Account: ${pos.account_id}`}>
+                                    {pos.account_id}
+                                  </span>
+                                )}
                               </div>
                               <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>
                                 {pos.holding_days ? `${pos.holding_days}d held` : 'Open'}
@@ -2711,22 +2778,45 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                           </td>
 
                           <td style={{ padding: '6px 4px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              onClick={() => handleAddSymbolToWatchlist(pos.symbol)}
-                              title={`Add ${pos.symbol} to active watchlist`}
-                              style={{
-                                background: 'transparent',
-                                border: '1px solid rgba(16, 185, 129, 0.4)',
-                                color: '#10b981',
-                                borderRadius: '3px',
-                                padding: '1px 4px',
-                                fontSize: '10px',
-                                cursor: 'pointer'
-                              }}
-                            >
-                              ＋
-                            </button>
+                            {(() => {
+                              const isPosSaved = activeWatchlistSymbols.has(pos.symbol.toUpperCase());
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleWatchlist(pos.symbol)}
+                                  title={isPosSaved ? 'Saved in Watchlist (Click to remove)' : `Add ${pos.symbol} to active watchlist`}
+                                  style={{
+                                    background: isPosSaved ? 'rgba(16, 185, 129, 0.25)' : 'transparent',
+                                    border: isPosSaved ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(16, 185, 129, 0.4)',
+                                    color: isPosSaved ? '#34d399' : '#10b981',
+                                    borderRadius: '3px',
+                                    padding: '1px 4px',
+                                    fontSize: '10px',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    minWidth: '20px',
+                                    height: '18px',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (!isPosSaved) e.currentTarget.style.background = 'rgba(16, 185, 129, 0.2)';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (!isPosSaved) e.currentTarget.style.background = 'transparent';
+                                  }}
+                                >
+                                  {isPosSaved ? (
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="#34d399" stroke="#34d399" strokeWidth="2">
+                                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                                    </svg>
+                                  ) : (
+                                    '＋'
+                                  )}
+                                </button>
+                              );
+                            })()}
                           </td>
                         </tr>
                       );

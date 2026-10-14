@@ -685,10 +685,10 @@ export default function CandidatesTab({
               Folder:
             </span>
             {(setupsConfig?.folders && setupsConfig.folders.length > 0) ? (
-              setupsConfig.folders.map((folder) => {
+              setupsConfig.folders.filter(f => f.visible !== false).map((folder) => {
                 const isSelected = activeFolderId === folder.id;
                 const color = SETUP_COLORS[folder.id] || '#38bdf8';
-                const screenerCount = folder.screeners?.length || 0;
+                const screenerCount = folder.screeners?.filter(s => s.visible !== false)?.length ?? (folder.screeners?.length || 0);
                 return (
                   <button
                     key={folder.id}
@@ -726,7 +726,7 @@ export default function CandidatesTab({
                 );
               })
             ) : (
-              (setupsConfig?.setups || []).map((setup) => {
+              (setupsConfig?.setups || []).filter(s => s.visible !== false).map((setup) => {
                 const isSelected = activeSetupKey === setup.id;
                 const color = SETUP_COLORS[setup.id] || '#38bdf8';
                 return (
@@ -916,7 +916,7 @@ export default function CandidatesTab({
             marginTop: '2px'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-              {curFolder.screeners.map((screener) => {
+              {(curFolder.screeners || []).filter(s => s.visible !== false).map((screener) => {
                 const isActive = activeScreenerId === screener.id || (activeExpression && screener.expression?.trim() === activeExpression?.trim());
                 const screenerColor = SETUP_COLORS[screener.id] || (activeFolderId === 'daily' ? '#38bdf8' : (activeFolderId === 'weekly' ? '#a855f7' : (activeFolderId === 'short' ? '#f43f5e' : '#94a3b8')));
 
@@ -970,7 +970,7 @@ export default function CandidatesTab({
                 }}>
                   {currentSetup.sub_title || `${currentSetup.name} Presets:`}
                 </span>
-                {currentSetup.sub_setups.map(sub => {
+                {(currentSetup.sub_setups || []).filter(s => s.visible !== false).map(sub => {
                   const isActive = activeExpression?.trim() === sub.expression?.trim();
                   const activeThemeColor = activeSetupKey === 'momentum' ? '#a855f7' : (activeSetupKey === 'vcp' ? '#10b981' : '#38bdf8');
                   const activeBg = activeSetupKey === 'momentum' ? 'rgba(168, 85, 247, 0.3)' : (activeSetupKey === 'vcp' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(56, 189, 248, 0.3)');

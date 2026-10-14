@@ -262,10 +262,9 @@ export function calculateRsSMA(dataPoints, period = 20) {
 
 /**
  * Computes responsive scale margins for Price, Volume, and RS panels so that:
- * 1. The RS line panel height precisely matches the Mansfield Yearly Thumbnail (91px).
- * 2. The top of the RS line panel aligns with the top of the Mansfield Yearly Thumbnail.
- * 3. The Volume panel sits right above the RS panel.
- * 4. The Candlestick Price panel gets the remaining top area.
+ * 1. Volume bars are prominent (~28% height) and share space with price bars like TradingView.
+ * 2. Candlesticks have full vertical range and can overlap gracefully with volume during pullbacks/lows.
+ * 3. When enabled, RS panel and Mansfield Yearly Thumbnail sit cleanly at the bottom (58px).
  */
 export function getPanelMargins(containerHeight, showRs = true) {
   const H = typeof containerHeight === 'number' && containerHeight > 150 ? containerHeight : 450;
@@ -279,10 +278,12 @@ export function getPanelMargins(containerHeight, showRs = true) {
   const topClearancePx = 54;
   const priceTop = Math.min(0.20, Math.max(0.08, topClearancePx / plotH));
 
+  // TradingView volume layout: volume bars occupy the bottom ~18% of the plot area,
+  // creating a clean, aesthetically balanced space between normal volume bars and price candles.
   if (!showRs) {
     return {
-      price: { top: priceTop, bottom: 0.14 },
-      volume: { top: 0.88, bottom: 0.0 },
+      price: { top: priceTop, bottom: 0.18 },
+      volume: { top: 0.82, bottom: 0.0 },
       rs: { top: 0.95, bottom: 0.0 },
     };
   }
@@ -292,14 +293,15 @@ export function getPanelMargins(containerHeight, showRs = true) {
   const rsBottom = 0.005;
   const rsTop = 1.0 - rsFraction;
 
-  // Volume panel height (~36px) sits immediately above RS panel
-  const volHeightPx = 36;
-  const volFraction = Math.min(0.12, Math.max(0.045, volHeightPx / plotH));
-  const volBottom = rsFraction + 0.012;
+  // Volume sits on the baseline immediately above the RS panel and reaches upward ~18%
+  const volFraction = 0.18;
+  const volBottom = rsFraction + 0.005;
   const volTop = Math.max(0.30, 1.0 - (volBottom + volFraction));
 
-  // Price panel sits above Volume panel with ample vertical room for candles
-  const priceBottom = Math.min(0.55, volBottom + volFraction + 0.015);
+  // Price panel sits with comfortable spacing above the volume baseline (rsFraction + 0.18),
+  // providing a clean gap like TradingView so normal candles don't collide with volume bars,
+  // while extreme volume spikes can still gracefully reach near lows.
+  const priceBottom = rsFraction + 0.18;
 
   return {
     price: { top: priceTop, bottom: priceBottom },
@@ -1073,18 +1075,21 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   // Price Scale Mode: Logarithmic (PriceScaleMode.Logarithmic = 1, default) vs Arithmetic / Linear (PriceScaleMode.Normal = 0)
   const [isLogScale, setIsLogScale] = useState(() => {
     try {
-      const saved = localStorage.getItem('pt_chart_scale_mode');
-      return saved !== 'linear';
-    } catch {
-      return true;
-    }
+      // Clear legacy key that may have cached 'linear' in localStorage
+      localStorage.removeItem('pt_chart_scale_mode');
+      const saved = localStorage.getItem('pt_chart_scale_mode_v2');
+      if (saved !== null) {
+        return saved === 'log';
+      }
+    } catch {}
+    return true; // Always default to Logarithmic price scale
   });
 
   const toggleScaleMode = () => {
     setIsLogScale((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem('pt_chart_scale_mode', next ? 'log' : 'linear');
+        localStorage.setItem('pt_chart_scale_mode_v2', next ? 'log' : 'linear');
       } catch {}
       if (chartRef.current) {
         chartRef.current.priceScale('right').applyOptions({
@@ -1725,6 +1730,9 @@ const CandlestickChart = forwardRef(function CandlestickChart({
 
     // Create chart if it doesn't exist yet
     if (!chartRef.current) {
+      const initialH = typeof height === 'number' ? height : (chartContainerRef.current?.clientHeight || 450);
+      const initialMargins = getPanelMargins(initialH, showRsLine);
+
       const chart = createChart(chartContainerRef.current, {
         layout: {
           background: { color: '#161e2f' },
@@ -1737,6 +1745,10 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         crosshair: {
           mode: CrosshairMode.Normal,
         },
+        rightPriceScale: {
+          mode: isLogScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
+          scaleMargins: initialMargins.price,
+        },
         timeScale: {
           height: 30,
           rightOffset: 18,
@@ -1745,9 +1757,6 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         width: chartContainerRef.current.clientWidth || 700,
         height: typeof height === 'number' ? height : (chartContainerRef.current.clientHeight || 400),
       });
-
-      const initialH = typeof height === 'number' ? height : (chartContainerRef.current?.clientHeight || 450);
-      const initialMargins = getPanelMargins(initialH, showRsLine);
 
       // Configure main price scale with logarithmic scale (mode: 1) by default and bottom margin for volume & RS panels
       chart.priceScale('right').applyOptions({
@@ -1759,10 +1768,12 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       const volumeSeries = chart.addSeries(HistogramSeries, {
         priceFormat: { type: 'volume' },
         priceScaleId: 'volume',
+        priceLineVisible: false,
+        lastValueVisible: false,
       });
 
       const volumeMa50Series = chart.addSeries(LineSeries, {
-        color: 'rgba(255, 255, 0, 0.5)',
+        color: 'rgba(234, 179, 8, 0.75)',
         lineWidth: 1,
         priceFormat: { type: 'volume' },
         priceScaleId: 'volume',
@@ -1994,7 +2005,10 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     });
 
     const currentMargins = getPanelMargins(targetHeight, showRsLineRef.current);
-    chartRef.current.priceScale('right').applyOptions({ scaleMargins: currentMargins.price });
+    chartRef.current.priceScale('right').applyOptions({
+      mode: isLogScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
+      scaleMargins: currentMargins.price,
+    });
     chartRef.current.priceScale('volume').applyOptions({ scaleMargins: currentMargins.volume });
     chartRef.current.priceScale('rs_line').applyOptions({ scaleMargins: currentMargins.rs });
 
@@ -2029,7 +2043,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         const volumeData = chartData.map(d => ({
           time: d.time,
           value: d.volume || 0,
-          color: (d.close >= d.open) ? 'rgba(16, 185, 129, 0.5)' : 'rgba(239, 68, 68, 0.5)',
+          color: (d.close >= d.open) ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)',
         }));
         volumeSeries.setData(volumeData);
 
@@ -2220,6 +2234,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       const curH = typeof height === 'number' ? height : (chartContainerRef.current?.clientHeight || 450);
       const margins = getPanelMargins(curH, showRsLine);
       chartRef.current.priceScale('right').applyOptions({
+        mode: isLogScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
         scaleMargins: margins.price,
       });
       chartRef.current.priceScale('volume').applyOptions({
@@ -2330,7 +2345,10 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         if (newWidth > 0 && newHeight > 0) {
           chartRef.current.applyOptions({ width: newWidth, height: newHeight });
           const margins = getPanelMargins(newHeight, showRsLineRef.current);
-          chartRef.current.priceScale('right').applyOptions({ scaleMargins: margins.price });
+          chartRef.current.priceScale('right').applyOptions({
+            mode: isLogScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
+            scaleMargins: margins.price,
+          });
           chartRef.current.priceScale('volume').applyOptions({ scaleMargins: margins.volume });
           chartRef.current.priceScale('rs_line').applyOptions({ scaleMargins: margins.rs });
           if (dataLookupRef.current?.data?.length > 0) {

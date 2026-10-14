@@ -10,9 +10,16 @@ logger = logging.getLogger("pivottrader.api.journal")
 router = APIRouter(tags=["journal"])
 
 
-class JournalFlexConfigSchema(BaseModel):
-    token: str
+class FlexQueryItemSchema(BaseModel):
+    name: Optional[str] = "Query"
     query_id: str
+    token: Optional[str] = None
+
+
+class JournalFlexConfigSchema(BaseModel):
+    token: Optional[str] = None
+    query_id: Optional[str] = None
+    queries: Optional[List[FlexQueryItemSchema]] = None
 
 
 class JournalNotesSchema(BaseModel):
@@ -33,19 +40,24 @@ def get_journal_config():
 
 @router.put("/api/journal/config")
 def update_journal_config(payload: JournalFlexConfigSchema):
-    """Save the Flex Web Service token and Activity Flex Query ID to data/ibkr_flex.json."""
+    """Save the Flex Web Service token and Activity Flex Query IDs to data/ibkr_flex.json."""
     try:
-        return journal_service.update_flex_config(payload.token, payload.query_id)
+        queries_data = [q.model_dump() for q in payload.queries] if payload.queries is not None else None
+        return journal_service.update_flex_config(
+            token=payload.token,
+            query_id=payload.query_id,
+            queries=queries_data,
+        )
     except Exception as e:
         logger.error(f"Error in update_journal_config: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/api/journal/sync")
-def sync_journal():
-    """Fetch the Activity Flex statement from IBKR and upsert executions."""
+def sync_journal(query_id: Optional[str] = None):
+    """Fetch the Activity Flex statement(s) from IBKR and upsert executions."""
     try:
-        return journal_service.sync_from_flex()
+        return journal_service.sync_from_flex(target_query_id=query_id)
     except FlexError as fe:
         raise HTTPException(status_code=400, detail=str(fe))
     except Exception as e:
@@ -72,10 +84,10 @@ def get_journal(
 
 
 @router.get("/api/positions")
-def get_open_positions():
+def get_open_positions(account: Optional[str] = None):
     """Retrieve currently open trading positions from IBKR Journal."""
     try:
-        trades = journal_service.get_trades(include_ignored=False)
+        trades = journal_service.get_trades(account=account, include_ignored=False)
         return [t for t in trades if t.get("status") == "OPEN"]
     except Exception as e:
         logger.error(f"Error in get_open_positions: {e}", exc_info=True)

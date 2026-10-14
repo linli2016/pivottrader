@@ -121,7 +121,10 @@ export default function GroupChart({
 
     const isLogScale = (() => {
       try {
-        return localStorage.getItem('pt_chart_scale_mode') !== 'linear';
+        localStorage.removeItem('pt_chart_scale_mode');
+        const saved = localStorage.getItem('pt_chart_scale_mode_v2');
+        if (saved !== null) return saved === 'log';
+        return true;
       } catch {
         return true;
       }

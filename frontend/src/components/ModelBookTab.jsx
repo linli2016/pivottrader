@@ -123,7 +123,8 @@ export default function ModelBookTab({
   }, [setupsConfig]);
 
   const curFolder = useMemo(() => {
-    return (setupsConfig?.folders || []).find(f => f.id === activeFolderId) || (setupsConfig?.folders || [])[0] || null;
+    const visibleFolders = (setupsConfig?.folders || []).filter(f => f.visible !== false);
+    return visibleFolders.find(f => f.id === activeFolderId) || visibleFolders[0] || (setupsConfig?.folders || [])[0] || null;
   }, [setupsConfig, activeFolderId]);
 
   const curScreener = useMemo(() => {
@@ -141,14 +142,14 @@ export default function ModelBookTab({
   const allScreeners = useMemo(() => {
     if (setupsConfig?.folders && setupsConfig.folders.length > 0) {
       const list = [];
-      setupsConfig.folders.forEach(f => {
-        (f.screeners || []).forEach(sc => {
+      setupsConfig.folders.filter(f => f.visible !== false).forEach(f => {
+        (f.screeners || []).filter(sc => sc.visible !== false).forEach(sc => {
           list.push(sc);
         });
       });
       return list;
     }
-    return setupOptions;
+    return setupOptions.filter(s => s.visible !== false);
   }, [setupsConfig, setupOptions]);
 
   const activeSetup = useMemo(() => {
@@ -524,8 +525,12 @@ export default function ModelBookTab({
     const folder = (setupsConfig?.folders || []).find(f => f.id === folderId);
     if (!folder || !folder.screeners || folder.screeners.length === 0) return;
 
-    const rememberedId = folderMemory[folderId] || folder.default_screener_id || folder.screeners[0].id;
-    const screener = folder.screeners.find(s => s.id === rememberedId) || folder.screeners[0];
+    const visibleScreeners = folder.screeners.filter(s => s.visible !== false);
+    const candidateList = visibleScreeners.length > 0 ? visibleScreeners : folder.screeners;
+    const rememberedId = folderMemory[folderId];
+    const screener = candidateList.find(s => s.id === rememberedId) ||
+                     candidateList.find(s => s.id === folder.default_screener_id) ||
+                     candidateList[0];
     if (screener) {
       setActiveScreenerId(screener.id);
       setSetupType(screener.id);
@@ -1222,10 +1227,10 @@ export default function ModelBookTab({
             Folder:
           </span>
           {(setupsConfig?.folders && setupsConfig.folders.length > 0) ? (
-            setupsConfig.folders.map((folder) => {
+            setupsConfig.folders.filter(f => f.visible !== false).map((folder) => {
               const isSelected = activeFolderId === folder.id;
               const color = SETUP_COLORS[folder.id] || '#38bdf8';
-              const screenerCount = folder.screeners?.length || 0;
+              const screenerCount = folder.screeners?.filter(s => s.visible !== false)?.length ?? (folder.screeners?.length || 0);
               return (
                 <button
                   key={folder.id}
@@ -1263,7 +1268,7 @@ export default function ModelBookTab({
               );
             })
           ) : (
-            setupOptions.map(s => (
+            setupOptions.filter(s => s.visible !== false).map(s => (
               <button
                 key={s.id}
                 onClick={() => handleSelectSetup(s.id)}
@@ -1311,7 +1316,7 @@ export default function ModelBookTab({
                   : '1px solid rgba(148, 163, 184, 0.25)',
             borderRadius: '8px'
           }}>
-            {curFolder.screeners.map((screener) => {
+            {(curFolder.screeners || []).filter(s => s.visible !== false).map((screener) => {
               const isSelected = activeScreenerId === screener.id || setupType === screener.id;
               const screenerColor = SETUP_COLORS[screener.id] || (activeFolderId === 'daily' ? '#38bdf8' : (activeFolderId === 'weekly' ? '#a855f7' : (activeFolderId === 'short' ? '#f43f5e' : '#94a3b8')));
 
@@ -1362,7 +1367,7 @@ export default function ModelBookTab({
                 {activeSetup.sub_title || `${activeSetup.name} Mode:`}
               </span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                {activeSetup.sub_setups.map(sub => {
+                {(activeSetup.sub_setups || []).filter(s => s.visible !== false).map(sub => {
                   const isActive = isSubActive(sub);
                   const activeThemeColor = setupType === 'momentum' ? '#a855f7' : '#38bdf8';
                   const activeBg = setupType === 'momentum' ? 'rgba(168, 85, 247, 0.3)' : 'rgba(56, 189, 248, 0.3)';
@@ -2514,6 +2519,11 @@ export default function ModelBookTab({
                         outline: 'none'
                       }}
                     >
+                      {selectedSavedTrade.setup_type && !allScreeners.some(opt => opt.id === selectedSavedTrade.setup_type) && (
+                        <option value={selectedSavedTrade.setup_type} style={{ backgroundColor: '#181b22', color: 'var(--text-primary)' }}>
+                          🔒 {selectedSavedTrade.setup_name || selectedSavedTrade.setup_type} (Hidden)
+                        </option>
+                      )}
                       {allScreeners.map(opt => (
                         <option key={opt.id} value={opt.id} style={{ backgroundColor: '#181b22', color: 'var(--text-primary)' }}>
                           {opt.icon || '📌'} {opt.name || opt.label}

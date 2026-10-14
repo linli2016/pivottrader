@@ -17,9 +17,17 @@ export default function GroupStageChart({
   onSelectStock = () => {},
   height = 420,
   isCompact = false,
-  date = null
+  date = null,
+  onDataLoaded = null
 }) {
   const [stageData, setStageData] = useState(null);
+
+  const handleDataLoaded = (chartData) => {
+    setStageData(chartData);
+    if (onDataLoaded) {
+      onDataLoaded(chartData);
+    }
+  };
 
   const breadth = stageData?.breadth || null;
 
@@ -32,7 +40,7 @@ export default function GroupStageChart({
       onSelectStock={onSelectStock}
       showHeader={true}
       showStageBadge={true}
-      onDataLoaded={setStageData}
+      onDataLoaded={handleDataLoaded}
       isCompact={isCompact}
     >
       {/* Constituent Leaders Row */}

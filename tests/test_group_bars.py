@@ -118,7 +118,68 @@ class TestGroupBars(unittest.TestCase):
         self.assertEqual(res["name"], "Major Banks")
         self.assertGreater(len(res["bars"]), 0)
 
+    def test_beverages_stage_consistency(self):
+        """Test that stage classification is consistent and correct for Beverages (Production/Distribution)."""
+        res_weekly = self.service.get_group_bars(
+            group_type="industries",
+            group_name="Beverages (Production/Distribution)",
+            timeframe="weekly"
+        )
+        self.assertIsNotNone(res_weekly)
+        summary_w = res_weekly["stage_summary"]
+        self.assertEqual(summary_w["stage_badge"], "Stage 4")
+        self.assertEqual(summary_w["stage"], "Stage 4 (Declining)")
+
+        res_daily = self.service.get_group_bars(
+            group_type="industries",
+            group_name="Beverages (Production/Distribution)",
+            timeframe="daily"
+        )
+        self.assertIsNotNone(res_daily)
+        summary_d = res_daily["stage_summary"]
+        self.assertEqual(summary_d["stage_badge"], "Stage 4")
+        self.assertEqual(summary_d["stage"], "Stage 4 (Declining)")
+
+        # Also verify get_group_strength produces consistent Stage 4
+        self.service.clear_cache()
+        strength = self.service.get_group_strength("industries")
+        bev = next((x for x in strength if x["name"] == "Beverages (Production/Distribution)"), None)
+        self.assertIsNotNone(bev)
+        self.assertEqual(bev["stage_badge"], "Stage 4")
+        self.assertEqual(bev["stage_num"], 4)
+
+    def test_life_insurance_stage_2(self):
+        """Test that Life Insurance with price above rising 40W/200D MA is classified as Stage 2 (Advancing)."""
+        self.service.clear_cache()
+        res_weekly = self.service.get_group_bars(
+            group_type="industries",
+            group_name="Life Insurance",
+            timeframe="weekly"
+        )
+        self.assertIsNotNone(res_weekly)
+        summary_w = res_weekly["stage_summary"]
+        self.assertEqual(summary_w["stage_badge"], "Stage 2")
+        self.assertEqual(summary_w["stage"], "Stage 2 (Advancing)")
+
+        res_daily = self.service.get_group_bars(
+            group_type="industries",
+            group_name="Life Insurance",
+            timeframe="daily"
+        )
+        self.assertIsNotNone(res_daily)
+        summary_d = res_daily["stage_summary"]
+        self.assertEqual(summary_d["stage_badge"], "Stage 2")
+        self.assertEqual(summary_d["stage"], "Stage 2 (Advancing)")
+
+        # Verify get_group_strength also classifies Life Insurance as Stage 2
+        strength = self.service.get_group_strength("industries")
+        life = next((x for x in strength if x["name"] == "Life Insurance"), None)
+        self.assertIsNotNone(life)
+        self.assertEqual(life["stage_badge"], "Stage 2")
+        self.assertEqual(life["stage_num"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

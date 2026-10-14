@@ -95,6 +95,17 @@ function Modal({ open, onClose, title, headerActions, children, wide = false }) 
 function FlexSetupGuide() {
   return (
     <div className="jr-guide">
+      <div className="jr-guide-callout">
+        <b>💡 Multiple IBKR Accounts:</b>
+        <ul>
+          <li>
+            <b>Under the same login?</b> In your Activity Flex Query in IBKR Portal, set <b>General Configuration → Accounts → All</b> (or check all desired accounts). A single Query ID will sync all your accounts together!
+          </li>
+          <li>
+            <b>Under separate logins or separate queries?</b> Click <b>+ Add Another Query / Account</b> below to enter each Query ID (and token if different). PivotTrader will sync all of them in one click.
+          </li>
+        </ul>
+      </div>
       <h4>1 · Create an Activity Flex Query</h4>
       <ol>
         <li>IBKR Portal → <b>Performance &amp; Reports → Flex Queries</b> → <b>Activity Flex Query</b> → <b>+</b> (Create).</li>
@@ -103,7 +114,7 @@ function FlexSetupGuide() {
           <code>Account ID, Currency, FX Rate To Base, Asset Class, Symbol, Description, Conid, Trade ID, Transaction ID, IB Execution ID, IB Order ID, Date/Time, Trade Date, Quantity, Trade Price, Proceeds, IB Commission, Net Cash, Realized P/L (FIFO), Buy/Sell, Open/Close Indicator, Level Of Detail</code>
         </li>
         <li><b>Delivery Configuration</b>: Format <b>XML</b>, Period <b>Last 365 Calendar Days</b>.</li>
-        <li><b>General Configuration</b>: Date Format <code>yyyyMMdd</code>, Time Format <code>HHmmss</code>, Date/Time Separator <code>;</code> (semi-colon). Include Canceled Trades: <b>No</b>.</li>
+        <li><b>General Configuration</b>: Under <b>Accounts</b>, select <b>All</b> (or check the accounts you wish to sync). Date Format <code>yyyyMMdd</code>, Time Format <code>HHmmss</code>, Date/Time Separator <code>;</code> (semi-colon). Include Canceled Trades: <b>No</b>.</li>
         <li>Save, then copy the numeric <b>Query ID</b> shown next to the query name.</li>
       </ol>
       <h4>2 · Enable the Flex Web Service</h4>
@@ -264,6 +275,7 @@ function PeriodPnlGrid({ monthly, yearly, selectedPeriod, onSelectPeriod }) {
 const COLUMNS = [
   { key: 'open', label: 'Opened', get: (t) => t.open_datetime || '' },
   { key: 'close', label: 'Closed', get: (t) => t.close_datetime || t.open_datetime || '' },
+  { key: 'account', label: 'Account', get: (t) => t.account_id || '' },
   { key: 'symbol', label: 'Symbol', get: (t) => t.symbol },
   { key: 'direction', label: 'Side', get: (t) => t.direction },
   { key: 'max_position', label: 'Qty', get: (t) => t.max_position, num: true },
@@ -278,13 +290,18 @@ const COLUMNS = [
   { key: 'notes', label: 'Notes', get: (t) => (t.notes ? 1 : 0) + (t.tags?.length ? 1 : 0), num: true },
 ];
 
-function TradeTable({ trades, sort, onSortChange, onOpenTrade, onSelectStock, onToggleIgnore }) {
+function TradeTable({ trades, sort, onSortChange, onOpenTrade, onSelectStock, onToggleIgnore, accounts = [], onSelectAccount }) {
   const [limit, setLimit] = useState(PAGE_SIZE);
 
   useEffect(() => { setLimit(PAGE_SIZE); }, [trades]);
 
+  const hasMultipleAccounts = (accounts || []).length > 1;
+  const activeColumns = useMemo(() => {
+    return COLUMNS.filter((c) => c.key !== 'account' || hasMultipleAccounts);
+  }, [hasMultipleAccounts]);
+
   const sorted = useMemo(() => {
-    const col = COLUMNS.find((c) => c.key === (sort?.key || 'open')) || COLUMNS[0];
+    const col = activeColumns.find((c) => c.key === (sort?.key || 'open')) || activeColumns[0];
     const mult = (sort?.dir || 'desc') === 'asc' ? 1 : -1;
     return [...trades].sort((a, b) => {
       const va = col.get(a);
@@ -293,7 +310,7 @@ function TradeTable({ trades, sort, onSortChange, onOpenTrade, onSelectStock, on
       if (va > vb) return 1 * mult;
       return 0;
     });
-  }, [trades, sort]);
+  }, [trades, sort, activeColumns]);
 
   const toggleSort = (key) => {
     if (onSortChange) {
@@ -306,7 +323,7 @@ function TradeTable({ trades, sort, onSortChange, onOpenTrade, onSelectStock, on
       <table className="data-table compact-table jr-trade-table">
         <thead>
           <tr>
-            {COLUMNS.map((c) => (
+            {activeColumns.map((c) => (
               <th key={c.key} onClick={() => toggleSort(c.key)} className={`jr-sortable ${c.num ? 'jr-num' : ''}`}>
                 {c.label}{sort.key === c.key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
               </th>
@@ -326,6 +343,18 @@ function TradeTable({ trades, sort, onSortChange, onOpenTrade, onSelectStock, on
                   t.close_date
                 )}
               </td>
+              {hasMultipleAccounts && (
+                <td>
+                  <button
+                    type="button"
+                    className="jr-account-badge"
+                    onClick={(e) => { e.stopPropagation(); onSelectAccount?.(t.account_id); }}
+                    title={`Filter journal to account ${t.account_id}`}
+                  >
+                    {t.account_id}
+                  </button>
+                </td>
+              )}
               <td>
                 <button className="jr-symbol-link" onClick={(e) => { e.stopPropagation(); onSelectStock?.(t.symbol); }} title="Open stock details">
                   {t.symbol}
@@ -588,6 +617,7 @@ function TradeDetail({ trade, onSaved, allTags, onToggleIgnore, onSelectStock })
                 Execution Logs <span className="jr-muted">({combinedExecutions.length})</span>
               </div>
               <div className="jr-exec-header-summary">
+                {trade.account_id ? <span>Account: <b>{trade.account_id}</b></span> : null}
                 <span>Entry: <b>${fmtNum(trade.avg_entry)}</b></span>
                 {trade.avg_exit ? <span>Exit: <b>${fmtNum(trade.avg_exit)}</b></span> : null}
                 <span>Max Qty: <b>{fmtQty(trade.max_position)}</b></span>
@@ -659,6 +689,11 @@ function TradeDetail({ trade, onSaved, allTags, onToggleIgnore, onSelectStock })
                 <span className={`pill ${trade.direction === 'LONG' ? 'pill-success' : 'pill-danger'}`} style={{ marginLeft: '4px' }}>
                   {trade.direction}
                 </span>
+                {trade.account_id && (
+                  <span className="pill pill-secondary" style={{ marginLeft: '4px' }} title={`IBKR Account: ${trade.account_id}`}>
+                    Account: {trade.account_id}
+                  </span>
+                )}
                 {trade.is_ignored ? (
                   <span className="pill pill-danger" style={{ marginLeft: '4px' }}>EXCLUDED</span>
                 ) : trade.status === 'OPEN' ? (
@@ -868,19 +903,77 @@ function TradeDetail({ trade, onSaved, allTags, onToggleIgnore, onSelectStock })
 
 function FlexSettings({ config, onSaved }) {
   const [token, setToken] = useState('');
-  const [queryId, setQueryId] = useState(config?.query_id || '');
+  const [queries, setQueries] = useState(() => {
+    if (config?.queries && config.queries.length > 0) {
+      return config.queries.map((q) => ({
+        name: q.name || '',
+        query_id: q.query_id || '',
+        token: '',
+        has_custom_token: Boolean(q.has_custom_token),
+        token_masked: q.token_masked || '',
+      }));
+    }
+    return [
+      {
+        name: 'Primary Account',
+        query_id: config?.query_id || '',
+        token: '',
+        has_custom_token: false,
+        token_masked: '',
+      },
+    ];
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  const addQuery = () => {
+    setQueries((prev) => [
+      ...prev,
+      {
+        name: `Account ${prev.length + 1}`,
+        query_id: '',
+        token: '',
+        has_custom_token: false,
+        token_masked: '',
+      },
+    ]);
+  };
+
+  const removeQuery = (idx) => {
+    setQueries((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const updateQueryField = (idx, field, val) => {
+    setQueries((prev) =>
+      prev.map((q, i) => (i === idx ? { ...q, [field]: val } : q))
+    );
+  };
 
   const save = async (e) => {
     e.preventDefault();
     setSaving(true);
     setError(null);
     try {
+      const cleanedQueries = queries
+        .map((q) => ({
+          name: q.name.trim() || `Query ${q.query_id.trim()}`,
+          query_id: q.query_id.trim(),
+          token: q.token.trim() || null,
+        }))
+        .filter((q) => q.query_id);
+
+      if (cleanedQueries.length === 0) {
+        throw new Error('Please configure at least one Activity Flex Query ID');
+      }
+
       const res = await fetch(`${API_BASE}/api/journal/config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: token || null, query_id: queryId }),
+        body: JSON.stringify({
+          token: token.trim() || null,
+          query_id: cleanedQueries[0].query_id,
+          queries: cleanedQueries,
+        }),
       });
       if (!res.ok) throw new Error((await res.json()).detail || 'Save failed');
       onSaved(await res.json());
@@ -894,20 +987,91 @@ function FlexSettings({ config, onSaved }) {
   return (
     <form onSubmit={save} className="jr-settings-form">
       <label className="jr-field">
-        <span className="stat-label">Flex Web Service Token</span>
-        <input className="jr-input" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)}
-          placeholder={config?.has_token ? `Saved (${config.token_masked}) — leave blank to keep` : 'Paste token'} />
+        <span className="stat-label">Default Flex Web Service Token</span>
+        <input
+          className="jr-input"
+          type="password"
+          autoComplete="off"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          placeholder={config?.has_token ? `Saved (${config.token_masked}) — leave blank to keep` : 'Paste token'}
+        />
+        <span className="jr-muted">Used for all queries unless a specific query specifies a custom token below.</span>
       </label>
-      <label className="jr-field">
-        <span className="stat-label">Activity Flex Query ID</span>
-        <input className="jr-input" inputMode="numeric" value={queryId} onChange={(e) => setQueryId(e.target.value)} placeholder="e.g. 123456" required />
-      </label>
+
+      <div className="jr-queries-section">
+        <div className="jr-queries-header">
+          <span className="stat-label">Activity Flex Queries / Accounts ({queries.length})</span>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={addQuery}>
+            + Add Another Query / Account
+          </button>
+        </div>
+
+        <div className="jr-queries-list">
+          {queries.map((q, idx) => (
+            <div key={idx} className="jr-query-card glass-card">
+              <div className="jr-query-card-header">
+                <span className="jr-query-badge">#{idx + 1}</span>
+                <input
+                  className="jr-input jr-query-name-input"
+                  placeholder="Account Label (e.g. Taxable Margin, Roth IRA)"
+                  value={q.name}
+                  onChange={(e) => updateQueryField(idx, 'name', e.target.value)}
+                />
+                {queries.length > 1 && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm jr-query-remove-btn"
+                    onClick={() => removeQuery(idx)}
+                    title="Remove this query"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              <div className="jr-query-card-fields">
+                <label className="jr-field jr-field-compact">
+                  <span className="stat-label">Query ID</span>
+                  <input
+                    className="jr-input"
+                    inputMode="numeric"
+                    value={q.query_id}
+                    onChange={(e) => updateQueryField(idx, 'query_id', e.target.value)}
+                    placeholder="e.g. 123456"
+                    required
+                  />
+                </label>
+
+                <label className="jr-field jr-field-compact">
+                  <span className="stat-label">Custom Token (Optional)</span>
+                  <input
+                    className="jr-input"
+                    type="password"
+                    autoComplete="off"
+                    value={q.token}
+                    onChange={(e) => updateQueryField(idx, 'token', e.target.value)}
+                    placeholder={
+                      q.has_custom_token
+                        ? `Custom token saved (${q.token_masked})`
+                        : 'Inherits default token above'
+                    }
+                  />
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {error && <div className="jr-neg">{error}</div>}
       <div className="jr-dialog-actions">
-        <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save Settings'}</button>
+        <button type="submit" className="btn btn-primary" disabled={saving}>
+          {saving ? 'Saving…' : 'Save Settings'}
+        </button>
       </div>
       <details className="jr-details" open={!config?.has_token}>
-        <summary>How to set up IBKR Flex Query &amp; token</summary>
+        <summary>How to configure multiple accounts &amp; Flex queries in IBKR</summary>
         <FlexSetupGuide />
       </details>
     </form>
@@ -922,7 +1086,13 @@ export default function JournalTab({ onSelectStock }) {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState(null);
   const [preset, setPreset] = useState('ytd');
-  const [account, setAccount] = useState('');
+  const [account, setAccount] = useState(() => {
+    try {
+      return localStorage.getItem('pivot_journal_account') || '';
+    } catch {
+      return '';
+    }
+  });
   const [symbolInput, setSymbolInput] = useState('');
   const [symbol, setSymbol] = useState('');
   const [outcome, setOutcome] = useState('all');
@@ -933,6 +1103,20 @@ export default function JournalTab({ onSelectStock }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeTradeId, setActiveTradeId] = useState(null);
   const [confirmTrade, setConfirmTrade] = useState(null);
+
+  const handleAccountChange = useCallback((newAcc) => {
+    setAccount(newAcc);
+    try {
+      if (newAcc) localStorage.setItem('pivot_journal_account', newAcc);
+      else localStorage.removeItem('pivot_journal_account');
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    if (account && data?.accounts && data.accounts.length > 0 && !data.accounts.includes(account)) {
+      handleAccountChange('');
+    }
+  }, [data?.accounts, account, handleAccountChange]);
 
   useEffect(() => {
     const id = setTimeout(() => setSymbol(symbolInput.trim()), 350);
@@ -978,7 +1162,11 @@ export default function JournalTab({ onSelectStock }) {
       const res = await fetch(`${API_BASE}/api/journal/sync`, { method: 'POST' });
       const body = await res.json();
       if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
-      setSyncMsg({ ok: true, msg: `Synced ${body.fetched} executions (${body.new_executions} new)${body.skipped_non_stock ? ` · ${body.skipped_non_stock} non-stock skipped` : ''}${body.has_fifo_pnl ? '' : ' · tip: add "Realized P/L (FIFO)" to your Flex Query'}` });
+      const acctList = body.accounts?.length ? ` across ${body.accounts.length} account(s) (${body.accounts.join(', ')})` : '';
+      setSyncMsg({
+        ok: true,
+        msg: `Synced ${body.fetched} executions (${body.new_executions} new)${acctList}${body.skipped_non_stock ? ` · ${body.skipped_non_stock} non-stock skipped` : ''}${body.has_fifo_pnl ? '' : ' · tip: add "Realized P/L (FIFO)" to your Flex Query'}`
+      });
       await loadJournal();
     } catch (e) {
       setSyncMsg({ ok: false, msg: e.message });
@@ -1108,7 +1296,7 @@ export default function JournalTab({ onSelectStock }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeTradeId, handlePrevTrade, handleNextTrade]);
 
-  const hasListFilters = outcome !== 'all' || periodFilter || binFilter || tagFilter;
+  const hasListFilters = outcome !== 'all' || periodFilter || binFilter || tagFilter || Boolean(account) || showIgnored;
   const presets = [
     { id: 'all', label: 'All' },
     { id: 'ytd', label: 'YTD' },
@@ -1162,9 +1350,9 @@ export default function JournalTab({ onSelectStock }) {
             </div>
             <input className="jr-input jr-search" placeholder="Filter symbol…" value={symbolInput} onChange={(e) => setSymbolInput(e.target.value)} aria-label="Filter by symbol" />
             {data?.accounts?.length > 1 && (
-              <select className="jr-select" value={account} onChange={(e) => setAccount(e.target.value)} aria-label="Account">
-                <option value="">All accounts</option>
-                {data.accounts.map((a) => <option key={a} value={a}>{a}</option>)}
+              <select className="jr-select" value={account} onChange={(e) => handleAccountChange(e.target.value)} aria-label="Account">
+                <option value="">All accounts ({data.accounts.length})</option>
+                {data.accounts.map((a) => <option key={a} value={a}>Account {a}</option>)}
               </select>
             )}
             {loading && <span className="jr-muted"><span className="spin-icon">⟳</span> Loading…</span>}
@@ -1207,6 +1395,7 @@ export default function JournalTab({ onSelectStock }) {
           </div>
           {hasListFilters && (
             <div className="chip-group">
+              {account && <button className="chip-filter active" onClick={() => handleAccountChange('')}>Account: {account} ✕</button>}
               {periodFilter && <button className="chip-filter active" onClick={() => setPeriodFilter(null)}>Period {periodFilter} ✕</button>}
               {binFilter && <button className="chip-filter active" onClick={() => setBinFilter(null)}>{binFilter.label} ✕</button>}
               {tagFilter && <button className="chip-filter active" onClick={() => setTagFilter(null)}>Tag {tagFilter} ✕</button>}
@@ -1221,6 +1410,8 @@ export default function JournalTab({ onSelectStock }) {
             onOpenTrade={(t) => setActiveTradeId(t.id)}
             onSelectStock={onSelectStock}
             onToggleIgnore={handleToggleIgnore}
+            accounts={data?.accounts || []}
+            onSelectAccount={handleAccountChange}
           />
         </>
       )}

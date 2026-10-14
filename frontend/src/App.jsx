@@ -151,9 +151,12 @@ function App() {
         const data = await res.json();
         setSetupsConfig(data);
         if (data.folders && data.folders.length > 0) {
-          const defaultFolder = data.folders.find(f => f.id === 'daily') || data.folders[0];
-          const defScreenerId = defaultFolder.default_screener_id || defaultFolder.screeners?.[0]?.id;
-          const defaultScreener = defaultFolder.screeners?.find(s => s.id === defScreenerId) || defaultFolder.screeners?.[0];
+          const visibleFolders = data.folders.filter(f => f.visible !== false);
+          const defaultFolder = visibleFolders.find(f => f.id === 'daily') || visibleFolders[0] || data.folders[0];
+          const visibleScreeners = (defaultFolder.screeners || []).filter(s => s.visible !== false);
+          const candidateScreeners = visibleScreeners.length > 0 ? visibleScreeners : (defaultFolder.screeners || []);
+          const defScreenerId = (candidateScreeners.some(s => s.id === defaultFolder.default_screener_id) ? defaultFolder.default_screener_id : null) || candidateScreeners[0]?.id;
+          const defaultScreener = candidateScreeners.find(s => s.id === defScreenerId) || candidateScreeners[0];
           
           setActiveFolderId(defaultFolder.id);
           if (defaultScreener) {
@@ -162,13 +165,17 @@ function App() {
             setActiveExpression(defaultScreener.expression || '');
           }
         } else {
-          const defaultSetup = (data.setups || []).find(s => s.id === 'breakouts' || s.id === 'breakout') || (data.setups || [])[0];
+          const visibleSetups = (data.setups || []).filter(s => s.visible !== false);
+          const candidateSetups = visibleSetups.length > 0 ? visibleSetups : (data.setups || []);
+          const defaultSetup = candidateSetups.find(s => s.id === 'breakouts' || s.id === 'breakout') || candidateSetups[0];
           if (defaultSetup) {
             setActiveSetupKey(defaultSetup.id);
             setActiveScreenerId(defaultSetup.id);
-            const defaultSub = (defaultSetup.default_sub_id && defaultSetup.sub_setups?.length > 0)
-              ? defaultSetup.sub_setups.find(s => s.id === defaultSetup.default_sub_id)
-              : null;
+            const visibleSubs = (defaultSetup.sub_setups || []).filter(s => s.visible !== false);
+            const candidateSubs = visibleSubs.length > 0 ? visibleSubs : (defaultSetup.sub_setups || []);
+            const defaultSub = (defaultSetup.default_sub_id && candidateSubs.some(s => s.id === defaultSetup.default_sub_id))
+              ? candidateSubs.find(s => s.id === defaultSetup.default_sub_id)
+              : candidateSubs[0] || null;
             setActiveExpression(defaultSub?.expression || defaultSetup.expression || '');
           }
         }
@@ -185,8 +192,12 @@ function App() {
     const folder = (setupsConfig?.folders || []).find(f => f.id === folderId);
     if (!folder || !folder.screeners || folder.screeners.length === 0) return;
 
-    const rememberedId = folderMemory[folderId] || folder.default_screener_id || folder.screeners[0].id;
-    const screener = folder.screeners.find(s => s.id === rememberedId) || folder.screeners[0];
+    const visibleScreeners = folder.screeners.filter(s => s.visible !== false);
+    const candidateList = visibleScreeners.length > 0 ? visibleScreeners : folder.screeners;
+    const rememberedId = folderMemory[folderId];
+    const screener = candidateList.find(s => s.id === rememberedId) ||
+                     candidateList.find(s => s.id === folder.default_screener_id) ||
+                     candidateList[0];
     if (screener) {
       setActiveScreenerId(screener.id);
       setActiveSetupKey(screener.id);

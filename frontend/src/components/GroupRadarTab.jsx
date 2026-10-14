@@ -558,6 +558,48 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
     return data.find((d) => d.name === selectedGroupName) || null;
   }, [selectedGroupName, data]);
 
+  const [activeChartSummary, setActiveChartSummary] = useState(null);
+
+  useEffect(() => {
+    setActiveChartSummary(null);
+  }, [selectedGroupName, activeTab]);
+
+  const handleStageDataLoaded = useCallback((chartData) => {
+    if (!chartData || !chartData.stage_summary) return;
+    const summary = chartData.stage_summary;
+    setActiveChartSummary(summary);
+    if (chartData.name && summary.stage_badge) {
+      const stageNum = parseInt(summary.stage_badge.replace(/\D/g, ''), 10) || 1;
+      setData((prevData) => {
+        if (!Array.isArray(prevData)) return prevData;
+        const target = prevData.find((d) => d.name === chartData.name);
+        if (!target) return prevData;
+        if (target.stage_num === stageNum && target.stage_badge === summary.stage_badge && target.mansfield_rs === summary.mansfield_rs) {
+          return prevData;
+        }
+        return prevData.map((d) => {
+          if (d.name === chartData.name) {
+            return {
+              ...d,
+              stage: summary.stage,
+              stage_badge: summary.stage_badge,
+              stage_num: stageNum,
+              stage_color: summary.stage_color,
+              mansfield_rs: summary.mansfield_rs !== undefined ? summary.mansfield_rs : d.mansfield_rs,
+              pct_in_stage2: chartData.breadth?.pct_in_stage2 ?? d.pct_in_stage2
+            };
+          }
+          return d;
+        });
+      });
+    }
+  }, []);
+
+  const displayStageBadge = activeChartSummary?.stage_badge || selectedItem?.stage_badge || (selectedItem?.stage_num ? `Stage ${selectedItem.stage_num}` : '--');
+  const displayStageNum = activeChartSummary?.stage_badge ? parseInt(activeChartSummary.stage_badge.replace(/\D/g, ''), 10) : selectedItem?.stage_num;
+  const displayMansfieldRs = activeChartSummary?.mansfield_rs !== undefined ? activeChartSummary.mansfield_rs : selectedItem?.mansfield_rs;
+  const displayPctInStage2 = activeChartSummary?.pct_in_stage2 !== undefined ? activeChartSummary.pct_in_stage2 : selectedItem?.pct_in_stage2;
+
   const scrollToGroupRow = (name) => {
     if (!name) return;
     const rankEl = document.getElementById(`radar-rank-row-${encodeURIComponent(name)}`);
@@ -2412,22 +2454,22 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                       </span>
 
                       {/* Stage & RS Quick Diagnostic Badges */}
-                      {selectedItem.stage_badge && (
+                      {displayStageBadge && (
                         <span
                           style={{
                             fontSize: '11px',
                             fontWeight: 700,
                             padding: '2px 8px',
                             borderRadius: '4px',
-                            background: selectedItem.stage_num === 2 ? 'rgba(16, 185, 129, 0.25)' : selectedItem.stage_num === 1 ? 'rgba(56, 189, 248, 0.25)' : selectedItem.stage_num === 3 ? 'rgba(245, 158, 11, 0.25)' : 'rgba(244, 63, 94, 0.25)',
-                            color: selectedItem.stage_num === 2 ? '#10b981' : selectedItem.stage_num === 1 ? '#38bdf8' : selectedItem.stage_num === 3 ? '#f59e0b' : '#f43f5e',
-                            border: `1px solid ${selectedItem.stage_num === 2 ? 'rgba(16, 185, 129, 0.4)' : 'rgba(255, 255, 255, 0.15)'}`
+                            background: displayStageNum === 2 ? 'rgba(16, 185, 129, 0.25)' : displayStageNum === 1 ? 'rgba(56, 189, 248, 0.25)' : displayStageNum === 3 ? 'rgba(245, 158, 11, 0.25)' : 'rgba(244, 63, 94, 0.25)',
+                            color: displayStageNum === 2 ? '#10b981' : displayStageNum === 1 ? '#38bdf8' : displayStageNum === 3 ? '#f59e0b' : '#f43f5e',
+                            border: `1px solid ${displayStageNum === 2 ? 'rgba(16, 185, 129, 0.4)' : 'rgba(255, 255, 255, 0.15)'}`
                           }}
                         >
-                          {selectedItem.stage_badge}
+                          {displayStageBadge}
                         </span>
                       )}
-                      {selectedItem.mansfield_rs !== undefined && selectedItem.mansfield_rs !== null && (
+                      {displayMansfieldRs !== undefined && displayMansfieldRs !== null && (
                         <span
                           style={{
                             fontSize: '11px',
@@ -2435,14 +2477,14 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                             padding: '2px 8px',
                             borderRadius: '4px',
                             background: 'rgba(0, 0, 0, 0.4)',
-                            color: selectedItem.mansfield_rs > 0 ? '#34d399' : '#f87171',
+                            color: displayMansfieldRs > 0 ? '#34d399' : '#f87171',
                             fontFamily: 'var(--font-mono)'
                           }}
                         >
-                          Mansfield RS: {selectedItem.mansfield_rs > 0 ? '+' : ''}{Number(selectedItem.mansfield_rs).toFixed(1)}%
+                          Mansfield RS: {displayMansfieldRs > 0 ? '+' : ''}{Number(displayMansfieldRs).toFixed(1)}%
                         </span>
                       )}
-                      {selectedItem.pct_in_stage2 !== undefined && selectedItem.pct_in_stage2 !== null && (
+                      {displayPctInStage2 !== undefined && displayPctInStage2 !== null && (
                         <span
                           style={{
                             fontSize: '11px',
@@ -2450,7 +2492,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                             color: 'var(--text-secondary)'
                           }}
                         >
-                          Breadth: <strong style={{ color: '#ffffff' }}>{Number(selectedItem.pct_in_stage2).toFixed(0)}%</strong> in S2
+                          Breadth: <strong style={{ color: '#ffffff' }}>{Number(displayPctInStage2).toFixed(0)}%</strong> in S2
                         </span>
                       )}
                     </div>
@@ -2483,6 +2525,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                 onSelectStock={onSelectStock}
                 height={500}
                 isCompact={false}
+                onDataLoaded={handleStageDataLoaded}
               />
             </div>
           )}
@@ -2623,9 +2666,9 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                     <div style={{
                       fontSize: '12px',
                       fontWeight: 700,
-                      color: selectedItem.stage_num === 2 ? '#10b981' : selectedItem.stage_num === 1 ? '#38bdf8' : selectedItem.stage_num === 3 ? '#f59e0b' : selectedItem.stage_num === 4 ? '#f43f5e' : 'var(--text-secondary)'
+                      color: displayStageNum === 2 ? '#10b981' : displayStageNum === 1 ? '#38bdf8' : displayStageNum === 3 ? '#f59e0b' : displayStageNum === 4 ? '#f43f5e' : 'var(--text-secondary)'
                     }}>
-                      {selectedItem.stage_badge || (selectedItem.stage_num ? `Stage ${selectedItem.stage_num}` : '--')}
+                      {displayStageBadge || (displayStageNum ? `Stage ${displayStageNum}` : '--')}
                     </div>
                   </div>
                   <div style={{ background: 'rgba(0,0,0,0.3)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
@@ -2633,10 +2676,10 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                     <div style={{
                       fontSize: '12px',
                       fontWeight: 700,
-                      color: (selectedItem.mansfield_rs ?? 0) > 0 ? '#34d399' : (selectedItem.mansfield_rs ?? 0) < 0 ? '#f87171' : 'var(--text-secondary)',
+                      color: (displayMansfieldRs ?? 0) > 0 ? '#34d399' : (displayMansfieldRs ?? 0) < 0 ? '#f87171' : 'var(--text-secondary)',
                       fontFamily: 'var(--font-mono)'
                     }}>
-                      {selectedItem.mansfield_rs !== undefined && selectedItem.mansfield_rs !== null ? `${selectedItem.mansfield_rs > 0 ? '+' : ''}${Number(selectedItem.mansfield_rs).toFixed(1)}%` : '--'}
+                      {displayMansfieldRs !== undefined && displayMansfieldRs !== null ? `${displayMansfieldRs > 0 ? '+' : ''}${Number(displayMansfieldRs).toFixed(1)}%` : '--'}
                     </div>
                   </div>
                   <div style={{ background: 'rgba(0,0,0,0.3)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
@@ -2647,8 +2690,8 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                   </div>
                   <div style={{ background: 'rgba(0,0,0,0.3)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
                     <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>% in Stage 2</div>
-                    <div style={{ fontSize: '12px', fontWeight: 700, color: (selectedItem.pct_in_stage2 ?? 0) >= 50 ? '#34d399' : '#38bdf8', fontFamily: 'var(--font-mono)' }}>
-                      {selectedItem.pct_in_stage2 !== undefined && selectedItem.pct_in_stage2 !== null ? `${Number(selectedItem.pct_in_stage2).toFixed(0)}%` : '--'}
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: (displayPctInStage2 ?? 0) >= 50 ? '#34d399' : '#38bdf8', fontFamily: 'var(--font-mono)' }}>
+                      {displayPctInStage2 !== undefined && displayPctInStage2 !== null ? `${Number(displayPctInStage2).toFixed(0)}%` : '--'}
                     </div>
                   </div>
                   <div style={{ background: 'rgba(0,0,0,0.3)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
@@ -2686,6 +2729,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                     onSelectStock={onSelectStock}
                     height={250}
                     isCompact={true}
+                    onDataLoaded={handleStageDataLoaded}
                   />
                 </div>
 
