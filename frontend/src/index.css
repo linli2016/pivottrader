@@ -370,6 +370,13 @@ body {
   flex-direction: column;
 }
 
+/* Flush Full-Bleed Content Area for Trading Workspaces (Market Watching) */
+.main-content.main-content-flush {
+  padding: 0;
+  overflow: hidden;
+  height: 100vh;
+}
+
 /* Full-Height Stock Screen Container */
 .stock-screen-container {
   display: flex;

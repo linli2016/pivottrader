@@ -2,6 +2,7 @@ import React from 'react';
 import CandlestickChart from './CandlestickChart';
 import GroupStageChart from './GroupStageChart';
 import ExpressionCheatSheet from './ExpressionCheatSheet';
+import StockBrandIcon from './StockBrandIcon';
 import { getLocalDateStr } from '../utils/dateUtils';
 
 const SETUP_COLORS = {
@@ -1169,6 +1170,7 @@ export default function CandidatesTab({
               {/* Top Row: Symbol + Company Name (Left) & Watchlist Quick Action (Right) */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <StockBrandIcon symbol={currentCandidate?.symbol} size={28} />
                   <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#34d399', letterSpacing: '-0.5px', margin: 0, lineHeight: 1.1 }}>
                     {currentCandidate?.symbol}
                   </h2>
@@ -1708,6 +1710,7 @@ export default function CandidatesTab({
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <StockBrandIcon symbol={c.symbol} size={18} />
                       <span style={{ fontWeight: 700, color: idx === browseIndex ? '#34d399' : '#ffffff' }}>
                         {c.symbol}
                       </span>
@@ -1730,21 +1733,7 @@ export default function CandidatesTab({
                           S{c.industry_stage_num}
                         </span>
                       )}
-                      {c.ti_65 !== null && c.ti_65 !== undefined && (
-                        <span
-                          className="pill"
-                          style={{
-                            fontSize: '10px',
-                            padding: '1px 5px',
-                            fontWeight: 600,
-                            background: c.ti_65 >= 1.05 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.06)',
-                            color: c.ti_65 >= 1.05 ? '#34d399' : 'var(--text-secondary)'
-                          }}
-                          title={`Trend Intensity: ${c.ti_65.toFixed(2)}`}
-                        >
-                          TI {c.ti_65.toFixed(2)}
-                        </span>
-                      )}
+
                       {c.sponsorship_streak >= 2 && (
                         <span
                           className="pill"

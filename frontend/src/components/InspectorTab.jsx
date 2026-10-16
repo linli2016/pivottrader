@@ -108,6 +108,26 @@ export default function InspectorTab({
         </div>
       </div>
 
+      {/* Notice Banner */}
+      <div className="glass-card" style={{ marginBottom: '20px', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ fontSize: '20px' }}>⚡</span>
+          <span style={{ fontSize: '13px', color: '#e2e8f0' }}>
+            Stock Inspector is now merged directly into <strong>4. Market Watching</strong>'s Stock Detail Panel! You can inspect any stock alongside multi-timeframe charts, VCP footprints, and institutional fund flows.
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            window.dispatchEvent(new CustomEvent('pt-navigate-watchlists', { detail: { symbol: inspectorSymbol || 'AAPL' } }));
+          }}
+          className="btn btn-primary btn-sm"
+          style={{ fontSize: '12px', padding: '5px 12px' }}
+        >
+          Open in Market Watching →
+        </button>
+      </div>
+
       {/* Search Input Bar */}
       <div className="glass-card" style={{ marginBottom: '24px', display: 'flex', gap: '16px', alignItems: 'center' }}>
         <div className="form-group" style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: '12px', margin: 0 }}>

@@ -84,13 +84,20 @@ def get_journal(
 
 
 @router.get("/api/positions")
-def get_open_positions(account: Optional[str] = None):
-    """Retrieve currently open trading positions from IBKR Journal."""
+def get_positions(account: Optional[str] = None, status: Optional[str] = "all"):
+    """Retrieve trading positions from IBKR Journal (status: 'OPEN', 'CLOSED', or 'ALL'). Default ALL."""
     try:
         trades = journal_service.get_trades(account=account, include_ignored=False)
-        return [t for t in trades if t.get("status") == "OPEN"]
+        st = (status or "ALL").strip().upper()
+        if st in ("ALL", "*"):
+            return trades
+        if st == "CLOSED":
+            return [t for t in trades if t.get("status") == "CLOSED"]
+        if st == "OPEN":
+            return [t for t in trades if t.get("status") == "OPEN"]
+        return trades
     except Exception as e:
-        logger.error(f"Error in get_open_positions: {e}", exc_info=True)
+        logger.error(f"Error in get_positions: {e}", exc_info=True)
         return []
 
 

@@ -1,9 +1,9 @@
 import React from 'react';
 
-export default function VcpFootprintCard({ vcpFootprint }) {
+export default function VcpFootprintCard({ vcpFootprint, style = {} }) {
   if (!vcpFootprint) {
     return (
-      <div className="glass-card" style={{ padding: '16px', marginBottom: '24px' }}>
+      <div className="glass-card" style={{ padding: '16px', marginBottom: '24px', ...style }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
           <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--accent-color)', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             🌀 Minervini VCP Footprint
@@ -41,7 +41,7 @@ export default function VcpFootprintCard({ vcpFootprint }) {
   const maxDepth = waves.length > 0 ? Math.max(...waves.map(w => w.depth_pct || 0), 10) : 30;
 
   return (
-    <div className="glass-card" style={{ padding: '20px', marginBottom: '24px', position: 'relative', overflow: 'hidden' }}>
+    <div className="glass-card" style={{ padding: '20px', marginBottom: '24px', position: 'relative', overflow: 'hidden', ...style }}>
       {/* Background ambient glow */}
       <div
         style={{

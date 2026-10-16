@@ -1,5 +1,6 @@
 import React from 'react';
 import CandlestickChart from './CandlestickChart';
+import StockBrandIcon from './StockBrandIcon';
 
 export default function StockDetailDrawer({
   selectedStock,
@@ -60,9 +61,11 @@ export default function StockDetailDrawer({
     stockDetail?.metadata?.name ||
     selectedStock?.symbol ||
     ''
-  ).replace(/\s*(?:Class\s+[A-Z]\s+)?(?:Common\s+Stock|Ordinary\s+Shares|ADS|ADR).*$/i, '')
+  ).replace(/[\s,-]+(?:Class\s+[A-Z0-9]+\s+)?(?:Common\s+(?:Stock|Shares?|Units?)|Capital\s+Stock|Ordinary\s+Shares?|(?:American\s+)?Depositary\s+Shares?|ADS|ADR|Subordinated?\s+Voting\s+Shares?|Limited\s+Partnership\s+Units?).*$/i, '')
+   .replace(/[\s,-]+(?:Common\s+(?:Stock|Shares?|Units?)|Capital\s+Stock|Ordinary\s+Shares?|(?:American\s+)?Depositary\s+Shares?).*$/i, '')
    .replace(/\s*\(.*?par\s+value.*?\)/i, '')
-   .replace(/\s*-\s*Common\s+Stock/i, '')
+   .replace(/[\s,-]+Class\s+[A-Z0-9]+(?:\s+Common\s+(?:Stock|Shares?))?$/i, '')
+   .replace(/[\s,-]+$/, '')
    .trim();
 
   // Exchange, Sector, Industry
@@ -150,9 +153,12 @@ export default function StockDetailDrawer({
   const handleOpenInspector = () => {
     const sym = selectedStock.symbol;
     setSelectedStock(null);
-    if (setActiveTab) setActiveTab('inspector');
     if (setInspectorSymbol) setInspectorSymbol(sym);
     if (handleInspectorSearch) handleInspectorSearch(sym);
+    if (setActiveTab) setActiveTab('watchlists');
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('pt-inspect-stock', { detail: { symbol: sym } }));
+    }, 50);
   };
 
   return (
@@ -169,6 +175,7 @@ export default function StockDetailDrawer({
         }}>
           {/* Left: Symbol + Company Name + Price + Breadcrumbs */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+            <StockBrandIcon symbol={selectedStock.symbol} size={28} />
             <h2 style={{
               fontSize: '24px',
               fontWeight: 800,

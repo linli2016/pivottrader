@@ -1652,7 +1652,7 @@ class DatabaseService:
             
             # Get latest RS, ATR, TI65, and Volume metrics (fast lookup with index)
             latest_bar = conn.execute("""
-                SELECT rs_score, rs_rank, atr_20d, ti_65, COALESCE(dollar_vol_50d_ma, close * vol_50d_ma) as dollar_vol_50d_ma, vol_50d_ma, adr_20d, ret_1m, ret_3m, ret_6m, is_52w_high
+                SELECT rs_score, rs_rank, atr_20d, ti_65, COALESCE(dollar_vol_50d_ma, close * vol_50d_ma) as dollar_vol_50d_ma, vol_50d_ma, adr_20d, ret_1m, ret_3m, ret_6m, is_52w_high, high_52w, low_52w, dist_from_52w_high
                 FROM daily_bars
                 WHERE symbol = ?
                 ORDER BY date DESC
@@ -1670,6 +1670,9 @@ class DatabaseService:
             ret_3m = latest_bar[8] if latest_bar and len(latest_bar) > 8 else None
             ret_6m = latest_bar[9] if latest_bar and len(latest_bar) > 9 else None
             is_rs_blue_dot = latest_bar[10] if latest_bar and len(latest_bar) > 10 else False
+            high_52w = float(latest_bar[11]) if latest_bar and len(latest_bar) > 11 and latest_bar[11] is not None else None
+            low_52w = float(latest_bar[12]) if latest_bar and len(latest_bar) > 12 and latest_bar[12] is not None else None
+            dist_from_52w_high = float(latest_bar[13]) if latest_bar and len(latest_bar) > 13 and latest_bar[13] is not None else None
 
             # Calculate Minervini Setups (VCP, Low Cheat & Cheat) - only needs last 120 bars
             from application.engine.setups.vcp import detect_vcp
@@ -1742,6 +1745,23 @@ class DatabaseService:
                 "is_rs_blue_dot": bool(is_rs_blue_dot) if is_rs_blue_dot is not None else False,
                 "dollar_vol_50d_ma": dollar_vol_50d_ma,
                 "vol_50d_ma": vol_50d_ma,
+                "high_52w": high_52w,
+                "low_52w": low_52w,
+                "dist_from_52w_high": dist_from_52w_high,
+                "metrics": {
+                    "high_52w": high_52w,
+                    "low_52w": low_52w,
+                    "dist_from_52w_high": dist_from_52w_high,
+                    "vol_50d_ma": vol_50d_ma,
+                    "dollar_vol_50d_ma": dollar_vol_50d_ma,
+                    "market_cap": meta_dict.get("market_cap"),
+                    "rs_rank": rs_rank,
+                    "ti_65": ti_65,
+                    "adr_20d": adr_20d if adr_20d is not None else atr_20d,
+                    "ret_1m": ret_1m,
+                    "ret_3m": ret_3m,
+                    "ret_6m": ret_6m
+                },
                 "vcp_footprint": vcp_footprint,
                 "low_cheat_footprint": low_cheat_footprint,
                 "cheat_footprint": cheat_footprint,
@@ -1960,7 +1980,7 @@ class DatabaseService:
             if limit and limit > 0:
                 lookback = limit + 260
                 rows = conn.execute("""
-                    SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65
+                    SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65, vol_50d_ma, high_52w, low_52w, dist_from_52w_high
                     FROM daily_bars
                     WHERE symbol = ?
                     ORDER BY date DESC
@@ -1968,7 +1988,7 @@ class DatabaseService:
                 """, [symbol, lookback]).fetchall()
             else:
                 rows = conn.execute("""
-                    SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65
+                    SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65, vol_50d_ma, high_52w, low_52w, dist_from_52w_high
                     FROM daily_bars
                     WHERE symbol = ?
                     ORDER BY date ASC
@@ -1981,7 +2001,7 @@ class DatabaseService:
         rs_lines = []
         closes = []
         for r in rows:
-            d, o, h, l, cl, v, s50, s150, s200, rs_r, ti = r
+            d, o, h, l, cl, v, s50, s150, s200, rs_r, ti, v50m, h52, l52, d52h = r
             sc = self._spy_daily_cache.get(d)
             rsl = round((cl / sc * 100.0), 4) if sc else None
             prev_rsl_max = max(rs_lines[-252:]) if rs_lines else None
@@ -1998,6 +2018,10 @@ class DatabaseService:
                 "low": float(l) if l is not None else 0.0,
                 "close": float(cl) if cl is not None else 0.0,
                 "volume": float(v) if v is not None else 0.0,
+                "vol_50d_ma": float(v50m) if v50m is not None else None,
+                "high_52w": float(h52) if h52 is not None else None,
+                "low_52w": float(l52) if l52 is not None else None,
+                "dist_from_52w_high": float(d52h) if d52h is not None else None,
                 "sma_50": float(s50) if s50 is not None else None,
                 "sma_150": float(s150) if s150 is not None else None,
                 "sma_200": float(s200) if s200 is not None else None,

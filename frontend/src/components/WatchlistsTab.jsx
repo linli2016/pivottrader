@@ -5,108 +5,9 @@ import { getLocalDateStr } from '../utils/dateUtils';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
-// Sleek Brand Logo Icon Component
-export function StockBrandIcon({ symbol }) {
-  const sym = (symbol || '').toUpperCase();
+import StockBrandIcon from './StockBrandIcon';
+export { StockBrandIcon };
 
-  if (sym === 'AAPL') {
-    return (
-      <div style={{
-        width: '20px', height: '20px', borderRadius: '4px',
-        background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: '#000000', fontSize: '13px', fontWeight: 900, flexShrink: 0
-      }}>
-        
-      </div>
-    );
-  }
-  if (sym === 'MSFT') {
-    return (
-      <div style={{
-        width: '18px', height: '18px', display: 'grid',
-        gridTemplateColumns: '1fr 1fr', gap: '1.5px', flexShrink: 0
-      }}>
-        <div style={{ background: '#f25022', borderRadius: '1px' }} />
-        <div style={{ background: '#7fba00', borderRadius: '1px' }} />
-        <div style={{ background: '#00a4ef', borderRadius: '1px' }} />
-        <div style={{ background: '#ffb900', borderRadius: '1px' }} />
-      </div>
-    );
-  }
-  if (sym === 'GOOG' || sym === 'GOOGL') {
-    return (
-      <div style={{
-        width: '20px', height: '20px', borderRadius: '50%',
-        background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: '#ea4335', fontSize: '12px', fontWeight: 900, fontFamily: 'sans-serif', flexShrink: 0
-      }}>
-        G
-      </div>
-    );
-  }
-  if (sym === 'AMZN') {
-    return (
-      <div style={{
-        width: '20px', height: '20px', borderRadius: '50%',
-        background: '#ff9900', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: '#000000', fontSize: '11px', fontWeight: 900, flexShrink: 0
-      }}>
-        a
-      </div>
-    );
-  }
-  if (sym === 'NVDA') {
-    return (
-      <div style={{
-        width: '20px', height: '20px', borderRadius: '4px',
-        background: '#76b900', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: '#ffffff', fontSize: '10px', fontWeight: 900, flexShrink: 0
-      }}>
-        N
-      </div>
-    );
-  }
-  if (sym === 'META') {
-    return (
-      <div style={{
-        width: '20px', height: '20px', borderRadius: '50%',
-        background: '#0668e1', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: '#ffffff', fontSize: '11px', fontWeight: 800, flexShrink: 0
-      }}>
-        ∞
-      </div>
-    );
-  }
-  if (sym === 'TSLA') {
-    return (
-      <div style={{
-        width: '20px', height: '20px', borderRadius: '50%',
-        background: '#e82127', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: '#ffffff', fontSize: '11px', fontWeight: 900, flexShrink: 0
-      }}>
-        T
-      </div>
-    );
-  }
-
-  // Generic fallback avatar with subtle deterministic color
-  const colors = ['#38bdf8', '#a855f7', '#10b981', '#f59e0b', '#ec4899', '#6366f1'];
-  const charCode = sym.charCodeAt(0) || 0;
-  const bg = colors[charCode % colors.length];
-
-  return (
-    <div style={{
-      width: '20px', height: '20px', borderRadius: '4px',
-      background: `rgba(${parseInt(bg.slice(1,3),16)}, ${parseInt(bg.slice(3,5),16)}, ${parseInt(bg.slice(5,7),16)}, 0.25)`,
-      border: `1px solid ${bg}`,
-      color: bg,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: '10px', fontWeight: 800, flexShrink: 0
-    }}>
-      {sym.slice(0, 2)}
-    </div>
-  );
-}
 
 export const QUADRANT_COLORS = {
   Leading: { accent: '#10b981', bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.35)', title: 'Leading' },
@@ -144,12 +45,13 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   const [fundTab, setFundTab] = useState('institutions');
   const [profileExpanded, setProfileExpanded] = useState(false);
 
-  // Accordion Collapse States for Stock Detail Panel
+  // Accordion Collapse States for Stock Detail Panel (Merged Stock Inspector)
   const [collapsedSections, setCollapsedSections] = useState({
-    profile: false,
+    fundamentals: false,
+    sponsorship: false,
     stats: false,
+    profile: false,
     peers: false,
-    funds: false,
     setups: false,
   });
 
@@ -157,13 +59,13 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     setCollapsedSections((prev) => ({ ...prev, [sectionKey]: !prev[sectionKey] }));
   };
 
-  // Stock Details Sub-pane visibility (collapsed by default to give maximum room to chart)
+  // Stock Details Sub-pane visibility (collapsed by default to give maximum room to chart, or persisted)
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(() => {
     try {
       const saved = localStorage.getItem('pivot_watchlist_right_panel_collapsed');
       return saved !== null ? saved === 'true' : true;
     } catch {
-      return true; // default collapsed for maximized chart space
+      return true;
     }
   });
 
@@ -172,6 +74,62 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       localStorage.setItem('pivot_watchlist_right_panel_collapsed', isRightPanelCollapsed);
     } catch (_) {}
   }, [isRightPanelCollapsed]);
+
+  // Resizable Splitter between Chart and Stock Detail Sub-panel
+  const [stockDetailWidth, setStockDetailWidth] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pt_watchlist_stock_detail_width');
+      if (saved) {
+        const val = parseInt(saved, 10);
+        if (!isNaN(val) && val >= 320 && val <= 700) return val;
+      }
+    } catch (_) {}
+    return 380;
+  });
+  const [isResizingDetail, setIsResizingDetail] = useState(false);
+  const resizeDetailStartXRef = useRef(0);
+  const resizeDetailStartWidthRef = useRef(380);
+
+  const startResizingDetail = useCallback((e) => {
+    e.preventDefault();
+    setIsResizingDetail(true);
+    resizeDetailStartXRef.current = e.clientX;
+    resizeDetailStartWidthRef.current = stockDetailWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [stockDetailWidth]);
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isResizingDetail) return;
+      const delta = resizeDetailStartXRef.current - e.clientX;
+      const newWidth = Math.max(320, Math.min(650, resizeDetailStartWidthRef.current + delta));
+      setStockDetailWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      if (isResizingDetail) {
+        setIsResizingDetail(false);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        try {
+          localStorage.setItem('pt_watchlist_stock_detail_width', stockDetailWidth);
+        } catch (_) {}
+      }
+    };
+
+    if (isResizingDetail) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizingDetail, stockDetailWidth]);
+
+  // Quick ticker search in inspector drawer
+  const [inspectTickerInput, setInspectTickerInput] = useState('');
 
   // Multi-Charts Layout (Daily on top, Monthly on bottom-left, Weekly on bottom-right)
   const [showMultiCharts, setShowMultiCharts] = useState(() => {
@@ -193,6 +151,8 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   // TAB 1: WATCHLIST STATE
   // -------------------------------------------------------------
   const [selectedWatchlistId, setSelectedWatchlistId] = useState(null);
+  const [targetWatchlistId, setTargetWatchlistId] = useState(null);
+  const [targetItems, setTargetItems] = useState([]);
   const [items, setItems] = useState([]);
   const activeWatchlistSymbols = useMemo(() => {
     return new Set((items || []).map((i) => i.symbol?.toUpperCase()).filter(Boolean));
@@ -211,6 +171,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedSymbols, setSelectedSymbols] = useState(new Set());
   const [isDeletingItems, setIsDeletingItems] = useState(false);
+  const [isAddingBatchToTarget, setIsAddingBatchToTarget] = useState(false);
   const [quickAddMenuSym, setQuickAddMenuSym] = useState(null); // ticker to add to a chosen watchlist
   const [quickAddToast, setQuickAddToast] = useState(null); // notification toast
 
@@ -241,10 +202,18 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   }, [previewGroupChart]);
 
   // -------------------------------------------------------------
-  // TAB 3: POSITIONS (OPEN TRADES) STATE
+  // TAB 3: POSITIONS (OPEN & CLOSED TRADES) STATE
   // -------------------------------------------------------------
   const [positions, setPositions] = useState([]);
   const [loadingPositions, setLoadingPositions] = useState(false);
+  const [positionsStatus, setPositionsStatus] = useState('OPEN'); // 'OPEN' | 'CLOSED'
+
+  const openPositions = useMemo(() => positions.filter((p) => p.status === 'OPEN'), [positions]);
+  const closedPositions = useMemo(() => positions.filter((p) => p.status === 'CLOSED'), [positions]);
+  const displayedPositions = useMemo(
+    () => (positionsStatus === 'OPEN' ? openPositions : closedPositions),
+    [positionsStatus, openPositions, closedPositions]
+  );
 
   // -------------------------------------------------------------
   // RESIZABLE SPLITTER DIVIDER (Between Chart and Right Table Dock)
@@ -254,7 +223,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       const saved = localStorage.getItem('pt_markets_table_width');
       if (saved) {
         const val = parseInt(saved, 10);
-        if (val >= 340 && val <= 850) return val;
+        if (!isNaN(val) && val >= 0) return val;
       }
     } catch (_) {}
     return 480; // default width for comfortable table reading
@@ -277,7 +246,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     const handleMouseMove = (e) => {
       if (!isResizing) return;
       const delta = resizeStartXRef.current - e.clientX;
-      const newWidth = Math.min(Math.max(resizeStartWidthRef.current + delta, 340), Math.min(window.innerWidth * 0.65, 850));
+      const newWidth = Math.max(0, Math.min(resizeStartWidthRef.current + delta, window.innerWidth - 80));
       setRightPanelWidth(newWidth);
     };
 
@@ -302,19 +271,116 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     };
   }, [isResizing, rightPanelWidth]);
 
+  // Multi-Chart Vertical Height Splitter State (Daily vs Monthly/Weekly)
+  const [multiChartTopPct, setMultiChartTopPct] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pt_markets_multichart_top_pct');
+      if (saved) {
+        const val = parseFloat(saved);
+        if (!isNaN(val) && val >= 15 && val <= 85) return val;
+      }
+    } catch (_) {}
+    return 62; // default: 62% daily on top, 38% monthly/weekly on bottom
+  });
+
+  const [isMultiChartResizing, setIsMultiChartResizing] = useState(false);
+  const multiChartsContainerRef = useRef(null);
+  const resizeStartYRef = useRef(0);
+  const resizeStartTopPctRef = useRef(62);
+  const containerHeightRef = useRef(600);
+
+  const startMultiChartResizing = useCallback(
+    (e) => {
+      e.preventDefault();
+      setIsMultiChartResizing(true);
+      resizeStartYRef.current = e.clientY;
+      resizeStartTopPctRef.current = multiChartTopPct;
+      if (multiChartsContainerRef.current) {
+        containerHeightRef.current = multiChartsContainerRef.current.getBoundingClientRect().height;
+      }
+      document.body.style.cursor = 'row-resize';
+      document.body.style.userSelect = 'none';
+    },
+    [multiChartTopPct]
+  );
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isMultiChartResizing) return;
+      const deltaY = e.clientY - resizeStartYRef.current;
+      const totalH = containerHeightRef.current || 600;
+      const deltaPct = (deltaY / totalH) * 100;
+      const newPct = Math.max(15, Math.min(85, resizeStartTopPctRef.current + deltaPct));
+      setMultiChartTopPct(newPct);
+    };
+
+    const handleMouseUp = () => {
+      if (isMultiChartResizing) {
+        setIsMultiChartResizing(false);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        try {
+          localStorage.setItem('pt_markets_multichart_top_pct', multiChartTopPct.toString());
+        } catch (_) {}
+      }
+    };
+
+    if (isMultiChartResizing) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isMultiChartResizing, multiChartTopPct]);
+
   // Show temporary toast
   const triggerToast = (msg) => {
     setQuickAddToast(msg);
     setTimeout(() => setQuickAddToast(null), 2500);
   };
 
-  // Initialize selected watchlist (prefer 'Mag 7' if present, otherwise first available)
+  // Initialize selected and target watchlists (prefer 'Mag 7' if present, otherwise first available)
   useEffect(() => {
-    if (watchlists.length > 0 && !selectedWatchlistId) {
-      const mag7 = watchlists.find((w) => w.name.toLowerCase() === 'mag 7');
-      setSelectedWatchlistId(mag7 ? mag7.id : watchlists[0].id);
+    if (watchlists.length > 0) {
+      if (!selectedWatchlistId) {
+        const mag7 = watchlists.find((w) => w.name.toLowerCase() === 'mag 7');
+        setSelectedWatchlistId(mag7 ? mag7.id : watchlists[0].id);
+      }
+      if (!targetWatchlistId) {
+        const mag7 = watchlists.find((w) => w.name.toLowerCase() === 'mag 7');
+        setTargetWatchlistId(mag7 ? mag7.id : watchlists[0].id);
+      }
     }
-  }, [watchlists, selectedWatchlistId]);
+  }, [watchlists, selectedWatchlistId, targetWatchlistId]);
+
+  // Target Watchlist items for targetWatchlistSymbols
+  const fetchTargetItems = useCallback(async (wId) => {
+    if (!wId) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/watchlists/${wId}/items`);
+      if (res.ok) {
+        const data = await res.json();
+        setTargetItems(Array.isArray(data) ? data : []);
+      }
+    } catch (e) {
+      console.error('Error fetching target watchlist items:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (targetWatchlistId && targetWatchlistId !== selectedWatchlistId) {
+      fetchTargetItems(targetWatchlistId);
+    }
+  }, [targetWatchlistId, selectedWatchlistId, fetchTargetItems]);
+
+  const targetWatchlistSymbols = useMemo(() => {
+    if (targetWatchlistId === selectedWatchlistId) {
+      return activeWatchlistSymbols;
+    }
+    return new Set((targetItems || []).map((i) => i.symbol?.toUpperCase()).filter(Boolean));
+  }, [targetWatchlistId, selectedWatchlistId, activeWatchlistSymbols, targetItems]);
 
   // Fetch watchlist items
   const fetchItems = useCallback(async (wId) => {
@@ -440,7 +506,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     targets.forEach(async (targetSym) => {
       try {
         const [pRes, dRes, fRes, peRes] = await Promise.all([
-          fetch(`${API_BASE}/api/stocks/${targetSym}/prices?limit=1250`),
+          fetch(`${API_BASE}/api/stocks/${targetSym}/prices?limit=3500`),
           fetch(`${API_BASE}/api/stocks/${targetSym}`),
           fetch(`${API_BASE}/api/stocks/${targetSym}/financials`),
           fetch(`${API_BASE}/api/stocks/${targetSym}/peers?limit=6`)
@@ -484,6 +550,29 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     }
   }, [prefetchAdjacentWatchlistStocks]);
 
+  // Quick ticker search in inspector drawer
+  const handleInspectTickerSubmit = (e) => {
+    e?.preventDefault();
+    const cleanSym = inspectTickerInput.trim().toUpperCase();
+    if (!cleanSym) return;
+    setInspectTickerInput('');
+    selectStock({ symbol: cleanSym });
+    setIsRightPanelCollapsed(false);
+  };
+
+  // Global listener for pt-inspect-stock event
+  useEffect(() => {
+    const handleInspectEvent = (e) => {
+      const sym = e.detail?.symbol;
+      if (sym) {
+        setIsRightPanelCollapsed(false);
+        selectStock({ symbol: sym.toUpperCase() });
+      }
+    };
+    window.addEventListener('pt-inspect-stock', handleInspectEvent);
+    return () => window.removeEventListener('pt-inspect-stock', handleInspectEvent);
+  }, [selectStock]);
+
   // Fetch stock chart prices and telemetry when selected stock changes
   useEffect(() => {
     if (!selectedStock?.symbol) {
@@ -519,7 +608,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     let financialsData = null;
     let peersDataRes = null;
 
-    const pPrices = fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=1250`)
+    const pPrices = fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=3500`)
       .then((res) => (res.ok ? res.json() : []))
       .then((prices) => {
         if (selectedStockRef.current?.symbol?.toUpperCase() === sym) {
@@ -662,39 +751,48 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     }
   };
 
-  // Toggle symbol in active watchlist (matches Screen result page)
-  const handleToggleWatchlist = async (sym) => {
-    if (!selectedWatchlistId || !sym) return;
+  // Toggle symbol in target watchlist (matches Screen result page)
+  const handleToggleWatchlist = async (sym, customTargetId = null) => {
+    const targetWId = customTargetId || targetWatchlistId || selectedWatchlistId;
+    if (!targetWId || !sym) return;
     const symUpper = sym.toUpperCase();
-    const isSaved = activeWatchlistSymbols.has(symUpper);
+    const isTargetSame = targetWId === selectedWatchlistId;
+    const isSaved = isTargetSame ? activeWatchlistSymbols.has(symUpper) : targetWatchlistSymbols.has(symUpper);
+    const targetW = watchlists.find((w) => w.id === targetWId);
 
     try {
       if (isSaved) {
-        const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items/${encodeURIComponent(symUpper)}`, {
+        const res = await fetch(`${API_BASE}/api/watchlists/${targetWId}/items/${encodeURIComponent(symUpper)}`, {
           method: 'DELETE'
         });
         if (res.ok) {
-          setItems((prev) => {
-            const updated = prev.filter((i) => i.symbol?.toUpperCase() !== symUpper);
-            if (dockTabRef.current === 'watchlists' && selectedStock?.symbol?.toUpperCase() === symUpper) {
-              setSelectedStock(updated.length > 0 ? updated[0] : null);
-            }
-            return updated;
-          });
+          if (isTargetSame) {
+            setItems((prev) => {
+              const updated = prev.filter((i) => i.symbol?.toUpperCase() !== symUpper);
+              if (dockTabRef.current === 'watchlists' && selectedStock?.symbol?.toUpperCase() === symUpper) {
+                setSelectedStock(updated.length > 0 ? updated[0] : null);
+              }
+              return updated;
+            });
+          } else {
+            setTargetItems((prev) => prev.filter((i) => i.symbol?.toUpperCase() !== symUpper));
+          }
           if (fetchWatchlists) fetchWatchlists();
-          const targetW = watchlists.find((w) => w.id === selectedWatchlistId);
           triggerToast(`Removed ${symUpper} from ${targetW?.name || 'watchlist'}`);
         }
       } else {
-        const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items`, {
+        const res = await fetch(`${API_BASE}/api/watchlists/${targetWId}/items`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ symbol: symUpper })
         });
         if (res.ok) {
-          fetchItems(selectedWatchlistId);
+          if (isTargetSame) {
+            fetchItems(selectedWatchlistId);
+          } else {
+            fetchTargetItems(targetWId);
+          }
           if (fetchWatchlists) fetchWatchlists();
-          const targetW = watchlists.find((w) => w.id === selectedWatchlistId);
           triggerToast(`Added ${symUpper} to ${targetW?.name || 'watchlist'}`);
         }
       }
@@ -703,7 +801,42 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     }
   };
 
-  // Batch remove
+  // Batch add selected symbols to target watchlist
+  const handleAddBatchToTarget = async () => {
+    const targetWId = targetWatchlistId || selectedWatchlistId;
+    if (!targetWId || selectedSymbols.size === 0) return;
+    const targetW = watchlists.find((w) => w.id === targetWId);
+    const symbolsArray = Array.from(selectedSymbols);
+
+    setIsAddingBatchToTarget(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/watchlists/${targetWId}/items/batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbols: symbolsArray })
+      });
+      if (res.ok) {
+        if (targetWId === selectedWatchlistId) {
+          fetchItems(selectedWatchlistId);
+        } else {
+          fetchTargetItems(targetWId);
+        }
+        if (fetchWatchlists) fetchWatchlists();
+        triggerToast(`Added ${symbolsArray.length} stock${symbolsArray.length > 1 ? 's' : ''} to "${targetW?.name || 'watchlist'}"`);
+        setSelectedSymbols(new Set());
+        setIsSelectMode(false);
+      } else {
+        triggerToast('Failed to add stocks to target watchlist');
+      }
+    } catch (e) {
+      console.error('Error adding batch to target watchlist:', e);
+      triggerToast('Error adding stocks');
+    } finally {
+      setIsAddingBatchToTarget(false);
+    }
+  };
+
+  // Batch remove selected symbols
   const handleRemoveBatch = async () => {
     if (!selectedWatchlistId || selectedSymbols.size === 0) return;
     const confirmDelete = window.confirm(`Remove ${selectedSymbols.size} symbols from this watchlist?`);
@@ -712,15 +845,16 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     setIsDeletingItems(true);
     try {
       const symbolsArray = Array.from(selectedSymbols);
-      const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items/batch`, {
-        method: 'DELETE',
+      const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items/remove-batch`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ symbols: symbolsArray })
       });
       if (res.ok) {
+        const symsUpper = new Set(symbolsArray.map((s) => s.toUpperCase()));
         setItems((prev) => {
-          const updated = prev.filter((i) => !selectedSymbols.has(i.symbol));
-          if (selectedStock && selectedSymbols.has(selectedStock.symbol)) {
+          const updated = prev.filter((i) => !symsUpper.has(i.symbol?.toUpperCase()));
+          if (dockTabRef.current === 'watchlists' && selectedStock && symsUpper.has(selectedStock.symbol?.toUpperCase())) {
             setSelectedStock(updated.length > 0 ? updated[0] : null);
           }
           return updated;
@@ -729,9 +863,47 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         setIsSelectMode(false);
         if (fetchWatchlists) fetchWatchlists();
         triggerToast(`Removed ${symbolsArray.length} symbols`);
+      } else {
+        triggerToast('Failed to remove selected symbols');
       }
     } catch (e) {
       console.error('Error removing batch symbols:', e);
+      triggerToast('Error removing symbols');
+    } finally {
+      setIsDeletingItems(false);
+    }
+  };
+
+  // Clear all symbols from active watchlist
+  const handleClearWatchlist = async () => {
+    if (!selectedWatchlistId || items.length === 0) {
+      triggerToast('Watchlist is already empty');
+      return;
+    }
+    const currentW = watchlists.find((w) => w.id === selectedWatchlistId);
+    const confirmClear = window.confirm(`Remove all ${items.length} stocks from "${currentW?.name || 'this watchlist'}"?`);
+    if (!confirmClear) return;
+
+    setIsDeletingItems(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        setItems([]);
+        setSelectedSymbols(new Set());
+        setIsSelectMode(false);
+        if (dockTabRef.current === 'watchlists' && selectedStock) {
+          setSelectedStock(null);
+        }
+        if (fetchWatchlists) fetchWatchlists();
+        triggerToast(`Removed all stocks from "${currentW?.name || 'watchlist'}"`);
+      } else {
+        triggerToast('Failed to clear watchlist');
+      }
+    } catch (e) {
+      console.error('Error clearing watchlist:', e);
+      triggerToast('Error clearing watchlist');
     } finally {
       setIsDeletingItems(false);
     }
@@ -835,38 +1007,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     triggerToast('Exported to TradingView format');
   };
 
-  // Clean Up Watchlist
-  const handleCleanUpWatchlist = async () => {
-    if (!selectedWatchlistId || items.length === 0) return;
-    const confirmClean = window.confirm(
-      `Clean Up Watchlist: Remove stocks below Stage 2 criteria (RS Rank < 50 or Price < 50 SMA)?`
-    );
-    if (!confirmClean) return;
-
-    const toRemove = items
-      .filter((item) => (item.rs_rank !== null && item.rs_rank < 50) || (item.chg_pct !== null && item.chg_pct < -15))
-      .map((i) => i.symbol);
-
-    if (toRemove.length === 0) {
-      alert('No lagging stocks found in current watchlist.');
-      return;
-    }
-
-    try {
-      const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items/batch`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbols: toRemove })
-      });
-      if (res.ok) {
-        fetchItems(selectedWatchlistId);
-        if (fetchWatchlists) fetchWatchlists();
-        triggerToast(`Cleaned up ${toRemove.length} lagging stocks`);
-      }
-    } catch (e) {
-      console.error('Error cleaning up watchlist:', e);
-    }
-  };
 
   // -------------------------------------------------------------
   // FILTERING & SORTING FOR WATCHLIST ITEMS
@@ -980,6 +1120,22 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     }
   }, [currentGroupIndex, filteredAndSortedGroups, groupType]);
 
+  const handleOpenGroupChart = useCallback(
+    (type, name) => {
+      if (!name) return;
+      setGroupType(type);
+      fetchGroupsData(type);
+      const match = groupsData[type]?.find((g) => g.name === name);
+      setActiveGroupChart({
+        groupType: type,
+        groupName: name,
+        stageBadge: match?.stage_badge || (type === 'sectors' ? 'Sector Stage' : 'Industry Stage'),
+        stageColor: match?.stage_color || '#38bdf8'
+      });
+    },
+    [fetchGroupsData, groupsData]
+  );
+
   // -------------------------------------------------------------
   // FLATTENED DISPLAY ITEMS FOR KEYBOARD NAVIGATION
   // -------------------------------------------------------------
@@ -999,10 +1155,10 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       return flat;
     }
     if (dockTab === 'positions') {
-      return positions;
+      return displayedPositions;
     }
     return sortedItems;
-  }, [dockTab, sortedItems, expandedMarketGroups, groupType, groupConstituents, positions]);
+  }, [dockTab, sortedItems, expandedMarketGroups, groupType, groupConstituents, displayedPositions]);
 
   useEffect(() => {
     displayItemsRef.current = displayItems;
@@ -1041,6 +1197,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   }, [displayItems, selectedStock, activeGroupChart, dockTab, handlePrevGroup, handleNextGroup, selectStock]);
 
   const activeWatchlist = watchlists.find((w) => w.id === selectedWatchlistId);
+  const targetWatchlist = watchlists.find((w) => w.id === targetWatchlistId);
 
   // Active bar metrics for HUD
   const latestBar = useMemo(() => {
@@ -1051,9 +1208,11 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   const cleanName = useMemo(() => {
     const raw = selectedStock?.name || stockDetail?.metadata?.name || selectedStock?.symbol || '';
     return raw
-      .replace(/\s*(?:Class\s+[A-Z]\s+)?(?:Common\s+Stock|Ordinary\s+Shares|ADS|ADR).*$/i, '')
+      .replace(/[\s,-]+(?:Class\s+[A-Z0-9]+\s+)?(?:Common\s+(?:Stock|Shares?|Units?)|Capital\s+Stock|Ordinary\s+Shares?|(?:American\s+)?Depositary\s+Shares?|ADS|ADR|Subordinated?\s+Voting\s+Shares?|Limited\s+Partnership\s+Units?).*$/i, '')
+      .replace(/[\s,-]+(?:Common\s+(?:Stock|Shares?|Units?)|Capital\s+Stock|Ordinary\s+Shares?|(?:American\s+)?Depositary\s+Shares?).*$/i, '')
       .replace(/\s*\(.*?par\s+value.*?\)/i, '')
-      .replace(/\s*-\s*Common\s+Stock/i, '')
+      .replace(/[\s,-]+Class\s+[A-Z0-9]+(?:\s+Common\s+(?:Stock|Shares?))?$/i, '')
+      .replace(/[\s,-]+$/, '')
       .trim();
   }, [selectedStock, stockDetail]);
 
@@ -1084,23 +1243,160 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   const stageColor = selectedStock?.stage_color || null;
   const activeSetups = selectedStock?.setups || [];
 
-  // Positions summary
-  const positionsSummary = useMemo(() => {
-    if (!positions || positions.length === 0) return { count: 0, totalPnl: 0, totalNotional: 0, pnlPct: 0 };
+  // 52W High, Low, and Distance calculation
+  const stats52w = useMemo(() => {
+    let high = stockDetail?.high_52w ?? stockDetail?.metrics?.high_52w ?? selectedStock?.high_52w;
+    let low = stockDetail?.low_52w ?? stockDetail?.metrics?.low_52w ?? selectedStock?.low_52w;
+    let distHigh = stockDetail?.dist_from_52w_high ?? stockDetail?.metrics?.dist_from_52w_high ?? selectedStock?.dist_from_52w_high ?? selectedStock?.dist_52wh_pct;
+    
+    // Fallback: compute from daily stockPrices if not present in detail/stock
+    if ((high === null || high === undefined || low === null || low === undefined) && stockPrices && stockPrices.length > 0) {
+      const last252 = stockPrices.slice(-252);
+      const highs = last252.map(b => b.high).filter(v => typeof v === 'number' && v > 0);
+      const lows = last252.map(b => b.low).filter(v => typeof v === 'number' && v > 0);
+      if (highs.length > 0) high = Math.max(...highs);
+      if (lows.length > 0) low = Math.min(...lows);
+    }
+    if ((distHigh === null || distHigh === undefined) && high && stockPrices && stockPrices.length > 0) {
+      const curClose = stockPrices[stockPrices.length - 1]?.close;
+      if (curClose) {
+        distHigh = ((curClose - high) / high) * 100;
+      }
+    }
+    return { high, low, distHigh };
+  }, [stockDetail, selectedStock, stockPrices]);
+
+  // Volume 50D MA calculation
+  const vol50dMa = useMemo(() => {
+    let v = stockDetail?.vol_50d_ma ?? stockDetail?.metrics?.vol_50d_ma ?? latestBar?.vol_50d_ma ?? selectedStock?.vol_50d_ma;
+    if ((v === null || v === undefined) && stockPrices && stockPrices.length >= 10) {
+      const sliceBars = stockPrices.slice(-50);
+      const vols = sliceBars.map(b => b.volume).filter(x => typeof x === 'number');
+      if (vols.length > 0) {
+        v = vols.reduce((acc, val) => acc + val, 0) / vols.length;
+      }
+    }
+    return v;
+  }, [stockDetail, latestBar, selectedStock, stockPrices]);
+
+  // Market Cap
+  const marketCap = useMemo(() => {
+    return stockDetail?.market_cap ?? stockDetail?.metadata?.market_cap ?? stockDetail?.metrics?.market_cap ?? selectedStock?.market_cap ?? null;
+  }, [stockDetail, selectedStock]);
+
+  const formatMarketCap = (cap) => {
+    if (!cap || isNaN(cap)) return '—';
+    if (cap >= 1e12) return `$${(cap / 1e12).toFixed(2)}T`;
+    if (cap >= 1e9) return `$${(cap / 1e9).toFixed(2)}B`;
+    if (cap >= 1e6) return `$${(cap / 1e6).toFixed(1)}M`;
+    return `$${Number(cap).toLocaleString()}`;
+  };
+
+  const formatDist52w = (dist) => {
+    if (dist === null || dist === undefined || isNaN(dist)) return '—';
+    const num = Number(dist);
+    if (Math.abs(num) < 0.05) return '0.0%';
+    const val = num > 0 ? -num : num;
+    return `${val.toFixed(1)}%`;
+  };
+
+  const rawThemes = stockDetail?.themes || stockDetail?.metadata?.themes;
+  const themes = useMemo(() => {
+    if (Array.isArray(rawThemes) && rawThemes.length > 0) return rawThemes;
+    const singleTheme = stockDetail?.theme || stockDetail?.metadata?.theme;
+    return singleTheme ? [singleTheme] : [];
+  }, [rawThemes, stockDetail?.theme, stockDetail?.metadata?.theme]);
+
+  const isEtf = useMemo(() => {
+    const at = stockDetail?.metadata?.asset_type || selectedStock?.asset_type;
+    return at === 'ETF' || (at && at.toUpperCase().includes('ETF'));
+  }, [stockDetail?.metadata?.asset_type, selectedStock?.asset_type]);
+
+  const inspectorEarningsBadge = useMemo(() => {
+    const dt = stockDetail?.next_earnings_date || stockDetail?.metadata?.next_earnings_date || selectedStock?.next_earnings_date;
+    if (!dt) return null;
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const target = new Date(dt + 'T00:00:00');
+      const diffTime = target.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      let badgeSub = '';
+      let isUrgent = false;
+
+      if (diffDays === 0) {
+        badgeSub = 'Today';
+        isUrgent = true;
+      } else if (diffDays === 1) {
+        badgeSub = 'Tomorrow';
+        isUrgent = true;
+      } else if (diffDays > 1) {
+        badgeSub = `in ${diffDays}d`;
+        if (diffDays <= 7) isUrgent = true;
+      } else {
+        badgeSub = `${Math.abs(diffDays)}d ago`;
+      }
+
+      return {
+        dateStr: dt,
+        badgeSub,
+        diffDays,
+        isUrgent,
+        fullDisplay: `${dt} (${badgeSub})`
+      };
+    } catch (e) {
+      return { dateStr: dt, fullDisplay: dt, isUrgent: false };
+    }
+  }, [stockDetail?.next_earnings_date, stockDetail?.metadata?.next_earnings_date, selectedStock?.next_earnings_date]);
+
+  const instDetails = useMemo(() => {
+    if (isEtf) return null;
+    const s = stockDetail?.sponsorship_summary;
+    const f = stockDetail?.fundamentals?.[0];
+    const holdersCount = s?.holders_count ?? f?.inst_holders_count ?? selectedStock?.inst_holders_count;
+    const qoqChange = s?.holders_qoq_change ?? f?.inst_holders_qoq_change ?? selectedStock?.inst_holders_qoq_change;
+    const growthPct = s?.holders_growth_pct ?? (
+      holdersCount && qoqChange !== null && qoqChange !== undefined && (holdersCount - qoqChange > 0)
+        ? ((qoqChange * 100) / (holdersCount - qoqChange))
+        : null
+    );
+    const streak = s?.sponsorship_streak ?? f?.sponsorship_streak ?? selectedStock?.sponsorship_streak ?? 0;
+    const ownershipPct = s?.ownership_pct ?? f?.inst_ownership_pct;
+
+    if (holdersCount === null || holdersCount === undefined) return null;
+    return { holdersCount, qoqChange, growthPct, streak, ownershipPct };
+  }, [stockDetail, selectedStock, isEtf]);
+
+  // Positions summary (Unrealized P&L for Open, Realized P&L for Closed)
+  const openSummary = useMemo(() => {
     let totalPnl = 0;
     let totalNotional = 0;
-    positions.forEach((p) => {
+    openPositions.forEach((p) => {
       totalPnl += p.unrealized_pnl || 0;
       totalNotional += p.entry_notional || 0;
     });
     const pnlPct = totalNotional > 0 ? (totalPnl / totalNotional) * 100 : 0;
-    return { count: positions.length, totalPnl, totalNotional, pnlPct };
-  }, [positions]);
+    return { count: openPositions.length, totalPnl, totalNotional, pnlPct };
+  }, [openPositions]);
+
+  const closedSummary = useMemo(() => {
+    let totalPnl = 0;
+    let totalNotional = 0;
+    closedPositions.forEach((p) => {
+      totalPnl += p.realized_pnl ?? p.pnl ?? 0;
+      totalNotional += p.entry_notional || 0;
+    });
+    const pnlPct = totalNotional > 0 ? (totalPnl / totalNotional) * 100 : 0;
+    return { count: closedPositions.length, totalPnl, totalNotional, pnlPct };
+  }, [closedPositions]);
+
+  const currentPositionsSummary = positionsStatus === 'OPEN' ? openSummary : closedSummary;
 
   return (
     <div style={{
       display: 'flex',
-      height: 'calc(100vh - 48px)',
+      height: '100%',
       width: '100%',
       overflow: 'hidden',
       background: 'var(--bg-primary)',
@@ -1152,7 +1448,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               {/* Group Chart Top Header Bar */}
               <div style={{
-                padding: '10px 16px',
+                padding: '6px 12px',
                 borderBottom: '1px solid var(--border-color)',
                 display: 'flex',
                 alignItems: 'center',
@@ -1164,17 +1460,19 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                   <span style={{ fontSize: '18px', fontWeight: 800, color: '#ffffff' }}>
                     {activeGroupChart.groupType === 'sectors' ? '🏛' : activeGroupChart.groupType === 'themes' ? '⚡' : '🏭'} {activeGroupChart.groupName}
                   </span>
-                  <span style={{
-                    fontSize: '11px',
-                    fontWeight: 800,
-                    padding: '2px 8px',
-                    borderRadius: '12px',
-                    background: activeGroupChart.stageColor ? `${activeGroupChart.stageColor}25` : 'rgba(16,185,129,0.2)',
-                    color: activeGroupChart.stageColor || '#10b981',
-                    border: `1px solid ${activeGroupChart.stageColor || '#10b981'}44`
-                  }}>
-                    {activeGroupChart.stageBadge}
-                  </span>
+                  {activeGroupChart.stageBadge && (
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      background: activeGroupChart.stageColor ? `${activeGroupChart.stageColor}25` : 'rgba(16,185,129,0.2)',
+                      color: activeGroupChart.stageColor || '#10b981',
+                      border: `1px solid ${activeGroupChart.stageColor || '#10b981'}44`
+                    }}>
+                      {activeGroupChart.stageBadge}
+                    </span>
+                  )}
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                     Stan Weinstein Stage Analysis ({activeGroupChart.groupType})
                   </span>
@@ -1250,6 +1548,16 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                   onSelectStock={(sym) => {
                     selectStock({ symbol: sym });
                   }}
+                  onDataLoaded={(data) => {
+                    const summary = data?.stage_summary;
+                    if (summary?.stage_badge) {
+                      setActiveGroupChart((prev) => (prev ? {
+                        ...prev,
+                        stageBadge: summary.stage_badge,
+                        stageColor: summary.stage_color || prev.stageColor
+                      } : null));
+                    }
+                  }}
                   height={520}
                   isCompact={false}
                 />
@@ -1259,20 +1567,21 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
             <>
               {/* Chart Top Header Bar (Matching Candidates Screen Telemetry) */}
               <div style={{
-                padding: '10px 16px',
+                padding: '6px 12px',
                 borderBottom: '1px solid var(--border-color)',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '8px',
+                gap: '5px',
                 background: 'var(--bg-secondary)',
                 flexShrink: 0
               }}>
-                {/* Row 1: Symbol, Company Name, Exchange & Sector, Actions */}
+                {/* Row 1: Company Name, Sector & Industry/Group Pills (Clickable), Actions */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '22px', fontWeight: 900, color: '#34d399', letterSpacing: '-0.4px', lineHeight: 1 }}>
-                        {selectedStock.symbol}
+                      <StockBrandIcon symbol={selectedStock.symbol} size={22} />
+                      <span style={{ fontSize: '15px', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.2px', lineHeight: 1.2 }}>
+                        {cleanName || selectedStock.symbol}
                       </span>
                       {loadingPrices && (
                         <span className="spin-icon" style={{ fontSize: '13px', color: '#38bdf8' }} title="Loading latest candles...">
@@ -1281,65 +1590,108 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                       )}
                     </div>
 
-                    {cleanName && cleanName !== selectedStock.symbol && (
-                      <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: 700 }}>
-                        {cleanName}
-                      </span>
+                    {sector && sector !== 'Sector' && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenGroupChart('sectors', sector)}
+                        title={`Click to view ${sector} Sector Stage Chart`}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '2px 8px',
+                          borderRadius: '5px',
+                          background: 'rgba(168, 85, 247, 0.12)',
+                          border: '1px solid rgba(168, 85, 247, 0.35)',
+                          color: '#c084fc',
+                          fontSize: '11.5px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(168, 85, 247, 0.22)';
+                          e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.6)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(168, 85, 247, 0.12)';
+                          e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.35)';
+                        }}
+                      >
+                        🏛 {sector}
+                      </button>
                     )}
 
-                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                      {exchange ? `${exchange} • ` : ''}{sector || 'Sector'}
-                    </span>
-
-                    {industry && (
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        padding: '2px 8px',
-                        borderRadius: '5px',
-                        background: 'rgba(56, 189, 248, 0.1)',
-                        border: '1px solid rgba(56, 189, 248, 0.3)',
-                        color: '#38bdf8',
-                        fontSize: '11.5px',
-                        fontWeight: 600
-                      }}>
+                    {industry && industry !== 'Industry' && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenGroupChart('industries', industry)}
+                        title={`Click to view ${industry} Industry Stage Chart`}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '2px 8px',
+                          borderRadius: '5px',
+                          background: 'rgba(56, 189, 248, 0.12)',
+                          border: '1px solid rgba(56, 189, 248, 0.35)',
+                          color: '#38bdf8',
+                          fontSize: '11.5px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(56, 189, 248, 0.22)';
+                          e.currentTarget.style.borderColor = 'rgba(56, 189, 248, 0.6)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(56, 189, 248, 0.12)';
+                          e.currentTarget.style.borderColor = 'rgba(56, 189, 248, 0.35)';
+                        }}
+                      >
                         🏭 {industry}
-                      </span>
+                      </button>
                     )}
                   </div>
 
-                  {/* Top Right: Watchlist Action & Details Toggle */}
+                  {/* Top Right: Target Watchlist Action & Details Toggle */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {/* Watchlist Quick Action Controls (matches Screen result page) */}
-                    <select
-                      value={selectedWatchlistId || ''}
-                      onChange={(e) => setSelectedWatchlistId(Number(e.target.value))}
-                      style={{
-                        background: 'rgba(0, 0, 0, 0.4)',
-                        color: 'var(--text-primary)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: 'var(--border-radius-md)',
-                        padding: '5px 8px',
-                        fontSize: '11.5px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {watchlists.map((w) => (
-                        <option key={w.id} value={w.id} style={{ background: '#1e293b', color: '#ffffff' }}>
-                          ⭐️ {w.name}
-                        </option>
-                      ))}
-                    </select>
+                    {/* Target Watchlist Controls */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>Target:</span>
+                      <select
+                        value={targetWatchlistId || ''}
+                        onChange={(e) => setTargetWatchlistId(Number(e.target.value))}
+                        title="Target Watchlist (for saving/adding stocks)"
+                        style={{
+                          background: 'rgba(0, 0, 0, 0.4)',
+                          color: '#38bdf8',
+                          border: '1px solid rgba(56, 189, 248, 0.35)',
+                          borderRadius: 'var(--border-radius-md)',
+                          padding: '5px 8px',
+                          fontSize: '11.5px',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {watchlists.map((w) => (
+                          <option key={w.id} value={w.id} style={{ background: '#1e293b', color: '#ffffff' }}>
+                            ⭐️ {w.name} ({w.item_count || 0})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
                     {(() => {
-                      const isCurrentSaved = selectedStock && activeWatchlistSymbols.has(selectedStock.symbol.toUpperCase());
+                      const isCurrentSaved = selectedStock && targetWatchlistSymbols.has(selectedStock.symbol.toUpperCase());
                       return (
                         <button
-                          className={`btn ${isCurrentSaved ? 'btn-secondary' : 'btn-primary'} btn-sm`}
+                          type="button"
                           onClick={() => handleToggleWatchlist(selectedStock?.symbol)}
                           disabled={!selectedStock}
-                          title={isCurrentSaved ? 'Saved in Watchlist (Click to remove)' : `Save ${selectedStock?.symbol || 'stock'} to Watchlist`}
+                          title={isCurrentSaved ? `Saved in "${targetWatchlist?.name || 'target watchlist'}" (Click to remove)` : `Save ${selectedStock?.symbol || 'stock'} to "${targetWatchlist?.name || 'target watchlist'}"`}
+                          aria-label={isCurrentSaved ? 'Remove from watchlist' : 'Save to watchlist'}
                           style={{
                             display: 'inline-flex',
                             alignItems: 'center',
@@ -1347,12 +1699,14 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                             width: '28px',
                             height: '28px',
                             padding: 0,
-                            borderRadius: '6px',
-                            transition: 'all 0.2s ease',
-                            background: isCurrentSaved ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255, 255, 255, 0.08)',
+                            borderRadius: '5px',
+                            boxSizing: 'border-box',
+                            transition: 'all 0.15s ease',
+                            background: isCurrentSaved ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255, 255, 255, 0.05)',
                             color: isCurrentSaved ? '#34d399' : 'var(--text-secondary)',
-                            border: isCurrentSaved ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(255, 255, 255, 0.15)',
-                            cursor: selectedStock ? 'pointer' : 'not-allowed'
+                            border: isCurrentSaved ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid var(--border-color)',
+                            cursor: selectedStock ? 'pointer' : 'not-allowed',
+                            flexShrink: 0
                           }}
                         >
                           {isCurrentSaved ? (
@@ -1369,48 +1723,73 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                       );
                     })()}
 
-                    {/* Multi-Chart View (Daily + Monthly + Weekly) Toggle Button */}
+                    {/* Multi-Chart View (Daily + Monthly + Weekly) Toggle Icon Button */}
                     <button
                       type="button"
                       onClick={() => setShowMultiCharts((prev) => !prev)}
                       title={showMultiCharts ? 'Switch to Single Chart (Daily)' : 'Switch to 3-Charts Layout (Daily + Monthly + Weekly)'}
+                      aria-label={showMultiCharts ? 'Switch to Single Chart' : 'Switch to 3-Charts Layout'}
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '5px',
+                        justifyContent: 'center',
+                        width: '28px',
+                        height: '28px',
+                        padding: 0,
+                        borderRadius: '5px',
+                        boxSizing: 'border-box',
                         background: showMultiCharts ? 'rgba(168, 85, 247, 0.2)' : 'rgba(255, 255, 255, 0.05)',
                         border: showMultiCharts ? '1px solid #c084fc' : '1px solid var(--border-color)',
-                        borderRadius: '5px',
                         color: showMultiCharts ? '#c084fc' : 'var(--text-secondary)',
-                        padding: '3px 8px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        flexShrink: 0
                       }}
                     >
-                      <span>{showMultiCharts ? '⊞ 3-Charts' : '⬚ 1-Chart'}</span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <line x1="3" y1="12" x2="21" y2="12" />
+                        <line x1="12" y1="12" x2="12" y2="21" />
+                        {showMultiCharts && (
+                          <>
+                            <rect x="3" y="3" width="18" height="9" rx="1" fill="currentColor" opacity="0.35" />
+                            <rect x="3" y="12" width="9" height="9" rx="1" fill="currentColor" opacity="0.45" />
+                            <rect x="12" y="12" width="9" height="9" rx="1" fill="currentColor" opacity="0.45" />
+                          </>
+                        )}
+                      </svg>
                     </button>
 
-                    {/* Toggle Stock Details Drawer Button */}
+                    {/* Toggle Stock Details / Inspector Drawer Icon Button */}
                     <button
                       type="button"
                       onClick={() => setIsRightPanelCollapsed(!isRightPanelCollapsed)}
-                      title={isRightPanelCollapsed ? 'Show Stock Details & Info Panel' : 'Collapse Stock Details'}
+                      title={isRightPanelCollapsed ? 'Show Stock Inspector & Deep Telemetry' : 'Collapse Stock Inspector'}
+                      aria-label={isRightPanelCollapsed ? 'Show Stock Inspector' : 'Collapse Stock Inspector'}
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '5px',
+                        justifyContent: 'center',
+                        width: '28px',
+                        height: '28px',
+                        padding: 0,
+                        borderRadius: '5px',
+                        boxSizing: 'border-box',
                         background: !isRightPanelCollapsed ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.05)',
                         border: !isRightPanelCollapsed ? '1px solid #38bdf8' : '1px solid var(--border-color)',
-                        borderRadius: '5px',
                         color: !isRightPanelCollapsed ? '#38bdf8' : 'var(--text-secondary)',
-                        padding: '3px 8px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        flexShrink: 0
                       }}
                     >
-                      <span>{isRightPanelCollapsed ? '◧ Details' : '◨ Hide Details'}</span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <line x1="15" y1="3" x2="15" y2="21" />
+                        {!isRightPanelCollapsed && (
+                          <rect x="15" y="3" width="6" height="18" rx="1" fill="currentColor" opacity="0.4" />
+                        )}
+                      </svg>
                     </button>
                   </div>
                 </div>
@@ -1571,9 +1950,17 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                 {stockPrices && stockPrices.length > 0 ? (
                   <>
                     {showMultiCharts ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', minHeight: 0 }}>
-                        {/* Top: Daily Chart (~70% vertical space) */}
-                        <div style={{ flex: '2.4 1 0%', minHeight: 0, position: 'relative', borderBottom: '1px solid var(--border-color)' }}>
+                      <div
+                        ref={multiChartsContainerRef}
+                        style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', minHeight: 0 }}
+                      >
+                        {/* Top: Daily Chart */}
+                        <div style={{
+                          flex: `${multiChartTopPct} 1 0%`,
+                          minHeight: '60px',
+                          position: 'relative',
+                          pointerEvents: isMultiChartResizing ? 'none' : 'auto'
+                        }}>
                           <CandlestickChart
                             data={stockPrices}
                             symbol={displayedPricesSymbol || selectedStock.symbol}
@@ -1583,8 +1970,43 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                           />
                         </div>
 
-                        {/* Bottom Split: Monthly (Left) & Weekly (Right) (~30% vertical space) */}
-                        <div style={{ flex: '1 1 0%', minHeight: 0, display: 'flex', flexDirection: 'row', width: '100%' }}>
+                        {/* Horizontal Splitter (Row-resize divider between Daily and Monthly/Weekly) */}
+                        <div
+                          onMouseDown={startMultiChartResizing}
+                          onDoubleClick={() => setMultiChartTopPct(62)}
+                          style={{
+                            height: '6px',
+                            cursor: 'row-resize',
+                            background: isMultiChartResizing ? '#38bdf8' : 'var(--border-color)',
+                            transition: 'background 0.15s ease',
+                            position: 'relative',
+                            flexShrink: 0,
+                            zIndex: 10,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                          onMouseEnter={(e) => { if (!isMultiChartResizing) e.currentTarget.style.background = 'rgba(56, 189, 248, 0.4)'; }}
+                          onMouseLeave={(e) => { if (!isMultiChartResizing) e.currentTarget.style.background = 'var(--border-color)'; }}
+                          title="Drag to adjust height between Daily and Monthly/Weekly charts (Double-click to reset)"
+                        >
+                          <div style={{
+                            width: '28px',
+                            height: '2px',
+                            borderRadius: '1px',
+                            background: isMultiChartResizing ? '#ffffff' : 'rgba(255, 255, 255, 0.3)'
+                          }} />
+                        </div>
+
+                        {/* Bottom Split: Monthly (Left) & Weekly (Right) */}
+                        <div style={{
+                          flex: `${100 - multiChartTopPct} 1 0%`,
+                          minHeight: '60px',
+                          display: 'flex',
+                          flexDirection: 'row',
+                          width: '100%',
+                          pointerEvents: isMultiChartResizing ? 'none' : 'auto'
+                        }}>
                           {/* Monthly Chart (Left Bottom) */}
                           <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative', borderRight: '1px solid var(--border-color)' }}>
                             <CandlestickChart
@@ -1595,6 +2017,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                               showVolumeProfile={false}
                               showYearlyThumbnail={false}
                               showRsLine={false}
+                              showEarnings={false}
                               height="100%"
                             />
                           </div>
@@ -1692,132 +2115,535 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
           )}
         </div>
 
-        {/* Collapsible Stock Detail Sub-panel */}
+        {/* Collapsible Stock Detail / Inspector Sub-panel */}
         {!isRightPanelCollapsed && selectedStock && (
-          <div
-            className="custom-scrollbar"
-            style={{
-              width: '320px',
-              minWidth: '320px',
-              maxWidth: '320px',
-              display: 'flex',
-              flexDirection: 'column',
-              background: 'var(--bg-secondary)',
-              borderLeft: '1px solid var(--border-color)',
-              overflowY: 'auto'
-            }}
-          >
-            {/* Header */}
-            <div style={{
-              padding: '8px 12px',
-              borderBottom: '1px solid var(--border-color)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              background: 'rgba(0,0,0,0.3)',
-              position: 'sticky',
-              top: 0,
-              zIndex: 10
-            }}>
-              <span style={{ fontSize: '12px', fontWeight: 800, color: '#ffffff' }}>
-                {selectedStock.symbol} · Telemetry
-              </span>
-              <button
-                type="button"
-                onClick={() => setIsRightPanelCollapsed(true)}
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px' }}
-              >
-                ✕
-              </button>
+          <>
+            {/* Resizable Divider between Chart and Stock Detail Sub-panel */}
+            <div
+              onMouseDown={startResizingDetail}
+              style={{
+                width: '6px',
+                cursor: 'col-resize',
+                background: isResizingDetail ? '#38bdf8' : 'var(--border-color)',
+                transition: 'background 0.15s ease',
+                position: 'relative',
+                flexShrink: 0,
+                zIndex: 10,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              onMouseEnter={(e) => { if (!isResizingDetail) e.currentTarget.style.background = 'rgba(56, 189, 248, 0.4)'; }}
+              onMouseLeave={(e) => { if (!isResizingDetail) e.currentTarget.style.background = 'var(--border-color)'; }}
+              title="Drag to resize Stock Inspector panel"
+            >
+              <div style={{
+                width: '2px',
+                height: '24px',
+                borderRadius: '1px',
+                background: isResizingDetail ? '#ffffff' : 'rgba(255, 255, 255, 0.3)'
+              }} />
             </div>
 
-            {/* Profile */}
-            <div style={{ borderBottom: '1px solid var(--border-color)' }}>
-              <div
-                onClick={() => toggleSection('profile')}
-                style={{ padding: '8px 12px', display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }}
-              >
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)' }}>Company Profile</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{collapsedSections.profile ? '▼' : '▲'}</span>
-              </div>
-              {!collapsedSections.profile && (
-                <div style={{ padding: '0 12px 8px', fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                  <p style={{ margin: 0 }}>
-                    {profileExpanded
-                      ? (stockDetail?.metadata?.description || selectedStock.name)
-                      : (stockDetail?.metadata?.description || selectedStock.name)?.slice(0, 140) + '...'}
-                  </p>
+            <div
+              className="custom-scrollbar"
+              style={{
+                width: `${stockDetailWidth}px`,
+                minWidth: '320px',
+                maxWidth: '650px',
+                display: 'flex',
+                flexDirection: 'column',
+                background: 'var(--bg-secondary)',
+                borderLeft: '1px solid var(--border-color)',
+                overflowY: 'auto'
+              }}
+            >
+              {/* Header */}
+              <div style={{
+                padding: '8px 12px',
+                borderBottom: '1px solid var(--border-color)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'rgba(0,0,0,0.3)',
+                position: 'sticky',
+                top: 0,
+                zIndex: 10,
+                gap: '8px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                  <StockBrandIcon symbol={selectedStock.symbol} size={18} />
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#34d399', fontFamily: 'var(--font-mono)' }}>
+                    {selectedStock.symbol}
+                  </span>
+                  <span style={{
+                    fontSize: '9.5px',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    color: '#38bdf8',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    borderRadius: '4px',
+                    padding: '1px 5px'
+                  }}>
+                    INSPECTOR
+                  </span>
+                </div>
+
+                {/* In-Panel Quick Ticker Search */}
+                <form
+                  onSubmit={handleInspectTickerSubmit}
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                  title="Type any ticker to inspect"
+                >
+                  <input
+                    type="text"
+                    placeholder="Ticker..."
+                    value={inspectTickerInput}
+                    onChange={(e) => setInspectTickerInput(e.target.value)}
+                    style={{
+                      width: '74px',
+                      padding: '3px 6px',
+                      fontSize: '11px',
+                      background: 'rgba(0, 0, 0, 0.4)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '4px',
+                      color: '#ffffff',
+                      textTransform: 'uppercase',
+                      outline: 'none'
+                    }}
+                  />
                   <button
-                    onClick={() => setProfileExpanded(!profileExpanded)}
-                    style={{ background: 'transparent', border: 'none', color: '#38bdf8', padding: '4px 0 0', cursor: 'pointer', fontSize: '10.5px' }}
-                  >
-                    {profileExpanded ? 'Show less' : 'Read more'}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Key Stats */}
-            <div style={{ borderBottom: '1px solid var(--border-color)' }}>
-              <div
-                onClick={() => toggleSection('stats')}
-                style={{ padding: '8px 12px', display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }}
-              >
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)' }}>Key Technical Stats</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{collapsedSections.stats ? '▼' : '▲'}</span>
-              </div>
-              {!collapsedSections.stats && (
-                <div style={{ padding: '0 12px 8px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '10.5px' }}>
-                  <div style={{ background: 'rgba(0,0,0,0.2)', padding: '4px 6px', borderRadius: '4px' }}>
-                    <div style={{ color: 'var(--text-muted)' }}>52W Range</div>
-                    <div style={{ fontWeight: 700, color: '#ffffff' }}>
-                      ${stockDetail?.metrics?.low_52w?.toFixed(1) || '—'} - ${stockDetail?.metrics?.high_52w?.toFixed(1) || '—'}
-                    </div>
-                  </div>
-                  <div style={{ background: 'rgba(0,0,0,0.2)', padding: '4px 6px', borderRadius: '4px' }}>
-                    <div style={{ color: 'var(--text-muted)' }}>Dist from 52W High</div>
-                    <div style={{ fontWeight: 700, color: selectedStock.dist_52wh_pct >= -10 ? '#10b981' : 'var(--text-secondary)' }}>
-                      {selectedStock.dist_52wh_pct !== undefined ? `${selectedStock.dist_52wh_pct?.toFixed(1)}%` : '—'}
-                    </div>
-                  </div>
-                  <div style={{ background: 'rgba(0,0,0,0.2)', padding: '4px 6px', borderRadius: '4px' }}>
-                    <div style={{ color: 'var(--text-muted)' }}>Market Cap</div>
-                    <div style={{ fontWeight: 700, color: '#ffffff' }}>
-                      {stockDetail?.metrics?.market_cap ? `$${(stockDetail.metrics.market_cap / 1e9).toFixed(1)}B` : '—'}
-                    </div>
-                  </div>
-                  <div style={{ background: 'rgba(0,0,0,0.2)', padding: '4px 6px', borderRadius: '4px' }}>
-                    <div style={{ color: 'var(--text-muted)' }}>Volume 50D MA</div>
-                    <div style={{ fontWeight: 700, color: '#ffffff' }}>
-                      {latestBar?.vol_50d_ma ? `${(latestBar.vol_50d_ma / 1e6).toFixed(2)}M` : '—'}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Setups Tag List */}
-            {selectedStock.setups && selectedStock.setups.length > 0 && (
-              <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-color)' }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '6px' }}>Active Setups</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                  {selectedStock.setups.map((s) => (
-                    <span key={s} style={{
-                      background: 'rgba(56, 189, 248, 0.15)',
+                    type="submit"
+                    style={{
+                      background: 'rgba(56, 189, 248, 0.2)',
                       border: '1px solid rgba(56, 189, 248, 0.35)',
                       color: '#38bdf8',
                       borderRadius: '4px',
-                      padding: '2px 6px',
-                      fontSize: '10px',
-                      fontWeight: 700
-                    }}>
-                      ⚡ {s}
-                    </span>
-                  ))}
-                </div>
+                      padding: '3px 6px',
+                      fontSize: '11px',
+                      cursor: 'pointer'
+                    }}
+                    title="Inspect ticker"
+                  >
+                    🔍
+                  </button>
+                </form>
+
+                <button
+                  type="button"
+                  onClick={() => setIsRightPanelCollapsed(true)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    padding: '2px 4px'
+                  }}
+                  title="Collapse Inspector panel"
+                >
+                  ✕
+                </button>
               </div>
-            )}
-          </div>
+
+              {/* Accordion 1: Company Profile */}
+              <div style={{ borderBottom: '1px solid var(--border-color)' }}>
+                <div
+                  onClick={() => toggleSection('profile')}
+                  style={{ padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: 'rgba(255, 255, 255, 0.02)' }}
+                >
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-primary)' }}>🏢 Company Profile</span>
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{collapsedSections.profile ? '▼' : '▲'}</span>
+                </div>
+                {!collapsedSections.profile && (
+                  <div style={{ padding: '0 12px 10px', fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                    <p style={{ margin: 0 }}>
+                      {profileExpanded
+                        ? (stockDetail?.metadata?.description || selectedStock.name)
+                        : (stockDetail?.metadata?.description || selectedStock.name)?.slice(0, 160) + '...'}
+                    </p>
+                    <button
+                      onClick={() => setProfileExpanded(!profileExpanded)}
+                      style={{ background: 'transparent', border: 'none', color: '#38bdf8', padding: '4px 0 0', cursor: 'pointer', fontSize: '10.5px', fontWeight: 600 }}
+                    >
+                      {profileExpanded ? 'Show less' : 'Read full description →'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Accordion 2: Quarterly Fundamental EPS History */}
+              <div style={{ borderBottom: '1px solid var(--border-color)' }}>
+                <div
+                  onClick={() => toggleSection('fundamentals')}
+                  style={{
+                    padding: '8px 12px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    background: 'rgba(255, 255, 255, 0.02)'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                      📊 Quarterly EPS Acceleration (CAN SLIM "C")
+                    </span>
+                    {stockDetail?.fundamentals?.length > 0 && (
+                      <span style={{
+                        fontSize: '9.5px',
+                        color: 'var(--text-secondary)',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        padding: '1px 5px',
+                        borderRadius: '4px'
+                      }}>
+                        {stockDetail.fundamentals.length}Q
+                      </span>
+                    )}
+                  </div>
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                    {collapsedSections.fundamentals ? '▼' : '▲'}
+                  </span>
+                </div>
+                {!collapsedSections.fundamentals && (
+                  <div style={{ padding: '0 10px 10px' }}>
+                    <div className="table-container custom-scrollbar" style={{ margin: 0, overflowX: 'auto' }}>
+                      <table className="data-table" style={{ fontSize: '11px', width: '100%' }}>
+                        <thead>
+                          <tr>
+                            <th style={{ padding: '4px 6px' }}>Quarter</th>
+                            <th style={{ padding: '4px 6px' }}>Date</th>
+                            <th style={{ padding: '4px 6px', textAlign: 'right' }}>EPS</th>
+                            <th style={{ padding: '4px 6px', textAlign: 'right' }}>QoQ %</th>
+                            <th style={{ padding: '4px 6px', textAlign: 'right' }}>Revenue</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(stockDetail?.fundamentals || []).map((f, i) => (
+                            <tr key={i}>
+                              <td style={{ fontWeight: 700, padding: '4px 6px' }}>{f.fiscal_quarter}</td>
+                              <td style={{ color: 'var(--text-secondary)', padding: '4px 6px' }}>{f.report_date || 'N/A'}</td>
+                              <td style={{ fontFamily: 'var(--font-mono)', textAlign: 'right', padding: '4px 6px' }}>
+                                ${f.eps_diluted !== null && f.eps_diluted !== undefined ? f.eps_diluted.toFixed(2) : 'N/A'}
+                              </td>
+                              <td style={{
+                                fontFamily: 'var(--font-mono)',
+                                fontWeight: 700,
+                                textAlign: 'right',
+                                padding: '4px 6px',
+                                color: f.eps_qoq_growth !== null && f.eps_qoq_growth !== undefined
+                                  ? (f.eps_qoq_growth >= 0 ? '#34d399' : '#f87171')
+                                  : 'var(--text-secondary)'
+                              }}>
+                                {f.eps_qoq_growth !== null && f.eps_qoq_growth !== undefined
+                                  ? `${f.eps_qoq_growth >= 0 ? '+' : ''}${f.eps_qoq_growth.toFixed(1)}%`
+                                  : 'N/A'}
+                              </td>
+                              <td style={{ fontFamily: 'var(--font-mono)', textAlign: 'right', padding: '4px 6px', color: 'var(--text-secondary)' }}>
+                                {f.total_revenue ? `$${(f.total_revenue / 1000000).toFixed(1)}M` : 'N/A'}
+                              </td>
+                            </tr>
+                          ))}
+                          {(!stockDetail?.fundamentals || stockDetail.fundamentals.length === 0) && (
+                            <tr>
+                              <td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '12px' }}>
+                                No quarterly statements cached for this stock.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Accordion 3: Institutional Sponsorship & Fund Growth */}
+              {!isEtf && (
+                <div style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <div
+                    onClick={() => toggleSection('sponsorship')}
+                    style={{
+                      padding: '8px 12px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      cursor: 'pointer',
+                      background: 'rgba(255, 255, 255, 0.02)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                        🏛️ Institutional Sponsorship (CAN SLIM "I")
+                      </span>
+                      {instDetails?.streak >= 2 ? (
+                        <span style={{ fontSize: '9.5px', color: '#22c55e', background: 'rgba(34, 197, 94, 0.15)', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
+                          🔥 +{instDetails.streak}Q
+                        </span>
+                      ) : instDetails?.streak === 1 ? (
+                        <span style={{ fontSize: '9.5px', color: '#60a5fa', background: 'rgba(59, 130, 246, 0.15)', padding: '1px 5px', borderRadius: '4px' }}>
+                          📈 +1Q
+                        </span>
+                      ) : null}
+                    </div>
+                    <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                      {collapsedSections.sponsorship ? '▼' : '▲'}
+                    </span>
+                  </div>
+                  {!collapsedSections.sponsorship && (
+                    <div style={{ padding: '0 10px 10px' }}>
+                      <div className="table-container custom-scrollbar" style={{ margin: 0, overflowX: 'auto' }}>
+                        <table className="data-table" style={{ fontSize: '11px', width: '100%' }}>
+                          <thead>
+                            <tr>
+                              <th style={{ padding: '4px 6px' }}>Quarter</th>
+                              <th style={{ padding: '4px 6px', textAlign: 'right' }}>Funds</th>
+                              <th style={{ padding: '4px 6px', textAlign: 'right' }}>QoQ Change</th>
+                              <th style={{ padding: '4px 6px', textAlign: 'right' }}>Growth %</th>
+                              <th style={{ padding: '4px 6px', textAlign: 'right' }}>Float %</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(stockDetail?.sponsorship_history || []).map((s, i) => (
+                              <tr key={i}>
+                                <td style={{ fontWeight: 700, padding: '4px 6px' }}>{s.fiscal_quarter}</td>
+                                <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, textAlign: 'right', padding: '4px 6px' }}>
+                                  {s.holders_count ? s.holders_count.toLocaleString() : 'N/A'}
+                                </td>
+                                <td style={{
+                                  fontFamily: 'var(--font-mono)',
+                                  fontWeight: 600,
+                                  textAlign: 'right',
+                                  padding: '4px 6px',
+                                  color: s.holders_qoq_change !== null && s.holders_qoq_change !== undefined
+                                    ? (s.holders_qoq_change >= 0 ? '#34d399' : '#f87171')
+                                    : 'var(--text-secondary)'
+                                }}>
+                                  {s.holders_qoq_change !== null && s.holders_qoq_change !== undefined
+                                    ? `${s.holders_qoq_change >= 0 ? '+' : ''}${s.holders_qoq_change.toLocaleString()}`
+                                    : '—'}
+                                </td>
+                                <td style={{
+                                  fontFamily: 'var(--font-mono)',
+                                  textAlign: 'right',
+                                  padding: '4px 6px',
+                                  color: s.holders_growth_pct !== null && s.holders_growth_pct !== undefined
+                                    ? (s.holders_growth_pct >= 0 ? '#34d399' : '#f87171')
+                                    : 'var(--text-secondary)'
+                                }}>
+                                  {s.holders_growth_pct !== null && s.holders_growth_pct !== undefined
+                                    ? `${s.holders_growth_pct >= 0 ? '+' : ''}${s.holders_growth_pct.toFixed(1)}%`
+                                    : '—'}
+                                </td>
+                                <td style={{ fontFamily: 'var(--font-mono)', textAlign: 'right', padding: '4px 6px', color: 'var(--text-secondary)' }}>
+                                  {s.ownership_pct !== null && s.ownership_pct !== undefined ? `${s.ownership_pct.toFixed(1)}%` : 'N/A'}
+                                </td>
+                              </tr>
+                            ))}
+                            {(!stockDetail?.sponsorship_history || stockDetail.sponsorship_history.length === 0) && (
+                              <tr>
+                                <td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '12px' }}>
+                                  No institutional sponsorship records cached.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Accordion 4: Key Technical Stats */}
+              <div style={{ borderBottom: '1px solid var(--border-color)' }}>
+                <div
+                  onClick={() => toggleSection('stats')}
+                  style={{ padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: 'rgba(255, 255, 255, 0.02)' }}
+                >
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-primary)' }}>⚡ Key Technical Stats</span>
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{collapsedSections.stats ? '▼' : '▲'}</span>
+                </div>
+                {!collapsedSections.stats && (
+                  <div style={{ padding: '0 10px 10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '10.5px' }}>
+                      <div style={{ background: 'rgba(0,0,0,0.2)', padding: '5px 8px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>52W Range</div>
+                        <div style={{ fontWeight: 700, color: '#ffffff', fontFamily: 'var(--font-mono)' }}>
+                          {stats52w.low !== null && stats52w.low !== undefined && stats52w.high !== null && stats52w.high !== undefined
+                            ? `$${stats52w.low.toFixed(1)} - $${stats52w.high.toFixed(1)}`
+                            : '—'}
+                        </div>
+                      </div>
+                      <div style={{ background: 'rgba(0,0,0,0.2)', padding: '5px 8px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Dist from 52W High</div>
+                        <div style={{
+                          fontWeight: 700,
+                          fontFamily: 'var(--font-mono)',
+                          color: (stats52w.distHigh !== null && stats52w.distHigh !== undefined && (stats52w.distHigh >= -10 || (stats52w.distHigh > 0 && stats52w.distHigh <= 10))) ? '#10b981' : 'var(--text-secondary)'
+                        }}>
+                          {formatDist52w(stats52w.distHigh)}
+                        </div>
+                      </div>
+                      <div style={{ background: 'rgba(0,0,0,0.2)', padding: '5px 8px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Market Cap</div>
+                        <div style={{ fontWeight: 700, color: '#ffffff', fontFamily: 'var(--font-mono)' }}>
+                          {formatMarketCap(marketCap)}
+                        </div>
+                      </div>
+                      <div style={{ background: 'rgba(0,0,0,0.2)', padding: '5px 8px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>Volume 50D MA</div>
+                        <div style={{ fontWeight: 700, color: '#ffffff', fontFamily: 'var(--font-mono)' }}>
+                          {vol50dMa ? `${(vol50dMa / 1e6).toFixed(2)}M` : '—'}
+                        </div>
+                      </div>
+                      <div style={{ background: 'rgba(0,0,0,0.2)', padding: '5px 8px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>1M / 3M Returns</div>
+                        <div style={{ fontWeight: 700, color: '#ffffff', fontFamily: 'var(--font-mono)' }}>
+                          {ret1m !== null ? `${ret1m >= 0 ? '+' : ''}${ret1m.toFixed(1)}%` : '—'} / {ret3m !== null ? `${ret3m >= 0 ? '+' : ''}${ret3m.toFixed(1)}%` : '—'}
+                        </div>
+                      </div>
+                      <div style={{ background: 'rgba(0,0,0,0.2)', padding: '5px 8px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>TI65 Trend Intensity</div>
+                        <div style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', color: tiVal >= 1.05 ? '#34d399' : tiVal < 0.95 ? '#f87171' : '#ffffff' }}>
+                          {tiVal !== null ? tiVal.toFixed(2) : '—'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Active Setups */}
+                    {selectedStock.setups && selectedStock.setups.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '4px' }}>Active Setups</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                          {selectedStock.setups.map((s) => (
+                            <span key={s} style={{
+                              background: 'rgba(56, 189, 248, 0.15)',
+                              border: '1px solid rgba(56, 189, 248, 0.35)',
+                              color: '#38bdf8',
+                              borderRadius: '4px',
+                              padding: '2px 6px',
+                              fontSize: '10px',
+                              fontWeight: 700
+                            }}>
+                              ⚡ {s}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Accordion 5: Industry Peers */}
+              {peersData?.peers && peersData.peers.length > 0 && (
+                <div style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <div
+                    onClick={() => toggleSection('peers')}
+                    style={{
+                      padding: '8px 12px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      cursor: 'pointer',
+                      background: 'rgba(255, 255, 255, 0.02)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                        👥 Industry Peers (Ranked by RS)
+                      </span>
+                      <span style={{
+                        fontSize: '9.5px',
+                        color: 'var(--text-secondary)',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        padding: '1px 5px',
+                        borderRadius: '4px'
+                      }}>
+                        {peersData.peers.length}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                      {collapsedSections.peers ? '▼' : '▲'}
+                    </span>
+                  </div>
+                  {!collapsedSections.peers && (
+                    <div style={{ padding: '0 10px 10px' }}>
+                      <div className="table-container custom-scrollbar" style={{ margin: 0, overflowX: 'auto' }}>
+                        <table className="data-table" style={{ fontSize: '11px', width: '100%' }}>
+                          <thead>
+                            <tr>
+                              <th style={{ padding: '4px 6px' }}>Peer</th>
+                              <th style={{ padding: '4px 6px' }}>Company</th>
+                              <th style={{ padding: '4px 6px', textAlign: 'right' }}>Price</th>
+                              <th style={{ padding: '4px 6px', textAlign: 'right' }}>RS</th>
+                              <th style={{ padding: '4px 6px', textAlign: 'right' }}>Chg %</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {peersData.peers.map((p) => {
+                              const isCurrent = p.symbol?.toUpperCase() === selectedStock.symbol.toUpperCase();
+                              return (
+                                <tr
+                                  key={p.symbol}
+                                  onClick={() => selectStock({ symbol: p.symbol })}
+                                  style={{
+                                    cursor: 'pointer',
+                                    background: isCurrent ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                                    transition: 'background 0.15s ease'
+                                  }}
+                                  className="table-row-hover"
+                                  title={`Click to inspect peer stock ${p.symbol}`}
+                                >
+                                  <td style={{ fontWeight: 800, color: isCurrent ? '#38bdf8' : '#34d399', padding: '4px 6px', fontFamily: 'var(--font-mono)' }}>
+                                    {p.symbol}
+                                  </td>
+                                  <td style={{
+                                    maxWidth: '120px',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                    color: 'var(--text-secondary)',
+                                    padding: '4px 6px'
+                                  }}>
+                                    {p.name}
+                                  </td>
+                                  <td style={{ fontFamily: 'var(--font-mono)', textAlign: 'right', padding: '4px 6px' }}>
+                                    ${p.close?.toFixed(2) || '—'}
+                                  </td>
+                                  <td style={{
+                                    fontFamily: 'var(--font-mono)',
+                                    fontWeight: 700,
+                                    textAlign: 'right',
+                                    padding: '4px 6px',
+                                    color: (p.rs_rank ?? 0) >= 70 ? '#34d399' : 'var(--text-secondary)'
+                                  }}>
+                                    {p.rs_rank ?? '—'}
+                                  </td>
+                                  <td style={{
+                                    fontFamily: 'var(--font-mono)',
+                                    fontWeight: 600,
+                                    textAlign: 'right',
+                                    padding: '4px 6px',
+                                    color: (p.chg_pct ?? 0) >= 0 ? '#34d399' : '#f87171'
+                                  }}>
+                                    {p.chg_pct !== undefined && p.chg_pct !== null ? `${p.chg_pct >= 0 ? '+' : ''}${p.chg_pct.toFixed(1)}%` : '—'}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
 
@@ -1855,8 +2681,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       {/* ======================================================== */}
       <div style={{
         width: `${rightPanelWidth}px`,
-        minWidth: '340px',
-        maxWidth: '850px',
+        minWidth: 0,
         display: 'flex',
         flexDirection: 'column',
         background: 'var(--bg-secondary)',
@@ -1864,7 +2689,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       }}>
         {/* Primary Tab Bar: [ ★ Watchlists ] [ 🏛 Market Groups ] [ 💼 Positions ] */}
         <div style={{
-          padding: '8px 10px',
+          padding: '5px 8px',
           borderBottom: '1px solid var(--border-color)',
           display: 'flex',
           alignItems: 'center',
@@ -1946,14 +2771,14 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
           >
             <span>💼</span>
             <span>Positions</span>
-            {positions.length > 0 && (
+            {openPositions.length > 0 && (
               <span style={{
                 background: dockTab === 'positions' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255,255,255,0.06)',
                 borderRadius: '10px',
                 padding: '1px 5px',
                 fontSize: '10px'
               }}>
-                {positions.length}
+                {openPositions.length}
               </span>
             )}
           </button>
@@ -2048,13 +2873,23 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                     >
                       ↗️ Export to TradingView (.txt)
                     </button>
-                    <button
-                      onClick={() => { setShowDropdownMenu(false); handleCleanUpWatchlist(); }}
-                      style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: '6px 12px', fontSize: '11.5px', color: '#f59e0b', cursor: 'pointer' }}
-                    >
-                      🧹 Clean Up Laggards
-                    </button>
                     <div style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0' }} />
+                    <button
+                      onClick={() => { setShowDropdownMenu(false); handleClearWatchlist(); }}
+                      disabled={items.length === 0}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        background: 'transparent',
+                        border: 'none',
+                        padding: '6px 12px',
+                        fontSize: '11.5px',
+                        color: items.length === 0 ? 'var(--text-muted)' : '#fb7185',
+                        cursor: items.length === 0 ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      🗑️ Remove All Stocks
+                    </button>
                     <button
                       onClick={() => { setShowDropdownMenu(false); handleDeleteWatchlist(); }}
                       style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: '6px 12px', fontSize: '11.5px', color: '#fb7185', cursor: 'pointer' }}
@@ -2151,8 +2986,143 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
               </select>
             </div>
 
+            {/* Batch Action Toolbar when isSelectMode is active */}
+            {isSelectMode && (
+              <div style={{
+                padding: '6px 10px',
+                background: 'rgba(56, 189, 248, 0.08)',
+                borderBottom: '1px solid rgba(56, 189, 248, 0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px',
+                flexWrap: 'wrap'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#e2e8f0' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', fontWeight: 600, userSelect: 'none' }}>
+                    <input
+                      type="checkbox"
+                      checked={sortedItems.length > 0 && selectedSymbols.size === sortedItems.length}
+                      ref={(el) => {
+                        if (el) el.indeterminate = selectedSymbols.size > 0 && selectedSymbols.size < sortedItems.length;
+                      }}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedSymbols(new Set(sortedItems.map((i) => i.symbol)));
+                        } else {
+                          setSelectedSymbols(new Set());
+                        }
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <span>
+                      {selectedSymbols.size === 0
+                        ? `Select All (${sortedItems.length})`
+                        : `${selectedSymbols.size} of ${sortedItems.length} selected`}
+                    </span>
+                  </label>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  {/* Add Selected to Target Watchlist */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                    <select
+                      value={targetWatchlistId || ''}
+                      onChange={(e) => setTargetWatchlistId(Number(e.target.value))}
+                      title="Choose Target Watchlist to add selected stocks into"
+                      style={{
+                        background: 'rgba(15, 23, 42, 0.9)',
+                        color: '#38bdf8',
+                        border: '1px solid rgba(56, 189, 248, 0.4)',
+                        borderRadius: '4px',
+                        padding: '2px 5px',
+                        fontSize: '10.5px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        maxWidth: '120px'
+                      }}
+                    >
+                      {watchlists.map((w) => (
+                        <option key={w.id} value={w.id} style={{ background: '#1e293b', color: '#ffffff' }}>
+                          → {w.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      type="button"
+                      disabled={selectedSymbols.size === 0 || isAddingBatchToTarget}
+                      onClick={handleAddBatchToTarget}
+                      title={`Add selected ${selectedSymbols.size} stocks into "${targetWatchlist?.name || 'target watchlist'}"`}
+                      style={{
+                        background: selectedSymbols.size > 0 ? '#10b981' : 'rgba(255, 255, 255, 0.05)',
+                        border: selectedSymbols.size > 0 ? '1px solid #059669' : '1px solid var(--border-color)',
+                        color: selectedSymbols.size > 0 ? '#ffffff' : 'var(--text-muted)',
+                        borderRadius: '4px',
+                        padding: '3px 8px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        cursor: selectedSymbols.size > 0 && !isAddingBatchToTarget ? 'pointer' : 'not-allowed',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <span>➕</span>
+                      <span>Add Selected {selectedSymbols.size > 0 ? `(${selectedSymbols.size})` : ''}</span>
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={selectedSymbols.size === 0 || isDeletingItems}
+                    onClick={handleRemoveBatch}
+                    title="Remove selected stocks from watchlist"
+                    style={{
+                      background: selectedSymbols.size > 0 ? '#ef4444' : 'rgba(255, 255, 255, 0.05)',
+                      border: selectedSymbols.size > 0 ? '1px solid #dc2626' : '1px solid var(--border-color)',
+                      color: selectedSymbols.size > 0 ? '#ffffff' : 'var(--text-muted)',
+                      borderRadius: '4px',
+                      padding: '3px 8px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      cursor: selectedSymbols.size > 0 && !isDeletingItems ? 'pointer' : 'not-allowed',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <span>🗑️</span>
+                    <span>Remove Selected</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleClearWatchlist}
+                    disabled={items.length === 0 || isDeletingItems}
+                    title="Remove all stocks from this watchlist"
+                    style={{
+                      background: 'rgba(244, 63, 94, 0.12)',
+                      border: '1px solid rgba(244, 63, 94, 0.3)',
+                      color: '#fb7185',
+                      borderRadius: '4px',
+                      padding: '3px 8px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: items.length > 0 && !isDeletingItems ? 'pointer' : 'not-allowed',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    Remove All
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Watchlist Stock Table */}
-            <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto' }}>
+            <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
                 <thead>
                   <tr style={{
@@ -2166,12 +3136,31 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                     top: 0,
                     zIndex: 2
                   }}>
-                    {isSelectMode && <th style={{ width: '24px', padding: '6px 4px', textAlign: 'center' }}>✓</th>}
+                    {isSelectMode && (
+                      <th style={{ width: '28px', padding: '6px 4px', textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={sortedItems.length > 0 && selectedSymbols.size === sortedItems.length}
+                          ref={(el) => {
+                            if (el) el.indeterminate = selectedSymbols.size > 0 && selectedSymbols.size < sortedItems.length;
+                          }}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedSymbols(new Set(sortedItems.map((i) => i.symbol)));
+                            } else {
+                              setSelectedSymbols(new Set());
+                            }
+                          }}
+                          title={selectedSymbols.size === sortedItems.length ? 'Deselect All' : 'Select All'}
+                          style={{ cursor: 'pointer' }}
+                        />
+                      </th>
+                    )}
                     <th
                       style={{ textAlign: 'left', padding: '6px 8px', cursor: 'pointer', userSelect: 'none' }}
                       onClick={() => setSortBy(sortBy === 'symbol' ? 'symbol_desc' : 'symbol')}
                     >
-                      Symbol / Name {sortBy === 'symbol' ? '↑' : sortBy === 'symbol_desc' ? '↓' : ''}
+                      Symbol {sortBy === 'symbol' ? '↑' : sortBy === 'symbol_desc' ? '↓' : ''}
                     </th>
                     <th
                       style={{ textAlign: 'right', padding: '6px 6px', cursor: 'pointer', userSelect: 'none' }}
@@ -2233,11 +3222,9 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                           )}
 
                           <td style={{ padding: '6px 8px' }}>
-                            <div style={{ minWidth: 0, overflow: 'hidden' }}>
-                              <div style={{ fontWeight: 800, color: '#ffffff', fontSize: '11.5px' }}>{item.symbol}</div>
-                              <div style={{ fontSize: '9.5px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>
-                                {item.industry || item.sector || item.name || '—'}
-                              </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                              <StockBrandIcon symbol={item.symbol} size={18} />
+                              <span style={{ fontWeight: 800, color: '#ffffff', fontSize: '11.5px' }}>{item.symbol}</span>
                             </div>
                           </td>
 
@@ -2418,7 +3405,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
             </div>
 
             {/* Accordion Groups List */}
-            <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto' }}>
+            <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
               {loadingGroups ? (
                 <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)', fontSize: '11px' }}>
                   Loading {groupType}...
@@ -2591,10 +3578,13 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                                         onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
                                       >
                                         <td style={{ padding: '4px 6px' }}>
-                                          <div>
-                                            <span style={{ fontWeight: 800, color: '#ffffff' }}>{stock.symbol}</span>
-                                            <div style={{ fontSize: '9px', color: 'var(--text-muted)', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                              {stock.name}
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <StockBrandIcon symbol={stock.symbol} size={16} />
+                                            <div style={{ minWidth: 0 }}>
+                                              <span style={{ fontWeight: 800, color: '#ffffff' }}>{stock.symbol}</span>
+                                              <div style={{ fontSize: '9px', color: 'var(--text-muted)', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {stock.name}
+                                              </div>
                                             </div>
                                           </div>
                                         </td>
@@ -2630,12 +3620,12 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                                         {/* Quick Add / Remove Watchlist Action */}
                                         <td style={{ padding: '4px 6px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                                           {(() => {
-                                            const isStockSaved = activeWatchlistSymbols.has(stock.symbol.toUpperCase());
+                                            const isStockSaved = targetWatchlistSymbols.has(stock.symbol.toUpperCase());
                                             return (
                                               <button
                                                 type="button"
                                                 onClick={() => handleToggleWatchlist(stock.symbol)}
-                                                title={isStockSaved ? 'Saved in Watchlist (Click to remove)' : `Add ${stock.symbol} to active watchlist`}
+                                                title={isStockSaved ? `Saved in "${targetWatchlist?.name || 'target watchlist'}" (Click to remove)` : `Add ${stock.symbol} to "${targetWatchlist?.name || 'target watchlist'}"`}
                                                 style={{
                                                   background: isStockSaved ? 'rgba(16, 185, 129, 0.25)' : 'transparent',
                                                   border: isStockSaved ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(16, 185, 129, 0.4)',
@@ -2691,6 +3681,80 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         {/* ----------------------------------------------------------------- */}
         {dockTab === 'positions' && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {/* Open / Closed Positions Toggle Sub-Bar */}
+            <div style={{
+              padding: '6px 10px',
+              borderBottom: '1px solid var(--border-color)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: 'rgba(0, 0, 0, 0.2)'
+            }}>
+              <button
+                type="button"
+                onClick={() => setPositionsStatus('OPEN')}
+                style={{
+                  flex: 1,
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  border: positionsStatus === 'OPEN' ? '1px solid #10b981' : '1px solid transparent',
+                  background: positionsStatus === 'OPEN' ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
+                  color: positionsStatus === 'OPEN' ? '#34d399' : 'var(--text-secondary)',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '5px',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <span>Open Trades</span>
+                <span style={{
+                  fontSize: '9.5px',
+                  padding: '1px 5px',
+                  borderRadius: '8px',
+                  background: positionsStatus === 'OPEN' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(255, 255, 255, 0.08)',
+                  color: positionsStatus === 'OPEN' ? '#ffffff' : 'var(--text-muted)'
+                }}>
+                  {openPositions.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPositionsStatus('CLOSED')}
+                style={{
+                  flex: 1,
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  border: positionsStatus === 'CLOSED' ? '1px solid #38bdf8' : '1px solid transparent',
+                  background: positionsStatus === 'CLOSED' ? 'rgba(56, 189, 248, 0.2)' : 'transparent',
+                  color: positionsStatus === 'CLOSED' ? '#38bdf8' : 'var(--text-secondary)',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '5px',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <span>Closed Trades</span>
+                <span style={{
+                  fontSize: '9.5px',
+                  padding: '1px 5px',
+                  borderRadius: '8px',
+                  background: positionsStatus === 'CLOSED' ? 'rgba(56, 189, 248, 0.3)' : 'rgba(255, 255, 255, 0.08)',
+                  color: positionsStatus === 'CLOSED' ? '#ffffff' : 'var(--text-muted)'
+                }}>
+                  {closedPositions.length}
+                </span>
+              </button>
+            </div>
+
             {/* Positions Summary Card */}
             <div style={{
               padding: '8px 12px',
@@ -2701,27 +3765,31 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
               justifyContent: 'space-between'
             }}>
               <div>
-                <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>OPEN POSITIONS</div>
-                <div style={{ fontSize: '13px', fontWeight: 800, color: '#ffffff' }}>
-                  {positionsSummary.count} Active Trades
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  {positionsStatus === 'OPEN' ? 'OPEN POSITIONS' : 'CLOSED POSITIONS'}
+                </div>
+                <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#ffffff' }}>
+                  {currentPositionsSummary.count} {positionsStatus === 'OPEN' ? 'Active Trades' : 'Closed Trades'}
                 </div>
               </div>
 
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>UNREALIZED P&L</div>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  {positionsStatus === 'OPEN' ? 'UNREALIZED P&L' : 'REALIZED P&L'}
+                </div>
                 <div style={{
-                  fontSize: '13px',
+                  fontSize: '12.5px',
                   fontWeight: 800,
-                  color: positionsSummary.totalPnl >= 0 ? '#34d399' : '#fb7185'
+                  color: currentPositionsSummary.totalPnl >= 0 ? '#34d399' : '#fb7185'
                 }}>
-                  {positionsSummary.totalPnl >= 0 ? '+' : ''}${positionsSummary.totalPnl.toFixed(2)} ({positionsSummary.pnlPct >= 0 ? '+' : ''}{positionsSummary.pnlPct.toFixed(1)}%)
+                  {currentPositionsSummary.totalPnl >= 0 ? '+' : ''}${currentPositionsSummary.totalPnl.toFixed(2)} ({currentPositionsSummary.pnlPct >= 0 ? '+' : ''}{currentPositionsSummary.pnlPct.toFixed(1)}%)
                 </div>
               </div>
 
               <button
                 type="button"
                 onClick={fetchPositions}
-                title="Refresh Open Positions"
+                title={`Refresh ${positionsStatus === 'OPEN' ? 'Open' : 'Closed'} Positions`}
                 style={{
                   background: 'transparent',
                   border: '1px solid var(--border-color)',
@@ -2737,14 +3805,14 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
             </div>
 
             {/* Positions Table */}
-            <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto' }}>
+            <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
               {loadingPositions ? (
                 <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)', fontSize: '11px' }}>
-                  Loading open positions...
+                  Loading {positionsStatus.toLowerCase()} positions...
                 </div>
-              ) : positions.length === 0 ? (
+              ) : displayedPositions.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)', fontSize: '11px' }}>
-                  No open trades found in journal.
+                  No {positionsStatus.toLowerCase()} trades found in journal.
                 </div>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
@@ -2761,22 +3829,27 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                       zIndex: 2
                     }}>
                       <th style={{ textAlign: 'left', padding: '6px 8px' }}>Position</th>
-                      <th style={{ textAlign: 'right', padding: '6px 6px' }}>Qty / Entry</th>
-                      <th style={{ textAlign: 'right', padding: '6px 6px' }}>Last</th>
                       <th style={{ textAlign: 'right', padding: '6px 6px' }}>P&L %</th>
                       <th style={{ textAlign: 'right', padding: '6px 6px' }}>P&L $</th>
                       <th style={{ width: '22px', padding: '6px 4px' }}></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {positions.map((pos) => {
+                    {displayedPositions.map((pos) => {
                       const isSelected = selectedStock?.symbol === pos.symbol;
-                      const pnlPct = pos.unrealized_pnl_pct ?? pos.pnl_pct;
-                      const isPositive = pnlPct !== null && pnlPct !== undefined ? pnlPct >= 0 : false;
+                      const pnlPct = pos.status === 'OPEN'
+                        ? (pos.unrealized_pnl_pct ?? pos.pnl_pct)
+                        : (pos.pnl_pct);
+                      const pnlDollar = pos.status === 'OPEN'
+                        ? (pos.unrealized_pnl ?? pos.pnl)
+                        : (pos.realized_pnl ?? pos.pnl);
+                      const isPositive = pnlDollar !== null && pnlDollar !== undefined
+                        ? pnlDollar >= 0
+                        : (pnlPct !== null && pnlPct !== undefined ? pnlPct >= 0 : false);
 
                       return (
                         <tr
-                          key={pos.id || pos.symbol}
+                          key={pos.id || `${pos.symbol}-${pos.status}-${pos.close_date || ''}`}
                           onClick={() => selectStock(pos)}
                           style={{
                             borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
@@ -2788,45 +3861,29 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                           onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
                         >
                           <td style={{ padding: '6px 8px' }}>
-                            <div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <span style={{ fontWeight: 800, color: '#ffffff' }}>{pos.symbol}</span>
-                                <span style={{
-                                  fontSize: '8.5px',
-                                  fontWeight: 800,
-                                  borderRadius: '3px',
-                                  padding: '1px 3px',
-                                  background: pos.direction === 'SHORT' ? 'rgba(244,63,94,0.2)' : 'rgba(16,185,129,0.2)',
-                                  color: pos.direction === 'SHORT' ? '#f43f5e' : '#10b981'
-                                }}>
-                                  {pos.direction || 'LONG'}
-                                </span>
-                                {pos.account_id && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                              <StockBrandIcon symbol={pos.symbol} size={18} />
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <span style={{ fontWeight: 800, color: '#ffffff' }}>{pos.symbol}</span>
                                   <span style={{
                                     fontSize: '8.5px',
-                                    fontWeight: 600,
+                                    fontWeight: 800,
                                     borderRadius: '3px',
-                                    padding: '1px 4px',
-                                    background: 'rgba(255,255,255,0.08)',
-                                    color: 'var(--text-secondary)'
-                                  }} title={`IBKR Account: ${pos.account_id}`}>
-                                    {pos.account_id}
+                                    padding: '1px 3px',
+                                    background: pos.direction === 'SHORT' ? 'rgba(244,63,94,0.2)' : 'rgba(16,185,129,0.2)',
+                                    color: pos.direction === 'SHORT' ? '#f43f5e' : '#10b981'
+                                  }}>
+                                    {pos.direction || 'LONG'}
                                   </span>
-                                )}
-                              </div>
-                              <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>
-                                {pos.holding_days ? `${pos.holding_days}d held` : 'Open'}
+                                </div>
+                                <div style={{ fontSize: '9px', color: 'var(--text-muted)' }}>
+                                  {pos.status === 'CLOSED'
+                                    ? (pos.close_date ? `${pos.close_date} (${pos.holding_days ?? 0}d)` : 'Closed')
+                                    : (pos.holding_days ? `${pos.holding_days}d held` : 'Open')}
+                                </div>
                               </div>
                             </div>
-                          </td>
-
-                          <td style={{ textAlign: 'right', padding: '6px 6px' }}>
-                            <div style={{ color: '#ffffff', fontWeight: 600 }}>{pos.open_qty} shs</div>
-                            <div style={{ fontSize: '9.5px', color: 'var(--text-muted)' }}>@ ${pos.avg_entry?.toFixed(2)}</div>
-                          </td>
-
-                          <td style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 600, color: '#ffffff' }}>
-                            ${pos.current_price?.toFixed(2) || '—'}
                           </td>
 
                           <td style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 800, color: isPositive ? '#34d399' : '#fb7185' }}>
@@ -2834,17 +3891,17 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                           </td>
 
                           <td style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 700, color: isPositive ? '#34d399' : '#fb7185' }}>
-                            {pos.unrealized_pnl !== null && pos.unrealized_pnl !== undefined ? `${pos.unrealized_pnl >= 0 ? '+' : ''}$${pos.unrealized_pnl.toFixed(0)}` : '—'}
+                            {pnlDollar !== null && pnlDollar !== undefined ? `${pnlDollar >= 0 ? '+' : ''}$${Math.round(pnlDollar).toLocaleString()}` : '—'}
                           </td>
 
                           <td style={{ padding: '6px 4px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                             {(() => {
-                              const isPosSaved = activeWatchlistSymbols.has(pos.symbol.toUpperCase());
+                              const isPosSaved = targetWatchlistSymbols.has(pos.symbol.toUpperCase());
                               return (
                                 <button
                                   type="button"
                                   onClick={() => handleToggleWatchlist(pos.symbol)}
-                                  title={isPosSaved ? 'Saved in Watchlist (Click to remove)' : `Add ${pos.symbol} to active watchlist`}
+                                  title={isPosSaved ? `Saved in "${targetWatchlist?.name || 'target watchlist'}" (Click to remove)` : `Add ${pos.symbol} to "${targetWatchlist?.name || 'target watchlist'}"`}
                                   style={{
                                     background: isPosSaved ? 'rgba(16, 185, 129, 0.25)' : 'transparent',
                                     border: isPosSaved ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(16, 185, 129, 0.4)',
@@ -2872,7 +3929,9 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                                       <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                                     </svg>
                                   ) : (
-                                    '＋'
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                                    </svg>
                                   )}
                                 </button>
                               );
@@ -3067,7 +4126,63 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                   {previewGroupChart.groupType === 'sectors' ? '🏛' : previewGroupChart.groupType === 'themes' ? '⚡' : '🏭'} {previewGroupChart.groupName}
                 </h3>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {sector && (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewGroupChart((prev) => ({ ...(prev || {}), groupType: 'sectors', groupName: sector }))}
+                    style={{
+                      background: previewGroupChart.groupType === 'sectors' && previewGroupChart.groupName === sector ? 'rgba(168, 85, 247, 0.3)' : 'rgba(255, 255, 255, 0.06)',
+                      border: `1px solid ${previewGroupChart.groupType === 'sectors' && previewGroupChart.groupName === sector ? '#c084fc' : 'rgba(255, 255, 255, 0.15)'}`,
+                      borderRadius: '5px',
+                      color: previewGroupChart.groupType === 'sectors' && previewGroupChart.groupName === sector ? '#ffffff' : '#c084fc',
+                      padding: '4px 10px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🏛️ Sector: {sector}
+                  </button>
+                )}
+                {industry && (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewGroupChart((prev) => ({ ...(prev || {}), groupType: 'industries', groupName: industry }))}
+                    style={{
+                      background: previewGroupChart.groupType === 'industries' && previewGroupChart.groupName === industry ? 'rgba(56, 189, 248, 0.3)' : 'rgba(255, 255, 255, 0.06)',
+                      border: `1px solid ${previewGroupChart.groupType === 'industries' && previewGroupChart.groupName === industry ? '#38bdf8' : 'rgba(255, 255, 255, 0.15)'}`,
+                      borderRadius: '5px',
+                      color: previewGroupChart.groupType === 'industries' && previewGroupChart.groupName === industry ? '#ffffff' : '#38bdf8',
+                      padding: '4px 10px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🏭 Industry: {industry}
+                  </button>
+                )}
+                {themes && themes.map((thm) => (
+                  <button
+                    key={thm}
+                    type="button"
+                    onClick={() => setPreviewGroupChart((prev) => ({ ...(prev || {}), groupType: 'themes', groupName: thm }))}
+                    style={{
+                      background: previewGroupChart.groupType === 'themes' && previewGroupChart.groupName === thm ? 'rgba(16, 185, 129, 0.3)' : 'rgba(255, 255, 255, 0.06)',
+                      border: `1px solid ${previewGroupChart.groupType === 'themes' && previewGroupChart.groupName === thm ? '#10b981' : 'rgba(255, 255, 255, 0.15)'}`,
+                      borderRadius: '5px',
+                      color: previewGroupChart.groupType === 'themes' && previewGroupChart.groupName === thm ? '#ffffff' : '#34d399',
+                      padding: '4px 10px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ⚡ {thm}
+                  </button>
+                ))}
+
                 <button
                   type="button"
                   onClick={() => {

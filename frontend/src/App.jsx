@@ -12,6 +12,7 @@ import LeaderboardTab from './components/LeaderboardTab';
 const SqlConsoleTab = lazy(() => import('./components/SqlConsoleTab'));
 const SetupsAndRulesTab = lazy(() => import('./components/SetupsAndRulesTab'));
 const ModelBookTab = lazy(() => import('./components/ModelBookTab'));
+const StudyLabTab = lazy(() => import('./components/StudyLabTab'));
 const LearnTab = lazy(() => import('./components/LearnTab'));
 const JournalTab = lazy(() => import('./components/JournalTab'));
 import { api, API_BASE } from './utils/api';
@@ -41,6 +42,21 @@ function App() {
     };
     window.addEventListener('pt-navigate-radar', handleNavRadar);
     return () => window.removeEventListener('pt-navigate-radar', handleNavRadar);
+  }, []);
+
+  // Global listener for Market Watching / Stock Inspector navigation
+  useEffect(() => {
+    const handleNavWatchlists = (e) => {
+      setActiveTab('watchlists');
+      const sym = e.detail?.symbol;
+      if (sym) {
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('pt-inspect-stock', { detail: { symbol: sym } }));
+        }, 50);
+      }
+    };
+    window.addEventListener('pt-navigate-watchlists', handleNavWatchlists);
+    return () => window.removeEventListener('pt-navigate-watchlists', handleNavWatchlists);
   }, []);
 
   const fetchWatchlists = async () => {
@@ -621,8 +637,9 @@ function App() {
           </div>
 
           <div className="nav-section">
-            <div className="nav-section-title">Overview</div>
+            <div className="nav-section-title">Trading</div>
             <ul className="nav-menu">
+              {/* 0. Dashboard */}
               <li
                 className={`nav-item ${activeTab === 'dashboard' || activeTab === 'sync-data' || activeTab === 'market-monitor' ? 'active' : ''}`}
                 onClick={() => {
@@ -630,22 +647,17 @@ function App() {
                   setDashboardSubpage('cockpit');
                   window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-                title="Dashboard (Trading Cockpit & Market Ingest)"
+                title="0. Dashboard (Trading Cockpit & Market Ingest)"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">📊</span>
-                  <span className="nav-label">Dashboard</span>
+                  <span className="nav-label">0. Dashboard</span>
                 </div>
                 {syncStatus.status === 'running' && (
                   <span className="nav-badge emerald spin-icon" style={{ fontSize: '10px' }} title="Market Ingest running in background">⟳</span>
                 )}
               </li>
-            </ul>
-          </div>
 
-          <div className="nav-section">
-            <div className="nav-section-title">Daily Routine</div>
-            <ul className="nav-menu">
               {/* 1. Leaderboard */}
               <li
                 className={`nav-item ${activeTab === 'leaderboard' ? 'active' : ''}`}
@@ -699,33 +711,39 @@ function App() {
                 <span className="nav-badge emerald">{watchlists.reduce((sum, w) => sum + (w.item_count || 0), 0)}</span>
               </li>
 
-              {/* 5. Model Book Study */}
+              {/* 5. Setup Study */}
               <li
-                className={`nav-item ${activeTab === 'model-book' ? 'active' : ''}`}
-                onClick={() => setActiveTab('model-book')}
-                title="5. Model Book Study (Historical Winners)"
+                className={`nav-item ${activeTab === 'study-lab' ? 'active' : ''}`}
+                onClick={() => setActiveTab('study-lab')}
+                title="5. Setup Study (Historical Setup Discovery)"
               >
                 <div className="nav-item-content">
-                  <span className="nav-icon">📚</span>
-                  <span className="nav-label">5. Model Book Study</span>
+                  <span className="nav-icon">🔬</span>
+                  <span className="nav-label">5. Setup Study</span>
                 </div>
               </li>
 
-              {/* 6. Stock Inspector */}
+              {/* 6. Model Book */}
               <li
-                className={`nav-item ${activeTab === 'inspector' ? 'active' : ''}`}
-                onClick={() => {
-                  setActiveTab('inspector');
-                  if (selectedStock && !inspectorSymbol) {
-                    setInspectorSymbol(selectedStock.symbol);
-                    handleInspectorSearch(selectedStock.symbol);
-                  }
-                }}
-                title="6. Stock Inspector"
+                className={`nav-item ${activeTab === 'model-book' ? 'active' : ''}`}
+                onClick={() => setActiveTab('model-book')}
+                title="6. Model Book (Saved Textbook Setups)"
               >
                 <div className="nav-item-content">
-                  <span className="nav-icon">🔍</span>
-                  <span className="nav-label">6. Stock Inspector</span>
+                  <span className="nav-icon">📚</span>
+                  <span className="nav-label">6. Model Book</span>
+                </div>
+              </li>
+
+              {/* 7. Trading Journal */}
+              <li
+                className={`nav-item ${activeTab === 'journal' ? 'active' : ''}`}
+                onClick={() => setActiveTab('journal')}
+                title="7. Trading Journal & IBKR Performance"
+              >
+                <div className="nav-item-content">
+                  <span className="nav-icon">📓</span>
+                  <span className="nav-label">7. Trading Journal</span>
                 </div>
               </li>
             </ul>
@@ -734,16 +752,6 @@ function App() {
           <div className="nav-section">
             <div className="nav-section-title">Tools & Config</div>
             <ul className="nav-menu">
-              <li
-                className={`nav-item ${activeTab === 'journal' ? 'active' : ''}`}
-                onClick={() => setActiveTab('journal')}
-                title="Trading Journal & IBKR Performance"
-              >
-                <div className="nav-item-content">
-                  <span className="nav-icon">📓</span>
-                  <span className="nav-label">Trading Journal</span>
-                </div>
-              </li>
               <li
                 className={`nav-item ${activeTab === 'setups-rules' ? 'active' : ''}`}
                 onClick={() => setActiveTab('setups-rules')}
@@ -799,7 +807,7 @@ function App() {
       </div>
 
       {/* Main Content Area */}
-      <div className="main-content custom-scrollbar">
+      <div className={`main-content custom-scrollbar ${activeTab === 'watchlists' ? 'main-content-flush' : ''}`}>
         {(activeTab === 'dashboard' || activeTab === 'market-monitor' || activeTab === 'sync-data') && (
           <DashboardTab
             summary={summary}
@@ -915,12 +923,21 @@ function App() {
           </Suspense>
         )}
 
+        {activeTab === 'study-lab' && (
+          <Suspense fallback={<div className="tab-loading-spinner" style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>Loading Setup Study...</div>}>
+            <StudyLabTab
+              onSelectStock={handleSelectStock}
+              watchlists={watchlists}
+              fetchWatchlists={fetchWatchlists}
+              setupsConfig={setupsConfig}
+            />
+          </Suspense>
+        )}
+
         {activeTab === 'model-book' && (
           <Suspense fallback={<div className="tab-loading-spinner" style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>Loading Model Book...</div>}>
             <ModelBookTab
               onSelectStock={handleSelectStock}
-              watchlists={watchlists}
-              fetchWatchlists={fetchWatchlists}
               setupsConfig={setupsConfig}
             />
           </Suspense>

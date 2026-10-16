@@ -330,23 +330,23 @@ export function calculateRsSMA(dataPoints, period = 20) {
  * 3. When enabled, RS panel and Mansfield Yearly Thumbnail sit cleanly at the bottom (58px).
  */
 export function getPanelMargins(containerHeight, showRs = true) {
-  const H = typeof containerHeight === 'number' && containerHeight > 150 ? containerHeight : 450;
-  const timeScaleH = 30; // standard time scale height in px
-  const plotH = Math.max(120, H - timeScaleH);
+  const H = typeof containerHeight === 'number' && containerHeight > 100 ? containerHeight : 300;
+  const timeScaleH = 26; // standard time scale height in px
+  const plotH = Math.max(80, H - timeScaleH);
 
   // Exact outer height of MansfieldYearlyThumbnail: 58px
   const THUMBNAIL_HEIGHT = MANSFIELD_THUMBNAIL_HEIGHT || 58;
 
   // Leave comfortable top clearance so the toolbar overlay (~32-36px) never covers candlestick bars
-  const topClearancePx = 54;
-  const priceTop = Math.min(0.20, Math.max(0.08, topClearancePx / plotH));
+  const topClearancePx = showRs ? 54 : 30;
+  const priceTop = Math.min(0.20, Math.max(0.06, topClearancePx / plotH));
 
-  // TradingView volume layout: volume bars occupy the bottom ~18% of the plot area,
+  // TradingView volume layout: volume bars occupy the bottom ~16-18% of the plot area,
   // creating a clean, aesthetically balanced space between normal volume bars and price candles.
   if (!showRs) {
     return {
-      price: { top: priceTop, bottom: 0.18 },
-      volume: { top: 0.82, bottom: 0.0 },
+      price: { top: priceTop, bottom: 0.16 },
+      volume: { top: 0.84, bottom: 0.0 },
       rs: { top: 0.95, bottom: 0.0 },
     };
   }
@@ -373,19 +373,22 @@ export function getPanelMargins(containerHeight, showRs = true) {
   };
 }
 
-// Calculate responsive visible bars based on container width
+// Calculate responsive visible bars based on container width and total data available
 // For daily: ~147 bars (7 months) up to ~252 bars (>9-12 months).
-// For weekly: ~65-156 bars (1.5-3 years).
-// For monthly: ~36-144 bars (3-12 years).
-function getResponsiveVisibleBars(containerWidth, timeframe = 'daily') {
+// For weekly: ~75-180 bars (1.5-3.5 years of base structure).
+// For monthly: full history (all available bars, at least 60 bars / 5 years).
+function getResponsiveVisibleBars(containerWidth, timeframe = 'daily', totalBars = 0) {
   const w = containerWidth || (typeof window !== 'undefined' ? window.innerWidth : 800);
   if (timeframe === 'monthly') {
-    const bars = Math.round(w / 14);
-    return Math.max(36, Math.min(144, bars));
+    if (totalBars > 0) {
+      return Math.max(60, totalBars + 4);
+    }
+    const bars = Math.round(w / 8);
+    return Math.max(60, Math.min(240, bars));
   }
   if (timeframe === 'weekly') {
-    const bars = Math.round(w / 8.5);
-    return Math.max(65, Math.min(156, bars));
+    const bars = Math.round(w / 5.5);
+    return Math.max(75, Math.min(180, bars));
   }
   const bars = Math.round(w / 5.4);
   return Math.max(147, Math.min(252, bars));
@@ -1059,6 +1062,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   showVolumeProfile: showVolumeProfileProp = null, // boolean | null (controls Volume by Price bars)
   showYearlyThumbnail: showYearlyThumbnailProp = null, // boolean | null (controls Mansfield Yearly Thumbnail)
   showRsLine: showRsLineProp = null, // boolean | null (controls Relative Strength line)
+  showEarnings: showEarningsProp = null, // boolean | null (controls Earnings icons)
 }, ref) {
   const rootContainerRef = useRef(null);
   const chartContainerRef = useRef();
@@ -1149,11 +1153,16 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   const [showEarnings, setShowEarnings] = useState(true);
   const [hoveredEarnings, setHoveredEarnings] = useState(null); // { record, x, y }
 
+  // Monthly timeframe hides earnings markers by default to maintain clean macro view
+  const effectiveShowEarnings = showEarningsProp !== null
+    ? showEarningsProp
+    : (chartTimeframe === 'monthly' ? false : showEarnings);
+
   const fetchedEarningsRef = useRef(fetchedEarnings);
   fetchedEarningsRef.current = fetchedEarnings;
 
-  const showEarningsRef = useRef(showEarnings);
-  showEarningsRef.current = showEarnings;
+  const showEarningsRef = useRef(effectiveShowEarnings);
+  showEarningsRef.current = effectiveShowEarnings;
 
   // Price Scale Mode: Logarithmic (PriceScaleMode.Logarithmic = 1, default) vs Arithmetic / Linear (PriceScaleMode.Normal = 0)
   const [isLogScale, setIsLogScale] = useState(() => {
@@ -1843,8 +1852,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           textColor: '#9ca3af',
         },
         grid: {
-          vertLines: { color: 'rgba(255, 255, 255, 0.05)' },
-          horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
+          vertLines: { visible: false },
+          horzLines: { visible: false },
         },
         crosshair: {
           mode: CrosshairMode.Normal,
@@ -1854,12 +1863,13 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           scaleMargins: initialMargins.price,
         },
         timeScale: {
-          height: 30,
-          rightOffset: 18,
+          visible: true,
+          height: 26,
+          rightOffset: isMonthly ? 4 : (isWeekly ? 8 : 18),
           fixRightEdge: false,
         },
         width: chartContainerRef.current.clientWidth || 700,
-        height: typeof height === 'number' ? height : (chartContainerRef.current.clientHeight || 400),
+        height: typeof height === 'number' ? height : (chartContainerRef.current?.clientHeight || 200),
       });
 
       // Configure main price scale with logarithmic scale (mode: 1) by default and bottom margin for volume & RS panels
@@ -2120,7 +2130,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     // Always update height and container width
     const currentContainerWidth = chartContainerRef.current.clientWidth;
     const currentContainerHeight = chartContainerRef.current.clientHeight;
-    const targetHeight = typeof height === 'number' ? height : (currentContainerHeight > 0 ? currentContainerHeight : 280);
+    const targetHeight = typeof height === 'number' ? height : (currentContainerHeight > 0 ? currentContainerHeight : 200);
     const targetWidth = currentContainerWidth > 0 ? currentContainerWidth : 700;
 
     chartRef.current.applyOptions({
@@ -2345,7 +2355,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         if (!chartRef.current || !chartData || chartData.length === 0) return;
         try {
           const cWidth = containerWidth || chartContainerRef.current?.clientWidth || targetWidth;
-          const visibleBars = getResponsiveVisibleBars(cWidth, chartTimeframe);
+          const visibleBars = getResponsiveVisibleBars(cWidth, chartTimeframe, chartData.length);
 
           let toIndex = chartData.length - 1 + RIGHT_MARGIN_BARS;
           if (asOfIdx !== -1) {
@@ -2355,7 +2365,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
             }
           }
 
-          const fromIndex = Math.max(0, toIndex - visibleBars);
+          const fromIndex = toIndex - visibleBars;
           chartRef.current.timeScale().setVisibleLogicalRange({
             from: fromIndex,
             to: toIndex,
@@ -2494,7 +2504,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       if (entries.length > 0 && chartRef.current && container) {
         const newWidth = Math.floor(entries[0].contentRect?.width || container.clientWidth);
         const containerH = Math.floor(container.clientHeight || entries[0].contentRect?.height);
-        const newHeight = typeof height === 'number' ? height : (containerH > 0 ? containerH : 280);
+        const newHeight = typeof height === 'number' ? height : (containerH > 0 ? containerH : 200);
         if (newWidth > 0 && newHeight > 0) {
           chartRef.current.applyOptions({ width: newWidth, height: newHeight });
           const margins = getPanelMargins(newHeight, showRsLineRef.current);
@@ -2507,12 +2517,20 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           if (dataLookupRef.current?.data?.length > 0) {
             const currentData = dataLookupRef.current.data;
             const asOf = asOfIdxRef.current;
-            const visibleBars = getResponsiveVisibleBars(newWidth, chartTimeframeRef.current);
+            const visibleBars = getResponsiveVisibleBars(newWidth, chartTimeframeRef.current, currentData.length);
 
             if (!isUserPannedRef.current && asOf !== -1) {
               const targetTo = asOf + 40;
               const toIndex = Math.min(currentData.length - 1 + 18, targetTo);
-              const fromIndex = Math.max(0, toIndex - visibleBars);
+              const fromIndex = toIndex - visibleBars;
+              chartRef.current.timeScale().setVisibleLogicalRange({
+                from: fromIndex,
+                to: toIndex,
+              });
+            } else if (!isUserPannedRef.current) {
+              const rightBars = chartTimeframeRef.current === 'monthly' ? 4 : (chartTimeframeRef.current === 'weekly' ? 8 : 18);
+              const toIndex = currentData.length - 1 + rightBars;
+              const fromIndex = toIndex - visibleBars;
               chartRef.current.timeScale().setVisibleLogicalRange({
                 from: fromIndex,
                 to: toIndex,
@@ -2521,7 +2539,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
               const currentRange = chartRef.current.timeScale().getVisibleLogicalRange();
               if (currentRange) {
                 chartRef.current.timeScale().setVisibleLogicalRange({
-                  from: Math.max(0, currentRange.to - visibleBars),
+                  from: currentRange.to - visibleBars,
                   to: currentRange.to,
                 });
               }
@@ -2954,7 +2972,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         position: 'relative',
         width: '100%',
         height: typeof height === 'number' ? `${height}px` : (height || '100%'),
-        minHeight: typeof height === 'number' ? `${height}px` : '240px',
+        minHeight: typeof height === 'number' ? `${height}px` : 0,
         maxHeight: typeof height === 'number' ? `${height}px` : undefined,
         flex: typeof height === 'number' ? '0 0 auto' : 1,
         display: 'flex',
@@ -3200,7 +3218,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           <button
             type="button"
             onClick={() => setShowEarnings((prev) => !prev)}
-            title={showEarnings ? 'Hide Earnings Date Icons (E)' : 'Show Earnings Date Icons (E)'}
+            title={effectiveShowEarnings ? 'Hide Earnings Date Icons (E)' : 'Show Earnings Date Icons (E)'}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -3208,9 +3226,9 @@ const CandlestickChart = forwardRef(function CandlestickChart({
               width: '26px',
               height: '26px',
               padding: 0,
-              background: showEarnings ? 'rgba(13, 148, 136, 0.35)' : 'rgba(255, 255, 255, 0.05)',
-              border: showEarnings ? '1px solid #14b8a6' : '1px solid rgba(255, 255, 255, 0.15)',
-              color: showEarnings ? '#2dd4bf' : '#94a3b8',
+              background: effectiveShowEarnings ? 'rgba(13, 148, 136, 0.35)' : 'rgba(255, 255, 255, 0.05)',
+              border: effectiveShowEarnings ? '1px solid #14b8a6' : '1px solid rgba(255, 255, 255, 0.15)',
+              color: effectiveShowEarnings ? '#2dd4bf' : '#94a3b8',
               borderRadius: '5px',
               fontSize: '11px',
               fontWeight: 800,
@@ -3403,17 +3421,17 @@ const CandlestickChart = forwardRef(function CandlestickChart({
             padding: 0,
             background: showToolbarMore
               ? 'rgba(255,255,255,0.10)'
-              : (isMeasureModeActive || !showEarnings || !showRsLine || showVolumeProfile || !isLogScale || !showMansfieldYearly)
+              : (isMeasureModeActive || !effectiveShowEarnings || !showRsLine || showVolumeProfile || !isLogScale || !showMansfieldYearly)
                 ? 'rgba(56, 189, 248, 0.12)'
                 : 'rgba(255, 255, 255, 0.05)',
             border: showToolbarMore
               ? '1px solid rgba(255,255,255,0.3)'
-              : (isMeasureModeActive || !showEarnings || !showRsLine || showVolumeProfile || !isLogScale || !showMansfieldYearly)
+              : (isMeasureModeActive || !effectiveShowEarnings || !showRsLine || showVolumeProfile || !isLogScale || !showMansfieldYearly)
                 ? '1px solid rgba(56,189,248,0.4)'
                 : '1px solid rgba(255, 255, 255, 0.15)',
             color: showToolbarMore
               ? '#e2e8f0'
-              : (isMeasureModeActive || !showEarnings || !showRsLine || showVolumeProfile || !isLogScale || !showMansfieldYearly)
+              : (isMeasureModeActive || !effectiveShowEarnings || !showRsLine || showVolumeProfile || !isLogScale || !showMansfieldYearly)
                 ? '#38bdf8'
                 : '#94a3b8',
             borderRadius: '5px',
@@ -3545,7 +3563,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           }}
         >
           {/* 0. TradingView-style Earnings Date Markers */}
-          {showEarnings && fetchedEarnings.map((item, idx) => {
+          {effectiveShowEarnings && fetchedEarnings.map((item, idx) => {
             const coord = getEarningsBarCoordinate(item);
             if (!coord) return null;
             const { x } = coord;
