@@ -18,6 +18,7 @@ const SETUP_COLORS = {
   qm_breakouts: '#f59e0b',
   standard: '#f59e0b',
   episodic_pivot: '#ec4899',
+  ep_9_million: '#f43f5e',
   parabolic: '#ef4444',
   parabolic_short: '#ef4444',
   cup_and_handle: '#10b981',

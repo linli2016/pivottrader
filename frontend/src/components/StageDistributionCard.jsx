@@ -708,7 +708,7 @@ export default function StageDistributionCard({
                   onNavigateToStage('stage1');
                 } else {
                   window.dispatchEvent(new CustomEvent('pt-navigate-radar', { detail: { stageFilter: 'stage1', activeTab: 'industries' } }));
-                  const radarNavBtn = document.querySelector('[title*="Industry Radar"]');
+                  const radarNavBtn = document.querySelector('[title*="Themes & Sectors"], [title*="Industry Radar"]');
                   if (radarNavBtn) radarNavBtn.click();
                 }
               }}
@@ -725,7 +725,7 @@ export default function StageDistributionCard({
                 marginLeft: '8px'
               }}
               className="hover-brighten"
-              title="Inspect Stage 1 Basing groups in Industry Radar"
+              title="Inspect Stage 1 Basing groups in Themes & Sectors"
             >
               Scan Groups ↗
             </button>
@@ -788,7 +788,7 @@ export default function StageDistributionCard({
                   onNavigateToStage('stage2');
                 } else {
                   window.dispatchEvent(new CustomEvent('pt-navigate-radar', { detail: { stageFilter: 'stage2', activeTab: 'industries' } }));
-                  const radarNavBtn = document.querySelector('[title*="Industry Radar"]');
+                  const radarNavBtn = document.querySelector('[title*="Themes & Sectors"], [title*="Industry Radar"]');
                   if (radarNavBtn) radarNavBtn.click();
                 }
               }}
@@ -805,7 +805,7 @@ export default function StageDistributionCard({
                 marginLeft: '8px'
               }}
               className="hover-brighten"
-              title="Inspect Stage 2 Advancing groups in Industry Radar"
+              title="Inspect Stage 2 Advancing groups in Themes & Sectors"
             >
               Scan Groups ↗
             </button>
@@ -899,7 +899,7 @@ export default function StageDistributionCard({
                   onNavigateToStage('stage4');
                 } else {
                   window.dispatchEvent(new CustomEvent('pt-navigate-radar', { detail: { stageFilter: 'stage4', activeTab: 'industries' } }));
-                  const radarNavBtn = document.querySelector('[title*="Industry Radar"]');
+                  const radarNavBtn = document.querySelector('[title*="Themes & Sectors"], [title*="Industry Radar"]');
                   if (radarNavBtn) radarNavBtn.click();
                 }
               }}
@@ -916,7 +916,7 @@ export default function StageDistributionCard({
                 marginLeft: '8px'
               }}
               className="hover-brighten"
-              title="Inspect Stage 4 Declining groups in Industry Radar"
+              title="Inspect Stage 4 Declining groups in Themes & Sectors"
             >
               Scan Groups ↗
             </button>

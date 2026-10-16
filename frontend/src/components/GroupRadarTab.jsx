@@ -941,7 +941,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
   };
 
   return (
-    <div style={{ paddingBottom: '40px' }}>
+    <div className="stock-screen-container">
       {/* Header Section */}
       <div
         className="header-section"
@@ -951,17 +951,17 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
           alignItems: 'center',
           flexWrap: 'wrap',
           gap: '16px',
-          marginBottom: '16px'
+          marginBottom: '10px',
+          flexShrink: 0
         }}
       >
         <div className="header-title">
           <div className="header-subtitle-tag">
-            <span>INDUSTRY RADAR</span>
+            <span>THEMES & SECTORS</span>
             <span>•</span>
             <span>LEADERSHIP & ROTATION</span>
           </div>
-          <h1>Industry Radar</h1>
-          <p>Institutional Relative Strength, Multi-Horizon Rotation & Breadth Across Sectors, Industries, and Themes</p>
+          <h1>Themes & Sectors</h1>
         </div>
 
         {/* Top Right Controls: Snapshot / Date Picker & Refresh */}
@@ -1167,12 +1167,13 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
           justifyContent: 'space-between',
           flexWrap: 'wrap',
           gap: '8px',
-          marginTop: '-6px',
-          marginBottom: '14px',
+          marginTop: '-4px',
+          marginBottom: '10px',
           padding: '7px 12px',
           background: 'rgba(255, 255, 255, 0.02)',
           border: '1px solid rgba(255, 255, 255, 0.06)',
-          borderRadius: '8px'
+          borderRadius: '8px',
+          flexShrink: 0
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>

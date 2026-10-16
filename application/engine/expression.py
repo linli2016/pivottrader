@@ -974,6 +974,27 @@ ALIAS_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "pattern",
         "description": "Massive gap (>=10%) and heavy relative volume (>=2.5x)"
     },
+    "EP9_MILLION": {
+        "expr": "C >= 3.0 AND V >= 9000000 AND REL_VOL >= 3.0 AND C >= C1 * 1.04 AND C >= O",
+        "type": "boolean",
+        "label": "EP9 Million",
+        "category": "pattern",
+        "description": "Stockbee EP9 Million: Volume >= 9M & >= 3x ADV, daily gain >= 4%, green candle"
+    },
+    "EP_9_MILLION": {
+        "expr": "C >= 3.0 AND V >= 9000000 AND REL_VOL >= 3.0 AND C >= C1 * 1.04 AND C >= O",
+        "type": "boolean",
+        "label": "EP9 Million",
+        "category": "pattern",
+        "description": "Stockbee EP9 Million: Volume >= 9M & >= 3x ADV, daily gain >= 4%, green candle"
+    },
+    "EP9M": {
+        "expr": "C >= 3.0 AND V >= 9000000 AND REL_VOL >= 3.0 AND C >= C1 * 1.04 AND C >= O",
+        "type": "boolean",
+        "label": "EP9 Million",
+        "category": "pattern",
+        "description": "Stockbee EP9 Million (shorthand)"
+    },
     "IPO_BASE": {
         "expr": "IPO_DAYS IS NOT NULL AND IPO_DAYS >= 10 AND IPO_DAYS <= 350 AND IPO_DRAWDOWN <= 25.0 AND IPO_DEPTH <= 35.0",
         "type": "boolean",

@@ -113,7 +113,7 @@ export default function InspectorTab({
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span style={{ fontSize: '20px' }}>⚡</span>
           <span style={{ fontSize: '13px', color: '#e2e8f0' }}>
-            Stock Inspector is now merged directly into <strong>4. Market Watching</strong>'s Stock Detail Panel! You can inspect any stock alongside multi-timeframe charts, VCP footprints, and institutional fund flows.
+            Stock Inspector is now merged directly into <strong>4. Watchlists</strong>'s Stock Detail Panel! You can inspect any stock alongside multi-timeframe charts, VCP footprints, and institutional fund flows.
           </span>
         </div>
         <button
@@ -124,7 +124,7 @@ export default function InspectorTab({
           className="btn btn-primary btn-sm"
           style={{ fontSize: '12px', padding: '5px 12px' }}
         >
-          Open in Market Watching →
+          Open in Watchlists →
         </button>
       </div>
 

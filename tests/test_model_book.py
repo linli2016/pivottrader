@@ -31,6 +31,22 @@ class TestModelBookService(unittest.TestCase):
         self.assertIn("candidates", result)
         self.assertIsInstance(result["candidates"], list)
 
+    def test_saved_trades_enrichment(self):
+        from application.services.saved_trades_service import saved_trades_service
+        trades = saved_trades_service.load_saved_trades()
+        self.assertIsInstance(trades, list)
+        if len(trades) > 0:
+            t = trades[0]
+            self.assertIn("symbol", t)
+            self.assertIn("name", t)
+            self.assertIn("exchange", t)
+            self.assertIn("sector", t)
+            self.assertIn("industry", t)
+            self.assertIn("rs_rank", t)
+            self.assertIn("adr_20d", t)
+            self.assertIn("ti_65", t)
+            self.assertIn("ret_1m", t)
+
 if __name__ == '__main__':
     unittest.main()
 

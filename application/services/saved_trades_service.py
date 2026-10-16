@@ -79,7 +79,7 @@ class SavedTradesService:
             logger.warning(f"Failed to resolve market regime for date {setup_date}: {e}")
             return None
 
-    def load_saved_trades(self) -> List[Dict[str, Any]]:
+    def _load_raw_trades(self) -> List[Dict[str, Any]]:
         """Load all saved model book trades from disk, synchronizing market_regime with trigger date and sanitizing fields."""
         _ensure_file()
         try:
@@ -141,6 +141,137 @@ class SavedTradesService:
 
         return cleaned_trades
 
+    def _enrich_trades(self, trades: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Enrich saved trades with symbol metadata, fundamentals, and historical daily_bars metrics as of setup_date."""
+        if not trades:
+            return []
+
+        enriched = [dict(t) for t in trades]
+        symbols = list({t.get("symbol", "").upper().strip() for t in enriched if t.get("symbol")})
+        if not symbols:
+            return enriched
+
+        try:
+            from application.services.database import db_service
+            with db_service.get_read_only_conn() as conn:
+                placeholders = ",".join(["?"] * len(symbols))
+
+                # 1. Symbol metadata (name, exchange, sector, industry)
+                sym_rows = conn.execute(
+                    f"SELECT symbol, name, exchange, sector, industry FROM symbols WHERE symbol IN ({placeholders})",
+                    symbols
+                ).fetchall()
+                sym_map = {
+                    r[0]: {
+                        "name": r[1] or r[0],
+                        "exchange": r[2] or "",
+                        "sector": r[3] or "Sector",
+                        "industry": r[4] or ""
+                    }
+                    for r in sym_rows
+                }
+
+                # 2. Institutional sponsorship from quarterly_fundamentals
+                fund_map = {}
+                try:
+                    fund_rows = conn.execute(
+                        f"""
+                        SELECT symbol, inst_holders_count, inst_holders_qoq_change, sponsorship_streak
+                        FROM (
+                            SELECT symbol, inst_holders_count, inst_holders_qoq_change, sponsorship_streak,
+                                   ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY fiscal_quarter DESC) as rn
+                            FROM quarterly_fundamentals
+                            WHERE symbol IN ({placeholders})
+                        )
+                        WHERE rn = 1
+                        """,
+                        symbols
+                    ).fetchall()
+                    fund_map = {
+                        r[0]: {
+                            "inst_holders_count": r[1],
+                            "inst_holders_qoq_change": r[2],
+                            "sponsorship_streak": r[3] or 0
+                        }
+                        for r in fund_rows
+                    }
+                except Exception as fe:
+                    logger.warning(f"Failed to enrich fundamentals for saved trades: {fe}")
+
+                # 3. Historical daily_bars metrics as of setup_date (zero lookahead bias)
+                bar_map = {}
+                try:
+                    values_sql = ", ".join(["(?, ?, TRY_CAST(? AS DATE))"] * len(enriched))
+                    values_params = []
+                    for idx, t in enumerate(enriched):
+                        values_params.extend([idx, t.get("symbol", ""), t.get("setup_date", "")])
+
+                    bar_rows = conn.execute(
+                        f"""
+                        WITH targets(t_idx, symbol, target_date) AS (
+                            VALUES {values_sql}
+                        ),
+                        filtered_bars AS (
+                            SELECT symbol, date, rs_score, rs_rank, adr_20d, ti_65, ret_1m, ret_3m, ret_6m
+                            FROM daily_bars
+                            WHERE symbol IN ({placeholders})
+                        )
+                        SELECT
+                            t.t_idx,
+                            d.rs_score,
+                            d.rs_rank,
+                            d.adr_20d,
+                            d.ti_65,
+                            d.ret_1m,
+                            d.ret_3m,
+                            d.ret_6m
+                        FROM targets t
+                        ASOF LEFT JOIN filtered_bars d
+                          ON t.symbol = d.symbol AND t.target_date >= d.date
+                        """,
+                        values_params + symbols
+                    ).fetchall()
+                    for r in bar_rows:
+                        t_idx = r[0]
+                        rs_score = round(float(r[1]), 1) if r[1] is not None else None
+                        rs_rank = int(r[2]) if r[2] is not None else (round(float(r[1])) if r[1] is not None else None)
+                        bar_map[t_idx] = {
+                            "rs_score": rs_score,
+                            "rs_rank": rs_rank,
+                            "adr_20d": round(float(r[3]), 2) if r[3] is not None else None,
+                            "ti_65": round(float(r[4]), 2) if r[4] is not None else None,
+                            "ret_1m": round(float(r[5]), 1) if r[5] is not None else None,
+                            "ret_3m": round(float(r[6]), 1) if r[6] is not None else None,
+                            "ret_6m": round(float(r[7]), 1) if r[7] is not None else None,
+                        }
+                except Exception as be:
+                    logger.warning(f"Failed to enrich daily_bars metrics for saved trades: {be}")
+
+                for idx, item in enumerate(enriched):
+                    sym = item.get("symbol", "")
+                    s_info = sym_map.get(sym, {})
+                    item["name"] = s_info.get("name", sym)
+                    item["exchange"] = s_info.get("exchange", "")
+                    item["sector"] = s_info.get("sector", "Sector")
+                    item["industry"] = s_info.get("industry", "")
+
+                    f_info = fund_map.get(sym)
+                    if f_info:
+                        item.update(f_info)
+
+                    b_info = bar_map.get(idx)
+                    if b_info:
+                        item.update(b_info)
+        except Exception as e:
+            logger.warning(f"Failed to enrich saved trades from DuckDB: {e}")
+
+        return enriched
+
+    def load_saved_trades(self) -> List[Dict[str, Any]]:
+        """Load all saved model book trades from disk and enrich with stock details."""
+        raw_trades = self._load_raw_trades()
+        return self._enrich_trades(raw_trades)
+
     def _write_trades(self, trades: List[Dict[str, Any]]) -> None:
         """Write trades array formatted to JSON file atomically."""
         os.makedirs(os.path.dirname(self.file_path), exist_ok=True)
@@ -158,7 +289,7 @@ class SavedTradesService:
         if not symbol or not setup_date:
             raise ValueError("symbol and setup_date are required")
 
-        trades = self.load_saved_trades()
+        trades = self._load_raw_trades()
 
         # Match either by provided ID or by (symbol, setup_date, setup_type)
         existing_index = None
@@ -203,11 +334,12 @@ class SavedTradesService:
         # Sort chronologically by setup_date descending, then symbol
         trades.sort(key=lambda x: (x.get("setup_date", ""), x.get("symbol", "")), reverse=True)
         self._write_trades(trades)
-        return record
+        enriched = self._enrich_trades([record])
+        return enriched[0] if enriched else record
 
     def delete_saved_trade(self, trade_id: str) -> bool:
         """Remove a saved trade by ID."""
-        trades = self.load_saved_trades()
+        trades = self._load_raw_trades()
         initial_len = len(trades)
         trades = [t for t in trades if t.get("id") != trade_id]
         if len(trades) < initial_len:
@@ -217,7 +349,7 @@ class SavedTradesService:
 
     def update_notes(self, trade_id: str, notes: str) -> Optional[Dict[str, Any]]:
         """Update the notes field of a specific saved trade."""
-        trades = self.load_saved_trades()
+        trades = self._load_raw_trades()
         target_trade = next((t for t in trades if t.get("id") == trade_id), None)
         if not target_trade:
             return None
@@ -225,7 +357,8 @@ class SavedTradesService:
         target_trade["notes"] = notes
         target_trade["updated_at"] = datetime.now().isoformat()
         self._write_trades(trades)
-        return target_trade
+        enriched = self._enrich_trades([target_trade])
+        return enriched[0] if enriched else target_trade
 
     def update_trigger_date(self, trade_id: str, new_date: str) -> Optional[Dict[str, Any]]:
         """Update trigger date (setup_date) and update market_regime for the date."""
@@ -233,7 +366,7 @@ class SavedTradesService:
         if not new_date:
             raise ValueError("new_date cannot be empty")
 
-        trades = self.load_saved_trades()
+        trades = self._load_raw_trades()
         target_trade = next((t for t in trades if t.get("id") == trade_id), None)
         if not target_trade:
             return None
@@ -247,7 +380,8 @@ class SavedTradesService:
                 target_trade["market_regime"] = resolved_regime
                 target_trade["updated_at"] = datetime.now().isoformat()
                 self._write_trades(trades)
-            return target_trade
+            enriched = self._enrich_trades([target_trade])
+            return enriched[0] if enriched else target_trade
 
         target_trade["setup_date"] = new_date
         if resolved_regime:
@@ -258,7 +392,8 @@ class SavedTradesService:
         # Re-sort chronologically by setup_date descending, then symbol
         trades.sort(key=lambda x: (x.get("setup_date", ""), x.get("symbol", "")), reverse=True)
         self._write_trades(trades)
-        return target_trade
+        enriched = self._enrich_trades([target_trade])
+        return enriched[0] if enriched else target_trade
 
     def update_setup_type(self, trade_id: str, new_setup_type: str, new_setup_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Update setup_type and setup_name for a saved trade."""
@@ -266,13 +401,14 @@ class SavedTradesService:
         if not new_setup_type:
             raise ValueError("setup_type cannot be empty")
 
-        trades = self.load_saved_trades()
+        trades = self._load_raw_trades()
         target_trade = next((t for t in trades if t.get("id") == trade_id), None)
         if not target_trade:
             return None
 
         if target_trade.get("setup_type") == new_setup_type and (not new_setup_name or target_trade.get("setup_name") == new_setup_name):
-            return target_trade
+            enriched = self._enrich_trades([target_trade])
+            return enriched[0] if enriched else target_trade
 
         target_trade["setup_type"] = new_setup_type
         if new_setup_name:
@@ -283,7 +419,8 @@ class SavedTradesService:
         target_trade["updated_at"] = datetime.now().isoformat()
 
         self._write_trades(trades)
-        return target_trade
+        enriched = self._enrich_trades([target_trade])
+        return enriched[0] if enriched else target_trade
 
 
 saved_trades_service = SavedTradesService()

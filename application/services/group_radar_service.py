@@ -1,5 +1,6 @@
 import logging
 from typing import List, Dict, Any, Optional
+from concurrent.futures import ThreadPoolExecutor
 import duckdb
 from application.services.theme_service import ThemeService
 
@@ -597,24 +598,40 @@ class GroupRadarService:
         if not stocks:
             return []
 
-        # 1. Fetch group strengths (cached)
-        try:
-            industries_list = self.get_group_strength("industries", date=date)
-            ind_map = {i["name"].lower(): i for i in industries_list if i.get("name")}
-        except Exception as e:
-            logger.error(f"Error fetching industries for enrichment: {e}")
-            ind_map = {}
+        # 1. Fetch group strengths concurrently (or from in-memory cache)
+        def _get_ind():
+            try:
+                return self.get_group_strength("industries", date=date)
+            except Exception as e:
+                logger.error(f"Error fetching industries for enrichment: {e}")
+                return []
 
-        try:
-            sectors_list = self.get_group_strength("sectors", date=date)
-            sec_map = {s["name"].lower(): s for s in sectors_list if s.get("name")}
-        except Exception as e:
-            logger.error(f"Error fetching sectors for enrichment: {e}")
-            sec_map = {}
+        def _get_sec():
+            try:
+                return self.get_group_strength("sectors", date=date)
+            except Exception as e:
+                logger.error(f"Error fetching sectors for enrichment: {e}")
+                return []
 
+        def _get_th():
+            try:
+                return self.get_group_strength("themes", date=date)
+            except Exception as e:
+                logger.error(f"Error fetching themes for enrichment: {e}")
+                return []
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            f_ind = executor.submit(_get_ind)
+            f_sec = executor.submit(_get_sec)
+            f_th = executor.submit(_get_th)
+            industries_list = f_ind.result()
+            sectors_list = f_sec.result()
+            themes_list = f_th.result()
+
+        ind_map = {i["name"].lower(): i for i in industries_list if i.get("name")}
+        sec_map = {s["name"].lower(): s for s in sectors_list if s.get("name")}
+        theme_strength_map = {t["name"].lower(): t for t in themes_list if t.get("name")}
         try:
-            themes_list = self.get_group_strength("themes", date=date)
-            theme_strength_map = {t["name"].lower(): t for t in themes_list if t.get("name")}
             all_themes = self.theme_service.load_themes()
             sym_to_themes: Dict[str, List[Dict[str, Any]]] = {}
             for th in all_themes:

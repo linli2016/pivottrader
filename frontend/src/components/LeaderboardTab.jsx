@@ -461,7 +461,7 @@ export default function LeaderboardTab({
   };
 
   return (
-    <div className="tab-content" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', padding: '12px 16px', gap: '10px' }}>
+    <div className="stock-screen-container" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden', gap: '10px' }}>
       
       {/* 1. Header & Global Controls */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>

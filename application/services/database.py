@@ -3228,18 +3228,74 @@ class DatabaseService:
                 WITH target_symbols AS (
                     SELECT symbol, added_at FROM watchlist_items WHERE watchlist_id = ?
                 ),
-                ranked_bars AS (
+                recent_bars AS (
                     SELECT 
-                        db.*,
+                        db.symbol,
+                        db.close,
+                        db.rs_rank,
+                        db.vol_50d_ma,
+                        db.volume,
+                        COALESCE(db.dollar_vol_50d_ma, db.close * db.vol_50d_ma) as dollar_vol_50d_ma,
+                        db.date as last_trade_date,
+                        db.adr_20d,
+                        db.dist_from_52w_high,
+                        db.high_52w,
+                        db.low_52w,
+                        db.ema_10,
+                        db.ema_20,
+                        db.ema_50,
+                        db.sma_200,
+                        db.vcp_is_setup,
+                        db.low_cheat_is_setup,
+                        db.ti_65,
+                        db.ret_1m,
+                        db.ret_3m,
+                        db.ret_6m,
+                        db.atr_20d,
+                        COALESCE(db.is_52w_high, false) as is_rs_blue_dot,
+                        LEAD(db.close, 1) OVER (PARTITION BY db.symbol ORDER BY db.date DESC) as prev_close,
                         ROW_NUMBER() OVER (PARTITION BY db.symbol ORDER BY db.date DESC) as rn
                     FROM daily_bars db
-                    JOIN target_symbols ts ON db.symbol = ts.symbol
+                    WHERE db.symbol IN (SELECT symbol FROM target_symbols)
+                      AND db.date >= CURRENT_DATE - INTERVAL 120 DAY
                 ),
                 latest_bars AS (
-                    SELECT * FROM ranked_bars WHERE rn = 1
+                    SELECT * FROM recent_bars WHERE rn = 1
                 ),
-                prev_bars AS (
-                    SELECT symbol, close as prev_close FROM ranked_bars WHERE rn = 2
+                fallback_bars AS (
+                    SELECT 
+                        db.symbol,
+                        db.close,
+                        db.rs_rank,
+                        db.vol_50d_ma,
+                        db.volume,
+                        COALESCE(db.dollar_vol_50d_ma, db.close * db.vol_50d_ma) as dollar_vol_50d_ma,
+                        db.date as last_trade_date,
+                        db.adr_20d,
+                        db.dist_from_52w_high,
+                        db.high_52w,
+                        db.low_52w,
+                        db.ema_10,
+                        db.ema_20,
+                        db.ema_50,
+                        db.sma_200,
+                        db.vcp_is_setup,
+                        db.low_cheat_is_setup,
+                        db.ti_65,
+                        db.ret_1m,
+                        db.ret_3m,
+                        db.ret_6m,
+                        db.atr_20d,
+                        COALESCE(db.is_52w_high, false) as is_rs_blue_dot,
+                        LEAD(db.close, 1) OVER (PARTITION BY db.symbol ORDER BY db.date DESC) as prev_close,
+                        ROW_NUMBER() OVER (PARTITION BY db.symbol ORDER BY db.date DESC) as rn
+                    FROM daily_bars db
+                    WHERE db.symbol IN (SELECT symbol FROM target_symbols WHERE symbol NOT IN (SELECT symbol FROM latest_bars))
+                ),
+                all_latest_bars AS (
+                    SELECT * FROM latest_bars
+                    UNION ALL
+                    SELECT * FROM fallback_bars WHERE rn = 1
                 ),
                 latest_fundamentals AS (
                     SELECT 
@@ -3247,19 +3303,19 @@ class DatabaseService:
                         inst_holders_count,
                         inst_holders_qoq_change,
                         inst_ownership_pct,
-                        sponsorship_streak,
-                        ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY fiscal_quarter DESC) as rn
+                        sponsorship_streak
                     FROM quarterly_fundamentals
                     WHERE symbol IN (SELECT symbol FROM target_symbols)
+                    QUALIFY ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY fiscal_quarter DESC) = 1
                 ),
                 latest_sponsorship AS (
                     SELECT 
                         symbol,
                         holders_count,
-                        holders_qoq_change,
-                        ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY fiscal_quarter DESC) as rn
+                        holders_qoq_change
                     FROM institutional_sponsorship
                     WHERE symbol IN (SELECT symbol FROM target_symbols)
+                    QUALIFY ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY fiscal_quarter DESC) = 1
                 )
                 SELECT 
                     s.symbol,
@@ -3272,10 +3328,10 @@ class DatabaseService:
                     lb.vol_50d_ma,
                     lb.volume,
                     ts.added_at,
-                    COALESCE(lb.dollar_vol_50d_ma, lb.close * lb.vol_50d_ma) as dollar_vol_50d_ma,
+                    lb.dollar_vol_50d_ma,
                     s.active,
-                    lb.date as last_trade_date,
-                    ROUND((lb.close - pb.prev_close) / NULLIF(pb.prev_close, 0) * 100.0, 2) as chg_pct,
+                    lb.last_trade_date,
+                    ROUND((lb.close - lb.prev_close) / NULLIF(lb.prev_close, 0) * 100.0, 2) as chg_pct,
                     ROUND(lb.volume / NULLIF(lb.vol_50d_ma, 0) * 100.0, 0) as rvol_pct,
                     lb.adr_20d,
                     lb.dist_from_52w_high,
@@ -3297,13 +3353,12 @@ class DatabaseService:
                     COALESCE(isp.holders_count, f.inst_holders_count) as inst_holders_count,
                     COALESCE(isp.holders_qoq_change, f.inst_holders_qoq_change) as inst_holders_qoq_change,
                     f.sponsorship_streak,
-                    COALESCE(lb.is_52w_high, false) as is_rs_blue_dot
+                    lb.is_rs_blue_dot
                 FROM target_symbols ts
                 JOIN symbols s ON ts.symbol = s.symbol
-                LEFT JOIN latest_bars lb ON s.symbol = lb.symbol
-                LEFT JOIN prev_bars pb ON s.symbol = pb.symbol
-                LEFT JOIN latest_fundamentals f ON s.symbol = f.symbol AND f.rn = 1
-                LEFT JOIN latest_sponsorship isp ON s.symbol = isp.symbol AND isp.rn = 1
+                LEFT JOIN all_latest_bars lb ON s.symbol = lb.symbol
+                LEFT JOIN latest_fundamentals f ON s.symbol = f.symbol
+                LEFT JOIN latest_sponsorship isp ON s.symbol = isp.symbol
                 ORDER BY ts.added_at DESC
             """
             rows = conn.execute(query, [watchlist_id]).fetchall()

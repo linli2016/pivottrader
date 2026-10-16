@@ -1734,6 +1734,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           <span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">C</span><span style="color: ${ohlcColor}; font-weight: 600;">${close.toFixed(2)}</span></span>
         </span>
         <span style="color: ${changeColor}; font-weight: 700;">${changeSign}${change.toFixed(2)} (${changeSign}${changePct.toFixed(2)}%)</span>
+        <span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">Vol</span><span style="color: #38bdf8; font-weight: 700;">${volFormatted}</span></span>
         ${hasRs && showRsLineRef.current ? `<span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">RS</span><span style="color: #38bdf8; font-weight: 700;">${hasNormRs ? (bar.normalized_rs >= 0 ? '+' : '') + bar.normalized_rs.toFixed(2) : Number(bar.rs_line).toFixed(2)}</span></span>` : ''}
         ${isBlueDot && showRsLineRef.current ? `<span style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 1px 6px; border-radius: 4px; font-size: 10.5px; font-weight: 700;">🔵 RS Blue Dot</span>` : ''}
       </div>

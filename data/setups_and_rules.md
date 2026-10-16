@@ -98,12 +98,24 @@ This method can also be traded by anticipating the breakout but I don’t find i
 - For that we look at : - Context of the earnings. Is this a first major earnings acceleration. - What caused this acceleration. Is it one time or likely to persist. - Does this earnings trend represent a structural change in the industry or the position of this company. - Is this surprise reflected in current price level.
 - If a earnings EP happens on low float stock it is ideal situation. 
 
-### 4. Parabolic Short
+### 4. EP9 Million (Stockbee)
+#### Setup
+- **Volume Footprint:** Stock trading **9 million shares or more** in a single session.
+- **Volume Multiple:** Current volume must be **$\ge 3$ times** the 50-day average volume ($\text{RelVol} \ge 3.0$).
+- **Daily Price Gain:** At least **$+4.0\%$** gain on the day ($C \ge C_1 \times 1.04$).
+- **Candle Color:** **Green candle** ($C \ge O$, Close $\ge$ Open), ensuring buyers dominated the session.
+- **Price Floor:** Minimum price $\ge \$3.00$ to eliminate illiquid micro-penny traps.
+- **The Core Premise:** *Abnormal volume is hard information.* Combining massive liquidity ($\ge 9\text{M}$ shares) with extreme relative volume ($\ge 3\times$ ADV) and positive price momentum ($+4\%+$, green candle) reliably isolates genuine institutional accumulation while eliminating mega-cap noise and distribution days.
+#### How to Trade
+- **Day-1 ORH Breakout:** Enter intraday on the breakout of the Opening Range High (1-minute, 2-minute, or 5-minute ORH) on heavy morning volume. Stop loss placed at Low of the Day (LOD).
+- **Delayed Reaction EP (2–5 Day Consolidation):** Add qualifying stocks to an EP focus watchlist. Allow the stock 2 to 5 sessions to digest the initial surge, form an orderly flag or tight range on drying volume, and enter on the secondary breakout with a tight stop at the consolidation low.
+
+### 5. Parabolic Short
   - A stock up 50-100%+ in a few days or weeks (if larger cap) or 300-1000%+ (if smaller cap).
   - The stock should be up 3-5+ days in a row. Many times you have examples where a stock trends higher for weeks or months and then starts speeding up, some just explode from nowhere.
   - **Reversal Trigger:** First high-volume red day or breakdown below previous day's low.
 
-### 5. Minervini Base Setups (Low Cheat, Cheat / 3-C, Cup and Handle)
+### 6. Minervini Base Setups (Low Cheat, Cheat / 3-C, Cup and Handle)
 * **Objective:** Buy asymmetric, low-risk pivot entry points as supply dries up across base development in confirmed Stage 2 uptrends (Mark Minervini SEPA® methodology).
 * **Minervini Base Progression Sub-Views:**
   1. **Low Cheat (Lower Base Reversal):**
@@ -123,7 +135,7 @@ This method can also be traded by anticipating the breakout but I don’t find i
      - **Pivot Trigger:** Breakout through the handle pivot / cup lip on heavy volume.
 
 
-### 6. IPO Base
+### 7. IPO Base
 * **Objective:** Catch early institutional accumulation in high-growth newly public companies.
 * **Criteria:**
   - **Age:** IPO date within the last 350 trading days.
@@ -131,7 +143,7 @@ This method can also be traded by anticipating the breakout but I don’t find i
   - **Proximity:** Consolidation within $15\%$ of All-Time Highs (ATH).
 
 
-### 7. Kristjan Qullamaggie Momentum Scanners (1M / 3M / 6M)
+### 8. Kristjan Qullamaggie Momentum Scanners (1M / 3M / 6M)
 * **Objective:** Filter the entire US stock universe down to the top 1% to 2% strongest market leaders setting up for high-probability explosive swings.
 * **Baseline Filters:**
   - **Price:** $\ge \$2.00$ (eliminates micro-penny stocks).

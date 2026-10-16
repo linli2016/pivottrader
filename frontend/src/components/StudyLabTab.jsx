@@ -19,6 +19,7 @@ const SETUP_COLORS = {
   qm_breakouts: '#f59e0b',
   standard: '#f59e0b',
   episodic_pivot: '#ec4899',
+  ep_9_million: '#f43f5e',
   parabolic: '#ef4444',
   parabolic_short: '#ef4444',
   cup_and_handle: '#10b981',
@@ -57,6 +58,7 @@ const SETUP_CANONICAL_NAMES = {
   qm_breakouts: 'QM Breakouts',
   standard: 'QM Breakouts',
   episodic_pivot: 'Episodic Pivot',
+  ep_9_million: 'EP9 Million',
   parabolic: 'Parabolic Short',
   parabolic_short: 'Parabolic Short',
   weinstein_breakdown: 'Stage 4 Breakdown',
@@ -152,7 +154,6 @@ export default function StudyLabTab({
 
   // Filters on Candidates List
   const [selectedIndustry, setSelectedIndustry] = useState('ALL');
-  const [stage2Only, setStage2Only] = useState(false);
   const [previewGroupModal, setPreviewGroupModal] = useState(null);
 
   // Watchlist integration
@@ -442,12 +443,8 @@ export default function StudyLabTab({
       });
     }
 
-    if (stage2Only) {
-      list = list.filter(c => c.industry_stage_num === 2);
-    }
-
     return list;
-  }, [rawCandidates, selectedIndustry, stage2Only]);
+  }, [rawCandidates, selectedIndustry]);
 
   const currentCandidate = displayedCandidates[browseIndex] || null;
 
@@ -547,44 +544,7 @@ export default function StudyLabTab({
     handleRunScan(activeScreenerId, { start: preset.start, end: preset.end });
   };
 
-  // Next earnings badge
-  const browseEarningsBadge = useMemo(() => {
-    const dt = currentCandidate?.next_earnings_date;
-    if (!dt) return null;
-    try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const target = new Date(dt + 'T00:00:00');
-      const diffTime = target.getTime() - today.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-      let badgeSub = '';
-      let isUrgent = false;
-
-      if (diffDays === 0) {
-        badgeSub = 'Today';
-        isUrgent = true;
-      } else if (diffDays === 1) {
-        badgeSub = 'Tomorrow';
-        isUrgent = true;
-      } else if (diffDays > 1) {
-        badgeSub = `in ${diffDays}d`;
-        if (diffDays <= 7) isUrgent = true;
-      } else {
-        badgeSub = `${Math.abs(diffDays)}d ago`;
-      }
-
-      return {
-        dateStr: dt,
-        badgeSub,
-        diffDays,
-        isUrgent,
-        displayText: `Earning ${badgeSub}`
-      };
-    } catch (e) {
-      return { dateStr: dt, displayText: `Earning ${dt}`, isUrgent: false };
-    }
-  }, [currentCandidate?.next_earnings_date]);
 
   // RS Blue Dot indicator
   const currentHasBlueDot = useMemo(() => {
@@ -846,75 +806,44 @@ export default function StudyLabTab({
           <div className="glass-card" style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: '6px', flexShrink: 0 }}>
             {/* Top Row: Symbol, Name, Subtitle (Exchange • Sector • Industry Button) on Left, Watchlist & Model Book on Right */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              {/* Left: Brand Icon + Ticker + Name + Subtitle */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+              {/* Left: Brand Icon + Ticker + Name + Sector + Industry */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flexWrap: 'wrap' }}>
                 <StockBrandIcon symbol={currentCandidate?.symbol} size={22} />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.5px' }}>
-                      {currentCandidate?.symbol || 'No Selection'}
-                    </span>
-                    <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '360px' }}>
-                      {currentCandidate?.name || ''}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                      {currentCandidate?.exchange || ''} • {currentCandidate?.sector || 'Sector'}
-                    </span>
-                    {currentCandidate?.industry && (
-                      <button
-                        type="button"
-                        onClick={() => setPreviewGroupModal({ groupType: 'industries', groupName: currentCandidate.industry })}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '2px 8px',
-                          borderRadius: '5px',
-                          background: 'rgba(56, 189, 248, 0.1)',
-                          border: '1px solid rgba(56, 189, 248, 0.3)',
-                          color: '#38bdf8',
-                          fontSize: '11.5px',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease'
-                        }}
-                        className="hover-brighten"
-                        title="Click to view Stan Weinstein Stage Analysis Chart & Breadth for this Industry"
-                      >
-                        <span>🏭 {currentCandidate.industry}</span>
-                        {currentCandidate.industry_stage_num ? (
-                          <span
-                            style={{
-                              fontSize: '10px',
-                              fontWeight: 700,
-                              padding: '1px 5px',
-                              borderRadius: '3px',
-                              background: currentCandidate.industry_stage_num === 2 ? 'rgba(16, 185, 129, 0.25)' : currentCandidate.industry_stage_num === 1 ? 'rgba(56, 189, 248, 0.25)' : currentCandidate.industry_stage_num === 3 ? 'rgba(245, 158, 11, 0.25)' : 'rgba(244, 63, 94, 0.25)',
-                              color: currentCandidate.industry_stage_num === 2 ? '#10b981' : currentCandidate.industry_stage_num === 1 ? '#38bdf8' : currentCandidate.industry_stage_num === 3 ? '#f59e0b' : '#f43f5e',
-                              border: `1px solid ${currentCandidate.industry_stage_num === 2 ? 'rgba(16, 185, 129, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`
-                            }}
-                          >
-                            {currentCandidate.industry_stage_badge || `S${currentCandidate.industry_stage_num}`}
-                          </span>
-                        ) : null}
-                        {currentCandidate.industry_mansfield_rs !== undefined && currentCandidate.industry_mansfield_rs !== null && (
-                          <span
-                            style={{
-                              fontSize: '10px',
-                              fontWeight: 700,
-                              color: currentCandidate.industry_mansfield_rs >= 0 ? '#34d399' : '#f87171'
-                            }}
-                          >
-                            RS {currentCandidate.industry_mansfield_rs >= 0 ? '+' : ''}{Number(currentCandidate.industry_mansfield_rs).toFixed(1)}%
-                          </span>
-                        )}
-                        <span style={{ fontSize: '10px', opacity: 0.85 }}>📈 Chart</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
+                <span style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.5px' }}>
+                  {currentCandidate?.symbol || 'No Selection'}
+                </span>
+                <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '320px' }}>
+                  {currentCandidate?.name || ''}
+                </span>
+                {currentCandidate?.sector && (
+                  <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                    {currentCandidate.sector}
+                  </span>
+                )}
+                {currentCandidate?.industry && (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewGroupModal({ groupType: 'industries', groupName: currentCandidate.industry })}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '2px 8px',
+                      borderRadius: '5px',
+                      background: 'rgba(56, 189, 248, 0.1)',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                      color: '#38bdf8',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                    className="hover-brighten"
+                    title="Click to view Stan Weinstein Stage Analysis Chart & Breadth for this Industry"
+                  >
+                    <span>🏭 {currentCandidate.industry}</span>
+                  </button>
+                )}
               </div>
 
               {/* Right: Watchlist + Save to Model Book + Screenshot + Inspect */}
@@ -1068,23 +997,7 @@ export default function StudyLabTab({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               {/* Left: Badges Group */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                {/* Setup Date Badge */}
-                {currentCandidate?.setup_date && (
-                  <span
-                    className="pill"
-                    style={{
-                      fontSize: '11px',
-                      padding: '3px 8px',
-                      background: 'rgba(56, 189, 248, 0.18)',
-                      color: '#38bdf8',
-                      border: '1px solid rgba(56, 189, 248, 0.35)',
-                      fontWeight: 700
-                    }}
-                    title="Setup Bar Date"
-                  >
-                    📅 Setup: {currentCandidate.setup_date}
-                  </span>
-                )}
+
 
                 {/* RS Rank */}
                 <span className="pill pill-success" style={{ fontSize: '11px', padding: '3px 8px' }}>
@@ -1217,23 +1130,7 @@ export default function StudyLabTab({
                   </span>
                 )}
 
-                {/* Next Earnings Date Badge */}
-                {browseEarningsBadge ? (
-                  <span
-                    className="pill"
-                    style={{
-                      fontSize: '11px',
-                      padding: '3px 8px',
-                      fontWeight: '700',
-                      background: browseEarningsBadge.isUrgent ? 'rgba(239, 68, 68, 0.2)' : 'rgba(168, 85, 247, 0.2)',
-                      color: browseEarningsBadge.isUrgent ? '#f87171' : '#c084fc',
-                      border: `1px solid ${browseEarningsBadge.isUrgent ? 'rgba(239, 68, 68, 0.4)' : 'rgba(168, 85, 247, 0.4)'}`
-                    }}
-                    title={`Next Earnings Date: ${browseEarningsBadge.dateStr}`}
-                  >
-                    {browseEarningsBadge.displayText}
-                  </span>
-                ) : null}
+
 
                 {/* Market Tape Badge */}
                 {currentCandidate?.market_regime && (
@@ -1290,11 +1187,11 @@ export default function StudyLabTab({
         {/* Side Col: Candidate List Ribbon (Right Column) */}
         <div className="glass-card browse-side-col">
           {/* Header: Total Count + Prev/Next Buttons + Export CSV */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexShrink: 0 }}>
-            <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent-color)', textTransform: 'uppercase', margin: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexShrink: 0, gap: '6px' }}>
+            <h4 style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--accent-color)', textTransform: 'uppercase', margin: 0, whiteSpace: 'nowrap', flexShrink: 0 }}>
               Total ({displayedCandidates.length}{selectedIndustry !== 'ALL' ? ` / ${rawCandidates.length}` : ''})
             </h4>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
@@ -1302,12 +1199,17 @@ export default function StudyLabTab({
                 disabled={browseIndex <= 0}
                 title="Previous Candidate (▲ or k)"
                 style={{
-                  padding: '2px 8px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '26px',
+                  height: '26px',
+                  padding: 0,
                   fontSize: '11px',
-                  height: '26px'
+                  borderRadius: '6px'
                 }}
               >
-                ▲ Prev
+                ▲
               </button>
               <button
                 type="button"
@@ -1316,12 +1218,17 @@ export default function StudyLabTab({
                 disabled={browseIndex >= displayedCandidates.length - 1}
                 title="Next Candidate (▼ or j)"
                 style={{
-                  padding: '2px 8px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '26px',
+                  height: '26px',
+                  padding: 0,
                   fontSize: '11px',
-                  height: '26px'
+                  borderRadius: '6px'
                 }}
               >
-                Next ▼
+                ▼
               </button>
               <button
                 type="button"
@@ -1379,29 +1286,6 @@ export default function StudyLabTab({
                 </option>
               ))}
             </select>
-
-            <label style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '11.5px',
-              color: stage2Only ? '#34d399' : 'var(--text-secondary)',
-              fontWeight: stage2Only ? '600' : '400',
-              cursor: 'pointer',
-              userSelect: 'none',
-              padding: '2px 0'
-            }}>
-              <input
-                type="checkbox"
-                checked={stage2Only}
-                onChange={(e) => {
-                  setStage2Only(e.target.checked);
-                  setBrowseIndex(0);
-                }}
-                style={{ cursor: 'pointer', accentColor: '#10b981' }}
-              />
-              <span>Stage 2 Only</span>
-            </label>
           </div>
 
           {/* Candidate List (Scrollable Cards) */}
@@ -1432,7 +1316,7 @@ export default function StudyLabTab({
                     ref={isSelected ? selectedCandidateRowRef : null}
                     onClick={() => setBrowseIndex(idx)}
                     style={{
-                      padding: '8px 10px',
+                      padding: '7px 10px',
                       borderRadius: '6px',
                       cursor: 'pointer',
                       transition: 'all 0.15s ease',
@@ -1444,62 +1328,24 @@ export default function StudyLabTab({
                         : '1px solid rgba(255, 255, 255, 0.08)',
                       boxShadow: isSelected ? '0 2px 8px rgba(56, 189, 248, 0.25)' : 'none',
                       display: 'flex',
-                      flexDirection: 'column',
-                      gap: '4px'
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
                     }}
                   >
-                    {/* Row 1: Symbol + Setup Date + Price + ADR% */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '13px', fontWeight: 800, color: isSelected ? '#38bdf8' : 'var(--text-primary)' }}>
-                          {cand.symbol}
-                        </span>
-                        <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
-                          {cand.setup_date || cand.date}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        {isSaved && (
-                          <span style={{ fontSize: '11px', color: '#34d399', fontWeight: 700 }} title="Saved in Model Book">
-                            ★
-                          </span>
-                        )}
-                        <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                          ${cand.close?.toFixed(2) || '-'}
-                        </span>
-                        {cand.adr_20d !== null && cand.adr_20d !== undefined && (
-                          <span style={{
-                            fontSize: '10px',
-                            padding: '1px 4px',
-                            borderRadius: '3px',
-                            background: cand.adr_20d >= 5 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(59, 130, 246, 0.15)',
-                            color: cand.adr_20d >= 5 ? '#f59e0b' : '#60a5fa',
-                            fontWeight: 600
-                          }}>
-                            {cand.adr_20d.toFixed(1)}%
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Row 2: Company Name / Industry + Runup / Depth */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10.5px', color: 'var(--text-secondary)' }}>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '170px' }}>
-                        {cand.industry || cand.sector || cand.name || ''}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, whiteSpace: 'nowrap' }}>
+                      <StockBrandIcon symbol={cand.symbol} size={18} />
+                      <span style={{ fontSize: '13px', fontWeight: 800, color: isSelected ? '#38bdf8' : 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                        {cand.symbol}
                       </span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        {cand.prior_runup_pct > 0 && (
-                          <span style={{ color: '#34d399', fontWeight: 600 }}>
-                            +{cand.prior_runup_pct}%
-                          </span>
-                        )}
-                        {cand.base_depth_pct > 0 && (
-                          <span style={{ color: 'var(--text-muted)' }}>
-                            -{cand.base_depth_pct}%
-                          </span>
-                        )}
-                      </div>
+                      {isSaved && (
+                        <span style={{ fontSize: '11px', color: '#34d399', fontWeight: 700 }} title="Saved in Model Book">
+                          ★
+                        </span>
+                      )}
                     </div>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      {cand.setup_date || cand.date}
+                    </span>
                   </div>
                 );
               })

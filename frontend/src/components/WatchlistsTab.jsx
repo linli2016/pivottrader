@@ -16,6 +16,10 @@ export const QUADRANT_COLORS = {
   Lagging: { accent: '#f43f5e', bg: 'rgba(244, 63, 94, 0.15)', border: 'rgba(244, 63, 94, 0.35)', title: 'Lagging' },
 };
 
+// Global in-memory cache to preserve watchlist items and stock details across tab switches
+const globalWatchlistItemsCache = new Map(); // watchlistId -> items[]
+const globalStockDataCache = new Map(); // symbol -> { prices, detail, peersData }
+
 export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetchWatchlists }) {
   // Main Navigation Mode for Right Dock: 'watchlists' | 'groups' | 'positions'
   const [dockTab, setDockTab] = useState('watchlists');
@@ -24,24 +28,102 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     dockTabRef.current = dockTab;
   }, [dockTab]);
 
-  // Active Stock & Chart Data
-  const [selectedStock, setSelectedStock] = useState(null);
+  // Selected Watchlist ID (persisted across tab switches & page refreshes)
+  const [selectedWatchlistId, setSelectedWatchlistId] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pt_watchlist_selected_id');
+      if (saved) {
+        const val = parseInt(saved, 10);
+        if (!isNaN(val)) return val;
+      }
+    } catch (_) {}
+    if (watchlists && watchlists.length > 0) {
+      const mag7 = watchlists.find((w) => w.name.toLowerCase() === 'mag 7');
+      return mag7 ? mag7.id : watchlists[0].id;
+    }
+    return null;
+  });
+
+  const [targetWatchlistId, setTargetWatchlistId] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pt_watchlist_selected_id');
+      if (saved) {
+        const val = parseInt(saved, 10);
+        if (!isNaN(val)) return val;
+      }
+    } catch (_) {}
+    if (watchlists && watchlists.length > 0) {
+      const mag7 = watchlists.find((w) => w.name.toLowerCase() === 'mag 7');
+      return mag7 ? mag7.id : watchlists[0].id;
+    }
+    return null;
+  });
+
+  const [items, setItems] = useState(() => {
+    try {
+      const initialId = (() => {
+        const saved = localStorage.getItem('pt_watchlist_selected_id');
+        if (saved) {
+          const val = parseInt(saved, 10);
+          if (!isNaN(val)) return val;
+        }
+        return watchlists?.[0]?.id || null;
+      })();
+      if (initialId && globalWatchlistItemsCache.has(initialId)) {
+        return globalWatchlistItemsCache.get(initialId);
+      }
+    } catch (_) {}
+    return [];
+  });
+
+  // Active Stock & Chart Data (persisted & restored from cache for 0ms initial render)
+  const [selectedStock, setSelectedStock] = useState(() => {
+    try {
+      const savedSym = localStorage.getItem('pt_watchlist_selected_symbol');
+      const initialId = (() => {
+        const saved = localStorage.getItem('pt_watchlist_selected_id');
+        if (saved) {
+          const val = parseInt(saved, 10);
+          if (!isNaN(val)) return val;
+        }
+        return watchlists?.[0]?.id || null;
+      })();
+      const cached = initialId && globalWatchlistItemsCache.has(initialId) ? globalWatchlistItemsCache.get(initialId) : null;
+      if (savedSym) {
+        if (cached && cached.length > 0) {
+          const found = cached.find((i) => i.symbol?.toUpperCase() === savedSym.toUpperCase());
+          if (found) return found;
+        }
+        return { symbol: savedSym.toUpperCase() };
+      }
+      if (cached && cached.length > 0) {
+        return cached[0];
+      }
+    } catch (_) {}
+    return null;
+  });
   const selectedStockRef = useRef(selectedStock);
   useEffect(() => {
     selectedStockRef.current = selectedStock;
+    if (selectedStock?.symbol) {
+      try {
+        localStorage.setItem('pt_watchlist_selected_symbol', selectedStock.symbol.toUpperCase());
+      } catch (_) {}
+    }
   }, [selectedStock]);
 
-  const [stockPrices, setStockPrices] = useState([]);
-  const [displayedPricesSymbol, setDisplayedPricesSymbol] = useState(null);
+  const initialSym = selectedStock?.symbol?.toUpperCase();
+  const initialStockData = initialSym && globalStockDataCache.has(initialSym) ? globalStockDataCache.get(initialSym) : null;
+
+  const [stockPrices, setStockPrices] = useState(() => initialStockData?.prices || []);
+  const [displayedPricesSymbol, setDisplayedPricesSymbol] = useState(() => initialStockData ? initialSym : null);
   const [loadingPrices, setLoadingPrices] = useState(false);
   const displayItemsRef = useRef([]);
 
   // Stock Details / Telemetry
-  const [stockDetail, setStockDetail] = useState(null);
-  const [financials, setFinancials] = useState(null);
-  const [peersData, setPeersData] = useState(null);
+  const [stockDetail, setStockDetail] = useState(() => initialStockData?.detail || null);
+  const [peersData, setPeersData] = useState(() => initialStockData?.peersData || null);
   const [loadingDetail, setLoadingDetail] = useState(false);
-  const watchlistDataCacheRef = useRef(new Map()); // symbol -> { prices, detail, financials, peersData }
   const [fundTab, setFundTab] = useState('institutions');
   const [profileExpanded, setProfileExpanded] = useState(false);
 
@@ -150,10 +232,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   // -------------------------------------------------------------
   // TAB 1: WATCHLIST STATE
   // -------------------------------------------------------------
-  const [selectedWatchlistId, setSelectedWatchlistId] = useState(null);
-  const [targetWatchlistId, setTargetWatchlistId] = useState(null);
   const [targetItems, setTargetItems] = useState([]);
-  const [items, setItems] = useState([]);
   const activeWatchlistSymbols = useMemo(() => {
     return new Set((items || []).map((i) => i.symbol?.toUpperCase()).filter(Boolean));
   }, [items]);
@@ -346,23 +425,35 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     if (watchlists.length > 0) {
       if (!selectedWatchlistId) {
         const mag7 = watchlists.find((w) => w.name.toLowerCase() === 'mag 7');
-        setSelectedWatchlistId(mag7 ? mag7.id : watchlists[0].id);
-      }
-      if (!targetWatchlistId) {
-        const mag7 = watchlists.find((w) => w.name.toLowerCase() === 'mag 7');
-        setTargetWatchlistId(mag7 ? mag7.id : watchlists[0].id);
+        const fallbackId = mag7 ? mag7.id : watchlists[0].id;
+        setSelectedWatchlistId(fallbackId);
+        setTargetWatchlistId(fallbackId);
       }
     }
-  }, [watchlists, selectedWatchlistId, targetWatchlistId]);
+  }, [watchlists, selectedWatchlistId]);
+
+  useEffect(() => {
+    if (selectedWatchlistId) {
+      try {
+        localStorage.setItem('pt_watchlist_selected_id', String(selectedWatchlistId));
+      } catch (_) {}
+    }
+  }, [selectedWatchlistId]);
 
   // Target Watchlist items for targetWatchlistSymbols
   const fetchTargetItems = useCallback(async (wId) => {
     if (!wId) return;
+    if (globalWatchlistItemsCache.has(wId)) {
+      setTargetItems(globalWatchlistItemsCache.get(wId));
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/api/watchlists/${wId}/items`);
       if (res.ok) {
         const data = await res.json();
-        setTargetItems(Array.isArray(data) ? data : []);
+        const arr = Array.isArray(data) ? data : [];
+        globalWatchlistItemsCache.set(wId, arr);
+        setTargetItems(arr);
       }
     } catch (e) {
       console.error('Error fetching target watchlist items:', e);
@@ -385,11 +476,14 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   // Fetch watchlist items
   const fetchItems = useCallback(async (wId) => {
     if (!wId) return;
-    setLoadingItems(true);
+    if (!globalWatchlistItemsCache.has(wId)) {
+      setLoadingItems(true);
+    }
     try {
       const res = await fetch(`${API_BASE}/api/watchlists/${wId}/items`);
       if (res.ok) {
         const data = await res.json();
+        globalWatchlistItemsCache.set(wId, data);
         setItems(data);
         if (data.length > 0) {
           setSelectedStock((current) => {
@@ -486,40 +580,53 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     }
   };
 
-  // Prefetch adjacent stocks for instantaneous 0ms flip
-  const prefetchAdjacentWatchlistStocks = useCallback((currentSym, stockList) => {
-    const list = stockList || displayItemsRef.current || [];
-    if (!list || list.length <= 1) return;
-    const idx = list.findIndex((s) => (s.symbol || '').toUpperCase() === currentSym);
-    if (idx === -1) return;
-    const targets = [];
-    [-2, -1, 1, 2].forEach((offset) => {
-      const targetIdx = idx + offset;
-      if (targetIdx >= 0 && targetIdx < list.length) {
-        const s = (list[targetIdx].symbol || '').toUpperCase();
-        if (s && !watchlistDataCacheRef.current.has(s) && !targets.includes(s)) {
-          targets.push(s);
-        }
-      }
-    });
+  // Prefetch adjacent stocks with low priority when idle
+  const prefetchTimeoutRef = useRef(null);
 
-    targets.forEach(async (targetSym) => {
-      try {
-        const [pRes, dRes, fRes, peRes] = await Promise.all([
-          fetch(`${API_BASE}/api/stocks/${targetSym}/prices?limit=3500`),
-          fetch(`${API_BASE}/api/stocks/${targetSym}`),
-          fetch(`${API_BASE}/api/stocks/${targetSym}/financials`),
-          fetch(`${API_BASE}/api/stocks/${targetSym}/peers?limit=6`)
-        ]);
-        const [prices, detail, fin, peers] = await Promise.all([
-          pRes.ok ? pRes.json() : [],
-          dRes.ok ? dRes.json() : null,
-          fRes.ok ? fRes.json() : null,
-          peRes.ok ? peRes.json() : null,
-        ]);
-        watchlistDataCacheRef.current.set(targetSym, { prices, detail, financials: fin, peersData: peers });
-      } catch (_) {}
-    });
+  const scheduleAdjacentPrefetch = useCallback((currentSym, stockList) => {
+    if (prefetchTimeoutRef.current) {
+      clearTimeout(prefetchTimeoutRef.current);
+    }
+    prefetchTimeoutRef.current = setTimeout(() => {
+      const list = stockList || displayItemsRef.current || [];
+      if (!list || list.length <= 1) return;
+      const idx = list.findIndex((s) => (s.symbol || '').toUpperCase() === currentSym);
+      if (idx === -1) return;
+      const targets = [];
+      [-1, 1].forEach((offset) => {
+        const targetIdx = idx + offset;
+        if (targetIdx >= 0 && targetIdx < list.length) {
+          const s = (list[targetIdx].symbol || '').toUpperCase();
+          if (s && !globalStockDataCache.has(s) && !targets.includes(s)) {
+            targets.push(s);
+          }
+        }
+      });
+
+      targets.forEach(async (targetSym) => {
+        try {
+          const [pRes, dRes] = await Promise.all([
+            fetch(`${API_BASE}/api/stocks/${targetSym}/prices?limit=3500`, { priority: 'low' }),
+            fetch(`${API_BASE}/api/stocks/${targetSym}`, { priority: 'low' })
+          ]);
+          const [prices, detail] = await Promise.all([
+            pRes.ok ? pRes.json() : [],
+            dRes.ok ? dRes.json() : null
+          ]);
+          if (prices.length > 0) {
+            globalStockDataCache.set(targetSym, { prices, detail, peersData: null });
+          }
+        } catch (_) {}
+      });
+    }, 600);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (prefetchTimeoutRef.current) {
+        clearTimeout(prefetchTimeoutRef.current);
+      }
+    };
   }, []);
 
   // Centralized stock selection: updates immediately in one batch if cached, or triggers fetch without unmounting charts
@@ -529,7 +636,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       setStockPrices([]);
       setDisplayedPricesSymbol(null);
       setStockDetail(null);
-      setFinancials(null);
       setPeersData(null);
       return;
     }
@@ -537,18 +643,17 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     setSelectedStock(stock);
 
     const sym = stock.symbol.toUpperCase();
-    if (watchlistDataCacheRef.current.has(sym)) {
-      const cached = watchlistDataCacheRef.current.get(sym);
+    if (globalStockDataCache.has(sym)) {
+      const cached = globalStockDataCache.get(sym);
       setStockPrices(cached.prices);
       setDisplayedPricesSymbol(sym);
       setStockDetail(cached.detail);
-      setFinancials(cached.financials);
       setPeersData(cached.peersData);
       setLoadingPrices(false);
       setLoadingDetail(false);
-      prefetchAdjacentWatchlistStocks(sym, displayItemsRef.current);
+      scheduleAdjacentPrefetch(sym, displayItemsRef.current);
     }
-  }, [prefetchAdjacentWatchlistStocks]);
+  }, [scheduleAdjacentPrefetch]);
 
   // Quick ticker search in inspector drawer
   const handleInspectTickerSubmit = (e) => {
@@ -579,7 +684,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       setStockPrices([]);
       setDisplayedPricesSymbol(null);
       setStockDetail(null);
-      setFinancials(null);
       setPeersData(null);
       return;
     }
@@ -587,16 +691,15 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     const sym = selectedStock.symbol.toUpperCase();
 
     // 1. Instant 0ms cache hit
-    if (watchlistDataCacheRef.current.has(sym)) {
-      const cached = watchlistDataCacheRef.current.get(sym);
+    if (globalStockDataCache.has(sym)) {
+      const cached = globalStockDataCache.get(sym);
       setStockPrices(cached.prices);
       setDisplayedPricesSymbol(sym);
       setStockDetail(cached.detail);
-      setFinancials(cached.financials);
       setPeersData(cached.peersData);
       setLoadingPrices(false);
       setLoadingDetail(false);
-      prefetchAdjacentWatchlistStocks(sym, displayItemsRef.current);
+      scheduleAdjacentPrefetch(sym, displayItemsRef.current);
       return;
     }
 
@@ -605,7 +708,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
 
     let pricesData = null;
     let detailData = null;
-    let financialsData = null;
     let peersDataRes = null;
 
     const pPrices = fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=3500`)
@@ -643,17 +745,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         return null;
       });
 
-    const pFin = fetch(`${API_BASE}/api/stocks/${sym}/financials`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((fin) => {
-        if (selectedStockRef.current?.symbol?.toUpperCase() === sym) {
-          financialsData = fin;
-          setFinancials(fin);
-        }
-        return fin;
-      })
-      .catch(() => null);
-
     const pPeers = fetch(`${API_BASE}/api/stocks/${sym}/peers?limit=6`)
       .then((res) => (res.ok ? res.json() : null))
       .then((peers) => {
@@ -665,16 +756,15 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       })
       .catch(() => null);
 
-    Promise.all([pPrices, pDetail, pFin, pPeers]).then(() => {
-      watchlistDataCacheRef.current.set(sym, {
+    Promise.all([pPrices, pDetail, pPeers]).then(() => {
+      globalStockDataCache.set(sym, {
         prices: pricesData || [],
         detail: detailData,
-        financials: financialsData,
         peersData: peersDataRes
       });
-      prefetchAdjacentWatchlistStocks(sym, displayItemsRef.current);
+      scheduleAdjacentPrefetch(sym, displayItemsRef.current);
     });
-  }, [selectedStock?.symbol, prefetchAdjacentWatchlistStocks]);
+  }, [selectedStock?.symbol, scheduleAdjacentPrefetch]);
 
   // Quick Add Symbol to active watchlist
   const handleAddSymbol = async (e) => {
@@ -690,6 +780,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         body: JSON.stringify({ symbol: sym })
       });
       if (res.ok) {
+        globalWatchlistItemsCache.delete(selectedWatchlistId);
         setNewSymbolInput('');
         fetchItems(selectedWatchlistId);
         if (fetchWatchlists) fetchWatchlists();
@@ -712,6 +803,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         body: JSON.stringify({ symbol: sym.toUpperCase() })
       });
       if (res.ok) {
+        globalWatchlistItemsCache.delete(targetWId);
         if (targetWId === selectedWatchlistId) {
           fetchItems(selectedWatchlistId);
         }
@@ -736,6 +828,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         method: 'DELETE'
       });
       if (res.ok) {
+        globalWatchlistItemsCache.delete(selectedWatchlistId);
         setItems((prev) => {
           const updated = prev.filter((i) => i.symbol !== sym);
           if (dockTabRef.current === 'watchlists' && selectedStock?.symbol === sym) {
@@ -766,6 +859,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
           method: 'DELETE'
         });
         if (res.ok) {
+          globalWatchlistItemsCache.delete(targetWId);
           if (isTargetSame) {
             setItems((prev) => {
               const updated = prev.filter((i) => i.symbol?.toUpperCase() !== symUpper);
@@ -787,6 +881,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
           body: JSON.stringify({ symbol: symUpper })
         });
         if (res.ok) {
+          globalWatchlistItemsCache.delete(targetWId);
           if (isTargetSame) {
             fetchItems(selectedWatchlistId);
           } else {
@@ -816,6 +911,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         body: JSON.stringify({ symbols: symbolsArray })
       });
       if (res.ok) {
+        globalWatchlistItemsCache.delete(targetWId);
         if (targetWId === selectedWatchlistId) {
           fetchItems(selectedWatchlistId);
         } else {
@@ -851,6 +947,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         body: JSON.stringify({ symbols: symbolsArray })
       });
       if (res.ok) {
+        globalWatchlistItemsCache.delete(selectedWatchlistId);
         const symsUpper = new Set(symbolsArray.map((s) => s.toUpperCase()));
         setItems((prev) => {
           const updated = prev.filter((i) => !symsUpper.has(i.symbol?.toUpperCase()));
@@ -890,6 +987,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         method: 'DELETE'
       });
       if (res.ok) {
+        globalWatchlistItemsCache.set(selectedWatchlistId, []);
         setItems([]);
         setSelectedSymbols(new Set());
         setIsSelectMode(false);
@@ -979,6 +1077,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         method: 'DELETE'
       });
       if (res.ok) {
+        globalWatchlistItemsCache.delete(selectedWatchlistId);
         if (fetchWatchlists) await fetchWatchlists();
         const remaining = watchlists.filter((w) => w.id !== selectedWatchlistId);
         setSelectedWatchlistId(remaining.length > 0 ? remaining[0].id : null);
@@ -1394,14 +1493,24 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   const currentPositionsSummary = positionsStatus === 'OPEN' ? openSummary : closedSummary;
 
   return (
-    <div style={{
-      display: 'flex',
-      height: '100%',
-      width: '100%',
-      overflow: 'hidden',
-      background: 'var(--bg-primary)',
-      position: 'relative'
-    }}>
+    <div
+      className="stock-screen-container"
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+        height: '100%',
+        minHeight: 0,
+        flex: 1,
+        width: '100%',
+        overflow: 'hidden',
+        background: 'var(--bg-primary)',
+        position: 'relative',
+        borderRadius: 'var(--border-radius-lg)',
+        border: '1px solid var(--border-color)',
+        boxShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.35)',
+        boxSizing: 'border-box'
+      }}
+    >
       {/* Toast Notification */}
       {quickAddToast && (
         <div style={{
@@ -2032,6 +2141,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                               showVolumeProfile={false}
                               showYearlyThumbnail={false}
                               showRsLine={false}
+                              showEarnings={false}
                               height="100%"
                             />
                           </div>

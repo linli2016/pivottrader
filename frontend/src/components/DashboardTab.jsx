@@ -2550,9 +2550,9 @@ export default function DashboardTab({
               <span className="badge badge-outline">STEP 2</span>
               <span className="routine-icon">🌐</span>
             </div>
-            <span className="routine-title">2. Industry Radar</span>
+            <span className="routine-title">2. Themes & Sectors</span>
             <span className="routine-desc">Find top rotating sectors & industries</span>
-            <button className="btn btn-secondary btn-sm routine-btn">Explore Radar →</button>
+            <button className="btn btn-secondary btn-sm routine-btn">Explore Themes & Sectors →</button>
           </div>
 
           {/* Step 3 */}
@@ -2561,7 +2561,7 @@ export default function DashboardTab({
               <span className="badge badge-outline">STEP 3</span>
               <span className="routine-icon">🎯</span>
             </div>
-            <span className="routine-title">3. Stock Screen</span>
+            <span className="routine-title">3. Screener</span>
             <span className="routine-desc">Filter VCP, Breakout & Leaders setups</span>
             <button className="btn btn-secondary btn-sm routine-btn">Screen Setups →</button>
           </div>
@@ -2603,7 +2603,7 @@ export default function DashboardTab({
               className="btn btn-secondary btn-sm"
               onClick={() => setActiveTab && setActiveTab('sector-compare')}
             >
-              Full Industry Radar →
+              Full Themes & Sectors →
             </button>
           </div>
 
@@ -2631,7 +2631,7 @@ export default function DashboardTab({
                       key={idx}
                       className="cockpit-table-row"
                       onClick={() => setActiveTab && setActiveTab('sector-compare')}
-                      title="Click to view in Industry Radar"
+                      title="Click to view in Themes & Sectors"
                     >
                       <td style={{ fontWeight: 600, color: '#ffffff', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {grp.name}

@@ -615,7 +615,7 @@ function App() {
     <div className="app-container">
       {/* Sidebar Navigation */}
       <div className={`sidebar-nav ${isSidebarCollapsed ? 'collapsed' : ''}`}>
-        <div className="sidebar-top">
+        <div className="sidebar-top custom-scrollbar">
           <div className="brand-wrapper">
             <div className="brand" onClick={() => setActiveTab('dashboard')} title="PivotTrader">
               <div className="brand-icon">⚡</div>
@@ -670,27 +670,27 @@ function App() {
                 </div>
               </li>
 
-              {/* 2. Industry Radar */}
+              {/* 2. Themes & Sectors */}
               <li
                 className={`nav-item ${activeTab === 'sector-compare' ? 'active' : ''}`}
                 onClick={() => setActiveTab('sector-compare')}
-                title="2. Industry Radar (Sectors • Industries • Themes)"
+                title="2. Themes & Sectors (Sectors • Industries • Themes)"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">🌐</span>
-                  <span className="nav-label">2. Industry Radar</span>
+                  <span className="nav-label">2. Themes & Sectors</span>
                 </div>
               </li>
 
-              {/* 3. Stock Screen */}
+              {/* 3. Screener */}
               <li
                 className={`nav-item ${activeTab === 'candidates' ? 'active' : ''}`}
                 onClick={() => setActiveTab('candidates')}
-                title="3. Stock Screen & Setup Scanner"
+                title="3. Screener & Setup Scanner"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">🎯</span>
-                  <span className="nav-label">3. Stock Screen</span>
+                  <span className="nav-label">3. Screener</span>
                 </div>
                 <span className="nav-badge emerald" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                   {loadingCandidates && <span className="spin-icon" style={{ fontSize: '10px' }}>⟳</span>}
@@ -698,70 +698,73 @@ function App() {
                 </span>
               </li>
 
-              {/* 4. Market Watching */}
+              {/* 4. Watchlists */}
               <li
                 className={`nav-item ${activeTab === 'watchlists' ? 'active' : ''}`}
                 onClick={() => setActiveTab('watchlists')}
-                title="4. Market Watching"
+                title="4. Watchlists"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">📊</span>
-                  <span className="nav-label">4. Market Watching</span>
+                  <span className="nav-label">4. Watchlists</span>
                 </div>
                 <span className="nav-badge emerald">{watchlists.reduce((sum, w) => sum + (w.item_count || 0), 0)}</span>
               </li>
 
-              {/* 5. Setup Study */}
-              <li
-                className={`nav-item ${activeTab === 'study-lab' ? 'active' : ''}`}
-                onClick={() => setActiveTab('study-lab')}
-                title="5. Setup Study (Historical Setup Discovery)"
-              >
-                <div className="nav-item-content">
-                  <span className="nav-icon">🔬</span>
-                  <span className="nav-label">5. Setup Study</span>
-                </div>
-              </li>
-
-              {/* 6. Model Book */}
-              <li
-                className={`nav-item ${activeTab === 'model-book' ? 'active' : ''}`}
-                onClick={() => setActiveTab('model-book')}
-                title="6. Model Book (Saved Textbook Setups)"
-              >
-                <div className="nav-item-content">
-                  <span className="nav-icon">📚</span>
-                  <span className="nav-label">6. Model Book</span>
-                </div>
-              </li>
-
-              {/* 7. Trading Journal */}
+              {/* 5. Trading Journal */}
               <li
                 className={`nav-item ${activeTab === 'journal' ? 'active' : ''}`}
                 onClick={() => setActiveTab('journal')}
-                title="7. Trading Journal & IBKR Performance"
+                title="5. Trading Journal & IBKR Performance"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">📓</span>
-                  <span className="nav-label">7. Trading Journal</span>
+                  <span className="nav-label">5. Trading Journal</span>
                 </div>
               </li>
             </ul>
           </div>
 
           <div className="nav-section">
-            <div className="nav-section-title">Tools & Config</div>
+            <div className="nav-section-title">Study</div>
             <ul className="nav-menu">
+              {/* Setup Study */}
+              <li
+                className={`nav-item ${activeTab === 'study-lab' ? 'active' : ''}`}
+                onClick={() => setActiveTab('study-lab')}
+                title="Setup Study (Historical Setup Discovery)"
+              >
+                <div className="nav-item-content">
+                  <span className="nav-icon">🔬</span>
+                  <span className="nav-label">Setup Study</span>
+                </div>
+              </li>
+
+              {/* Model Book */}
+              <li
+                className={`nav-item ${activeTab === 'model-book' ? 'active' : ''}`}
+                onClick={() => setActiveTab('model-book')}
+                title="Model Book (Saved Textbook Setups)"
+              >
+                <div className="nav-item-content">
+                  <span className="nav-icon">📚</span>
+                  <span className="nav-label">Model Book</span>
+                </div>
+              </li>
+
+              {/* Setup & Rules */}
               <li
                 className={`nav-item ${activeTab === 'setups-rules' ? 'active' : ''}`}
                 onClick={() => setActiveTab('setups-rules')}
-                title="Setups & Rules Playbook"
+                title="Setup & Rules Playbook"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">📖</span>
-                  <span className="nav-label">Setups & Rules</span>
+                  <span className="nav-label">Setup & Rules</span>
                 </div>
               </li>
+
+              {/* Learn */}
               <li
                 className={`nav-item ${activeTab === 'learn' ? 'active' : ''}`}
                 onClick={() => setActiveTab('learn')}
@@ -772,6 +775,12 @@ function App() {
                   <span className="nav-label">Learn</span>
                 </div>
               </li>
+            </ul>
+          </div>
+
+          <div className="nav-section">
+            <div className="nav-section-title">Tools & Config</div>
+            <ul className="nav-menu">
               <li
                 className={`nav-item ${activeTab === 'sql' ? 'active' : ''}`}
                 onClick={() => setActiveTab('sql')}
@@ -807,7 +816,7 @@ function App() {
       </div>
 
       {/* Main Content Area */}
-      <div className={`main-content custom-scrollbar ${activeTab === 'watchlists' ? 'main-content-flush' : ''}`}>
+      <div className="main-content custom-scrollbar">
         {(activeTab === 'dashboard' || activeTab === 'market-monitor' || activeTab === 'sync-data') && (
           <DashboardTab
             summary={summary}
@@ -938,6 +947,8 @@ function App() {
           <Suspense fallback={<div className="tab-loading-spinner" style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>Loading Model Book...</div>}>
             <ModelBookTab
               onSelectStock={handleSelectStock}
+              watchlists={watchlists}
+              fetchWatchlists={fetchWatchlists}
               setupsConfig={setupsConfig}
             />
           </Suspense>
