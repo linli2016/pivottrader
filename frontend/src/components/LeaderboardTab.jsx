@@ -1535,6 +1535,7 @@ export default function LeaderboardTab({
                       <div
                         key={stock.symbol}
                         onClick={() => handleRowClick(stock)}
+                        onDoubleClick={() => handleRowClick(stock)}
                         className="leaderboard-tile"
                         style={{
                           background: bg,
@@ -1622,6 +1623,7 @@ export default function LeaderboardTab({
                           <div
                             key={stock.symbol}
                             onClick={() => handleRowClick(stock)}
+                            onDoubleClick={() => handleRowClick(stock)}
                             style={{
                               display: 'flex',
                               justifyContent: 'space-between',
@@ -1782,6 +1784,7 @@ export default function LeaderboardTab({
                         key={stock.symbol}
                         id={`leaderboard-row-${stock.symbol}`}
                         onClick={() => handleRowClick(stock)}
+                        onDoubleClick={() => handleRowClick(stock)}
                         style={{
                           cursor: 'pointer',
                           background: isSelected ? 'rgba(16, 185, 129, 0.12)' : 'transparent',

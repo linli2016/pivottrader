@@ -1,5 +1,5 @@
 import React from 'react';
-import CandlestickChart from './CandlestickChart';
+import { DailyChart } from './stock-view';
 import VcpFootprintCard from './VcpFootprintCard';
 import GroupStageChart from './GroupStageChart';
 
@@ -415,7 +415,7 @@ export default function InspectorTab({
               <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '14px' }}>Candlestick Price Chart (Daily Bars)</h3>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                 {inspectorPrices.length > 0 ? (
-                  <CandlestickChart data={inspectorPrices} symbol={inspectorSymbol} height="100%" />
+                  <DailyChart data={inspectorPrices} symbol={inspectorSymbol} height="100%" />
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, minHeight: '300px', color: 'var(--text-secondary)' }}>
                     No historical price bars available for charting.

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import CandlestickChart from './CandlestickChart';
+import StockView from './stock-view';
 import StockBrandIcon from './StockBrandIcon';
 import GroupStageChart from './GroupStageChart';
 import { getLocalDateStr } from '../utils/dateUtils';
@@ -800,391 +800,64 @@ export default function StudyLabTab({
 
       {/* 2. Split Screen: Chart + Candidate Ribbon */}
       <div className="browse-split-container" style={{ marginTop: '10px' }}>
-        {/* Main Col: Stock Info Card + Full Height Candlestick Chart */}
-        <div className="browse-main-col">
-          {/* Stock Info Card matching CandidatesTab */}
-          <div className="glass-card" style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: '6px', flexShrink: 0 }}>
-            {/* Top Row: Symbol, Name, Subtitle (Exchange • Sector • Industry Button) on Left, Watchlist & Model Book on Right */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              {/* Left: Brand Icon + Ticker + Name + Sector + Industry */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flexWrap: 'wrap' }}>
-                <StockBrandIcon symbol={currentCandidate?.symbol} size={22} />
-                <span style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '0.5px' }}>
-                  {currentCandidate?.symbol || 'No Selection'}
-                </span>
-                <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '320px' }}>
-                  {currentCandidate?.name || ''}
-                </span>
-                {currentCandidate?.sector && (
-                  <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                    {currentCandidate.sector}
-                  </span>
-                )}
-                {currentCandidate?.industry && (
-                  <button
-                    type="button"
-                    onClick={() => setPreviewGroupModal({ groupType: 'industries', groupName: currentCandidate.industry })}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '2px 8px',
-                      borderRadius: '5px',
-                      background: 'rgba(56, 189, 248, 0.1)',
-                      border: '1px solid rgba(56, 189, 248, 0.3)',
-                      color: '#38bdf8',
-                      fontSize: '11.5px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease'
-                    }}
-                    className="hover-brighten"
-                    title="Click to view Stan Weinstein Stage Analysis Chart & Breadth for this Industry"
-                  >
-                    <span>🏭 {currentCandidate.industry}</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Right: Watchlist + Save to Model Book + Screenshot + Inspect */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
-                {/* Watchlist Quick Action */}
-                <select
-                  value={targetWatchlistId || ''}
-                  onChange={(e) => setTargetWatchlistId(Number(e.target.value))}
-                  style={{
-                    background: 'rgba(0, 0, 0, 0.4)',
-                    color: 'var(--text-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: 'var(--border-radius-md)',
-                    padding: '5px 8px',
-                    fontSize: '11.5px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  {watchlists.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      ⭐️ {w.name}
-                    </option>
-                  ))}
-                </select>
-                {(() => {
-                  const isCurrentWatchlisted = currentCandidate && activeWatchlistSymbols.has(currentCandidate.symbol.toUpperCase());
-                  return (
-                    <button
-                      className={`btn ${isCurrentWatchlisted ? 'btn-secondary' : 'btn-primary'} btn-sm`}
-                      onClick={() => handleToggleWatchlist(currentCandidate?.symbol)}
-                      disabled={!currentCandidate}
-                      title={isCurrentWatchlisted ? 'Saved in Watchlist (Click to remove)' : `Save ${currentCandidate?.symbol || 'stock'} to Watchlist`}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        width: '28px',
-                        height: '28px',
-                        padding: 0,
-                        borderRadius: '6px',
-                        transition: 'all 0.2s ease',
-                        background: isCurrentWatchlisted ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255, 255, 255, 0.08)',
-                        color: isCurrentWatchlisted ? '#34d399' : 'var(--text-secondary)',
-                        border: isCurrentWatchlisted ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(255, 255, 255, 0.15)',
-                        cursor: currentCandidate ? 'pointer' : 'not-allowed'
-                      }}
-                    >
-                      {isCurrentWatchlisted ? (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="#34d399" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                        </svg>
-                      ) : (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="12" y1="5" x2="12" y2="19"></line>
-                          <line x1="5" y1="12" x2="19" y2="12"></line>
-                        </svg>
-                      )}
-                    </button>
-                  );
-                })()}
-
-                {/* 1-Click Save to Model Book Button */}
-                {(() => {
-                  const isSaved = isCandidateSaved(currentCandidate);
-                  return (
-                    <button
-                      className={`btn ${isSaved ? 'btn-secondary' : 'btn-primary'} btn-sm`}
-                      onClick={() => handleToggleSaveCandidate(currentCandidate)}
-                      disabled={!currentCandidate || savingToModelBook}
-                      title={isSaved ? "Saved in Model Book (Click to remove)" : "Save candidate to Model Book"}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                        height: '28px',
-                        padding: '0 10px',
-                        borderRadius: '6px',
-                        fontSize: '11.5px',
-                        fontWeight: 700,
-                        background: isSaved ? 'rgba(16, 185, 129, 0.25)' : 'rgba(56, 189, 248, 0.2)',
-                        color: isSaved ? '#34d399' : '#38bdf8',
-                        border: isSaved ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(56, 189, 248, 0.45)',
-                        cursor: currentCandidate ? 'pointer' : 'not-allowed',
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <span>{isSaved ? '★' : '☆'}</span>
-                      <span>{savingToModelBook ? 'Saving...' : (isSaved ? 'Saved' : 'Save')}</span>
-                    </button>
-                  );
-                })()}
-
-                {/* Inspect in Inspector Tab */}
-                {onSelectStock && (
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => onSelectStock(currentCandidate?.symbol)}
-                    disabled={!currentCandidate}
-                    title={`Inspect ${currentCandidate?.symbol} in Inspector Tab`}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '28px',
-                      height: '28px',
-                      padding: 0,
-                      borderRadius: '6px',
-                      background: 'rgba(255, 255, 255, 0.08)',
-                      border: '1px solid rgba(255, 255, 255, 0.15)',
-                      color: 'var(--text-secondary)',
-                      cursor: currentCandidate ? 'pointer' : 'not-allowed'
-                    }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="11" cy="11" r="8"></circle>
-                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                    </svg>
-                  </button>
-                )}
-
-                {/* Screenshot Button */}
+                {/* Main Col: Unified StockView */}
+        <div className="browse-main-col" style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
+          <StockView
+            ref={chartRef}
+            stock={currentCandidate}
+            prices={stockPrices}
+            loadingPrices={loadingPrices}
+            setupName={currentSetupDisplayName}
+            asOfDate={currentCandidate?.setup_date || currentCandidate?.date || null}
+            marketRegime={currentCandidate?.market_regime}
+            watchlists={watchlists}
+            targetWatchlistId={targetWatchlistId}
+            onTargetWatchlistChange={setTargetWatchlistId}
+            onToggleWatchlist={handleToggleWatchlist}
+            onSelectGroup={(type, name) => setPreviewGroupModal({ groupType: type, groupName: name })}
+            onSelectStock={(stk) => {
+              if (!stk?.symbol) return;
+              const idx = displayedCandidates.findIndex(c => c.symbol.toUpperCase() === stk.symbol.toUpperCase());
+              if (idx !== -1) {
+                setBrowseIndex(idx);
+              } else if (onSelectStock) {
+                onSelectStock(stk.symbol);
+              }
+            }}
+            headerExtra={(() => {
+              const isSaved = isCandidateSaved(currentCandidate);
+              return (
                 <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => chartRef.current?.saveScreenshot()}
-                  disabled={!currentCandidate || loadingPrices || stockPrices.length === 0}
-                  title="Take chart screenshot"
+                  type="button"
+                  className={`btn ${isSaved ? 'btn-secondary' : 'btn-primary'} btn-sm`}
+                  onClick={() => handleToggleSaveCandidate(currentCandidate)}
+                  disabled={!currentCandidate || savingToModelBook}
+                  title={isSaved ? "Saved in Model Book (Click to remove)" : "Save candidate to Model Book"}
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    width: '28px',
+                    gap: '5px',
                     height: '28px',
-                    padding: 0,
+                    padding: '0 10px',
                     borderRadius: '6px',
-                    background: 'rgba(255, 255, 255, 0.08)',
-                    border: '1px solid rgba(255, 255, 255, 0.15)',
-                    color: 'var(--text-secondary)',
-                    cursor: (!currentCandidate || stockPrices.length === 0) ? 'not-allowed' : 'pointer',
-                    transition: 'all 0.2s ease'
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    background: isSaved ? 'rgba(16, 185, 129, 0.25)' : 'rgba(56, 189, 248, 0.2)',
+                    color: isSaved ? '#34d399' : '#38bdf8',
+                    border: isSaved ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(56, 189, 248, 0.45)',
+                    cursor: currentCandidate ? 'pointer' : 'not-allowed',
+                    transition: 'all 0.15s ease'
                   }}
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-                    <circle cx="12" cy="13" r="4"></circle>
-                  </svg>
+                  <span>{isSaved ? '★' : '☆'}</span>
+                  <span>{savingToModelBook ? 'Saving...' : (isSaved ? 'Saved' : 'Save')}</span>
                 </button>
-              </div>
-            </div>
-
-            {/* Bottom Row: Badges Group (Left) & Stock Position Count (Right) */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              {/* Left: Badges Group */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-
-
-                {/* RS Rank */}
-                <span className="pill pill-success" style={{ fontSize: '11px', padding: '3px 8px' }}>
-                  RS: {currentCandidate?.rs_rank ?? (currentCandidate?.rs_score ? Math.round(currentCandidate.rs_score) : 'N/A')}
-                </span>
-
-                {/* RS Blue Dot */}
-                {currentHasBlueDot && (
-                  <span
-                    className="pill"
-                    style={{
-                      fontSize: '11px',
-                      padding: '3px 8px',
-                      background: 'rgba(56, 189, 248, 0.25)',
-                      color: '#38bdf8',
-                      border: '1px solid rgba(56, 189, 248, 0.45)',
-                      fontWeight: 700,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                    title="RS Blue Dot: Relative Strength vs SPY hit a new 52-week high before price breakout"
-                  >
-                    🔵 RS Blue Dot
-                  </span>
-                )}
-
-                {/* ADR% */}
-                {currentCandidate?.adr_20d !== null && currentCandidate?.adr_20d !== undefined && (
-                  <span
-                    className="pill"
-                    style={{
-                      fontSize: '11px',
-                      padding: '3px 8px',
-                      background: currentCandidate.adr_20d >= 5.0 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(59, 130, 246, 0.18)',
-                      color: currentCandidate.adr_20d >= 5.0 ? '#f59e0b' : '#60a5fa',
-                      border: currentCandidate.adr_20d >= 5.0 ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid rgba(59, 130, 246, 0.3)',
-                      fontWeight: 700
-                    }}
-                  >
-                    ADR%: {currentCandidate.adr_20d.toFixed(2)}%
-                  </span>
-                )}
-
-                {/* TI65 */}
-                {currentCandidate?.ti_65 !== null && currentCandidate?.ti_65 !== undefined && (
-                  <span
-                    className="pill"
-                    style={{
-                      fontSize: '11px',
-                      padding: '3px 8px',
-                      background: currentCandidate.ti_65 >= 1.05 ? 'rgba(16, 185, 129, 0.18)' : currentCandidate.ti_65 < 0.95 ? 'rgba(239, 68, 68, 0.18)' : 'rgba(255, 255, 255, 0.08)',
-                      color: currentCandidate.ti_65 >= 1.05 ? '#34d399' : currentCandidate.ti_65 < 0.95 ? '#f87171' : 'var(--text-secondary)',
-                      border: currentCandidate.ti_65 >= 1.05 ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(255, 255, 255, 0.1)',
-                      fontWeight: 600
-                    }}
-                    title={`Stockbee Trend Intensity (TI65): ${currentCandidate.ti_65.toFixed(2)}`}
-                  >
-                    TI65: {currentCandidate.ti_65.toFixed(2)}
-                  </span>
-                )}
-
-                {/* Institutional Sponsorship */}
-                {currentCandidate?.inst_holders_count !== null && currentCandidate?.inst_holders_count !== undefined ? (
-                  <span
-                    className="pill"
-                    style={{
-                      fontSize: '11px',
-                      padding: '3px 8px',
-                      background: (currentCandidate.sponsorship_streak >= 2 || (currentCandidate.inst_holders_qoq_change > 0)) ? 'rgba(34, 197, 94, 0.2)' : 'rgba(56, 189, 248, 0.18)',
-                      color: (currentCandidate.sponsorship_streak >= 2 || (currentCandidate.inst_holders_qoq_change > 0)) ? '#22c55e' : '#38bdf8',
-                      border: (currentCandidate.sponsorship_streak >= 2 || (currentCandidate.inst_holders_qoq_change > 0)) ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(56, 189, 248, 0.3)',
-                      fontWeight: 700
-                    }}
-                    title={`Institutional Sponsorship: ${currentCandidate.inst_holders_count.toLocaleString()} funds`}
-                  >
-                    🏛️ Inst: {currentCandidate.inst_holders_count.toLocaleString()} {currentCandidate.sponsorship_streak >= 2 ? `🔥 +${currentCandidate.sponsorship_streak}Q` : ''}
-                  </span>
-                ) : null}
-
-                {/* Returns: 1M, 3M, 6M */}
-                {currentCandidate?.ret_1m !== null && currentCandidate?.ret_1m !== undefined && (
-                  <span
-                    className="pill"
-                    style={{
-                      fontSize: '11px',
-                      padding: '3px 8px',
-                      background: 'rgba(59, 130, 246, 0.18)',
-                      color: '#60a5fa',
-                      border: '1px solid rgba(59, 130, 246, 0.3)',
-                      fontWeight: 600
-                    }}
-                    title={`1-Month Return: ${currentCandidate.ret_1m.toFixed(1)}%`}
-                  >
-                    1M: {currentCandidate.ret_1m >= 0 ? '+' : ''}{currentCandidate.ret_1m.toFixed(1)}%
-                  </span>
-                )}
-
-                {currentCandidate?.ret_3m !== null && currentCandidate?.ret_3m !== undefined && (
-                  <span
-                    className="pill"
-                    style={{
-                      fontSize: '11px',
-                      padding: '3px 8px',
-                      background: 'rgba(168, 85, 247, 0.18)',
-                      color: '#c084fc',
-                      border: '1px solid rgba(168, 85, 247, 0.3)',
-                      fontWeight: 600
-                    }}
-                    title={`3-Month Return: ${currentCandidate.ret_3m.toFixed(1)}%`}
-                  >
-                    3M: {currentCandidate.ret_3m >= 0 ? '+' : ''}{currentCandidate.ret_3m.toFixed(1)}%
-                  </span>
-                )}
-
-                {currentCandidate?.ret_6m !== null && currentCandidate?.ret_6m !== undefined && (
-                  <span
-                    className="pill"
-                    style={{
-                      fontSize: '11px',
-                      padding: '3px 8px',
-                      background: 'rgba(236, 72, 153, 0.18)',
-                      color: '#f472b6',
-                      border: '1px solid rgba(236, 72, 153, 0.3)',
-                      fontWeight: 600
-                    }}
-                    title={`6-Month Return: ${currentCandidate.ret_6m.toFixed(1)}%`}
-                  >
-                    6M: {currentCandidate.ret_6m >= 0 ? '+' : ''}{currentCandidate.ret_6m.toFixed(1)}%
-                  </span>
-                )}
-
-
-
-                {/* Market Tape Badge */}
-                {currentCandidate?.market_regime && (
-                  <span
-                    className="pill"
-                    style={{
-                      fontSize: '11px',
-                      padding: '3px 8px',
-                      background: currentCandidate.market_regime === 'BULLISH'
-                        ? 'rgba(16, 185, 129, 0.18)'
-                        : (currentCandidate.market_regime === 'BEARISH'
-                          ? 'rgba(244, 63, 94, 0.18)'
-                          : 'rgba(245, 158, 11, 0.18)'),
-                      color: currentCandidate.market_regime === 'BULLISH'
-                        ? '#34d399'
-                        : (currentCandidate.market_regime === 'BEARISH'
-                          ? '#fb7185'
-                          : '#fbbf24'),
-                      border: `1px solid ${currentCandidate.market_regime === 'BULLISH'
-                        ? 'rgba(16, 185, 129, 0.35)'
-                        : (currentCandidate.market_regime === 'BEARISH'
-                          ? 'rgba(244, 63, 94, 0.35)'
-                          : 'rgba(245, 158, 11, 0.35)')}`,
-                      fontWeight: 700
-                    }}
-                  >
-                    {currentCandidate.market_regime === 'BULLISH' ? '🟢 Bullish Tape' : currentCandidate.market_regime === 'BEARISH' ? '🔴 Bearish Tape' : '🟡 Caution Tape'}
-                  </span>
-                )}
-              </div>
-
-              {/* Stock Position Count on Far Bottom Right */}
-              <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap', marginLeft: 'auto' }}>
-                Stock {displayedCandidates.length > 0 ? browseIndex + 1 : 0} of {displayedCandidates.length}
-              </span>
-            </div>
-          </div>
-
-          {/* Candlestick Chart Container */}
-          <div className="glass-card" style={{ padding: '10px 14px', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-            <CandlestickChart
-              ref={chartRef}
-              data={stockPrices}
-              symbol={currentCandidate?.symbol}
-              companyName={currentCandidate?.name}
-              setupName={currentSetupDisplayName}
-              asOfDate={currentCandidate?.setup_date || currentCandidate?.date || null}
-              height="100%"
-              showScreenshotButton={false}
-            />
-          </div>
+              );
+            })()}
+          />
         </div>
 
-        {/* Side Col: Candidate List Ribbon (Right Column) */}
+{/* Side Col: Candidate List Ribbon (Right Column) */}
         <div className="glass-card browse-side-col">
           {/* Header: Total Count + Prev/Next Buttons + Export CSV */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexShrink: 0, gap: '6px' }}>

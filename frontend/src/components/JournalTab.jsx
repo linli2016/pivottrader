@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { marked } from 'marked';
 import { PnlDistributionChart, EquityCurveChart, fmtMoney, fmtPct, pnlClass } from './JournalCharts';
-import CandlestickChart from './CandlestickChart';
+import { DailyChart } from './stock-view';
 import './JournalTab.css';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
@@ -665,7 +665,7 @@ function TradeDetail({ trade, onSaved, allTags, onToggleIgnore, onSelectStock })
                   No historical price data found for {trade.symbol}. Make sure daily stock prices are synced.
                 </div>
               ) : (
-                <CandlestickChart
+                <DailyChart
                   data={prices}
                   symbol={trade.symbol}
                   companyName={trade.description || trade.symbol}

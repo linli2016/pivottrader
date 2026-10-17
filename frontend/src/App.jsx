@@ -989,6 +989,8 @@ function App() {
         setActiveTab={setActiveTab}
         setInspectorSymbol={setInspectorSymbol}
         handleInspectorSearch={handleInspectorSearch}
+        watchlists={watchlists}
+        fetchWatchlists={fetchWatchlists}
       />
     </div>
   );
