@@ -941,7 +941,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
   };
 
   return (
-    <div className="stock-screen-container">
+    <div className="stock-screen-container" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden' }}>
       {/* Header Section */}
       <div
         className="header-section"
@@ -1098,7 +1098,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
           </div>
 
           {/* Search box directly on the same line as tabs */}
-          <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative', flexShrink: 0 }}>
             <input
               type="text"
               className="select-input"
@@ -1107,11 +1107,14 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{
                 width: '190px',
+                height: '28px',
+                lineHeight: '26px',
+                boxSizing: 'border-box',
                 background: 'rgba(0, 0, 0, 0.35)',
                 color: 'var(--text-primary)',
                 border: '1px solid var(--border-color)',
                 borderRadius: '20px',
-                padding: '5px 28px 5px 12px',
+                padding: '0 28px 0 12px',
                 fontSize: '12px'
               }}
             />
@@ -1128,7 +1131,13 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                   border: 'none',
                   color: 'var(--text-muted)',
                   cursor: 'pointer',
-                  fontSize: '12px'
+                  fontSize: '12px',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '16px',
+                  height: '16px'
                 }}
               >
                 ✕
@@ -1137,7 +1146,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
           </div>
         </div>
 
-        <div className="radar-toolbar-right">
+        <div className="radar-toolbar-right" style={{ flexShrink: 0 }}>
 
           {activeTab === 'themes' && (
             <button
@@ -1148,9 +1157,15 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                 color: '#10b981',
                 borderColor: 'rgba(16, 185, 129, 0.4)',
                 fontWeight: 700,
-                padding: '5px 12px',
+                padding: '0 12px',
+                height: '28px',
+                lineHeight: '26px',
+                boxSizing: 'border-box',
                 borderRadius: '16px',
-                fontSize: '11.5px'
+                fontSize: '11.5px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center'
               }}
             >
               + Theme
@@ -1182,19 +1197,16 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
           </span>
           <button
             type="button"
-            className={`radar-pill-btn ${stageFilter === 'all' ? 'active' : ''}`}
+            className={`radar-pill-btn radar-pill-sm ${stageFilter === 'all' ? 'active' : ''}`}
             onClick={() => setStageFilter('all')}
-            style={{ fontSize: '11px', padding: '3px 9px' }}
           >
             All ({stageCounts.all})
           </button>
           <button
             type="button"
-            className={`radar-pill-btn ${stageFilter === 'stage2' ? 'active' : ''}`}
+            className={`radar-pill-btn radar-pill-sm ${stageFilter === 'stage2' ? 'active' : ''}`}
             onClick={() => setStageFilter(stageFilter === 'stage2' ? 'all' : 'stage2')}
             style={{
-              fontSize: '11px',
-              padding: '3px 9px',
               color: '#10b981',
               borderColor: stageFilter === 'stage2' ? '#10b981' : 'rgba(16, 185, 129, 0.3)',
               background: stageFilter === 'stage2' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(16, 185, 129, 0.08)'
@@ -1205,11 +1217,9 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
           </button>
           <button
             type="button"
-            className={`radar-pill-btn ${stageFilter === 'stage1' ? 'active' : ''}`}
+            className={`radar-pill-btn radar-pill-sm ${stageFilter === 'stage1' ? 'active' : ''}`}
             onClick={() => setStageFilter(stageFilter === 'stage1' ? 'all' : 'stage1')}
             style={{
-              fontSize: '11px',
-              padding: '3px 9px',
               color: '#38bdf8',
               borderColor: stageFilter === 'stage1' ? '#38bdf8' : 'rgba(56, 189, 248, 0.3)',
               background: stageFilter === 'stage1' ? 'rgba(56, 189, 248, 0.25)' : 'rgba(56, 189, 248, 0.08)'
@@ -1220,11 +1230,9 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
           </button>
           <button
             type="button"
-            className={`radar-pill-btn ${stageFilter === 'stage3' ? 'active' : ''}`}
+            className={`radar-pill-btn radar-pill-sm ${stageFilter === 'stage3' ? 'active' : ''}`}
             onClick={() => setStageFilter(stageFilter === 'stage3' ? 'all' : 'stage3')}
             style={{
-              fontSize: '11px',
-              padding: '3px 9px',
               color: '#f59e0b',
               borderColor: stageFilter === 'stage3' ? '#f59e0b' : 'rgba(245, 158, 11, 0.3)',
               background: stageFilter === 'stage3' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(245, 158, 11, 0.08)'
@@ -1235,11 +1243,9 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
           </button>
           <button
             type="button"
-            className={`radar-pill-btn ${stageFilter === 'stage4' ? 'active' : ''}`}
+            className={`radar-pill-btn radar-pill-sm ${stageFilter === 'stage4' ? 'active' : ''}`}
             onClick={() => setStageFilter(stageFilter === 'stage4' ? 'all' : 'stage4')}
             style={{
-              fontSize: '11px',
-              padding: '3px 9px',
               color: '#f43f5e',
               borderColor: stageFilter === 'stage4' ? '#f43f5e' : 'rgba(244, 63, 94, 0.3)',
               background: stageFilter === 'stage4' ? 'rgba(244, 63, 94, 0.25)' : 'rgba(244, 63, 94, 0.08)'
@@ -1250,11 +1256,9 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
           </button>
           <button
             type="button"
-            className={`radar-pill-btn ${stageFilter === 'positive_rs' ? 'active' : ''}`}
+            className={`radar-pill-btn radar-pill-sm ${stageFilter === 'positive_rs' ? 'active' : ''}`}
             onClick={() => setStageFilter(stageFilter === 'positive_rs' ? 'all' : 'positive_rs')}
             style={{
-              fontSize: '11px',
-              padding: '3px 9px',
               color: '#34d399',
               borderColor: stageFilter === 'positive_rs' ? '#34d399' : 'rgba(52, 211, 153, 0.3)',
               background: stageFilter === 'positive_rs' ? 'rgba(52, 211, 153, 0.2)' : 'rgba(52, 211, 153, 0.06)'
@@ -2431,7 +2435,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
 
           {/* 5. STAGE ANALYSIS VIEW (Stan Weinstein 40-Week MA & Mansfield RS) */}
           {viewMode === 'stage' && (
-            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
               {/* Quick Group Navigator Bar for Stage View */}
               <div
                 style={{
@@ -2444,7 +2448,8 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                   border: '1px solid rgba(255, 255, 255, 0.08)',
                   borderRadius: '8px',
                   flexWrap: 'wrap',
-                  gap: '8px'
+                  gap: '8px',
+                  flexShrink: 0
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>

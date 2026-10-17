@@ -109,6 +109,10 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       try {
         localStorage.setItem('pt_watchlist_selected_symbol', selectedStock.symbol.toUpperCase());
       } catch (_) {}
+    } else {
+      try {
+        localStorage.removeItem('pt_watchlist_selected_symbol');
+      } catch (_) {}
     }
   }, [selectedStock]);
 
@@ -119,6 +123,17 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   const [displayedPricesSymbol, setDisplayedPricesSymbol] = useState(() => initialStockData ? initialSym : null);
   const [loadingPrices, setLoadingPrices] = useState(false);
   const displayItemsRef = useRef([]);
+  const selectedRowRef = useRef(null);
+
+  // Auto-scroll selected stock row into view in the watchlist table
+  useEffect(() => {
+    if (selectedRowRef.current && dockTab === 'watchlists') {
+      selectedRowRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest'
+      });
+    }
+  }, [selectedStock?.symbol, dockTab]);
 
   // Stock Details / Telemetry
   const [stockDetail, setStockDetail] = useState(() => initialStockData?.detail || null);
@@ -238,7 +253,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   }, [items]);
   const [loadingItems, setLoadingItems] = useState(false);
   const [selectedIndustry, setSelectedIndustry] = useState('ALL');
-  const [sortBy, setSortBy] = useState('group_rs');
+  const [sortBy, setSortBy] = useState('rs_rank');
   const [newSymbolInput, setNewSymbolInput] = useState('');
   const [isAddingSymbol, setIsAddingSymbol] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -818,6 +833,41 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     }
   };
 
+  // Helper to determine the next stock to navigate to after one or more stocks are removed
+  const getNextStockAfterRemoval = useCallback((removedSymbols) => {
+    const removeSet = typeof removedSymbols === 'string'
+      ? new Set([removedSymbols.toUpperCase()])
+      : new Set(Array.from(removedSymbols).map((s) => (s || '').toUpperCase()));
+
+    const currentSym = (selectedStockRef.current?.symbol || '').toUpperCase();
+    if (!currentSym || !removeSet.has(currentSym)) {
+      return selectedStockRef.current;
+    }
+
+    const currentList = displayItemsRef.current && displayItemsRef.current.length > 0
+      ? displayItemsRef.current
+      : items;
+
+    const currentIdx = currentList.findIndex(
+      (item) => (item.symbol || '').toUpperCase() === currentSym
+    );
+
+    const remaining = currentList.filter(
+      (item) => !removeSet.has((item.symbol || '').toUpperCase())
+    );
+
+    if (remaining.length === 0) {
+      return null;
+    }
+
+    if (currentIdx >= 0 && currentIdx < remaining.length) {
+      return remaining[currentIdx];
+    } else if (currentIdx >= remaining.length) {
+      return remaining[remaining.length - 1];
+    }
+    return remaining[0];
+  }, [items]);
+
   // Remove symbol from active watchlist
   const handleRemoveSymbol = async (sym, e) => {
     if (e) e.stopPropagation();
@@ -829,13 +879,18 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       });
       if (res.ok) {
         globalWatchlistItemsCache.delete(selectedWatchlistId);
-        setItems((prev) => {
-          const updated = prev.filter((i) => i.symbol !== sym);
-          if (dockTabRef.current === 'watchlists' && selectedStock?.symbol === sym) {
-            setSelectedStock(updated.length > 0 ? updated[0] : null);
-          }
-          return updated;
-        });
+        const symUpper = sym.toUpperCase();
+        const isCurrentSelected = (selectedStockRef.current?.symbol || '').toUpperCase() === symUpper;
+        const nextStock = (dockTabRef.current === 'watchlists' && isCurrentSelected)
+          ? getNextStockAfterRemoval(symUpper)
+          : null;
+
+        setItems((prev) => prev.filter((i) => (i.symbol || '').toUpperCase() !== symUpper));
+
+        if (dockTabRef.current === 'watchlists' && isCurrentSelected) {
+          selectStock(nextStock);
+        }
+
         if (fetchWatchlists) fetchWatchlists();
         triggerToast(`Removed ${sym}`);
       }
@@ -861,13 +916,16 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         if (res.ok) {
           globalWatchlistItemsCache.delete(targetWId);
           if (isTargetSame) {
-            setItems((prev) => {
-              const updated = prev.filter((i) => i.symbol?.toUpperCase() !== symUpper);
-              if (dockTabRef.current === 'watchlists' && selectedStock?.symbol?.toUpperCase() === symUpper) {
-                setSelectedStock(updated.length > 0 ? updated[0] : null);
-              }
-              return updated;
-            });
+            const isCurrentSelected = (selectedStockRef.current?.symbol || '').toUpperCase() === symUpper;
+            const nextStock = (dockTabRef.current === 'watchlists' && isCurrentSelected)
+              ? getNextStockAfterRemoval(symUpper)
+              : null;
+
+            setItems((prev) => prev.filter((i) => i.symbol?.toUpperCase() !== symUpper));
+
+            if (dockTabRef.current === 'watchlists' && isCurrentSelected) {
+              selectStock(nextStock);
+            }
           } else {
             setTargetItems((prev) => prev.filter((i) => i.symbol?.toUpperCase() !== symUpper));
           }
@@ -949,13 +1007,17 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       if (res.ok) {
         globalWatchlistItemsCache.delete(selectedWatchlistId);
         const symsUpper = new Set(symbolsArray.map((s) => s.toUpperCase()));
-        setItems((prev) => {
-          const updated = prev.filter((i) => !symsUpper.has(i.symbol?.toUpperCase()));
-          if (dockTabRef.current === 'watchlists' && selectedStock && symsUpper.has(selectedStock.symbol?.toUpperCase())) {
-            setSelectedStock(updated.length > 0 ? updated[0] : null);
-          }
-          return updated;
-        });
+        const isCurrentSelected = selectedStockRef.current && symsUpper.has((selectedStockRef.current.symbol || '').toUpperCase());
+        const nextStock = (dockTabRef.current === 'watchlists' && isCurrentSelected)
+          ? getNextStockAfterRemoval(symsUpper)
+          : null;
+
+        setItems((prev) => prev.filter((i) => !symsUpper.has(i.symbol?.toUpperCase())));
+
+        if (dockTabRef.current === 'watchlists' && isCurrentSelected) {
+          selectStock(nextStock);
+        }
+
         setSelectedSymbols(new Set());
         setIsSelectMode(false);
         if (fetchWatchlists) fetchWatchlists();
@@ -991,8 +1053,8 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         setItems([]);
         setSelectedSymbols(new Set());
         setIsSelectMode(false);
-        if (dockTabRef.current === 'watchlists' && selectedStock) {
-          setSelectedStock(null);
+        if (dockTabRef.current === 'watchlists' && selectedStockRef.current) {
+          selectStock(null);
         }
         if (fetchWatchlists) fetchWatchlists();
         triggerToast(`Removed all stocks from "${currentW?.name || 'watchlist'}"`);
@@ -1144,8 +1206,18 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         return copy.sort((a, b) => (a.symbol || '').localeCompare(b.symbol || ''));
       case 'symbol_desc':
         return copy.sort((a, b) => (b.symbol || '').localeCompare(a.symbol || ''));
-      case 'group_rs':
-        return copy.sort((a, b) => (b.group_rs_rank ?? b.rs_rank ?? 0) - (a.group_rs_rank ?? a.rs_rank ?? 0));
+      case 'rs_line':
+        return copy.sort((a, b) => {
+          const valB = b.normalized_rs !== undefined && b.normalized_rs !== null ? b.normalized_rs : b.rs_line;
+          const valA = a.normalized_rs !== undefined && a.normalized_rs !== null ? a.normalized_rs : a.rs_line;
+          return (valB ?? -999999) - (valA ?? -999999);
+        });
+      case 'rs_line_asc':
+        return copy.sort((a, b) => {
+          const valB = b.normalized_rs !== undefined && b.normalized_rs !== null ? b.normalized_rs : b.rs_line;
+          const valA = a.normalized_rs !== undefined && a.normalized_rs !== null ? a.normalized_rs : a.rs_line;
+          return (valA ?? 999999) - (valB ?? 999999);
+        });
       case 'rs_rank':
         return copy.sort((a, b) => (b.rs_rank ?? -999) - (a.rs_rank ?? -999));
       case 'rs_rank_asc':
@@ -1154,6 +1226,8 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         return copy.sort((a, b) => ((b.today_pct ?? b.chg_pct) ?? -999) - ((a.today_pct ?? a.chg_pct) ?? -999));
       case 'chg_pct_asc':
         return copy.sort((a, b) => ((a.today_pct ?? a.chg_pct) ?? 999) - ((b.today_pct ?? b.chg_pct) ?? 999));
+      case 'group_rs':
+        return copy.sort((a, b) => (b.group_rs_rank ?? b.rs_rank ?? 0) - (a.group_rs_rank ?? a.rs_rank ?? 0));
       case 'added':
         return copy.sort((a, b) => new Date(b.added_at || 0) - new Date(a.added_at || 0));
       default:
@@ -2122,6 +2196,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                               data={stockPrices}
                               symbol={displayedPricesSymbol || selectedStock.symbol}
                               timeframe="monthly"
+                              showSymbol={false}
                               hideTools={true}
                               showVolumeProfile={false}
                               showYearlyThumbnail={false}
@@ -2137,6 +2212,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                               data={stockPrices}
                               symbol={displayedPricesSymbol || selectedStock.symbol}
                               timeframe="weekly"
+                              showSymbol={false}
                               hideTools={true}
                               showVolumeProfile={false}
                               showYearlyThumbnail={false}
@@ -3281,8 +3357,16 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                     <th
                       style={{ textAlign: 'center', padding: '6px 6px', cursor: 'pointer', userSelect: 'none' }}
                       onClick={() => setSortBy(sortBy === 'rs_rank' ? 'rs_rank_asc' : 'rs_rank')}
+                      title="IBD Relative Strength Rank (1–99). Click to sort."
                     >
                       RS {sortBy === 'rs_rank' ? '↓' : sortBy === 'rs_rank_asc' ? '↑' : ''}
+                    </th>
+                    <th
+                      style={{ textAlign: 'right', padding: '6px 6px', cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => setSortBy(sortBy === 'rs_line' ? 'rs_line_asc' : 'rs_line')}
+                      title="Normalized Relative Strength Line vs SPY [-1.00 to +1.00] (matching stock chart). Click to sort by strength."
+                    >
+                      RS Line {sortBy === 'rs_line' ? '↓' : sortBy === 'rs_line_asc' ? '↑' : ''}
                     </th>
                     <th style={{ width: '22px', padding: '6px 4px' }}></th>
                   </tr>
@@ -3290,26 +3374,30 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                 <tbody>
                   {loadingItems ? (
                     <tr>
-                      <td colSpan={isSelectMode ? 5 : 4} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                      <td colSpan={isSelectMode ? 6 : 5} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
                         Loading watchlist stocks...
                       </td>
                     </tr>
                   ) : sortedItems.length === 0 ? (
                     <tr>
-                      <td colSpan={isSelectMode ? 5 : 4} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                      <td colSpan={isSelectMode ? 6 : 5} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
                         No stocks found in this watchlist.
                       </td>
                     </tr>
                   ) : (
                     sortedItems.map((item) => {
-                      const isSelected = selectedStock?.symbol === item.symbol;
+                      const isSelected = (selectedStock?.symbol || '').toUpperCase() === (item.symbol || '').toUpperCase();
                       const chg = item.today_pct !== undefined ? item.today_pct : item.chg_pct;
                       const isPositive = chg !== null && chg !== undefined ? chg >= 0 : false;
                       const rsVal = item.rs_rank;
+                      const normRsRaw = item.normalized_rs !== null && item.normalized_rs !== undefined ? Number(item.normalized_rs) : null;
+                      const normRs = normRsRaw !== null ? (Math.abs(normRsRaw) < 0.0001 ? 0 : normRsRaw) : null;
+                      const rsColor = normRs === null ? 'var(--text-muted)' : normRs > 0 ? '#34d399' : normRs < 0 ? '#fb7185' : 'var(--text-secondary)';
 
                       return (
                         <tr
                           key={item.symbol}
+                          ref={isSelected ? selectedRowRef : null}
                           onClick={() => selectStock(item)}
                           style={{
                             borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
@@ -3344,6 +3432,19 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
 
                           <td style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 800, color: rsVal >= 70 ? '#34d399' : rsVal <= 30 ? '#fb7185' : 'var(--text-secondary)' }}>
                             {rsVal !== null && rsVal !== undefined ? rsVal : '—'}
+                          </td>
+
+                          <td style={{ textAlign: 'right', padding: '6px 6px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: rsColor }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '3px' }}>
+                              <span>
+                                {normRs !== null
+                                  ? `${normRs > 0 ? '+' : ''}${normRs.toFixed(2)}`
+                                  : (item.rs_line !== null && item.rs_line !== undefined ? Number(item.rs_line).toFixed(2) : '—')}
+                              </span>
+                              {item.is_rs_blue_dot && (
+                                <span title="RS Blue Dot (RS line at 52-week high)" style={{ fontSize: '10px' }}>🔵</span>
+                              )}
+                            </div>
                           </td>
 
                           <td style={{ padding: '6px 4px', textAlign: 'center' }}>

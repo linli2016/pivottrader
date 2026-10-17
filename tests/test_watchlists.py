@@ -40,6 +40,8 @@ class TestWatchlists(unittest.TestCase):
             self.assertIn("group_rs_rank", item)
             self.assertIn("industry_quadrant", item)
             self.assertIn("sector_quadrant", item)
+            self.assertIn("rs_line", item)
+            self.assertIn("normalized_rs", item)
 
     def test_get_industry_peers(self):
         peers_data = db_service.get_industry_peers("AAPL", limit=5)

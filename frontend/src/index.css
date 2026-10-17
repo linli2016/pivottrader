@@ -3318,12 +3318,16 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 12px;
   background: rgba(15, 23, 42, 0.7);
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  padding: 10px 16px;
+  padding: 0 16px;
+  height: 52px;
+  min-height: 52px;
+  max-height: 52px;
+  box-sizing: border-box;
   margin-bottom: 12px;
   flex-shrink: 0;
 }
@@ -3331,39 +3335,61 @@ body {
 .radar-toolbar-left {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 10px;
+  min-width: 0;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.radar-toolbar-left::-webkit-scrollbar {
+  display: none;
 }
 
 .radar-toolbar-right {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 .radar-pills-group {
   display: inline-flex;
+  align-items: center;
+  height: 36px;
+  min-height: 36px;
+  max-height: 36px;
+  box-sizing: border-box;
   background: rgba(0, 0, 0, 0.4);
   padding: 3px;
   border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   gap: 2px;
+  flex-shrink: 0;
 }
 
 .radar-pill-btn {
   background: transparent;
   color: var(--text-secondary);
-  border: none;
+  border: 1px solid transparent;
   border-radius: 16px;
-  padding: 5px 14px;
+  padding: 0 14px;
+  height: 28px;
+  min-height: 28px;
+  max-height: 28px;
+  line-height: 26px;
+  box-sizing: border-box;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
-  transition: all 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .radar-pill-btn:hover {
@@ -3374,6 +3400,7 @@ body {
 .radar-pill-btn.active {
   background: #10b981;
   color: #ffffff;
+  border-color: #10b981;
   font-weight: 700;
   box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
 }
@@ -3381,9 +3408,19 @@ body {
 .radar-pill-btn.view-active {
   background: rgba(56, 189, 248, 0.22);
   color: #38bdf8;
-  border: 1px solid rgba(56, 189, 248, 0.45);
+  border-color: rgba(56, 189, 248, 0.45);
   font-weight: 700;
   box-shadow: 0 2px 8px rgba(56, 189, 248, 0.25);
+}
+
+.radar-pill-sm {
+  height: 24px;
+  min-height: 24px;
+  max-height: 24px;
+  line-height: 22px;
+  padding: 0 9px;
+  font-size: 11px;
+  border-radius: 14px;
 }
 
 /* 3-Column Layout Container with Resizable Splitters */

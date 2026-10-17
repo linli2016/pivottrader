@@ -171,12 +171,14 @@ export default function CandidatesTab({
   const [selectedIndustry, setSelectedIndustry] = React.useState('ALL');
   const [stage2OnlyFilter, setStage2OnlyFilter] = React.useState(false);
   const [previewGroupModal, setPreviewGroupModal] = React.useState(null);
+  const [sortBy, setSortBy] = React.useState('rs_rank');
 
   const priceCacheRef = React.useRef(new Map());
   const pendingRequestsRef = React.useRef(new Map());
   const abortControllerRef = React.useRef(null);
   const textareaRef = React.useRef(null);
   const selectedItemRef = React.useRef(null);
+  const selectedSymbolRef = React.useRef(null);
   const chartComponentRef = React.useRef(null);
 
   const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
@@ -259,8 +261,36 @@ export default function CandidatesTab({
     if (stage2OnlyFilter) {
       list = list.filter(c => c.industry_stage_num === 2 || (typeof c.group_stage_badge === 'string' && c.group_stage_badge.includes('Stage 2')));
     }
-    return list;
-  }, [filteredCandidates, selectedIndustry, stage2OnlyFilter]);
+    const copy = [...list];
+    switch (sortBy) {
+      case 'symbol':
+        return copy.sort((a, b) => (a.symbol || '').localeCompare(b.symbol || ''));
+      case 'symbol_desc':
+        return copy.sort((a, b) => (b.symbol || '').localeCompare(a.symbol || ''));
+      case 'rs_line':
+        return copy.sort((a, b) => {
+          const valB = b.normalized_rs !== undefined && b.normalized_rs !== null ? b.normalized_rs : b.rs_line;
+          const valA = a.normalized_rs !== undefined && a.normalized_rs !== null ? a.normalized_rs : a.rs_line;
+          return (valB ?? -999999) - (valA ?? -999999);
+        });
+      case 'rs_line_asc':
+        return copy.sort((a, b) => {
+          const valB = b.normalized_rs !== undefined && b.normalized_rs !== null ? b.normalized_rs : b.rs_line;
+          const valA = a.normalized_rs !== undefined && a.normalized_rs !== null ? a.normalized_rs : a.rs_line;
+          return (valA ?? 999999) - (valB ?? 999999);
+        });
+      case 'rs_rank':
+        return copy.sort((a, b) => (b.rs_rank ?? -999) - (a.rs_rank ?? -999));
+      case 'rs_rank_asc':
+        return copy.sort((a, b) => (a.rs_rank ?? 999) - (b.rs_rank ?? 999));
+      case 'chg_pct_desc':
+        return copy.sort((a, b) => ((b.today_pct ?? b.chg_pct) ?? -999) - ((a.today_pct ?? a.chg_pct) ?? -999));
+      case 'chg_pct_asc':
+        return copy.sort((a, b) => ((a.today_pct ?? a.chg_pct) ?? 999) - ((b.today_pct ?? b.chg_pct) ?? 999));
+      default:
+        return copy;
+    }
+  }, [filteredCandidates, selectedIndustry, stage2OnlyFilter, sortBy]);
 
   // Reset selected industry if no longer present in candidates list
   React.useEffect(() => {
@@ -277,6 +307,21 @@ export default function CandidatesTab({
   }, [displayedCandidates.length, browseIndex]);
 
   const currentCandidate = displayedCandidates[browseIndex] || null;
+
+  React.useEffect(() => {
+    if (currentCandidate?.symbol) {
+      selectedSymbolRef.current = currentCandidate.symbol;
+    }
+  }, [currentCandidate?.symbol]);
+
+  React.useEffect(() => {
+    if (selectedSymbolRef.current && displayedCandidates.length > 0) {
+      const idx = displayedCandidates.findIndex(c => c.symbol === selectedSymbolRef.current);
+      if (idx !== -1 && idx !== browseIndex) {
+        setBrowseIndex(idx);
+      }
+    }
+  }, [displayedCandidates]);
 
   const curFolder = React.useMemo(() => {
     return (setupsConfig?.folders || []).find(f => f.id === activeFolderId) || (setupsConfig?.folders || [])[0] || null;
@@ -1540,7 +1585,7 @@ export default function CandidatesTab({
           </div>
 
           {/* Candidate List Ribbon (Right Column) */}
-          <div className="glass-card browse-side-col">
+          <div className="glass-card browse-side-col" style={{ flex: '0 0 clamp(290px, 22vw, 380px)', minWidth: '290px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexShrink: 0 }}>
               <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent-color)', textTransform: 'uppercase', margin: 0 }}>
                 Total ({displayedCandidates.length}{selectedIndustry !== 'ALL' ? ` / ${filteredCandidates.length}` : ''})
@@ -1677,103 +1722,127 @@ export default function CandidatesTab({
               </button>
             </div>
 
-            <div
-              className="custom-scrollbar"
-              style={{
-                flex: 1,
-                overflowY: 'auto',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '6px',
-                minHeight: 0,
-                paddingRight: '2px'
-              }}
-            >
-              {displayedCandidates.map((c, idx) => {
-                const isSelected = idx === browseIndex;
-                const isItemSaved = activeWatchlistSymbols.has(c.symbol.toUpperCase());
-                return (
-                  <div
-                    key={c.symbol}
-                    ref={isSelected ? selectedItemRef : null}
-                    onClick={() => setBrowseIndex(idx)}
-                    style={{
-                      padding: '7px 10px',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      background: isSelected ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255, 255, 255, 0.02)',
-                      border: isSelected ? '1px solid #10b981' : '1px solid rgba(255, 255, 255, 0.05)',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      transition: 'var(--transition-smooth)',
-                      fontSize: '13px'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <StockBrandIcon symbol={c.symbol} size={18} />
-                      <span style={{ fontWeight: 700, color: idx === browseIndex ? '#34d399' : '#ffffff' }}>
-                        {c.symbol}
-                      </span>
-                      {isItemSaved && <span style={{ fontSize: '11px' }} title="Saved in active watchlist">⭐️</span>}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      {c.industry_stage_num && (
-                        <span
-                          className="pill"
-                          style={{
-                            fontSize: '9.5px',
-                            padding: '1px 5px',
-                            fontWeight: 700,
-                            background: c.industry_stage_num === 2 ? 'rgba(16, 185, 129, 0.2)' : c.industry_stage_num === 1 ? 'rgba(56, 189, 248, 0.2)' : c.industry_stage_num === 3 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(244, 63, 94, 0.2)',
-                            color: c.industry_stage_num === 2 ? '#10b981' : c.industry_stage_num === 1 ? '#38bdf8' : c.industry_stage_num === 3 ? '#f59e0b' : '#f43f5e',
-                            border: `1px solid ${c.industry_stage_num === 2 ? 'rgba(16, 185, 129, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`
-                          }}
-                          title={`Industry: ${c.industry || ''} (Stage ${c.industry_stage_num})`}
-                        >
-                          S{c.industry_stage_num}
-                        </span>
-                      )}
+            {/* Screener Result Stocks Table */}
+            <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', minHeight: 0 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                <thead>
+                  <tr style={{
+                    borderBottom: '1px solid var(--border-color)',
+                    background: 'rgba(0, 0, 0, 0.4)',
+                    color: 'var(--text-muted)',
+                    fontSize: '10px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 2
+                  }}>
+                    <th
+                      style={{ textAlign: 'left', padding: '6px 8px', cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => setSortBy(sortBy === 'symbol' ? 'symbol_desc' : 'symbol')}
+                    >
+                      Symbol {sortBy === 'symbol' ? '↑' : sortBy === 'symbol_desc' ? '↓' : ''}
+                    </th>
+                    <th
+                      style={{ textAlign: 'right', padding: '6px 6px', cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => setSortBy(sortBy === 'chg_pct_desc' ? 'chg_pct_asc' : 'chg_pct_desc')}
+                    >
+                      Today {sortBy === 'chg_pct_desc' ? '↓' : sortBy === 'chg_pct_asc' ? '↑' : ''}
+                    </th>
+                    <th
+                      style={{ textAlign: 'center', padding: '6px 6px', cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => setSortBy(sortBy === 'rs_rank' ? 'rs_rank_asc' : 'rs_rank')}
+                      title="IBD Relative Strength Rank (1–99). Click to sort."
+                    >
+                      RS {sortBy === 'rs_rank' ? '↓' : sortBy === 'rs_rank_asc' ? '↑' : ''}
+                    </th>
+                    <th
+                      style={{ textAlign: 'right', padding: '6px 6px', cursor: 'pointer', userSelect: 'none' }}
+                      onClick={() => setSortBy(sortBy === 'rs_line' ? 'rs_line_asc' : 'rs_line')}
+                      title="Normalized Relative Strength Line vs SPY [-1.00 to +1.00] (matching stock chart). Click to sort by strength."
+                    >
+                      RS Line {sortBy === 'rs_line' ? '↓' : sortBy === 'rs_line_asc' ? '↑' : ''}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayedCandidates.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                        No candidates found.
+                      </td>
+                    </tr>
+                  ) : (
+                    displayedCandidates.map((c, idx) => {
+                      const isSelected = idx === browseIndex;
+                      const isItemSaved = activeWatchlistSymbols.has(c.symbol.toUpperCase());
+                      const chg = c.today_pct !== undefined ? c.today_pct : c.chg_pct;
+                      const isPositive = chg !== null && chg !== undefined ? chg >= 0 : false;
+                      const rsVal = c.rs_rank;
+                      const normRsRaw = c.normalized_rs !== null && c.normalized_rs !== undefined ? Number(c.normalized_rs) : null;
+                      const normRs = normRsRaw !== null ? (Math.abs(normRsRaw) < 0.0001 ? 0 : normRsRaw) : null;
+                      const rsColor = normRs === null ? 'var(--text-muted)' : normRs > 0 ? '#34d399' : normRs < 0 ? '#fb7185' : 'var(--text-secondary)';
 
-                      {c.sponsorship_streak >= 2 && (
-                        <span
-                          className="pill"
+                      return (
+                        <tr
+                          key={c.symbol}
+                          ref={isSelected ? selectedItemRef : null}
+                          onClick={() => setBrowseIndex(idx)}
                           style={{
-                            fontSize: '10px',
-                            padding: '1px 5px',
-                            fontWeight: 700,
-                            background: 'rgba(34, 197, 94, 0.2)',
-                            color: '#22c55e',
-                            border: '1px solid rgba(34, 197, 94, 0.4)'
+                            borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                            background: isSelected ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                            borderLeft: isSelected ? '3px solid #38bdf8' : '3px solid transparent',
+                            cursor: 'pointer',
+                            transition: 'background 0.1s ease'
                           }}
-                          title={`Institutional Sponsorship: ${c.sponsorship_streak} consecutive quarters increasing fund count`}
+                          onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)'; }}
+                          onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
                         >
-                          +{c.sponsorship_streak}Q
-                        </span>
-                      )}
-                      {(c.is_rs_blue_dot || c.setups?.includes('RS Blue Dot')) && (
-                        <span
-                          className="pill"
-                          style={{
-                            fontSize: '10px',
-                            padding: '1px 4px',
-                            fontWeight: 700,
-                            background: 'rgba(56, 189, 248, 0.25)',
-                            color: '#38bdf8',
-                            border: '1px solid rgba(56, 189, 248, 0.4)'
-                          }}
-                          title="RS Blue Dot setup"
-                        >
-                          🔵
-                        </span>
-                      )}
-                      <span className="pill pill-success" style={{ fontSize: '10px', padding: '1px 6px', fontWeight: 600 }}>
-                        RS {c.rs_rank}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+                          <td style={{ padding: '6px 8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                              <StockBrandIcon symbol={c.symbol} size={18} />
+                              <span style={{ fontWeight: 800, color: '#ffffff', fontSize: '11.5px' }}>{c.symbol}</span>
+                              {isItemSaved && (
+                                <span
+                                  style={{ fontSize: '11px', cursor: 'pointer' }}
+                                  title="In active watchlist (click to toggle)"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleWatchlist(c.symbol);
+                                  }}
+                                >
+                                  ⭐️
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          <td style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 700, color: chg === null || chg === undefined ? 'var(--text-muted)' : isPositive ? '#34d399' : '#fb7185' }}>
+                            {chg !== null && chg !== undefined ? `${isPositive ? '+' : ''}${chg.toFixed(1)}%` : '—'}
+                          </td>
+
+                          <td style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 800, color: rsVal >= 70 ? '#34d399' : rsVal <= 30 ? '#fb7185' : 'var(--text-secondary)' }}>
+                            {rsVal !== null && rsVal !== undefined ? rsVal : '—'}
+                          </td>
+
+                          <td style={{ textAlign: 'right', padding: '6px 6px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: rsColor }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '3px' }}>
+                              <span>
+                                {normRs !== null
+                                  ? `${normRs > 0 ? '+' : ''}${normRs.toFixed(2)}`
+                                  : (c.rs_line !== null && c.rs_line !== undefined ? Number(c.rs_line).toFixed(2) : '—')}
+                              </span>
+                              {(c.is_rs_blue_dot || c.setups?.includes('RS Blue Dot')) && (
+                                <span title="RS Blue Dot (RS line at 52-week high)" style={{ fontSize: '10px' }}>🔵</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

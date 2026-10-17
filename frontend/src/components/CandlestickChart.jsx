@@ -301,27 +301,6 @@ export function attachNormalizedRs(bars) {
   });
 }
 
-/**
- * Calculates a Simple Moving Average for a series of { time, value } data points.
- */
-export function calculateRsSMA(dataPoints, period = 20) {
-  if (!dataPoints || dataPoints.length < period) return [];
-  const result = [];
-  let sum = 0;
-  for (let i = 0; i < dataPoints.length; i++) {
-    sum += dataPoints[i].value;
-    if (i >= period) {
-      sum -= dataPoints[i - period].value;
-    }
-    if (i >= period - 1) {
-      result.push({
-        time: dataPoints[i].time,
-        value: Number((sum / period).toFixed(4)),
-      });
-    }
-  }
-  return result;
-}
 
 /**
  * Computes responsive scale margins for Price, Volume, and RS panels so that:
@@ -861,7 +840,7 @@ function compositeChartScreenshot(rawChartCanvas, {
   ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
 
   const bannerTextParts = [
-    { text: symbol ? `${symbol}` : '', color: '#f8fafc', bold: true },
+    ...((!isM && !isW) && symbol ? [{ text: `${symbol}`, color: '#f8fafc', bold: true }] : []),
     ...(isM ? [{ text: '[1M]', color: '#fbbf24', bold: true }] : (isW ? [{ text: '[1W]', color: '#c084fc', bold: true }] : [])),
     { text: date ? `(${date})` : '', color: '#94a3b8' },
     { text: ' O', color: '#94a3b8' },
@@ -1063,6 +1042,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   showYearlyThumbnail: showYearlyThumbnailProp = null, // boolean | null (controls Mansfield Yearly Thumbnail)
   showRsLine: showRsLineProp = null, // boolean | null (controls Relative Strength line)
   showEarnings: showEarningsProp = null, // boolean | null (controls Earnings icons)
+  showSymbol: showSymbolProp = null, // boolean | null (controls symbol visibility in legend)
 }, ref) {
   const rootContainerRef = useRef(null);
   const chartContainerRef = useRef();
@@ -1072,6 +1052,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   const verticalLineRef = useRef(null);
   const volumeProfilePrimitiveRef = useRef(null);
   const legendRef = useRef(null);
+  const showSymbolRef = useRef(showSymbolProp);
+  showSymbolRef.current = showSymbolProp;
   const dataLookupRef = useRef({ timeMap: new Map(), data: [], defaultBar: null, defaultPrevBar: null, symbol: null, timeframe: 'daily' });
   const tradePriceLinesRef = useRef([]);
   const lastCancelTimestampRef = useRef(0);
@@ -1720,10 +1702,13 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     const isBlueDot = Boolean(bar.is_rs_blue_dot);
     const isW = chartTimeframeRef.current === 'weekly';
     const isM = chartTimeframeRef.current === 'monthly';
+    const shouldShowSymbol = showSymbolRef.current !== null
+      ? Boolean(showSymbolRef.current)
+      : (!isM && !isW);
 
     legendRef.current.innerHTML = `
-      <div style="display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.2;">
-        ${symbolStr ? `<span style="font-weight: 700; color: #f8fafc; margin-right: 2px;">${symbolStr}</span>` : ''}
+      <div style="display: flex; align-items: center; gap: ${isM || isW ? '6px 8px' : '8px 10px'}; flex-wrap: ${isM || isW ? 'nowrap' : 'wrap'}; white-space: nowrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: ${isM || isW ? '11px' : '12px'}; font-variant-numeric: tabular-nums; line-height: 1.2;">
+        ${shouldShowSymbol && symbolStr ? `<span style="font-weight: 700; color: #f8fafc; margin-right: 2px;">${symbolStr}</span>` : ''}
         ${isM ? `<span style="background: rgba(245, 158, 11, 0.22); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;">1M</span>` : ''}
         ${isW ? `<span style="background: rgba(168, 85, 247, 0.22); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;">1W</span>` : ''}
         ${chartTimeframeRef.current === 'daily' ? `<span style="background: rgba(56, 189, 248, 0.22); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;">1D</span>` : ''}
@@ -1984,24 +1969,6 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         },
       });
 
-      const rsMa20Series = chart.addSeries(LineSeries, {
-        color: 'rgba(250, 204, 21, 0.8)',
-        lineWidth: 1,
-        lineStyle: LineStyle.Solid,
-        priceScaleId: 'rs_line',
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
-        visible: showRsLine,
-        autoscaleInfoProvider: () => ({
-          priceRange: {
-            minValue: -1.05,
-            maxValue: 1.05,
-          },
-        }),
-        title: '',
-      });
-
       chart.priceScale('rs_line').applyOptions({
         scaleMargins: initialMargins.rs,
         visible: false,
@@ -2074,7 +2041,6 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         sma150Series,
         sma220Series,
         rsLineSeries,
-        rsMa20Series,
       };
 
 
@@ -2293,14 +2259,6 @@ const CandlestickChart = forwardRef(function CandlestickChart({
             rsLineSeries.applyOptions({ visible: showRsLine });
           }
           rsLineSeries.setData(rsData);
-
-          if (seriesRef.current?.rsMa20Series) {
-            const rsMaData = showRsLine ? calculateRsSMA(rsData, (chartTimeframeRef.current === 'weekly' || chartTimeframeRef.current === 'monthly') ? 10 : 20) : [];
-            if (seriesRef.current.rsMa20Series.options().visible !== showRsLine) {
-              seriesRef.current.rsMa20Series.applyOptions({ visible: showRsLine });
-            }
-            seriesRef.current.rsMa20Series.setData(rsMaData);
-          }
         }
       }
 
@@ -2421,14 +2379,6 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       }
       seriesRef.current.rsLineSeries.setData(rsData);
 
-      if (seriesRef.current?.rsMa20Series) {
-        const rsMaData = calculateRsSMA(rsData, chartTimeframeRef.current === 'weekly' ? 10 : 20);
-        if (seriesRef.current.rsMa20Series.options().visible !== true) {
-          seriesRef.current.rsMa20Series.applyOptions({ visible: true });
-        }
-        seriesRef.current.rsMa20Series.setData(rsMaData);
-      }
-
       if (markersPluginRef.current) {
         const markers = getCombinedTradeMarkers(currentData, true, tradeExecutions);
         markersPluginRef.current.setMarkers(markers);
@@ -2438,13 +2388,6 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         seriesRef.current.rsLineSeries.applyOptions({ visible: false });
       }
       seriesRef.current.rsLineSeries.setData([]);
-
-      if (seriesRef.current?.rsMa20Series) {
-        if (seriesRef.current.rsMa20Series.options().visible !== false) {
-          seriesRef.current.rsMa20Series.applyOptions({ visible: false });
-        }
-        seriesRef.current.rsMa20Series.setData([]);
-      }
 
       if (markersPluginRef.current) {
         const markers = getCombinedTradeMarkers(currentData, false, tradeExecutions);
@@ -2997,6 +2940,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           padding: '4px 10px',
           boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
           maxWidth: hideTools ? 'calc(100% - 24px)' : 'calc(100% - 330px)',
+          whiteSpace: 'nowrap',
         }}
       />
 

@@ -1436,11 +1436,6 @@ export default function LeaderboardTab({
                   📈 Group Chart
                 </button>
               </div>
-              {leaderViewMode !== 'chart' && (
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                  Use ↑ ↓ arrow keys to inspect
-                </div>
-              )}
             </div>
           </div>
 

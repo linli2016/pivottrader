@@ -749,6 +749,11 @@ class DatabaseService:
                     SELECT CAST(? AS DATE) as val
                 ),
                 {cte_lags}
+                prev_bars AS (
+                    SELECT symbol, close as prev_close
+                    FROM daily_bars
+                    WHERE date = (SELECT MAX(date) FROM daily_bars WHERE date < (SELECT val FROM target_date_const))
+                ),
                 latest_fundamentals AS (
                     SELECT 
                         symbol,
@@ -841,8 +846,10 @@ class DatabaseService:
                     db.days_since_52w_high,
                     db.pp_runup_days,
                     db.stage2_days,
-                    db.weinstein_stage
+                    db.weinstein_stage,
+                    ROUND((db.close - pb.prev_close) / NULLIF(pb.prev_close, 0) * 100.0, 2) as chg_pct
                 FROM {from_table}
+                LEFT JOIN prev_bars pb ON db.symbol = pb.symbol
                 LEFT JOIN latest_fundamentals f ON db.symbol = f.symbol AND f.rn = 1
                 JOIN symbols s ON db.symbol = s.symbol
                 WHERE {where_str}
@@ -961,7 +968,9 @@ class DatabaseService:
                     "stage2_days": int(row[74]) if len(row) > 74 and row[74] is not None else 0,
                     "weinstein_stage": int(row[75]) if len(row) > 75 and row[75] is not None else None,
                     "stage": int(row[75]) if len(row) > 75 and row[75] is not None else None,
-                    "is_confirmed_staged": bool(row[64]) if len(row) > 64 and row[64] is not None else False
+                    "is_confirmed_staged": bool(row[64]) if len(row) > 64 and row[64] is not None else False,
+                    "chg_pct": float(row[76]) if len(row) > 76 and row[76] is not None else None,
+                    "today_pct": float(row[76]) if len(row) > 76 and row[76] is not None else None
                 })
 
             if not candidates:
@@ -1534,6 +1543,55 @@ class DatabaseService:
                     candidates = gr_service.enrich_stocks_with_groups(candidates, date=actual_date_str)
                 except Exception as e:
                     logger.error(f"Error enriching candidates with groups on {actual_date_str}: {e}")
+
+                try:
+                    cand_symbols = list({c["symbol"] for c in candidates if c.get("symbol")})
+                    if cand_symbols:
+                        rs_query = """
+                            WITH spy_bars AS (
+                                SELECT date, close as spy_close 
+                                FROM daily_bars 
+                                WHERE symbol = 'SPY' AND date <= CAST(? AS DATE)
+                            ),
+                            stock_bars AS (
+                                SELECT d.symbol, d.date, d.close, s.spy_close,
+                                       (d.close / NULLIF(s.spy_close, 0)) * 100.0 as rs_line,
+                                       ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date DESC) as rn
+                                FROM daily_bars d
+                                JOIN spy_bars s ON d.date = s.date
+                                WHERE d.symbol IN (SELECT unnest(?)) AND d.date <= CAST(? AS DATE)
+                            ),
+                            rs_win AS (
+                                SELECT symbol, date, close, rs_line, rn,
+                                       MIN(rs_line) OVER (PARTITION BY symbol) as min_rs,
+                                       MAX(rs_line) OVER (PARTITION BY symbol) as max_rs,
+                                       MAX(rs_line) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_max_rs,
+                                       MAX(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_max_close
+                                FROM stock_bars
+                                WHERE rn <= 3500
+                            )
+                            SELECT symbol,
+                                   ROUND(GREATEST(-1.0, LEAST(1.0, ((rs_line - min_rs) / NULLIF(max_rs - min_rs, 0)) * 2.0 - 1.0)), 2) as normalized_rs,
+                                   (rs_line >= prev_max_rs AND close < prev_max_close) as is_rs_blue_dot,
+                                   ROUND(rs_line, 2) as rs_line
+                            FROM rs_win
+                            WHERE rn = 1;
+                        """
+                        rs_rows = conn.execute(rs_query, [actual_date_str, cand_symbols, actual_date_str]).fetchall()
+                        rs_data = {r[0]: {"normalized_rs": r[1], "is_rs_blue_dot": bool(r[2]), "rs_line": r[3]} for r in rs_rows}
+                        for c in candidates:
+                            sym = c.get("symbol")
+                            if sym in rs_data:
+                                c["normalized_rs"] = rs_data[sym]["normalized_rs"]
+                                if not c.get("is_rs_blue_dot"):
+                                    c["is_rs_blue_dot"] = rs_data[sym]["is_rs_blue_dot"]
+                                c["rs_line"] = rs_data[sym]["rs_line"]
+                            else:
+                                c.setdefault("normalized_rs", None)
+                                c.setdefault("is_rs_blue_dot", False)
+                                c.setdefault("rs_line", None)
+                except Exception as e:
+                    logger.error(f"Error enriching candidates with normalized RS on {actual_date_str}: {e}")
 
             return candidates
 
@@ -3316,6 +3374,47 @@ class DatabaseService:
                     FROM institutional_sponsorship
                     WHERE symbol IN (SELECT symbol FROM target_symbols)
                     QUALIFY ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY fiscal_quarter DESC) = 1
+                ),
+                latest_spy AS (
+                    SELECT date, close as spy_close
+                    FROM daily_bars
+                    WHERE symbol = 'SPY'
+                ),
+                default_spy AS (
+                    SELECT close as default_spy_close
+                    FROM daily_bars
+                    WHERE symbol = 'SPY'
+                    ORDER BY date DESC
+                    LIMIT 1
+                ),
+                target_stock_bars AS (
+                    SELECT d.symbol, d.date, d.close, s.spy_close,
+                           (d.close / NULLIF(s.spy_close, 0)) * 100.0 as rs_line,
+                           ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date DESC) as rn
+                    FROM daily_bars d
+                    JOIN latest_spy s ON d.date = s.date
+                    WHERE d.symbol IN (SELECT symbol FROM target_symbols)
+                ),
+                target_rs_window AS (
+                    SELECT symbol, date, close, rs_line, rn,
+                           MIN(rs_line) OVER (PARTITION BY symbol) as min_rs,
+                           MAX(rs_line) OVER (PARTITION BY symbol) as max_rs,
+                           MAX(rs_line) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_max_rs_252,
+                           MAX(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_max_close_252
+                    FROM target_stock_bars
+                    WHERE rn <= 3500
+                ),
+                target_rs_latest AS (
+                    SELECT symbol,
+                           ROUND(
+                               GREATEST(-1.0, LEAST(1.0, 
+                                   ((rs_line - min_rs) / NULLIF(max_rs - min_rs, 0)) * 2.0 - 1.0
+                               )), 
+                               2
+                           ) as normalized_rs,
+                           (rs_line >= prev_max_rs_252 AND close < prev_max_close_252) as is_rs_blue_dot
+                    FROM target_rs_window
+                    WHERE rn = 1
                 )
                 SELECT 
                     s.symbol,
@@ -3353,12 +3452,16 @@ class DatabaseService:
                     COALESCE(isp.holders_count, f.inst_holders_count) as inst_holders_count,
                     COALESCE(isp.holders_qoq_change, f.inst_holders_qoq_change) as inst_holders_qoq_change,
                     f.sponsorship_streak,
-                    lb.is_rs_blue_dot
+                    COALESCE(trs.is_rs_blue_dot, lb.is_rs_blue_dot, false) as is_rs_blue_dot,
+                    ROUND((lb.close / NULLIF(COALESCE(spy.spy_close, (SELECT default_spy_close FROM default_spy)), 0)) * 100.0, 2) as rs_line,
+                    trs.normalized_rs
                 FROM target_symbols ts
                 JOIN symbols s ON ts.symbol = s.symbol
                 LEFT JOIN all_latest_bars lb ON s.symbol = lb.symbol
                 LEFT JOIN latest_fundamentals f ON s.symbol = f.symbol
                 LEFT JOIN latest_sponsorship isp ON s.symbol = isp.symbol
+                LEFT JOIN latest_spy spy ON lb.last_trade_date = spy.date
+                LEFT JOIN target_rs_latest trs ON s.symbol = trs.symbol
                 ORDER BY ts.added_at DESC
             """
             rows = conn.execute(query, [watchlist_id]).fetchall()
@@ -3399,7 +3502,9 @@ class DatabaseService:
                     "inst_holders_count": row[32] if len(row) > 32 else None,
                     "inst_holders_qoq_change": row[33] if len(row) > 33 else None,
                     "sponsorship_streak": row[34] if len(row) > 34 else 0,
-                    "is_rs_blue_dot": bool(row[35]) if len(row) > 35 and row[35] is not None else False
+                    "is_rs_blue_dot": bool(row[35]) if len(row) > 35 and row[35] is not None else False,
+                    "rs_line": float(row[36]) if len(row) > 36 and row[36] is not None else None,
+                    "normalized_rs": float(row[37]) if len(row) > 37 and row[37] is not None else None
                 }
                 for row in rows
             ]
