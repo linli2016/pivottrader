@@ -2578,14 +2578,14 @@ export default function DashboardTab({
           </div>
 
           {/* Step 5 */}
-          <div className="routine-step-box" onClick={() => setActiveTab && setActiveTab('inspector')}>
+          <div className="routine-step-box" onClick={() => setActiveTab && setActiveTab('journal')}>
             <div className="routine-step-top">
               <span className="badge badge-outline">STEP 5</span>
-              <span className="routine-icon">🔍</span>
+              <span className="routine-icon">📓</span>
             </div>
-            <span className="routine-title">5. Stock Inspector</span>
-            <span className="routine-desc">Verify chart structure, stop & entry</span>
-            <button className="btn btn-secondary btn-sm routine-btn">Inspect Chart →</button>
+            <span className="routine-title">5. Trading Journal</span>
+            <span className="routine-desc">Review executions, rules & journal trades</span>
+            <button className="btn btn-secondary btn-sm routine-btn">Open Journal →</button>
           </div>
         </div>
       </div>

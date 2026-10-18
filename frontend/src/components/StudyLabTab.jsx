@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import StockView from './stock-view';
+import StockList, { StockListSplitter, useStockListResize } from './stock-list';
 import StockBrandIcon from './StockBrandIcon';
 import GroupStageChart from './GroupStageChart';
 import { getLocalDateStr } from '../utils/dateUtils';
@@ -163,6 +164,16 @@ export default function StudyLabTab({
   // Model Book Saved State (for quick 1-click toggle)
   const [savedTrades, setSavedTrades] = useState([]);
   const [savingToModelBook, setSavingToModelBook] = useState(false);
+
+  const {
+    panelWidth: sidePanelWidth,
+    isResizing: isResizingSidePanel,
+    startResizing: startResizingSidePanel,
+  } = useStockListResize({
+    storageKey: 'pt_study_side_panel_width',
+    defaultWidth: 360,
+    minWidth: 260,
+  });
 
   // Top setup selection section collapse state with localStorage persistence
   const [isSetupSectionCollapsed, setIsSetupSectionCollapsed] = useState(() => {
@@ -484,7 +495,13 @@ export default function StudyLabTab({
       });
     }
 
-    return list;
+    return [...list].sort((a, b) => {
+      const dateA = a.setup_date || a.date || a.added_at || '';
+      const dateB = b.setup_date || b.date || b.added_at || '';
+      const cmp = String(dateA).localeCompare(String(dateB));
+      if (cmp !== 0) return cmp;
+      return (a.symbol || '').localeCompare(b.symbol || '');
+    });
   }, [rawCandidates, selectedIndustry]);
 
   const currentCandidate = displayedCandidates[browseIndex] || null;
@@ -951,9 +968,20 @@ export default function StudyLabTab({
       )}
 
       {/* 2. Split Screen: Chart + Candidate Ribbon */}
-      <div className="browse-split-container" style={{ marginTop: '8px' }}>
-                {/* Main Col: Unified StockView */}
-        <div className="browse-main-col" style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
+      <div
+        className="browse-split-container"
+        style={{
+          gap: 0,
+          marginTop: '8px',
+          borderRadius: 'var(--border-radius-lg)',
+          border: '1px solid var(--border-color)',
+          boxShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.35)',
+          overflow: 'hidden',
+          background: 'var(--bg-primary)'
+        }}
+      >
+        {/* Main Col: Unified StockView */}
+        <div className="browse-main-col" style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', overflow: 'hidden', background: 'var(--bg-primary)' }}>
           <StockView
             ref={chartRef}
             stock={currentCandidate}
@@ -1010,10 +1038,37 @@ export default function StudyLabTab({
           />
         </div>
 
-{/* Side Col: Candidate List Ribbon (Right Column) */}
-        <div className="glass-card browse-side-col">
+        {/* Resizable Vertical Splitter */}
+        <StockListSplitter
+          isResizing={isResizingSidePanel}
+          onMouseDown={startResizingSidePanel}
+        />
+
+        {/* Side Col: Candidate List Ribbon (Right Column) */}
+        <div
+          className="browse-side-col"
+          style={{
+            width: `${sidePanelWidth}px`,
+            minWidth: 0,
+            flex: `0 0 ${sidePanelWidth}px`,
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--bg-secondary)',
+            overflow: 'hidden',
+            padding: 0
+          }}
+        >
           {/* Header: Total Count + Prev/Next Buttons + Export CSV */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexShrink: 0, gap: '6px' }}>
+          <div style={{
+            padding: '6px 10px',
+            borderBottom: '1px solid var(--border-color)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            background: 'rgba(0, 0, 0, 0.25)',
+            flexShrink: 0,
+            gap: '6px'
+          }}>
             <h4 style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--accent-color)', textTransform: 'uppercase', margin: 0, whiteSpace: 'nowrap', flexShrink: 0 }}>
               Total ({displayedCandidates.length}{selectedIndustry !== 'ALL' ? ` / ${rawCandidates.length}` : ''})
             </h4>
@@ -1083,100 +1138,50 @@ export default function StudyLabTab({
             </div>
           </div>
 
-          {/* Industry / Group Filter & Stage 2 Quick Filter */}
-          <div style={{ marginBottom: '8px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '5px' }}>
-            <select
-              value={selectedIndustry}
-              onChange={(e) => {
-                setSelectedIndustry(e.target.value);
+            <StockList
+              items={displayedCandidates}
+              selectedStock={currentCandidate}
+              selectedSymbol={currentCandidate?.symbol}
+              onSelectStock={(cand) => {
+                if (cand?.symbol) {
+                  const idx = displayedCandidates.findIndex(
+                    (c) => c === cand || (c.symbol === cand.symbol && (c.setup_date || c.date) === (cand.setup_date || cand.date))
+                  );
+                  if (idx !== -1) setBrowseIndex(idx);
+                }
+              }}
+              columns={['symbol', 'date']}
+              defaultSortBy="date_asc"
+              showIndustryFilter={true}
+              selectedIndustry={selectedIndustry}
+              onIndustryChange={(newInd) => {
+                setSelectedIndustry(newInd);
                 setBrowseIndex(0);
               }}
-              style={{
-                width: '100%',
-                padding: '5px 8px',
-                background: 'rgba(30, 41, 59, 0.85)',
-                color: selectedIndustry !== 'ALL' ? '#38bdf8' : 'var(--text-primary)',
-                border: selectedIndustry !== 'ALL' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
-                borderRadius: '6px',
-                fontSize: '11.5px',
-                fontWeight: selectedIndustry !== 'ALL' ? '600' : '400',
-                outline: 'none',
-                cursor: 'pointer'
-              }}
-              title="Filter candidates by industry/group"
-            >
-              <option value="ALL">All Industry Groups ({rawCandidates.length})</option>
-              {industryCounts.map(({ industry, count }) => (
-                <option key={industry} value={industry}>
-                  {industry} ({count})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Candidate List (Scrollable Cards) */}
-          <div
-            className="custom-scrollbar"
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              overflowX: 'hidden',
-              minHeight: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '6px'
-            }}
-          >
-            {displayedCandidates.length === 0 ? (
-              <div style={{ padding: '30px 10px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
-                {loading ? 'Scanning historical setups...' : 'No candidates found for this date range.'}
-              </div>
-            ) : (
-              displayedCandidates.map((cand, idx) => {
-                const isSelected = idx === browseIndex;
-                const isSaved = isCandidateSaved(cand);
-
-                return (
-                  <div
-                    key={`${cand.symbol}_${cand.setup_date || cand.date}_${idx}`}
-                    ref={isSelected ? selectedCandidateRowRef : null}
-                    onClick={() => setBrowseIndex(idx)}
-                    style={{
-                      padding: '7px 10px',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                      background: isSelected
-                        ? 'rgba(56, 189, 248, 0.16)'
-                        : 'rgba(255, 255, 255, 0.03)',
-                      border: isSelected
-                        ? '1.5px solid #38bdf8'
-                        : '1px solid rgba(255, 255, 255, 0.08)',
-                      boxShadow: isSelected ? '0 2px 8px rgba(56, 189, 248, 0.25)' : 'none',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, whiteSpace: 'nowrap' }}>
+              industryCounts={industryCounts}
+              totalCount={rawCandidates.length}
+              renderCell={(colKey, cand) => {
+                if (colKey === 'symbol') {
+                  const isSaved = isCandidateSaved(cand);
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                       <StockBrandIcon symbol={cand.symbol} size={18} />
-                      <span style={{ fontSize: '13px', fontWeight: 800, color: isSelected ? '#38bdf8' : 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                        {cand.symbol}
-                      </span>
+                      <span style={{ fontWeight: 800, color: '#ffffff', fontSize: '11.5px' }}>{cand.symbol}</span>
                       {isSaved && (
                         <span style={{ fontSize: '11px', color: '#34d399', fontWeight: 700 }} title="Saved in Model Book">
                           ★
                         </span>
                       )}
                     </div>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                      {cand.setup_date || cand.date}
-                    </span>
-                  </div>
-                );
-              })
-            )}
-          </div>
+                  );
+                }
+              }}
+              loading={loading}
+              loadingMessage="Scanning historical setups..."
+              emptyMessage="No candidates found for this date range."
+              enableKeyboardNav={false}
+              autoScrollSelected={true}
+            />
         </div>
       </div>
 

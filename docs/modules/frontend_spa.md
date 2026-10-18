@@ -31,8 +31,6 @@ frontend/
         ├── ModelBookTab.jsx         # Exemplary historical trade archive visualizer
         ├── WatchlistsTab.jsx        # Custom watchlist manager and ticker organizer
         ├── SetupsAndRulesTab.jsx    # Live Markdown playbook editor & checklist
-        ├── VcpFootprintCard.jsx     # Visual contraction depth ($D_1 > D_2 > D_3$) diagram
-        ├── LowCheatFootprintCard.jsx# Visual shakeout & recovery base visualizer
         ├── ExpressionCheatSheet.jsx # Modal documentation for dynamic expression syntax
         ├── SqlConsoleTab.jsx        # In-browser direct DuckDB SQL query execution
         └── SyncDataTab.jsx          # Live pipeline runner with streaming subprocess logs
@@ -58,8 +56,6 @@ flowchart TD
     subgraph Inspection ["Inspection & Overlays"]
         Drawer["StockDetailDrawer.jsx"]
         Chart["CandlestickChart.jsx<br/>(Lightweight Charts Canvas)"]
-        VCPCard["VcpFootprintCard.jsx"]
-        LCCard["LowCheatFootprintCard.jsx"]
     end
 
     App --> Views
@@ -67,7 +63,6 @@ flowchart TD
     Tab2 -. "Select Stock" .-> Drawer
     Tab4 -. "Select Stock" .-> Drawer
     Drawer --> Chart
-    Drawer --> VCPCard & LCCard
 ```
 
 ---

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import StockView from './stock-view';
+import StockList, { StockListSplitter } from './stock-list';
 import GroupStageChart from './GroupStageChart';
 import { getLocalDateStr } from '../utils/dateUtils';
 
@@ -696,9 +697,8 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   }, [selectedStock?.symbol, scheduleAdjacentPrefetch]);
 
   // Quick Add Symbol to active watchlist
-  const handleAddSymbol = async (e) => {
-    e?.preventDefault();
-    const sym = newSymbolInput.trim().toUpperCase();
+  const handleAddSymbol = async (inputSymbol) => {
+    const sym = (typeof inputSymbol === 'string' ? inputSymbol : newSymbolInput).trim().toUpperCase();
     if (!sym || !selectedWatchlistId) return;
 
     setIsAddingSymbol(true);
@@ -846,11 +846,11 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   };
 
   // Batch add selected symbols to target watchlist
-  const handleAddBatchToTarget = async () => {
-    const targetWId = targetWatchlistId || selectedWatchlistId;
-    if (!targetWId || selectedSymbols.size === 0) return;
+  const handleAddBatchToTarget = async (customTargetId, customSymbols) => {
+    const targetWId = customTargetId || targetWatchlistId || selectedWatchlistId;
+    const symbolsArray = customSymbols || Array.from(selectedSymbols);
+    if (!targetWId || symbolsArray.length === 0) return;
     const targetW = watchlists.find((w) => w.id === targetWId);
-    const symbolsArray = Array.from(selectedSymbols);
 
     setIsAddingBatchToTarget(true);
     try {
@@ -882,14 +882,14 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   };
 
   // Batch remove selected symbols
-  const handleRemoveBatch = async () => {
-    if (!selectedWatchlistId || selectedSymbols.size === 0) return;
-    const confirmDelete = window.confirm(`Remove ${selectedSymbols.size} symbols from this watchlist?`);
+  const handleRemoveBatch = async (customSymbols) => {
+    const symbolsArray = customSymbols || Array.from(selectedSymbols);
+    if (!selectedWatchlistId || symbolsArray.length === 0) return;
+    const confirmDelete = window.confirm(`Remove ${symbolsArray.length} symbols from this watchlist?`);
     if (!confirmDelete) return;
 
     setIsDeletingItems(true);
     try {
-      const symbolsArray = Array.from(selectedSymbols);
       const res = await fetch(`${API_BASE}/api/watchlists/${selectedWatchlistId}/items/remove-batch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1505,31 +1505,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       {/* ======================================================== */}
       {/* RESIZABLE SPLITTER (Col-resize divider)                  */}
       {/* ======================================================== */}
-      <div
-        onMouseDown={startResizing}
-        style={{
-          width: '6px',
-          cursor: 'col-resize',
-          background: isResizing ? '#38bdf8' : 'var(--border-color)',
-          transition: 'background 0.15s ease',
-          position: 'relative',
-          flexShrink: 0,
-          zIndex: 10,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}
-        onMouseEnter={(e) => { if (!isResizing) e.currentTarget.style.background = 'rgba(56, 189, 248, 0.4)'; }}
-        onMouseLeave={(e) => { if (!isResizing) e.currentTarget.style.background = 'var(--border-color)'; }}
-        title="Drag to resize chart / table panels"
-      >
-        <div style={{
-          width: '2px',
-          height: '24px',
-          borderRadius: '1px',
-          background: isResizing ? '#ffffff' : 'rgba(255, 255, 255, 0.3)'
-        }} />
-      </div>
+      <StockListSplitter isResizing={isResizing} onMouseDown={startResizing} />
 
       {/* ======================================================== */}
       {/* RIGHT CONTAINER: TABLE & WORKSPACE DOCK (~480px)         */}
@@ -1755,384 +1731,42 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                 </>
               )}
             </div>
-
-            {/* Quick Add Symbol Bar */}
-            <div style={{ padding: '6px 10px', borderBottom: '1px solid var(--border-color)', display: 'flex', gap: '6px' }}>
-              <form onSubmit={handleAddSymbol} style={{ display: 'flex', gap: '6px', flex: 1 }}>
-                <input
-                  type="text"
-                  placeholder="+ Add symbol (e.g. PLTR)"
-                  value={newSymbolInput}
-                  onChange={(e) => setNewSymbolInput(e.target.value.toUpperCase())}
-                  style={{
-                    flex: 1,
-                    background: 'rgba(0, 0, 0, 0.35)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    padding: '4px 8px',
-                    fontSize: '11px',
-                    color: '#ffffff',
-                    outline: 'none'
-                  }}
-                />
-                <button
-                  type="submit"
-                  disabled={isAddingSymbol || !newSymbolInput.trim()}
-                  style={{
-                    background: 'rgba(16, 185, 129, 0.2)',
-                    border: '1px solid rgba(16, 185, 129, 0.4)',
-                    color: '#10b981',
-                    borderRadius: '4px',
-                    padding: '3px 8px',
-                    fontSize: '11px',
-                    fontWeight: 700,
-                    cursor: 'pointer'
-                  }}
-                >
-                  Add
-                </button>
-              </form>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSelectMode(!isSelectMode);
-                  if (isSelectMode) setSelectedSymbols(new Set());
-                }}
-                style={{
-                  background: isSelectMode ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                  border: isSelectMode ? '1px solid #38bdf8' : '1px solid var(--border-color)',
-                  color: isSelectMode ? '#38bdf8' : 'var(--text-secondary)',
-                  borderRadius: '4px',
-                  padding: '3px 7px',
-                  fontSize: '10.5px',
-                  cursor: 'pointer'
-                }}
-              >
-                {isSelectMode ? 'Done' : 'Select'}
-              </button>
-            </div>
-
-            {/* Industry/Group Filter Combobox */}
-            <div style={{ padding: '6px 10px', borderBottom: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.15)' }}>
-              <select
-                value={selectedIndustry}
-                onChange={(e) => setSelectedIndustry(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '5px 8px',
-                  background: 'rgba(30, 41, 59, 0.85)',
-                  color: selectedIndustry !== 'ALL' ? '#38bdf8' : 'var(--text-primary)',
-                  border: selectedIndustry !== 'ALL' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  fontWeight: selectedIndustry !== 'ALL' ? '600' : '400',
-                  outline: 'none',
-                  cursor: 'pointer'
-                }}
-                title="Filter stocks by industry/group"
-              >
-                <option value="ALL">All Industry Groups ({items.length})</option>
-                {industryCounts.map(({ industry, count }) => (
-                  <option key={industry} value={industry}>
-                    {industry} ({count})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Batch Action Toolbar when isSelectMode is active */}
-            {isSelectMode && (
-              <div style={{
-                padding: '6px 10px',
-                background: 'rgba(56, 189, 248, 0.08)',
-                borderBottom: '1px solid rgba(56, 189, 248, 0.25)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '8px',
-                flexWrap: 'wrap'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#e2e8f0' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', fontWeight: 600, userSelect: 'none' }}>
-                    <input
-                      type="checkbox"
-                      checked={sortedItems.length > 0 && selectedSymbols.size === sortedItems.length}
-                      ref={(el) => {
-                        if (el) el.indeterminate = selectedSymbols.size > 0 && selectedSymbols.size < sortedItems.length;
-                      }}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedSymbols(new Set(sortedItems.map((i) => i.symbol)));
-                        } else {
-                          setSelectedSymbols(new Set());
-                        }
-                      }}
-                      style={{ cursor: 'pointer' }}
-                    />
-                    <span>
-                      {selectedSymbols.size === 0
-                        ? `Select All (${sortedItems.length})`
-                        : `${selectedSymbols.size} of ${sortedItems.length} selected`}
-                    </span>
-                  </label>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                  {/* Add Selected to Target Watchlist */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                    <select
-                      value={targetWatchlistId || ''}
-                      onChange={(e) => setTargetWatchlistId(Number(e.target.value))}
-                      title="Choose Target Watchlist to add selected stocks into"
-                      style={{
-                        background: 'rgba(15, 23, 42, 0.9)',
-                        color: '#38bdf8',
-                        border: '1px solid rgba(56, 189, 248, 0.4)',
-                        borderRadius: '4px',
-                        padding: '2px 5px',
-                        fontSize: '10.5px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        maxWidth: '120px'
-                      }}
-                    >
-                      {watchlists.map((w) => (
-                        <option key={w.id} value={w.id} style={{ background: '#1e293b', color: '#ffffff' }}>
-                          → {w.name}
-                        </option>
-                      ))}
-                    </select>
-
-                    <button
-                      type="button"
-                      disabled={selectedSymbols.size === 0 || isAddingBatchToTarget}
-                      onClick={handleAddBatchToTarget}
-                      title={`Add selected ${selectedSymbols.size} stocks into "${targetWatchlist?.name || 'target watchlist'}"`}
-                      style={{
-                        background: selectedSymbols.size > 0 ? '#10b981' : 'rgba(255, 255, 255, 0.05)',
-                        border: selectedSymbols.size > 0 ? '1px solid #059669' : '1px solid var(--border-color)',
-                        color: selectedSymbols.size > 0 ? '#ffffff' : 'var(--text-muted)',
-                        borderRadius: '4px',
-                        padding: '3px 8px',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        cursor: selectedSymbols.size > 0 && !isAddingBatchToTarget ? 'pointer' : 'not-allowed',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <span>➕</span>
-                      <span>Add Selected {selectedSymbols.size > 0 ? `(${selectedSymbols.size})` : ''}</span>
-                    </button>
-                  </div>
-
-                  <button
-                    type="button"
-                    disabled={selectedSymbols.size === 0 || isDeletingItems}
-                    onClick={handleRemoveBatch}
-                    title="Remove selected stocks from watchlist"
-                    style={{
-                      background: selectedSymbols.size > 0 ? '#ef4444' : 'rgba(255, 255, 255, 0.05)',
-                      border: selectedSymbols.size > 0 ? '1px solid #dc2626' : '1px solid var(--border-color)',
-                      color: selectedSymbols.size > 0 ? '#ffffff' : 'var(--text-muted)',
-                      borderRadius: '4px',
-                      padding: '3px 8px',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      cursor: selectedSymbols.size > 0 && !isDeletingItems ? 'pointer' : 'not-allowed',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <span>🗑️</span>
-                    <span>Remove Selected</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleClearWatchlist}
-                    disabled={items.length === 0 || isDeletingItems}
-                    title="Remove all stocks from this watchlist"
-                    style={{
-                      background: 'rgba(244, 63, 94, 0.12)',
-                      border: '1px solid rgba(244, 63, 94, 0.3)',
-                      color: '#fb7185',
-                      borderRadius: '4px',
-                      padding: '3px 8px',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      cursor: items.length > 0 && !isDeletingItems ? 'pointer' : 'not-allowed',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    Remove All
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Watchlist Stock Table */}
-            <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
-                <thead>
-                  <tr style={{
-                    borderBottom: '1px solid var(--border-color)',
-                    background: 'rgba(0, 0, 0, 0.4)',
-                    color: 'var(--text-muted)',
-                    fontSize: '10px',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                    position: 'sticky',
-                    top: 0,
-                    zIndex: 2
-                  }}>
-                    {isSelectMode && (
-                      <th style={{ width: '28px', padding: '6px 4px', textAlign: 'center' }}>
-                        <input
-                          type="checkbox"
-                          checked={sortedItems.length > 0 && selectedSymbols.size === sortedItems.length}
-                          ref={(el) => {
-                            if (el) el.indeterminate = selectedSymbols.size > 0 && selectedSymbols.size < sortedItems.length;
-                          }}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedSymbols(new Set(sortedItems.map((i) => i.symbol)));
-                            } else {
-                              setSelectedSymbols(new Set());
-                            }
-                          }}
-                          title={selectedSymbols.size === sortedItems.length ? 'Deselect All' : 'Select All'}
-                          style={{ cursor: 'pointer' }}
-                        />
-                      </th>
-                    )}
-                    <th
-                      style={{ textAlign: 'left', padding: '6px 8px', cursor: 'pointer', userSelect: 'none' }}
-                      onClick={() => setSortBy(sortBy === 'symbol' ? 'symbol_desc' : 'symbol')}
-                    >
-                      Symbol {sortBy === 'symbol' ? '↑' : sortBy === 'symbol_desc' ? '↓' : ''}
-                    </th>
-                    <th
-                      style={{ textAlign: 'right', padding: '6px 6px', cursor: 'pointer', userSelect: 'none' }}
-                      onClick={() => setSortBy(sortBy === 'chg_pct_desc' ? 'chg_pct_asc' : 'chg_pct_desc')}
-                    >
-                      Today {sortBy === 'chg_pct_desc' ? '↓' : sortBy === 'chg_pct_asc' ? '↑' : ''}
-                    </th>
-                    <th
-                      style={{ textAlign: 'center', padding: '6px 6px', cursor: 'pointer', userSelect: 'none' }}
-                      onClick={() => setSortBy(sortBy === 'rs_rank' ? 'rs_rank_asc' : 'rs_rank')}
-                      title="IBD Relative Strength Rank (1–99). Click to sort."
-                    >
-                      RS {sortBy === 'rs_rank' ? '↓' : sortBy === 'rs_rank_asc' ? '↑' : ''}
-                    </th>
-                    <th
-                      style={{ textAlign: 'right', padding: '6px 6px', cursor: 'pointer', userSelect: 'none' }}
-                      onClick={() => setSortBy(sortBy === 'rs_line' ? 'rs_line_asc' : 'rs_line')}
-                      title="Normalized Relative Strength Line vs SPY [-1.00 to +1.00] (matching stock chart). Click to sort by strength."
-                    >
-                      RS Line {sortBy === 'rs_line' ? '↓' : sortBy === 'rs_line_asc' ? '↑' : ''}
-                    </th>
-                    <th style={{ width: '22px', padding: '6px 4px' }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loadingItems ? (
-                    <tr>
-                      <td colSpan={isSelectMode ? 6 : 5} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
-                        Loading watchlist stocks...
-                      </td>
-                    </tr>
-                  ) : sortedItems.length === 0 ? (
-                    <tr>
-                      <td colSpan={isSelectMode ? 6 : 5} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
-                        No stocks found in this watchlist.
-                      </td>
-                    </tr>
-                  ) : (
-                    sortedItems.map((item) => {
-                      const isSelected = (selectedStock?.symbol || '').toUpperCase() === (item.symbol || '').toUpperCase();
-                      const chg = item.today_pct !== undefined ? item.today_pct : item.chg_pct;
-                      const isPositive = chg !== null && chg !== undefined ? chg >= 0 : false;
-                      const rsVal = item.rs_rank;
-                      const normRsRaw = item.normalized_rs !== null && item.normalized_rs !== undefined ? Number(item.normalized_rs) : null;
-                      const normRs = normRsRaw !== null ? (Math.abs(normRsRaw) < 0.0001 ? 0 : normRsRaw) : null;
-                      const rsColor = normRs === null ? 'var(--text-muted)' : normRs > 0 ? '#34d399' : normRs < 0 ? '#fb7185' : 'var(--text-secondary)';
-
-                      return (
-                        <tr
-                          key={item.symbol}
-                          ref={isSelected ? selectedRowRef : null}
-                          onClick={() => selectStock(item)}
-                          style={{
-                            borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
-                            background: isSelected ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
-                            borderLeft: isSelected ? '3px solid #38bdf8' : '3px solid transparent',
-                            cursor: 'pointer',
-                            transition: 'background 0.1s ease'
-                          }}
-                          onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)'; }}
-                          onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
-                        >
-                          {isSelectMode && (
-                            <td style={{ textAlign: 'center', padding: '6px 4px' }} onClick={(e) => e.stopPropagation()}>
-                              <input
-                                type="checkbox"
-                                checked={selectedSymbols.has(item.symbol)}
-                                onChange={(e) => toggleSelectSymbol(item.symbol, e)}
-                              />
-                            </td>
-                          )}
-
-                          <td style={{ padding: '6px 8px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-                              <StockBrandIcon symbol={item.symbol} size={18} />
-                              <span style={{ fontWeight: 800, color: '#ffffff', fontSize: '11.5px' }}>{item.symbol}</span>
-                            </div>
-                          </td>
-
-                          <td style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 700, color: chg === null || chg === undefined ? 'var(--text-muted)' : isPositive ? '#34d399' : '#fb7185' }}>
-                            {chg !== null && chg !== undefined ? `${isPositive ? '+' : ''}${chg.toFixed(1)}%` : '—'}
-                          </td>
-
-                          <td style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 800, color: rsVal >= 70 ? '#34d399' : rsVal <= 30 ? '#fb7185' : 'var(--text-secondary)' }}>
-                            {rsVal !== null && rsVal !== undefined ? rsVal : '—'}
-                          </td>
-
-                          <td style={{ textAlign: 'right', padding: '6px 6px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: rsColor }}>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '3px' }}>
-                              <span>
-                                {normRs !== null
-                                  ? `${normRs > 0 ? '+' : ''}${normRs.toFixed(2)}`
-                                  : (item.rs_line !== null && item.rs_line !== undefined ? Number(item.rs_line).toFixed(2) : '—')}
-                              </span>
-                              {item.is_rs_blue_dot && (
-                                <span title="RS Blue Dot (RS line at 52-week high)" style={{ fontSize: '10px' }}>🔵</span>
-                              )}
-                            </div>
-                          </td>
-
-                          <td style={{ padding: '6px 4px', textAlign: 'center' }}>
-                            <button
-                              type="button"
-                              onClick={(e) => handleRemoveSymbol(item.symbol, e)}
-                              title={`Remove ${item.symbol}`}
-                              style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '11px', padding: 0 }}
-                            >
-                              ✕
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <StockList
+              items={items}
+              selectedStock={selectedStock}
+              onSelectStock={selectStock}
+              columns={['symbol', 'today_pct', 'rs_rank', 'rs_line', 'actions']}
+              sortBy={sortBy}
+              onSortChange={setSortBy}
+              showIndustryFilter={true}
+              selectedIndustry={selectedIndustry}
+              onIndustryChange={setSelectedIndustry}
+              showQuickAdd={true}
+              onAddSymbol={handleAddSymbol}
+              isAddingSymbol={isAddingSymbol}
+              enableSelectMode={true}
+              isSelectMode={isSelectMode}
+              onToggleSelectMode={() => {
+                setIsSelectMode(!isSelectMode);
+                if (isSelectMode) setSelectedSymbols(new Set());
+              }}
+              selectedSymbols={selectedSymbols}
+              onSelectionChange={setSelectedSymbols}
+              watchlists={watchlists}
+              targetWatchlistId={targetWatchlistId}
+              onTargetWatchlistChange={setTargetWatchlistId}
+              onBatchAddToWatchlist={handleAddBatchToTarget}
+              isAddingBatchToTarget={isAddingBatchToTarget}
+              onBatchRemove={handleRemoveBatch}
+              isDeletingItems={isDeletingItems}
+              onClearAll={handleClearWatchlist}
+              onRemoveSymbol={handleRemoveSymbol}
+              loading={loadingItems}
+              loadingMessage="Loading watchlist stocks..."
+              emptyMessage="No stocks found in this watchlist."
+              enableKeyboardNav={false}
+              autoScrollSelected={dockTab === 'watchlists'}
+            />
           </div>
         )}
 

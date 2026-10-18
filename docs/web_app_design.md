@@ -120,10 +120,10 @@ The frontend is structured as a Single Page Application (SPA) using **React 18**
    - **Candidates Table:** Sortable columns with colored status badges, RS ranks, ADR%, and quick watchlist assignment.
    - **TradingView Exporter:** One-click copy/download of screened tickers in TradingView format.
 
-3. **Stock Inspector Tab (`InspectorTab.jsx`):**
-   - **Interactive Candlestick Chart:** Lightweight-charts daily candlestick chart with SMA 50 (blue), SMA 150 (orange), SMA 200 (pink), EMA 10/20, and volume bars.
-   - **VCP Footprint Card (`VcpFootprintCard.jsx`):** Visualizes contraction waves ($D_1 > D_2 > D_3$), base depths, and tightness metrics.
-   - **Fundamental Earnings Tracker:** Historical quarterly and annual financial tables (EPS diluted, QoQ growth %, revenue).
+3. **Stock Detail Drawer (`StockDetailDrawer.jsx` & `StockView`):**
+   - **Interactive Multi-Timeframe Charts:** Lightweight-charts daily and weekly candlestick charts with moving averages (SMA 50, SMA 150, SMA 200, EMA 10/20), RS line vs SPY, and volume bars.
+   - **Comprehensive Telemetry & Badges:** Institutional fund sponsorship streak, EPS acceleration history, 52W statistics, and ADR% / TI65 metrics.
+   - **Industry Peers & Thematic Baskets:** RS-ranked constituent drill-down and sector/industry classification.
 
 4. **Market Monitor Tab (`MarketMonitorTab.jsx`):**
    - **Stockbee Market Monitor:** Tracks daily market breadth: 4% Gainers/Losers, 25% Monthly/Quarterly Gainers, 50-day / 200-day New Highs/Lows, and Worden T2108 indicators.

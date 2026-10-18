@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import DashboardTab from './components/DashboardTab';
 import CandidatesTab from './components/CandidatesTab';
-import InspectorTab from './components/InspectorTab';
 import SettingsTab from './components/SettingsTab';
 import SectorCompareTab from './components/SectorCompareTab';
 import StockDetailDrawer from './components/StockDetailDrawer';
@@ -136,15 +135,7 @@ function App() {
   const [activeSetupKey, setActiveSetupKey] = useState('power_play');
   const [activeExpression, setActiveExpression] = useState('');
 
-  // Full inspector state
-  const [inspectorSymbol, setInspectorSymbol] = useState('');
-  const [searchingInspector, setSearchingInspector] = useState(false);
-  const [inspectorError, setInspectorError] = useState(null);
-  const [inspectorDetail, setInspectorDetail] = useState(null);
-  const [inspectorPrices, setInspectorPrices] = useState([]);
-
   // References
-  const inspectorInputRef = useRef(null);
   const syncIntervalRef = useRef(null);
   const activeExpressionRef = useRef('');
 
@@ -512,39 +503,6 @@ function App() {
     }
   };
 
-  // Search full details for inspector
-  const handleInspectorSearch = async (symbol) => {
-    if (!symbol || symbol.trim() === '') return;
-    const cleanSym = symbol.trim().toUpperCase();
-    setSearchingInspector(true);
-    setInspectorError(null);
-    setInspectorDetail(null);
-    setInspectorPrices([]);
-
-    try {
-      const [res, prRes] = await Promise.all([
-        fetch(`${API_BASE}/api/stocks/${cleanSym}`),
-        fetch(`${API_BASE}/api/stocks/${cleanSym}/prices?limit=750`)
-      ]);
-
-      if (res.status === 404) {
-        setInspectorError(`Symbol ${cleanSym} not found in database. Please run a sync search or check ticker directory.`);
-        setSearchingInspector(false);
-        return;
-      }
-      const data = await res.json();
-      setInspectorDetail(data);
-
-      if (prRes.ok) {
-        const prData = await prRes.json();
-        setInspectorPrices(prData);
-      }
-    } catch (e) {
-      setInspectorError(`Error loading details for ${cleanSym}: ${e.message}`);
-    } finally {
-      setSearchingInspector(false);
-    }
-  };
 
   // Run custom SQL console query
   const handleRunSQL = async () => {
@@ -901,19 +859,6 @@ function App() {
           />
         )}
 
-        {activeTab === 'inspector' && (
-          <InspectorTab
-            inspectorSymbol={inspectorSymbol}
-            setInspectorSymbol={setInspectorSymbol}
-            searchingInspector={searchingInspector}
-            inspectorError={inspectorError}
-            inspectorDetail={inspectorDetail}
-            inspectorPrices={inspectorPrices}
-            handleInspectorSearch={handleInspectorSearch}
-            inspectorInputRef={inspectorInputRef}
-          />
-        )}
-
         {activeTab === 'sql' && (
           <Suspense fallback={<div className="tab-loading-spinner" style={{ padding: '2rem', textAlign: 'center', color: '#888' }}>Loading SQL Console...</div>}>
             <SqlConsoleTab
@@ -987,8 +932,6 @@ function App() {
         stockDetail={stockDetail}
         stockPrices={stockPrices}
         setActiveTab={setActiveTab}
-        setInspectorSymbol={setInspectorSymbol}
-        handleInspectorSearch={handleInspectorSearch}
         watchlists={watchlists}
         fetchWatchlists={fetchWatchlists}
       />

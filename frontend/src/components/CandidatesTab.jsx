@@ -1,5 +1,6 @@
 import React from 'react';
 import StockView from './stock-view';
+import StockList, { StockListSplitter, useStockListResize } from './stock-list';
 import GroupStageChart from './GroupStageChart';
 import ExpressionCheatSheet from './ExpressionCheatSheet';
 import StockBrandIcon from './StockBrandIcon';
@@ -215,6 +216,16 @@ export default function CandidatesTab({
   const selectedItemRef = React.useRef(null);
   const selectedSymbolRef = React.useRef(null);
   const chartComponentRef = React.useRef(null);
+
+  const {
+    panelWidth: sidePanelWidth,
+    isResizing: isResizingSidePanel,
+    startResizing: startResizingSidePanel,
+  } = useStockListResize({
+    storageKey: 'pt_screener_side_panel_width',
+    defaultWidth: 380,
+    minWidth: 260,
+  });
 
   const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
@@ -1360,9 +1371,19 @@ export default function CandidatesTab({
           </button>
         </div>
       ) : (
-        <div className="browse-split-container">
-                    {/* Main Browse Column (Left) with Unified StockView */}
-          <div className="browse-main-col" style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
+        <div
+          className="browse-split-container"
+          style={{
+            gap: 0,
+            borderRadius: 'var(--border-radius-lg)',
+            border: '1px solid var(--border-color)',
+            boxShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.35)',
+            overflow: 'hidden',
+            background: 'var(--bg-primary)'
+          }}
+        >
+          {/* Main Browse Column (Left) with Unified StockView */}
+          <div className="browse-main-col" style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', overflow: 'hidden', background: 'var(--bg-primary)' }}>
             <StockView
               ref={chartComponentRef}
               stock={currentCandidate}
@@ -1387,10 +1408,37 @@ export default function CandidatesTab({
             />
           </div>
 
-{/* Candidate List Ribbon (Right Column) */}
-          <div className="glass-card browse-side-col" style={{ flex: '0 0 clamp(290px, 22vw, 380px)', minWidth: '290px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexShrink: 0 }}>
-              <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent-color)', textTransform: 'uppercase', margin: 0 }}>
+          {/* Resizable Vertical Splitter */}
+          <StockListSplitter
+            isResizing={isResizingSidePanel}
+            onMouseDown={startResizingSidePanel}
+          />
+
+          {/* Candidate List Ribbon (Right Column) */}
+          <div
+            className="browse-side-col"
+            style={{
+              width: `${sidePanelWidth}px`,
+              minWidth: 0,
+              flex: `0 0 ${sidePanelWidth}px`,
+              display: 'flex',
+              flexDirection: 'column',
+              background: 'var(--bg-secondary)',
+              overflow: 'hidden',
+              padding: 0
+            }}
+          >
+            <div style={{
+              padding: '6px 10px',
+              borderBottom: '1px solid var(--border-color)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: 'rgba(0, 0, 0, 0.25)',
+              flexShrink: 0,
+              gap: '6px'
+            }}>
+              <h4 style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--accent-color)', textTransform: 'uppercase', margin: 0, whiteSpace: 'nowrap', flexShrink: 0 }}>
                 Total ({displayedCandidates.length}{selectedIndustry !== 'ALL' ? ` / ${filteredCandidates.length}` : ''})
               </h4>
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -1464,189 +1512,144 @@ export default function CandidatesTab({
               </div>
             </div>
 
-            {/* Industry/Group Filter & Weinstein Stage 2 Quick Filter */}
-            <div style={{ marginBottom: '8px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '5px' }}>
-              <select
-                value={selectedIndustry}
-                onChange={(e) => {
-                  setSelectedIndustry(e.target.value);
-                  setBrowseIndex(0);
-                }}
-                style={{
-                  width: '100%',
-                  padding: '5px 8px',
-                  background: 'rgba(30, 41, 59, 0.85)',
-                  color: selectedIndustry !== 'ALL' ? '#38bdf8' : 'var(--text-primary)',
-                  border: selectedIndustry !== 'ALL' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  fontSize: '11.5px',
-                  fontWeight: selectedIndustry !== 'ALL' ? '600' : '400',
-                  outline: 'none',
-                  cursor: 'pointer'
-                }}
-                title="Filter candidates by industry/group"
-              >
-                <option value="ALL">All Industry Groups ({filteredCandidates.length})</option>
-                {industryCounts.map(({ industry, count }) => (
-                  <option key={industry} value={industry}>
-                    {industry} ({count})
-                  </option>
-                ))}
-              </select>
+            <StockList
+              items={displayedCandidates}
+              selectedStock={currentCandidate}
+              selectedSymbol={currentCandidate?.symbol}
+              onSelectStock={(stk) => {
+                if (stk) {
+                  const idx = displayedCandidates.findIndex((c) => c === stk || c.symbol === stk.symbol);
+                  if (idx !== -1) setBrowseIndex(idx);
+                }
+              }}
+              columns={['symbol', 'today_pct', 'rs_rank', 'rs_line']}
+              sortBy={sortBy}
+              onSortChange={(newSort) => {
+                setSortBy(newSort);
+                setBrowseIndex(0);
+              }}
+              showIndustryFilter={true}
+              selectedIndustry={selectedIndustry}
+              onIndustryChange={(newInd) => {
+                setSelectedIndustry(newInd);
+                setBrowseIndex(0);
+              }}
+              industryCounts={industryCounts}
+              hideHeaderSelectButton={true}
+              filterExtra={({ isSelectMode, toggleSelectMode }) => (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStage2OnlyFilter((prev) => !prev);
+                      setBrowseIndex(0);
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '4px 9px',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      background: stage2OnlyFilter ? 'rgba(16, 185, 129, 0.22)' : 'rgba(255, 255, 255, 0.04)',
+                      border: `1px solid ${stage2OnlyFilter ? '#10b981' : 'rgba(255, 255, 255, 0.12)'}`,
+                      color: stage2OnlyFilter ? '#34d399' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                    title="Stan Weinstein Rule: Only show candidates whose industry is in Stage 2 (Advancing Markup)"
+                  >
+                    {stage2OnlyFilter ? (
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+                        <rect x="2" y="2" width="12" height="12" rx="3" fill="#10b981" stroke="#10b981" strokeWidth="1.5" />
+                        <path d="M4.8 8.2L7 10.4L11.5 5.5" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    ) : (
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+                        <rect x="2" y="2" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="1.5" />
+                      </svg>
+                    )}
+                    <span>Stage 2 Groups Only</span>
+                  </button>
 
-              {/* Stan Weinstein Stage 2 Group Toggle */}
-              <button
-                type="button"
-                onClick={() => {
-                  setStage2OnlyFilter((prev) => !prev);
-                  setBrowseIndex(0);
-                }}
-                style={{
-                  width: '100%',
-                  padding: '4px 8px',
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  background: stage2OnlyFilter ? 'rgba(16, 185, 129, 0.22)' : 'rgba(255, 255, 255, 0.03)',
-                  border: `1px solid ${stage2OnlyFilter ? '#10b981' : 'rgba(255, 255, 255, 0.08)'}`,
-                  color: stage2OnlyFilter ? '#10b981' : 'var(--text-secondary)',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease'
-                }}
-                title="Stan Weinstein Rule: Only show candidates whose industry is in Stage 2 (Advancing Markup)"
-              >
-                <span>🟩 Stage 2 Groups Only</span>
-                <span style={{ fontSize: '10px', opacity: 0.85 }}>
-                  {stage2OnlyFilter ? 'ACTIVE ✓' : 'OFF'}
-                </span>
-              </button>
-            </div>
-
-            {/* Screener Result Stocks Table */}
-            <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', overflowX: 'auto', minHeight: 0 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
-                <thead>
-                  <tr style={{
-                    borderBottom: '1px solid var(--border-color)',
-                    background: 'rgba(0, 0, 0, 0.4)',
-                    color: 'var(--text-muted)',
-                    fontSize: '10px',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                    position: 'sticky',
-                    top: 0,
-                    zIndex: 2
-                  }}>
-                    <th
-                      style={{ textAlign: 'left', padding: '6px 8px', cursor: 'pointer', userSelect: 'none' }}
-                      onClick={() => setSortBy(sortBy === 'symbol' ? 'symbol_desc' : 'symbol')}
-                    >
-                      Symbol {sortBy === 'symbol' ? '↑' : sortBy === 'symbol_desc' ? '↓' : ''}
-                    </th>
-                    <th
-                      style={{ textAlign: 'right', padding: '6px 6px', cursor: 'pointer', userSelect: 'none' }}
-                      onClick={() => setSortBy(sortBy === 'chg_pct_desc' ? 'chg_pct_asc' : 'chg_pct_desc')}
-                    >
-                      Today {sortBy === 'chg_pct_desc' ? '↓' : sortBy === 'chg_pct_asc' ? '↑' : ''}
-                    </th>
-                    <th
-                      style={{ textAlign: 'center', padding: '6px 6px', cursor: 'pointer', userSelect: 'none' }}
-                      onClick={() => setSortBy(sortBy === 'rs_rank' ? 'rs_rank_asc' : 'rs_rank')}
-                      title="IBD Relative Strength Rank (1–99). Click to sort."
-                    >
-                      RS {sortBy === 'rs_rank' ? '↓' : sortBy === 'rs_rank_asc' ? '↑' : ''}
-                    </th>
-                    <th
-                      style={{ textAlign: 'right', padding: '6px 6px', cursor: 'pointer', userSelect: 'none' }}
-                      onClick={() => setSortBy(sortBy === 'rs_line' ? 'rs_line_asc' : 'rs_line')}
-                      title="Normalized Relative Strength Line vs SPY [-1.00 to +1.00] (matching stock chart). Click to sort by strength."
-                    >
-                      RS Line {sortBy === 'rs_line' ? '↓' : sortBy === 'rs_line_asc' ? '↑' : ''}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayedCandidates.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
-                        No candidates found.
-                      </td>
-                    </tr>
-                  ) : (
-                    displayedCandidates.map((c, idx) => {
-                      const isSelected = idx === browseIndex;
-                      const isItemSaved = activeWatchlistSymbols.has(c.symbol.toUpperCase());
-                      const chg = c.today_pct !== undefined ? c.today_pct : c.chg_pct;
-                      const isPositive = chg !== null && chg !== undefined ? chg >= 0 : false;
-                      const rsVal = c.rs_rank;
-                      const normRsRaw = c.normalized_rs !== null && c.normalized_rs !== undefined ? Number(c.normalized_rs) : null;
-                      const normRs = normRsRaw !== null ? (Math.abs(normRsRaw) < 0.0001 ? 0 : normRsRaw) : null;
-                      const rsColor = normRs === null ? 'var(--text-muted)' : normRs > 0 ? '#34d399' : normRs < 0 ? '#fb7185' : 'var(--text-secondary)';
-
-                      return (
-                        <tr
-                          key={c.symbol}
-                          ref={isSelected ? selectedItemRef : null}
-                          onClick={() => setBrowseIndex(idx)}
-                          style={{
-                            borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
-                            background: isSelected ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
-                            borderLeft: isSelected ? '3px solid #38bdf8' : '3px solid transparent',
-                            cursor: 'pointer',
-                            transition: 'background 0.1s ease'
+                  <button
+                    type="button"
+                    onClick={toggleSelectMode}
+                    style={{
+                      background: isSelectMode ? 'rgba(56, 189, 248, 0.22)' : 'rgba(255, 255, 255, 0.04)',
+                      border: isSelectMode ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.12)',
+                      color: isSelectMode ? '#38bdf8' : 'var(--text-secondary, #cbd5e1)',
+                      borderRadius: '6px',
+                      padding: '4px 10px',
+                      fontSize: '11px',
+                      cursor: 'pointer',
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'all 0.15s ease'
+                    }}
+                    title={isSelectMode ? "Exit select mode" : "Select multiple candidates for batch watchlist actions"}
+                  >
+                    <span>{isSelectMode ? '✓ Done' : '☑ Select'}</span>
+                  </button>
+                </div>
+              )}
+              renderCell={(colKey, c) => {
+                if (colKey === 'symbol') {
+                  const isItemSaved = activeWatchlistSymbols.has(c.symbol.toUpperCase());
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                      <StockBrandIcon symbol={c.symbol} size={18} />
+                      <span style={{ fontWeight: 800, color: '#ffffff', fontSize: '11.5px' }}>{c.symbol}</span>
+                      {isItemSaved && (
+                        <span
+                          style={{ fontSize: '11px', cursor: 'pointer' }}
+                          title="In active watchlist (click to toggle)"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleWatchlist(c.symbol);
                           }}
-                          onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)'; }}
-                          onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
                         >
-                          <td style={{ padding: '6px 8px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-                              <StockBrandIcon symbol={c.symbol} size={18} />
-                              <span style={{ fontWeight: 800, color: '#ffffff', fontSize: '11.5px' }}>{c.symbol}</span>
-                              {isItemSaved && (
-                                <span
-                                  style={{ fontSize: '11px', cursor: 'pointer' }}
-                                  title="In active watchlist (click to toggle)"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleToggleWatchlist(c.symbol);
-                                  }}
-                                >
-                                  ⭐️
-                                </span>
-                              )}
-                            </div>
-                          </td>
-
-                          <td style={{ textAlign: 'right', padding: '6px 6px', fontWeight: 700, color: chg === null || chg === undefined ? 'var(--text-muted)' : isPositive ? '#34d399' : '#fb7185' }}>
-                            {chg !== null && chg !== undefined ? `${isPositive ? '+' : ''}${chg.toFixed(1)}%` : '—'}
-                          </td>
-
-                          <td style={{ textAlign: 'center', padding: '6px 6px', fontWeight: 800, color: rsVal >= 70 ? '#34d399' : rsVal <= 30 ? '#fb7185' : 'var(--text-secondary)' }}>
-                            {rsVal !== null && rsVal !== undefined ? rsVal : '—'}
-                          </td>
-
-                          <td style={{ textAlign: 'right', padding: '6px 6px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: rsColor }}>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '3px' }}>
-                              <span>
-                                {normRs !== null
-                                  ? `${normRs > 0 ? '+' : ''}${normRs.toFixed(2)}`
-                                  : (c.rs_line !== null && c.rs_line !== undefined ? Number(c.rs_line).toFixed(2) : '—')}
-                              </span>
-                              {(c.is_rs_blue_dot || c.setups?.includes('RS Blue Dot')) && (
-                                <span title="RS Blue Dot (RS line at 52-week high)" style={{ fontSize: '10px' }}>🔵</span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+                          ⭐️
+                        </span>
+                      )}
+                    </div>
+                  );
+                }
+              }}
+              enableSelectMode={true}
+              watchlists={watchlists}
+              targetWatchlistId={targetWatchlistId}
+              onTargetWatchlistChange={setTargetWatchlistId}
+              onBatchAddToWatchlist={async (targetWId, symbolsArray) => {
+                if (!targetWId || !symbolsArray || symbolsArray.length === 0) return;
+                try {
+                  const res = await fetch(`${API_BASE}/api/watchlists/${targetWId}/items/batch`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbols: symbolsArray })
+                  });
+                  if (res.ok) {
+                    if (targetWId === targetWatchlistId) {
+                      fetchTargetWatchlistItems(targetWId);
+                    }
+                    if (fetchWatchlists) fetchWatchlists();
+                  }
+                } catch (e) {
+                  console.error('Error adding batch to watchlist:', e);
+                }
+              }}
+              loading={loadingCandidates}
+              loadingMessage="Scanning screener setups..."
+              emptyMessage="No candidates found."
+              enableKeyboardNav={false}
+              autoScrollSelected={true}
+            />
           </div>
         </div>
       )}

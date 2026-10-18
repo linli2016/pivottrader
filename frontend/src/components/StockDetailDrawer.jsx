@@ -11,8 +11,6 @@ export default function StockDetailDrawer({
   stockDetail,
   stockPrices,
   setActiveTab,
-  setInspectorSymbol,
-  handleInspectorSearch,
   watchlists = [],
   fetchWatchlists = null,
 }) {
@@ -92,11 +90,9 @@ export default function StockDetailDrawer({
 
   if (!selectedStock) return null;
 
-  const handleOpenInspector = () => {
+  const handleOpenWatchlists = () => {
     const sym = selectedStock?.symbol || selectedStock;
     setSelectedStock(null);
-    if (setInspectorSymbol) setInspectorSymbol(sym);
-    if (handleInspectorSearch) handleInspectorSearch(sym);
     if (setActiveTab) setActiveTab('watchlists');
     setTimeout(() => {
       window.dispatchEvent(new CustomEvent('pt-inspect-stock', { detail: { symbol: sym } }));
@@ -182,12 +178,12 @@ export default function StockDetailDrawer({
                 </div>
               )}
 
-              {setActiveTab && handleInspectorSearch && (
+              {setActiveTab && (
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
-                  onClick={handleOpenInspector}
-                  title="Open in Full Stock Inspector"
+                  onClick={handleOpenWatchlists}
+                  title="Open in Watchlists"
                   style={{
                     fontSize: '11px',
                     padding: '3px 8px',
@@ -197,7 +193,7 @@ export default function StockDetailDrawer({
                     gap: '4px'
                   }}
                 >
-                  🔍 Inspector
+                  📊 Watchlists
                 </button>
               )}
 

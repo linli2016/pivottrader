@@ -1732,61 +1732,6 @@ class DatabaseService:
             low_52w = float(latest_bar[12]) if latest_bar and len(latest_bar) > 12 and latest_bar[12] is not None else None
             dist_from_52w_high = float(latest_bar[13]) if latest_bar and len(latest_bar) > 13 and latest_bar[13] is not None else None
 
-            # Calculate Minervini Setups (VCP, Low Cheat & Cheat) - only needs last 120 bars
-            from application.engine.setups.vcp import detect_vcp
-            from application.engine.setups.low_cheat import detect_low_cheat, detect_cheat
-
-            bars_for_setups = conn.execute("""
-                SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, ipo_days_count
-                FROM (
-                    SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, ipo_days_count
-                    FROM daily_bars
-                    WHERE symbol = ?
-                    ORDER BY date DESC
-                    LIMIT 120
-                )
-                ORDER BY date ASC
-            """, [symbol]).fetchall()
-
-            vcp_footprint = None
-            low_cheat_footprint = None
-            cheat_footprint = None
-            if bars_for_setups and len(bars_for_setups) >= 15:
-                dates = [b[0] for b in bars_for_setups]
-                opens = [float(b[1]) for b in bars_for_setups]
-                highs = [float(b[2]) for b in bars_for_setups]
-                lows = [float(b[3]) for b in bars_for_setups]
-                closes = [float(b[4]) for b in bars_for_setups]
-                volumes = [float(b[5]) for b in bars_for_setups]
-                latest_sma50 = float(bars_for_setups[-1][6]) if bars_for_setups[-1][6] is not None else None
-                latest_sma150 = float(bars_for_setups[-1][7]) if bars_for_setups[-1][7] is not None else None
-                latest_sma200 = float(bars_for_setups[-1][8]) if bars_for_setups[-1][8] is not None else None
-                latest_ipo_days = int(bars_for_setups[-1][9]) if bars_for_setups[-1][9] is not None else None
-
-                vcp_footprint = detect_vcp(highs, lows, dates, closes=closes, window=3)
-                low_cheat_footprint = detect_low_cheat(
-                    opens, highs, lows, closes, volumes, dates,
-                    vol_50d_ma=vol_50d_ma,
-                    sma_50=latest_sma50,
-                    sma_150=latest_sma150,
-                    sma_200=latest_sma200,
-                    ipo_days=latest_ipo_days,
-                    enforce_stage2=True
-                )
-                if not (low_cheat_footprint and low_cheat_footprint.get("low_cheat_is_setup")):
-                    cheat_res = detect_cheat(
-                        opens, highs, lows, closes, volumes, dates,
-                        vol_50d_ma=vol_50d_ma,
-                        sma_50=latest_sma50,
-                        sma_150=latest_sma150,
-                        sma_200=latest_sma200,
-                        ipo_days=latest_ipo_days,
-                        enforce_stage2=True
-                    )
-                    if cheat_res and cheat_res.get("cheat_is_setup"):
-                        cheat_footprint = cheat_res
-                        low_cheat_footprint = cheat_res
-                 
             return {
                 "metadata": meta_dict,
                 "fundamentals": fund_list,
@@ -1820,9 +1765,6 @@ class DatabaseService:
                     "ret_3m": ret_3m,
                     "ret_6m": ret_6m
                 },
-                "vcp_footprint": vcp_footprint,
-                "low_cheat_footprint": low_cheat_footprint,
-                "cheat_footprint": cheat_footprint,
                 "market_cap": meta_dict.get("market_cap"),
                 "next_earnings_date": meta_dict.get("next_earnings_date"),
                 "sector": meta_dict.get("sector"),

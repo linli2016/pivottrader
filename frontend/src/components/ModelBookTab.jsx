@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import StockView from './stock-view';
+import StockList, { StockListSplitter, useStockListResize } from './stock-list';
 import StockBrandIcon from './StockBrandIcon';
 import GroupStageChart from './GroupStageChart';
 
@@ -15,6 +16,16 @@ export default function ModelBookTab({
   const selectedSavedTradeRowRef = useRef(null);
   const priceCacheRef = useRef(new Map());
   const pendingRequestsRef = useRef(new Map());
+
+  const {
+    panelWidth: sidePanelWidth,
+    isResizing: isResizingSidePanel,
+    startResizing: startResizingSidePanel,
+  } = useStockListResize({
+    storageKey: 'pt_model_book_side_panel_width',
+    defaultWidth: 380,
+    minWidth: 260,
+  });
 
   // Saved Trades State
   const [savedTrades, setSavedTrades] = useState([]);
@@ -163,14 +174,13 @@ export default function ModelBookTab({
       if (res.ok) {
         const data = await res.json();
         setSavedTrades(data || []);
-        prefetchSymbols((data || []).map(t => t.symbol));
       }
     } catch (e) {
       console.error('Error fetching saved trades:', e);
     } finally {
       setLoadingSavedTrades(false);
     }
-  }, [prefetchSymbols]);
+  }, []);
 
   useEffect(() => {
     fetchSavedTrades();
@@ -190,7 +200,13 @@ export default function ModelBookTab({
         (t.setup_name && t.setup_name.toLowerCase().includes(q))
       );
     }
-    return list;
+    return [...list].sort((a, b) => {
+      const dateA = a.setup_date || a.date || a.added_at || '';
+      const dateB = b.setup_date || b.date || b.added_at || '';
+      const cmp = String(dateA).localeCompare(String(dateB));
+      if (cmp !== 0) return cmp;
+      return (a.symbol || '').localeCompare(b.symbol || '');
+    });
   }, [savedTrades, savedTradeFilterSetup, savedTradeSearch]);
 
   const currentTrade = filteredSavedTrades[selectedIndex] || null;
@@ -219,10 +235,25 @@ export default function ModelBookTab({
       }
     });
 
+    // Prefetch surrounding saved trades for smooth keyboard navigation
+    let timer = null;
+    if (filteredSavedTrades.length > 1) {
+      const symbolsToPrefetch = [];
+      if (selectedIndex + 1 < filteredSavedTrades.length) symbolsToPrefetch.push(filteredSavedTrades[selectedIndex + 1]?.symbol);
+      if (selectedIndex + 2 < filteredSavedTrades.length) symbolsToPrefetch.push(filteredSavedTrades[selectedIndex + 2]?.symbol);
+      if (selectedIndex + 3 < filteredSavedTrades.length) symbolsToPrefetch.push(filteredSavedTrades[selectedIndex + 3]?.symbol);
+      if (selectedIndex > 0) symbolsToPrefetch.push(filteredSavedTrades[selectedIndex - 1]?.symbol);
+
+      timer = setTimeout(() => {
+        prefetchSymbols(symbolsToPrefetch);
+      }, 100);
+    }
+
     return () => {
       isCancelled = true;
+      if (timer) clearTimeout(timer);
     };
-  }, [currentTrade, fetchStockPrices]);
+  }, [currentTrade, selectedIndex, filteredSavedTrades, fetchStockPrices, prefetchSymbols]);
 
   // Auto-scroll selected trade into view
   useEffect(() => {
@@ -368,9 +399,19 @@ export default function ModelBookTab({
   return (
     <div className="stock-screen-container">
       {/* Split Screen: Chart & Notes on Left, List on Right */}
-      <div className="browse-split-container">
+      <div
+        className="browse-split-container"
+        style={{
+          gap: 0,
+          borderRadius: 'var(--border-radius-lg)',
+          border: '1px solid var(--border-color)',
+          boxShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.35)',
+          overflow: 'hidden',
+          background: 'var(--bg-primary)'
+        }}
+      >
         {/* Main Column: Stock Info Card + Full Height Candlestick Chart + Study Notes */}
-        <div className="browse-main-col">
+        <div className="browse-main-col" style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-primary)', gap: 0 }}>
           {currentTrade ? (
             <>
               <StockView
@@ -546,7 +587,17 @@ export default function ModelBookTab({
               />
 
               {/* Study Notes Textarea */}
-              <div className="glass-card" style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: '6px', flexShrink: 0 }}>
+              <div
+                style={{
+                  padding: '8px 12px',
+                  borderTop: '1px solid var(--border-color)',
+                  background: 'rgba(0, 0, 0, 0.25)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  flexShrink: 0
+                }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '12px', fontWeight: 700, color: '#f8fafc' }}>
                     📝 Trader Study Notes:
@@ -584,10 +635,37 @@ export default function ModelBookTab({
           )}
         </div>
 
+        {/* Resizable Vertical Splitter */}
+        <StockListSplitter
+          isResizing={isResizingSidePanel}
+          onMouseDown={startResizingSidePanel}
+        />
+
         {/* Side Column: Saved Trades List */}
-        <div className="glass-card browse-side-col">
+        <div
+          className="browse-side-col"
+          style={{
+            width: `${sidePanelWidth}px`,
+            minWidth: 0,
+            flex: `0 0 ${sidePanelWidth}px`,
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--bg-secondary)',
+            overflow: 'hidden',
+            padding: 0
+          }}
+        >
           {/* Header: Counter + Prev/Next Buttons */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexShrink: 0, gap: '6px' }}>
+          <div style={{
+            padding: '6px 10px',
+            borderBottom: '1px solid var(--border-color)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            background: 'rgba(0, 0, 0, 0.25)',
+            flexShrink: 0,
+            gap: '6px'
+          }}>
             <h4 style={{ fontSize: '12.5px', fontWeight: 700, color: '#34d399', textTransform: 'uppercase', margin: 0, whiteSpace: 'nowrap', flexShrink: 0 }}>
               Saved Setups ({filteredSavedTrades.length}{savedTradeFilterSetup !== 'ALL' ? ` / ${savedTrades.length}` : ''})
             </h4>
@@ -633,132 +711,71 @@ export default function ModelBookTab({
             </div>
           </div>
 
-          {/* Setup Category Selection beneath Counter and Prev/Next Buttons */}
-          <div style={{ marginBottom: '8px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '5px' }}>
-            <select
-              value={savedTradeFilterSetup}
-              onChange={e => {
-                setSavedTradeFilterSetup(e.target.value);
-                setSelectedIndex(0);
+            <StockList
+              items={filteredSavedTrades}
+              selectedStock={currentTrade}
+              selectedSymbol={currentTrade?.symbol}
+              onSelectStock={(trade) => {
+                if (trade) {
+                  const idx = filteredSavedTrades.findIndex(
+                    (t) => (t.id !== undefined && trade.id !== undefined ? t.id === trade.id : t === trade)
+                  );
+                  if (idx !== -1) setSelectedIndex(idx);
+                }
               }}
-              style={{
-                width: '100%',
-                padding: '5px 8px',
-                background: 'rgba(30, 41, 59, 0.85)',
-                color: savedTradeFilterSetup !== 'ALL' ? '#38bdf8' : 'var(--text-primary)',
-                border: savedTradeFilterSetup !== 'ALL' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
-                borderRadius: '6px',
-                fontSize: '11.5px',
-                fontWeight: savedTradeFilterSetup !== 'ALL' ? '600' : '400',
-                outline: 'none',
-                cursor: 'pointer'
-              }}
-              title="Filter saved setups by setup category"
-            >
-              <option value="ALL">All Setups ({savedTrades.length})</option>
-              {allScreeners.map(opt => {
-                const count = savedTrades.filter(t => t.setup_type === opt.id).length;
-                return (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.icon || '📌'} {opt.name || opt.label} ({count})
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-
-          {/* Saved Trades Rows */}
-          <div
-            className="custom-scrollbar"
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              overflowX: 'hidden',
-              minHeight: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '6px'
-            }}
-          >
-            {filteredSavedTrades.length === 0 ? (
-              <div style={{ padding: '30px 10px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
-                {loadingSavedTrades ? 'Loading saved trades...' : 'No saved trades found.'}
-              </div>
-            ) : (
-              filteredSavedTrades.map((trade, idx) => {
-                const isSelected = idx === selectedIndex;
-
-                return (
-                  <div
-                    key={trade.id}
-                    ref={isSelected ? selectedSavedTradeRowRef : null}
-                    onClick={() => setSelectedIndex(idx)}
-                    style={{
-                      padding: '7px 10px',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                      background: isSelected
-                        ? 'rgba(16, 185, 129, 0.16)'
-                        : 'rgba(255, 255, 255, 0.03)',
-                      border: isSelected
-                        ? '1.5px solid #10b981'
-                        : '1px solid rgba(255, 255, 255, 0.08)',
-                      boxShadow: isSelected ? '0 2px 8px rgba(16, 185, 129, 0.25)' : 'none',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, whiteSpace: 'nowrap' }}>
-                      <StockBrandIcon symbol={trade.symbol} size={18} />
-                      <span style={{ fontSize: '13px', fontWeight: 800, color: isSelected ? '#34d399' : 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                        {trade.symbol}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, whiteSpace: 'nowrap' }}>
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 500 }}>
-                        {trade.setup_date}
-                      </span>
-                      {trade.market_regime && (
-                        <span style={{ fontSize: '10.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                          {trade.market_regime === 'BULLISH' ? '🟢 Bullish' : trade.market_regime === 'BEARISH' ? '🔴 Bearish' : '🟡 Caution'}
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteSavedTrade(trade.id);
-                        }}
-                        title={`Remove ${trade.symbol} (${trade.setup_date}) from Model Book`}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          width: '20px',
-                          height: '20px',
-                          padding: 0,
-                          borderRadius: '4px',
-                          background: 'rgba(244, 63, 94, 0.1)',
-                          border: '1px solid rgba(244, 63, 94, 0.25)',
-                          color: '#fb7185',
-                          fontSize: '11px',
-                          lineHeight: 1,
-                          cursor: 'pointer',
-                          flexShrink: 0,
-                          transition: 'all 0.15s ease'
-                        }}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
+              columns={['symbol', 'date', 'regime', 'actions']}
+              defaultSortBy="date_asc"
+              filterExtra={
+                <select
+                  value={savedTradeFilterSetup}
+                  onChange={(e) => {
+                    setSavedTradeFilterSetup(e.target.value);
+                    setSelectedIndex(0);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '5px 8px',
+                    background: 'rgba(30, 41, 59, 0.85)',
+                    color: savedTradeFilterSetup !== 'ALL' ? '#38bdf8' : 'var(--text-primary)',
+                    border: savedTradeFilterSetup !== 'ALL' ? '1px solid #38bdf8' : '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    fontSize: '11.5px',
+                    fontWeight: savedTradeFilterSetup !== 'ALL' ? '600' : '400',
+                    outline: 'none',
+                    cursor: 'pointer'
+                  }}
+                  title="Filter saved setups by setup category"
+                >
+                  <option value="ALL">All Setups ({savedTrades.length})</option>
+                  {allScreeners.map((opt) => {
+                    const count = savedTrades.filter((t) => t.setup_type === opt.id).length;
+                    return (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.icon || '📌'} {opt.name || opt.label} ({count})
+                      </option>
+                    );
+                  })}
+                </select>
+              }
+              renderRowActions={(trade) => (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteSavedTrade(trade.id);
+                  }}
+                  title={`Remove ${trade.symbol} (${trade.setup_date}) from Model Book`}
+                  className="stock-list-action-btn"
+                >
+                  ✕
+                </button>
+              )}
+              loading={loadingSavedTrades}
+              loadingMessage="Loading saved trades..."
+              emptyMessage="No saved trades found."
+              enableKeyboardNav={false}
+              autoScrollSelected={true}
+            />
         </div>
       </div>
 
