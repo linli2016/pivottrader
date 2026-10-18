@@ -205,3 +205,8 @@ This method can also be traded by anticipating the breakout but I don’t find i
 - What is a valid Breakout? [view](
  https://thesetupfactory.substack.com/p/what-is-a-valid-breakout)
 - A System Behind a +40% Week —  Six Years of Trading Experience Compressed Into One Article [view](https://x.com/MichaelZTrading/article/2100596335162380479)
+
+- https://tradingresourcehub.substack.com/p/martin-luk-283-usic-2024-key-lessons?r=2gmgdb&utm_campaign=post&utm_medium=web&triedRedirect=true
+
+- https://jfsrev.substack.com/p/my-trading-tools-process-routine?open=false#%C2%A7chapter-11-five-books-i-highly-recommend-to-strengthen-your-foundation-you-do-not-know-what-you-dont-know
+

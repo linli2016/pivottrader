@@ -173,6 +173,41 @@ export default function CandidatesTab({
   const [previewGroupModal, setPreviewGroupModal] = React.useState(null);
   const [sortBy, setSortBy] = React.useState('rs_rank');
 
+  // Top setup selection section collapse state with localStorage persistence
+  const [isSetupSectionCollapsed, setIsSetupSectionCollapsed] = React.useState(() => {
+    try {
+      return localStorage.getItem('pt_screen_setup_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSetupCollapse = React.useCallback(() => {
+    setIsSetupSectionCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('pt_screen_setup_collapsed', String(next));
+      } catch {}
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+      }, 50);
+      return next;
+    });
+  }, []);
+
+  // Keyboard shortcut: Alt + S or Cmd/Ctrl + Shift + S to toggle setup selection collapse
+  React.useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+      if ((e.altKey && (e.key === 's' || e.key === 'S')) || ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 's' || e.key === 'S'))) {
+        e.preventDefault();
+        toggleSetupCollapse();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [toggleSetupCollapse]);
+
   const priceCacheRef = React.useRef(new Map());
   const pendingRequestsRef = React.useRef(new Map());
   const abortControllerRef = React.useRef(null);
@@ -357,6 +392,12 @@ export default function CandidatesTab({
     if (currentCandidate?.ipo_days_count !== undefined && currentCandidate?.ipo_days_count <= 350) return 'IPO Base';
     return 'General';
   }, [curScreener, currentCandidate]);
+
+  const activeScreenerColor = React.useMemo(() => {
+    if (curScreener?.id && SETUP_COLORS[curScreener.id]) return SETUP_COLORS[curScreener.id];
+    if (activeFolderId && SETUP_COLORS[activeFolderId]) return SETUP_COLORS[activeFolderId];
+    return '#38bdf8';
+  }, [curScreener, activeFolderId]);
 
   const currentHasBlueDot = React.useMemo(() => {
     if (currentCandidate?.is_rs_blue_dot) return true;
@@ -720,13 +761,203 @@ export default function CandidatesTab({
     URL.revokeObjectURL(url);
   };
 
+  const renderDateAndSyncControls = (compact = false) => (
+    <>
+      {/* Date Navigation & Picker */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={handlePrevDay}
+          disabled={!canGoPrev}
+          title={prevDate ? `Previous Day (${prevDate})` : 'No earlier trading date'}
+          aria-label="Previous Day"
+          style={{
+            width: compact ? '26px' : '28px',
+            height: compact ? '26px' : '28px',
+            padding: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(30, 41, 59, 0.9)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '6px',
+            color: canGoPrev ? '#f8fafc' : 'rgba(255, 255, 255, 0.3)',
+            cursor: canGoPrev ? 'pointer' : 'not-allowed',
+            opacity: canGoPrev ? 1 : 0.45,
+            flexShrink: 0,
+            lineHeight: 1
+          }}
+        >
+          <svg width={compact ? "13" : "14"} height={compact ? "13" : "14"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+        </button>
+
+        <input
+          type="date"
+          value={curDateStr}
+          onChange={(e) => setSelectedDate(e.target.value)}
+          max={maxSelectableDate}
+          title="Select As-of Date"
+          style={{
+            background: 'rgba(30, 41, 59, 0.9)',
+            color: '#f8fafc',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '6px',
+            padding: compact ? '4px 6px' : '5px 8px',
+            height: compact ? '26px' : '28px',
+            fontSize: compact ? '11.5px' : '12px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            outline: 'none',
+            colorScheme: 'dark',
+            boxSizing: 'border-box'
+          }}
+        />
+
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={handleNextDay}
+          disabled={!canGoNext}
+          title={nextDate ? `Next Day (${nextDate})` : 'No later trading date'}
+          aria-label="Next Day"
+          style={{
+            width: compact ? '26px' : '28px',
+            height: compact ? '26px' : '28px',
+            padding: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(30, 41, 59, 0.9)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '6px',
+            color: canGoNext ? '#f8fafc' : 'rgba(255, 255, 255, 0.3)',
+            cursor: canGoNext ? 'pointer' : 'not-allowed',
+            opacity: canGoNext ? 1 : 0.45,
+            flexShrink: 0,
+            lineHeight: 1
+          }}
+        >
+          <svg width={compact ? "13" : "14"} height={compact ? "13" : "14"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </button>
+      </div>
+
+      <button
+        className="btn btn-secondary btn-sm"
+        onClick={handleTriggerLiveQuotesSync}
+        disabled={syncStatus?.status === 'running' || loadingCandidates}
+        title={syncStatus?.status === 'running' ? "Refreshing Live Quotes..." : "Sync Live Market Quotes (<3s)"}
+        style={{
+          padding: compact ? '4px 8px' : '5px 10px',
+          height: compact ? '26px' : '28px',
+          fontSize: compact ? '13px' : '14px',
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: syncStatus?.status === 'running' ? 'rgba(56, 189, 248, 0.25)' : 'rgba(15, 23, 42, 0.5)',
+          border: syncStatus?.status === 'running' ? '1px solid #38bdf8' : '1px solid rgba(56, 189, 248, 0.4)',
+          color: '#38bdf8',
+          cursor: syncStatus?.status === 'running' ? 'not-allowed' : 'pointer',
+          lineHeight: 1
+        }}
+      >
+        <span className={syncStatus?.status === 'running' ? "spin-icon" : ""}>⚡</span>
+      </button>
+    </>
+  );
+
   return (
     <div className="stock-screen-container">
       {/* Interactive Strategy & Filter controls */}
-      <div className="glass-card" style={{ marginBottom: '10px', padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
-        {/* Top Integrated Header: Strategy Buttons + Right Action Controls */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          {/* Level 1: Folder Selector */}
+      {isSetupSectionCollapsed ? (
+        <div
+          className="glass-card"
+          style={{
+            marginBottom: '8px',
+            padding: '6px 14px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '12px',
+            flexShrink: 0
+          }}
+        >
+          {/* Left: Expand Toggle & Active Setup Badge */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={toggleSetupCollapse}
+              title="Expand setup selection (Alt + S)"
+              style={{
+                padding: '4px 10px',
+                fontSize: '12px',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: 'rgba(56, 189, 248, 0.12)',
+                borderColor: 'rgba(56, 189, 248, 0.35)',
+                color: '#38bdf8',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <span>▼</span>
+              <span>Setups</span>
+            </button>
+
+            {/* Active Setup Badge */}
+            <div
+              onClick={toggleSetupCollapse}
+              title={`${curFolder?.name || 'Folder'} › ${curScreener?.name || curScreener?.label || activeSetupName}\nFormula: ${activeExpression || 'Default'}\nClick to expand setup selection`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '3px 10px',
+                borderRadius: '6px',
+                background: 'rgba(15, 23, 42, 0.55)',
+                border: `1px solid ${activeScreenerColor}40`,
+                cursor: 'pointer',
+                userSelect: 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>
+                {curFolder?.icon ? `${curFolder.icon} ` : '📁 '}{curFolder?.name || 'Daily'}
+              </span>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>›</span>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: activeScreenerColor, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                {curScreener?.icon ? `${curScreener.icon} ` : ''}{curScreener?.name || curScreener?.label || activeSetupName}
+              </span>
+              <span style={{
+                fontSize: '10px',
+                fontWeight: 700,
+                padding: '1px 6px',
+                borderRadius: '10px',
+                background: `${activeScreenerColor}25`,
+                color: activeScreenerColor,
+                marginLeft: '4px'
+              }}>
+                {displayedCandidates.length}{selectedIndustry !== 'ALL' ? ` / ${filteredCandidates.length}` : ''}
+              </span>
+            </div>
+          </div>
+
+          {/* Right Action Controls: Date Picker & Live Sync */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            {renderDateAndSyncControls(true)}
+          </div>
+        </div>
+      ) : (
+        <div className="glass-card" style={{ marginBottom: '10px', padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
+          {/* Top Integrated Header: Strategy Buttons + Right Action Controls */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            {/* Level 1: Folder Selector */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: '2px' }}>
               Folder:
@@ -809,112 +1040,12 @@ export default function CandidatesTab({
             )}
           </div>
 
-          {/* Right Action Controls: Standalone Date Picker & Rules/Sliders Toggle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            {/* Date Navigation & Picker */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={handlePrevDay}
-                disabled={!canGoPrev}
-                title={prevDate ? `Previous Day (${prevDate})` : 'No earlier trading date'}
-                aria-label="Previous Day"
-                style={{
-                  width: '28px',
-                  height: '28px',
-                  padding: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: 'rgba(30, 41, 59, 0.9)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '6px',
-                  color: canGoPrev ? '#f8fafc' : 'rgba(255, 255, 255, 0.3)',
-                  cursor: canGoPrev ? 'pointer' : 'not-allowed',
-                  opacity: canGoPrev ? 1 : 0.45,
-                  flexShrink: 0,
-                  lineHeight: 1
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="15 18 9 12 15 6" />
-                </svg>
-              </button>
-
-              <input
-                type="date"
-                value={curDateStr}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                max={maxSelectableDate}
-                title="Select As-of Date"
-                style={{
-                  background: 'rgba(30, 41, 59, 0.9)',
-                  color: '#f8fafc',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '6px',
-                  padding: '5px 8px',
-                  height: '28px',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  outline: 'none',
-                  colorScheme: 'dark',
-                  boxSizing: 'border-box'
-                }}
-              />
-
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={handleNextDay}
-                disabled={!canGoNext}
-                title={nextDate ? `Next Day (${nextDate})` : 'No later trading date'}
-                aria-label="Next Day"
-                style={{
-                  width: '28px',
-                  height: '28px',
-                  padding: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: 'rgba(30, 41, 59, 0.9)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '6px',
-                  color: canGoNext ? '#f8fafc' : 'rgba(255, 255, 255, 0.3)',
-                  cursor: canGoNext ? 'pointer' : 'not-allowed',
-                  opacity: canGoNext ? 1 : 0.45,
-                  flexShrink: 0,
-                  lineHeight: 1
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-              </button>
-            </div>
+          {/* Right Action Controls: Standalone Date Picker, Live Quotes, Expression & Collapse Toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {renderDateAndSyncControls(false)}
 
             <button
-              className="btn btn-secondary btn-sm"
-              onClick={handleTriggerLiveQuotesSync}
-              disabled={syncStatus?.status === 'running' || loadingCandidates}
-              title={syncStatus?.status === 'running' ? "Refreshing Live Quotes..." : "Sync Live Market Quotes (<3s)"}
-              style={{
-                padding: '5px 10px',
-                fontSize: '14px',
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: syncStatus?.status === 'running' ? 'rgba(56, 189, 248, 0.25)' : 'rgba(15, 23, 42, 0.5)',
-                border: syncStatus?.status === 'running' ? '1px solid #38bdf8' : '1px solid rgba(56, 189, 248, 0.4)',
-                color: '#38bdf8',
-                cursor: syncStatus?.status === 'running' ? 'not-allowed' : 'pointer',
-                lineHeight: 1
-              }}
-            >
-              <span className={syncStatus?.status === 'running' ? "spin-icon" : ""}>⚡</span>
-            </button>
-
-            <button
+              type="button"
               className="btn btn-secondary btn-sm"
               onClick={() => setShowExpressionSection(!showExpressionSection)}
               style={{
@@ -933,6 +1064,26 @@ export default function CandidatesTab({
               ⚙️ {showExpressionSection ? 'Expression ▲' : 'Expression ▼'}
             </button>
 
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={toggleSetupCollapse}
+              title="Collapse setup selection to maximize chart space (Alt + S)"
+              style={{
+                padding: '5px 10px',
+                fontSize: '12px',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                color: 'var(--text-secondary)'
+              }}
+            >
+              <span>▲</span>
+              <span>Collapse</span>
+            </button>
           </div>
         </div>
 
@@ -1194,6 +1345,7 @@ export default function CandidatesTab({
           </div>
         )}
       </div>
+    )}
 
       {/* Stock Browse Mode Content */}
       {filteredCandidates.length === 0 ? (

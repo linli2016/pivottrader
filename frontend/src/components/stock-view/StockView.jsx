@@ -32,6 +32,7 @@ const StockView = forwardRef(function StockView({
   marketRegime = null,
   // Optional extra header elements (non-counter)
   headerExtra = null,
+  showEarningsBadge = true,
   // Chart props
   tradeExecutions = null,
   tradePriceLines = null,
@@ -311,6 +312,7 @@ const StockView = forwardRef(function StockView({
         onToggleDetail={handleToggleDetail}
         onSelectGroup={onSelectGroup}
         headerExtra={headerExtra}
+        showEarningsBadge={showEarningsBadge}
         tradeExecutions={tradeExecutions}
         tradePriceLines={tradePriceLines}
         showVolumeProfile={showVolumeProfile}

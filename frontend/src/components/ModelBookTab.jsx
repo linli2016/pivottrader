@@ -381,6 +381,7 @@ export default function ModelBookTab({
                 setupName={currentTrade.setup_name || currentTrade.setup_type}
                 asOfDate={isEditingTrade ? (editTriggerDate || currentTrade.setup_date) : currentTrade.setup_date}
                 marketRegime={currentTrade.market_regime}
+                showEarningsBadge={false}
                 watchlists={watchlists}
                 targetWatchlistId={targetWatchlistId}
                 onTargetWatchlistChange={setTargetWatchlistId}

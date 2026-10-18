@@ -164,6 +164,41 @@ export default function StudyLabTab({
   const [savedTrades, setSavedTrades] = useState([]);
   const [savingToModelBook, setSavingToModelBook] = useState(false);
 
+  // Top setup selection section collapse state with localStorage persistence
+  const [isSetupSectionCollapsed, setIsSetupSectionCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('pt_study_setup_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSetupCollapse = useCallback(() => {
+    setIsSetupSectionCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('pt_study_setup_collapsed', String(next));
+      } catch {}
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+      }, 50);
+      return next;
+    });
+  }, []);
+
+  // Keyboard shortcut: Alt + S or Cmd/Ctrl + Shift + S to toggle setup selection collapse
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+      if ((e.altKey && (e.key === 's' || e.key === 'S')) || ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 's' || e.key === 'S'))) {
+        e.preventDefault();
+        toggleSetupCollapse();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [toggleSetupCollapse]);
+
   // Setup Config Helpers
   const curFolder = useMemo(() => {
     const visibleFolders = (setupsConfig?.folders || []).filter(f => f.visible !== false);
@@ -183,6 +218,12 @@ export default function StudyLabTab({
   }, [setupsConfig, curFolder, activeScreenerId, setupType]);
 
   const currentSetupDisplayName = curScreener?.name || curScreener?.label || SETUP_CANONICAL_NAMES[setupType] || 'Setup';
+
+  const activeScreenerColor = useMemo(() => {
+    if (curScreener?.id && SETUP_COLORS[curScreener.id]) return SETUP_COLORS[curScreener.id];
+    if (activeFolderId && SETUP_COLORS[activeFolderId]) return SETUP_COLORS[activeFolderId];
+    return '#38bdf8';
+  }, [curScreener, activeFolderId]);
 
   // Watchlist Sync
   useEffect(() => {
@@ -586,220 +627,331 @@ export default function StudyLabTab({
     document.body.removeChild(link);
   };
 
+  const renderDateAndScanControls = (compact = false) => (
+    <>
+      {/* Presets */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+        {datePresets.map(preset => {
+          const isActive = activeDatePreset === preset.id;
+          return (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => handleDatePresetSelect(preset)}
+              title={preset.title}
+              style={{
+                padding: compact ? '3px 6px' : '4px 8px',
+                borderRadius: '5px',
+                border: isActive ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.12)',
+                backgroundColor: isActive ? 'rgba(56, 189, 248, 0.2)' : 'rgba(15, 23, 42, 0.45)',
+                color: isActive ? '#38bdf8' : 'var(--text-secondary)',
+                fontSize: compact ? '11px' : '11.5px',
+                fontWeight: isActive ? '700' : '500',
+                cursor: 'pointer',
+                transition: 'all 0.12s ease'
+              }}
+            >
+              {preset.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Start Date & End Date Pickers */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <input
+          type="date"
+          value={startDate}
+          onChange={e => {
+            setStartDate(e.target.value);
+            setActiveDatePreset(null);
+          }}
+          title="Start Date"
+          style={{
+            background: 'rgba(30, 41, 59, 0.9)',
+            color: '#f8fafc',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '6px',
+            padding: compact ? '3px 5px' : '4px 6px',
+            height: compact ? '26px' : '28px',
+            fontSize: compact ? '11px' : '11.5px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            outline: 'none',
+            colorScheme: 'dark'
+          }}
+        />
+        <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>→</span>
+        <input
+          type="date"
+          value={endDate}
+          onChange={e => {
+            setEndDate(e.target.value);
+            setActiveDatePreset(null);
+          }}
+          title="End Date"
+          style={{
+            background: 'rgba(30, 41, 59, 0.9)',
+            color: '#f8fafc',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '6px',
+            padding: compact ? '3px 5px' : '4px 6px',
+            height: compact ? '26px' : '28px',
+            fontSize: compact ? '11px' : '11.5px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            outline: 'none',
+            colorScheme: 'dark'
+          }}
+        />
+      </div>
+
+      {/* Run Scan Button */}
+      <button
+        type="button"
+        className="btn btn-primary btn-sm"
+        onClick={() => handleRunScan(activeScreenerId, { start: startDate, end: endDate })}
+        disabled={loading}
+        style={{
+          height: compact ? '26px' : '28px',
+          padding: '0 12px',
+          fontSize: '12px',
+          fontWeight: '700',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '5px'
+        }}
+      >
+        {loading ? <span className="spin-icon">↻</span> : '▶'} Run Scan
+      </button>
+    </>
+  );
+
   return (
     <div className="stock-screen-container">
       {/* 1. Top Glass-Card Header & Filter Ribbon */}
-      <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px 16px', flexShrink: 0 }}>
-        {/* Row 1: Folder Selection on Left, Date Controls on Right */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-          {/* Left: Folder Selector */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: '2px' }}>
-              Folder:
-            </span>
-            {(setupsConfig?.folders && setupsConfig.folders.length > 0) ? (
-              setupsConfig.folders.filter(f => f.visible !== false).map((folder) => {
-                const isSelected = activeFolderId === folder.id;
-                const color = SETUP_COLORS[folder.id] || '#38bdf8';
-                const screenerCount = folder.screeners?.filter(s => s.visible !== false)?.length ?? (folder.screeners?.length || 0);
+      {isSetupSectionCollapsed ? (
+        <div
+          className="glass-card"
+          style={{
+            marginBottom: '8px',
+            padding: '6px 14px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '12px',
+            flexShrink: 0
+          }}
+        >
+          {/* Left: Expand Toggle & Active Setup Badge */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={toggleSetupCollapse}
+              title="Expand setup selection (Alt + S)"
+              style={{
+                padding: '4px 10px',
+                fontSize: '12px',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: 'rgba(56, 189, 248, 0.12)',
+                borderColor: 'rgba(56, 189, 248, 0.35)',
+                color: '#38bdf8',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <span>▼</span>
+              <span>Setups</span>
+            </button>
+
+            {/* Active Setup Badge */}
+            <div
+              onClick={toggleSetupCollapse}
+              title={`${curFolder?.name || 'Folder'} › ${currentSetupDisplayName}\nClick to expand setup selection`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '3px 10px',
+                borderRadius: '6px',
+                background: 'rgba(15, 23, 42, 0.55)',
+                border: `1px solid ${activeScreenerColor}40`,
+                cursor: 'pointer',
+                userSelect: 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>
+                {curFolder?.icon ? `${curFolder.icon} ` : '📁 '}{curFolder?.name || 'Daily'}
+              </span>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>›</span>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: activeScreenerColor, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                {curScreener?.icon ? `${curScreener.icon} ` : ''}{currentSetupDisplayName}
+              </span>
+              <span style={{
+                fontSize: '10px',
+                fontWeight: 700,
+                padding: '1px 6px',
+                borderRadius: '10px',
+                background: `${activeScreenerColor}25`,
+                color: activeScreenerColor,
+                marginLeft: '4px'
+              }}>
+                {displayedCandidates.length}{selectedIndustry !== 'ALL' ? ` / ${rawCandidates.length}` : ''}
+              </span>
+            </div>
+          </div>
+
+          {/* Right Action Controls: Date Controls & Run Scan */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            {renderDateAndScanControls(true)}
+          </div>
+        </div>
+      ) : (
+        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px 16px', marginBottom: '8px', flexShrink: 0 }}>
+          {/* Row 1: Folder Selection on Left, Date Controls & Collapse on Right */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+            {/* Left: Folder Selector */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: '2px' }}>
+                Folder:
+              </span>
+              {(setupsConfig?.folders && setupsConfig.folders.length > 0) ? (
+                setupsConfig.folders.filter(f => f.visible !== false).map((folder) => {
+                  const isSelected = activeFolderId === folder.id;
+                  const color = SETUP_COLORS[folder.id] || '#38bdf8';
+                  const screenerCount = folder.screeners?.filter(s => s.visible !== false)?.length ?? (folder.screeners?.length || 0);
+
+                  return (
+                    <button
+                      key={folder.id}
+                      type="button"
+                      onClick={() => handleSelectFolder(folder.id)}
+                      title={folder.description || ''}
+                      style={{
+                        padding: '5px 12px',
+                        fontSize: '12px',
+                        fontWeight: isSelected ? '700' : '600',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        border: isSelected ? `1.5px solid ${color}` : '1px solid rgba(255, 255, 255, 0.12)',
+                        background: isSelected ? `${color}25` : 'rgba(15, 23, 42, 0.55)',
+                        color: isSelected ? color : 'var(--text-secondary)',
+                        boxShadow: isSelected ? `0 2px 8px ${color}35` : 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <span>{folder.icon ? `${folder.icon} ` : ''}{folder.name}</span>
+                      <span style={{
+                        fontSize: '10px',
+                        fontWeight: '700',
+                        padding: '1px 5px',
+                        borderRadius: '10px',
+                        background: isSelected ? `${color}35` : 'rgba(255, 255, 255, 0.08)',
+                        color: isSelected ? color : 'var(--text-muted)',
+                      }}>
+                        {screenerCount}
+                      </span>
+                    </button>
+                  );
+                })
+              ) : null}
+            </div>
+
+            {/* Right: Date Range Presets & Pickers + Run Scan + Collapse */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {renderDateAndScanControls(false)}
+
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={toggleSetupCollapse}
+                title="Collapse setup selection to maximize chart space (Alt + S)"
+                style={{
+                  height: '28px',
+                  padding: '0 10px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  color: 'var(--text-secondary)'
+                }}
+              >
+                <span>▲</span>
+                <span>Collapse</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Row 2: Screener Subview Bar for Active Folder */}
+          {curFolder?.screeners && curFolder.screeners.length > 0 && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              flexWrap: 'wrap',
+              padding: '7px 12px',
+              background: activeFolderId === 'daily' 
+                ? 'rgba(56, 189, 248, 0.08)' 
+                : activeFolderId === 'weekly' 
+                  ? 'rgba(168, 85, 247, 0.08)' 
+                  : activeFolderId === 'short'
+                    ? 'rgba(244, 63, 94, 0.08)'
+                    : 'rgba(148, 163, 184, 0.08)',
+              border: activeFolderId === 'daily' 
+                ? '1px solid rgba(56, 189, 248, 0.25)' 
+                : activeFolderId === 'weekly' 
+                  ? '1px solid rgba(168, 85, 247, 0.25)' 
+                  : activeFolderId === 'short'
+                    ? '1px solid rgba(244, 63, 94, 0.25)'
+                    : '1px solid rgba(148, 163, 184, 0.25)',
+              borderRadius: '8px',
+              marginTop: '2px'
+            }}>
+              {(curFolder.screeners || []).filter(s => s.visible !== false).map((screener) => {
+                const isSelected = activeScreenerId === screener.id;
+                const screenerColor = SETUP_COLORS[screener.id] || (activeFolderId === 'daily' ? '#38bdf8' : (activeFolderId === 'weekly' ? '#a855f7' : (activeFolderId === 'short' ? '#f43f5e' : '#94a3b8')));
 
                 return (
                   <button
-                    key={folder.id}
+                    key={screener.id}
                     type="button"
-                    onClick={() => handleSelectFolder(folder.id)}
-                    title={folder.description || ''}
+                    onClick={() => handleSelectScreener(screener.id)}
+                    title={screener.description || screener.expression || ''}
                     style={{
-                      padding: '5px 12px',
-                      fontSize: '12px',
-                      fontWeight: isSelected ? '700' : '600',
+                      padding: '4px 10px',
+                      fontSize: '11.5px',
+                      fontWeight: isSelected ? '700' : '500',
                       borderRadius: '6px',
                       cursor: 'pointer',
                       transition: 'all 0.15s ease',
-                      border: isSelected ? `1.5px solid ${color}` : '1px solid rgba(255, 255, 255, 0.12)',
-                      background: isSelected ? `${color}25` : 'rgba(15, 23, 42, 0.55)',
-                      color: isSelected ? color : 'var(--text-secondary)',
-                      boxShadow: isSelected ? `0 2px 8px ${color}35` : 'none',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px'
+                      border: isSelected ? `1px solid ${screenerColor}` : '1px solid rgba(255, 255, 255, 0.1)',
+                      background: isSelected ? `${screenerColor}33` : 'rgba(15, 23, 42, 0.45)',
+                      color: isSelected ? '#ffffff' : 'var(--text-secondary)',
+                      boxShadow: isSelected ? `0 2px 6px ${screenerColor}30` : 'none'
                     }}
                   >
-                    <span>{folder.icon ? `${folder.icon} ` : ''}{folder.name}</span>
-                    <span style={{
-                      fontSize: '10px',
-                      fontWeight: '700',
-                      padding: '1px 5px',
-                      borderRadius: '10px',
-                      background: isSelected ? `${color}35` : 'rgba(255, 255, 255, 0.08)',
-                      color: isSelected ? color : 'var(--text-muted)',
-                    }}>
-                      {screenerCount}
-                    </span>
-                  </button>
-                );
-              })
-            ) : null}
-          </div>
-
-          {/* Right: Date Range Presets & Pickers + Run Scan Button */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            {/* Presets */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-              {datePresets.map(preset => {
-                const isActive = activeDatePreset === preset.id;
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => handleDatePresetSelect(preset)}
-                    title={preset.title}
-                    style={{
-                      padding: '4px 8px',
-                      borderRadius: '5px',
-                      border: isActive ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.12)',
-                      backgroundColor: isActive ? 'rgba(56, 189, 248, 0.2)' : 'rgba(15, 23, 42, 0.45)',
-                      color: isActive ? '#38bdf8' : 'var(--text-secondary)',
-                      fontSize: '11.5px',
-                      fontWeight: isActive ? '700' : '500',
-                      cursor: 'pointer',
-                      transition: 'all 0.12s ease'
-                    }}
-                  >
-                    {preset.label}
+                    {screener.icon ? `${screener.icon} ` : ''}{screener.name || screener.label}
                   </button>
                 );
               })}
             </div>
-
-            {/* Start Date & End Date Pickers */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <input
-                type="date"
-                value={startDate}
-                onChange={e => {
-                  setStartDate(e.target.value);
-                  setActiveDatePreset(null);
-                }}
-                title="Start Date"
-                style={{
-                  background: 'rgba(30, 41, 59, 0.9)',
-                  color: '#f8fafc',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '6px',
-                  padding: '4px 6px',
-                  height: '28px',
-                  fontSize: '11.5px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  outline: 'none',
-                  colorScheme: 'dark'
-                }}
-              />
-              <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>→</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={e => {
-                  setEndDate(e.target.value);
-                  setActiveDatePreset(null);
-                }}
-                title="End Date"
-                style={{
-                  background: 'rgba(30, 41, 59, 0.9)',
-                  color: '#f8fafc',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '6px',
-                  padding: '4px 6px',
-                  height: '28px',
-                  fontSize: '11.5px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  outline: 'none',
-                  colorScheme: 'dark'
-                }}
-              />
-            </div>
-
-            {/* Run Scan Button */}
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={() => handleRunScan(activeScreenerId, { start: startDate, end: endDate })}
-              disabled={loading}
-              style={{
-                height: '28px',
-                padding: '0 12px',
-                fontSize: '12px',
-                fontWeight: '700',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px'
-              }}
-            >
-              {loading ? <span className="spin-icon">↻</span> : '▶'} Run Scan
-            </button>
-          </div>
+          )}
         </div>
-
-        {/* Row 2: Screener Subview Bar for Active Folder */}
-        {curFolder?.screeners && curFolder.screeners.length > 0 && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            flexWrap: 'wrap',
-            padding: '7px 12px',
-            background: activeFolderId === 'daily' 
-              ? 'rgba(56, 189, 248, 0.08)' 
-              : activeFolderId === 'weekly' 
-                ? 'rgba(168, 85, 247, 0.08)' 
-                : activeFolderId === 'short'
-                  ? 'rgba(244, 63, 94, 0.08)'
-                  : 'rgba(148, 163, 184, 0.08)',
-            border: activeFolderId === 'daily' 
-              ? '1px solid rgba(56, 189, 248, 0.25)' 
-              : activeFolderId === 'weekly' 
-                ? '1px solid rgba(168, 85, 247, 0.25)' 
-                : activeFolderId === 'short'
-                  ? '1px solid rgba(244, 63, 94, 0.25)'
-                  : '1px solid rgba(148, 163, 184, 0.25)',
-            borderRadius: '8px',
-            marginTop: '2px'
-          }}>
-            {(curFolder.screeners || []).filter(s => s.visible !== false).map((screener) => {
-              const isSelected = activeScreenerId === screener.id;
-              const screenerColor = SETUP_COLORS[screener.id] || (activeFolderId === 'daily' ? '#38bdf8' : (activeFolderId === 'weekly' ? '#a855f7' : (activeFolderId === 'short' ? '#f43f5e' : '#94a3b8')));
-
-              return (
-                <button
-                  key={screener.id}
-                  type="button"
-                  onClick={() => handleSelectScreener(screener.id)}
-                  title={screener.description || screener.expression || ''}
-                  style={{
-                    padding: '4px 10px',
-                    fontSize: '11.5px',
-                    fontWeight: isSelected ? '700' : '500',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    border: isSelected ? `1px solid ${screenerColor}` : '1px solid rgba(255, 255, 255, 0.1)',
-                    background: isSelected ? `${screenerColor}33` : 'rgba(15, 23, 42, 0.45)',
-                    color: isSelected ? '#ffffff' : 'var(--text-secondary)',
-                    boxShadow: isSelected ? `0 2px 6px ${screenerColor}30` : 'none'
-                  }}
-                >
-                  {screener.icon ? `${screener.icon} ` : ''}{screener.name || screener.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      )}
 
       {/* 2. Split Screen: Chart + Candidate Ribbon */}
-      <div className="browse-split-container" style={{ marginTop: '10px' }}>
+      <div className="browse-split-container" style={{ marginTop: '8px' }}>
                 {/* Main Col: Unified StockView */}
         <div className="browse-main-col" style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
           <StockView
@@ -810,6 +962,7 @@ export default function StudyLabTab({
             setupName={currentSetupDisplayName}
             asOfDate={currentCandidate?.setup_date || currentCandidate?.date || null}
             marketRegime={currentCandidate?.market_regime}
+            showEarningsBadge={false}
             watchlists={watchlists}
             targetWatchlistId={targetWatchlistId}
             onTargetWatchlistChange={setTargetWatchlistId}

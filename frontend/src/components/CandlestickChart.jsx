@@ -46,6 +46,266 @@ function calculateEMA(data, period) {
   return emaData;
 }
 
+/**
+ * Computes volume bar styling with TradingView "Simple Volume with Pocket Pivots" rules.
+ *
+ * States (when isSmart is true):
+ * 1. Pocket Pivot (Blue):
+ *    Up-day where volume > highest down-day volume of the last 10 trading sessions (4 on weekly, 3 on monthly).
+ * 2. Volume Dry-Up / VDU (Amber/Orange):
+ *    Volume <= 20% of 50-day average volume (or <= 25% on weekly/monthly).
+ * 3. High Up Volume / Institutional Buying (Vivid Green):
+ *    Up-day where volume > 50-period SMA volume (10 on weekly/monthly).
+ * 4. High Down Volume / Institutional Distribution (Vivid Red):
+ *    Down-day where volume > 50-period SMA volume.
+ * 5. Low / Below-Average Volume Noise (Muted Gray):
+ *    Volume <= 50-period SMA volume, non-actionable churning.
+ *
+ * Classic Mode (when isSmart is false):
+ * - Up-day: Emerald green rgba(16, 185, 129, 0.4)
+ * - Down-day: Rose red rgba(239, 68, 68, 0.4)
+ */
+export function computeVolumeBars(chartData, timeframe = 'daily', isSmart = true) {
+  if (!chartData || chartData.length === 0) return [];
+
+  const isWeekly = timeframe === 'weekly';
+  const isMonthly = timeframe === 'monthly';
+  const volPeriod = (isWeekly || isMonthly) ? 10 : 50;
+  const ppLookback = isWeekly ? 4 : (isMonthly ? 3 : 10);
+
+  const n = chartData.length;
+  const smaValues = new Float64Array(n);
+  let runningSum = 0;
+
+  for (let i = 0; i < n; i++) {
+    const v = Number(chartData[i].volume) || 0;
+    runningSum += v;
+    if (i >= volPeriod) {
+      runningSum -= (Number(chartData[i - volPeriod].volume) || 0);
+      smaValues[i] = runningSum / volPeriod;
+    } else {
+      smaValues[i] = runningSum / (i + 1);
+    }
+  }
+
+  // Pre-calculate up/down status with zero lookahead bias
+  const isUpArr = new Uint8Array(n);
+  const isDownArr = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    const curr = chartData[i];
+    const prev = i > 0 ? chartData[i - 1] : null;
+    const prevClose = prev ? Number(prev.close) : Number(curr.open);
+    const c = Number(curr.close);
+    const o = Number(curr.open);
+    if (c > prevClose || (c === prevClose && c >= o)) {
+      isUpArr[i] = 1;
+    } else if (c < prevClose || (c === prevClose && c < o)) {
+      isDownArr[i] = 1;
+    }
+  }
+
+  const result = new Array(n);
+
+  for (let i = 0; i < n; i++) {
+    const d = chartData[i];
+    const vol = Number(d.volume) || 0;
+    const isUp = isUpArr[i] === 1;
+    const isDown = isDownArr[i] === 1;
+    const smaVol = smaValues[i];
+
+    // Pocket Pivot: up-day with volume > highest down-day volume of strictly prior ppLookback sessions
+    let maxDownVol = 0;
+    let hasPriorDown = false;
+    const lookbackStart = Math.max(0, i - ppLookback);
+    for (let j = lookbackStart; j < i; j++) {
+      if (isDownArr[j] === 1) {
+        const vJ = Number(chartData[j].volume) || 0;
+        if (vJ > maxDownVol) maxDownVol = vJ;
+        hasPriorDown = true;
+      }
+    }
+
+    const isPP = isUp && ((hasPriorDown && vol > maxDownVol) || (!hasPriorDown && vol > smaVol));
+    const isVDU = smaVol > 0 && (vol <= smaVol * 0.20);
+    const isAboveAvg = smaVol > 0 && vol > smaVol;
+
+    // Rolling 20-bar Up/Down volume ratio (CAN SLIM accumulation/distribution metric)
+    let upVol20 = 0;
+    let downVol20 = 0;
+    const udStart = Math.max(0, i - 19);
+    for (let k = udStart; k <= i; k++) {
+      const vk = Number(chartData[k].volume) || 0;
+      if (isUpArr[k] === 1) upVol20 += vk;
+      else if (isDownArr[k] === 1) downVol20 += vk;
+    }
+    const udRatio = downVol20 > 0 ? (upVol20 / downVol20) : (upVol20 > 0 ? 9.9 : 1.0);
+    const rvol = smaVol > 0 ? (vol / smaVol) : 1.0;
+
+    // Volume Extremes Detection (strictly prior lookback — zero lookahead bias)
+    const lookbackYear = isWeekly ? 52 : (isMonthly ? 12 : 252);
+    const lookbackQuarter = isWeekly ? 13 : (isMonthly ? 3 : 63);
+
+    let isHVE = false;
+    let isHVY = false;
+    let isHVQ = false;
+    let isLVQ = false;
+
+    if (!isWeekly && !isMonthly && i >= 10 && vol > 0) {
+      // 1. Highest Volume Ever (requires at least 60 historical bars)
+      if (i >= 60) {
+        let maxPriorEver = 0;
+        for (let j = 0; j < i; j++) {
+          const vJ = Number(chartData[j].volume) || 0;
+          if (vJ > maxPriorEver) maxPriorEver = vJ;
+        }
+        if (maxPriorEver > 0 && vol > maxPriorEver) {
+          isHVE = true;
+        }
+      }
+
+      // 2. Highest Volume in a Year (HVY)
+      if (!isHVE && i >= Math.min(30, lookbackQuarter)) {
+        const yStart = Math.max(0, i - lookbackYear);
+        let maxY = 0;
+        for (let j = yStart; j < i; j++) {
+          const vJ = Number(chartData[j].volume) || 0;
+          if (vJ > maxY) maxY = vJ;
+        }
+        if (maxY > 0 && vol > maxY) {
+          isHVY = true;
+        }
+      }
+
+      // 3. Highest Volume in a Quarter (HVQ - daily timeframe only)
+      if (!isHVE && !isHVY && i >= Math.min(20, lookbackQuarter)) {
+        const qStart = Math.max(0, i - lookbackQuarter);
+        let maxQ = 0;
+        for (let j = qStart; j < i; j++) {
+          const vJ = Number(chartData[j].volume) || 0;
+          if (vJ > maxQ) maxQ = vJ;
+        }
+        if (maxQ > 0 && vol > maxQ) {
+          isHVQ = true;
+        }
+      }
+
+      // 4. Lowest Volume in a Quarter (LVQ - supply dry-up, daily timeframe only)
+      if (i >= Math.min(20, lookbackQuarter)) {
+        const qStart = Math.max(0, i - lookbackQuarter);
+        let minQ = Infinity;
+        for (let j = qStart; j < i; j++) {
+          const vJ = Number(chartData[j].volume) || 0;
+          if (vJ > 0 && vJ < minQ) minQ = vJ;
+        }
+        if (minQ < Infinity && vol < minQ) {
+          isLVQ = true;
+        }
+      }
+    }
+
+    // Attach computed telemetry to bar object for legend, tooltip, and screenshots
+    d.vol_sma = smaVol;
+    d.rvol = rvol;
+    d.ud_ratio = udRatio;
+    d.is_pocket_pivot = isPP;
+    d.is_dry_volume = isVDU;
+    d.is_hve = isHVE;
+    d.is_hvy = isHVY;
+    d.is_hvq = isHVQ;
+    d.is_lvq = isLVQ;
+
+    let barColor;
+    if (isSmart) {
+      if (isPP) {
+        // Pocket Pivot: Electric / Vibrant Blue
+        barColor = 'rgba(14, 165, 233, 0.95)';
+      } else if (isVDU) {
+        // Volume Dry-Up (VDU): Amber / Warm Orange
+        barColor = 'rgba(245, 158, 11, 0.90)';
+      } else if (isAboveAvg && isUp) {
+        // Above-average demand: Emerald Green
+        barColor = 'rgba(16, 185, 129, 0.85)';
+      } else if (isAboveAvg && isDown) {
+        // Above-average distribution: Rose Red
+        barColor = 'rgba(239, 68, 68, 0.85)';
+      } else {
+        // Routine below-average volume: Muted Slate Gray
+        barColor = 'rgba(100, 116, 139, 0.35)';
+      }
+    } else {
+      // Classic Mode: binary green/red
+      barColor = (d.close >= d.open) ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)';
+    }
+
+    result[i] = {
+      time: d.time,
+      value: vol,
+      color: barColor,
+    };
+  }
+
+  return result;
+}
+
+/**
+ * Returns series markers for volume extremes (HVE, HVY, HVQ, LVQ) to render on volumeSeries.
+ * Note: Volume extreme markers are only shown on the daily chart (omitted on weekly & monthly charts).
+ */
+export function getVolumeExtremeMarkers(chartData, timeframe = 'daily', isSmart = true) {
+  if (!isSmart || !Array.isArray(chartData) || chartData.length === 0) return [];
+  if (timeframe !== 'daily') return [];
+
+  const markers = [];
+  for (let i = 0; i < chartData.length; i++) {
+    const d = chartData[i];
+    if (d.is_hve) {
+      markers.push({
+        time: d.time,
+        position: 'aboveBar',
+        color: '#ec4899',
+        shape: 'arrowDown',
+        text: 'HVE',
+        size: 1,
+      });
+    } else if (d.is_hvy) {
+      markers.push({
+        time: d.time,
+        position: 'aboveBar',
+        color: '#38bdf8',
+        shape: 'arrowDown',
+        text: 'HVY',
+        size: 0.9,
+      });
+    } else if (d.is_hvq) {
+      markers.push({
+        time: d.time,
+        position: 'aboveBar',
+        color: '#34d399',
+        shape: 'arrowDown',
+        text: 'HVQ',
+        size: 0.8,
+      });
+    } else if (d.is_lvq) {
+      markers.push({
+        time: d.time,
+        position: 'aboveBar',
+        color: '#fbbf24',
+        shape: 'circle',
+        text: 'LVQ',
+        size: 0.6,
+      });
+    }
+  }
+
+  markers.sort((a, b) => {
+    const ta = typeof a.time === 'string' ? a.time : `${a.time.year}-${String(a.time.month).padStart(2, '0')}-${String(a.time.day).padStart(2, '0')}`;
+    const tb = typeof b.time === 'string' ? b.time : `${b.time.year}-${String(b.time.month).padStart(2, '0')}-${String(b.time.day).padStart(2, '0')}`;
+    return ta.localeCompare(tb);
+  });
+
+  return markers;
+}
+
 // Helper to resolve Monday date string (YYYY-MM-DD) for a given date
 export function getMondayOfWeek(dateStr) {
   if (!dateStr) return null;
@@ -853,7 +1113,7 @@ function compositeChartScreenshot(rawChartCanvas, {
     { text: close.toFixed(2), color: ohlcColor },
     { text: `${changeSign}${change.toFixed(2)} (${changeSign}${changePct.toFixed(2)}%)`, color: changeColor, bold: true },
     { text: 'Vol', color: '#94a3b8' },
-    { text: volFormatted, color: '#38bdf8', bold: true }
+    { text: volFormatted, color: '#38bdf8', bold: true },
   ].filter(p => p.text);
 
   let bannerWidth = 16 * scale;
@@ -1039,6 +1299,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   tradePriceLines = null,
   hideTools = false,
   showVolumeProfile: showVolumeProfileProp = null, // boolean | null (controls Volume by Price bars)
+  showSmartVolume: showSmartVolumeProp = null, // boolean | null (controls TradingView 5-color volume & Pocket Pivots)
   showYearlyThumbnail: showYearlyThumbnailProp = null, // boolean | null (controls Mansfield Yearly Thumbnail)
   showRsLine: showRsLineProp = null, // boolean | null (controls Relative Strength line)
   showEarnings: showEarningsProp = null, // boolean | null (controls Earnings icons)
@@ -1049,6 +1310,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
   const markersPluginRef = useRef(null);
+  const volumeMarkersPluginRef = useRef(null);
   const verticalLineRef = useRef(null);
   const volumeProfilePrimitiveRef = useRef(null);
   const legendRef = useRef(null);
@@ -1121,6 +1383,27 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   // Volume Profile (Volume by Price) visibility state
   const [internalShowVolumeProfile, setInternalShowVolumeProfile] = useState(true);
   const showVolumeProfile = typeof showVolumeProfileProp === 'boolean' ? showVolumeProfileProp : internalShowVolumeProfile;
+
+  // Smart Volume (TradingView 5-color volume with Pocket Pivots & VDU) visibility state
+  const [internalShowSmartVolume, setInternalShowSmartVolume] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pt_chart_smart_volume');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+  const showSmartVolume = typeof showSmartVolumeProp === 'boolean' ? showSmartVolumeProp : internalShowSmartVolume;
+  const showSmartVolumeRef = useRef(showSmartVolume);
+  showSmartVolumeRef.current = showSmartVolume;
+
+  const toggleSmartVolume = () => {
+    const next = !showSmartVolume;
+    setInternalShowSmartVolume(next);
+    try {
+      localStorage.setItem('pt_chart_smart_volume', String(next));
+    } catch {}
+  };
 
   // Synchronize VolumeProfilePrimitive and POC price line whenever chartData or visibility changes
   useEffect(() => {
@@ -1592,13 +1875,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       }
 
       if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-        if (e.key === 'd' || e.key === 'D') {
-          handleTimeframeChangeRef.current?.('daily');
-        } else if (e.key === 'w' || e.key === 'W') {
-          handleTimeframeChangeRef.current?.('weekly');
-        } else if (e.key === 'm' || e.key === 'M') {
-          handleTimeframeChangeRef.current?.('monthly');
-        } else if (e.key === 'y' || e.key === 'Y') {
+        if (e.key === 'y' || e.key === 'Y') {
           toggleMansfieldYearlyRef.current?.();
         }
       }
@@ -1699,7 +1976,6 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     const volFormatted = formatVolume(volume);
     const hasNormRs = bar.normalized_rs !== undefined && bar.normalized_rs !== null;
     const hasRs = hasNormRs || (bar.rs_line !== undefined && bar.rs_line !== null);
-    const isBlueDot = Boolean(bar.is_rs_blue_dot);
     const isW = chartTimeframeRef.current === 'weekly';
     const isM = chartTimeframeRef.current === 'monthly';
     const shouldShowSymbol = showSymbolRef.current !== null
@@ -1721,7 +1997,6 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         <span style="color: ${changeColor}; font-weight: 700;">${changeSign}${change.toFixed(2)} (${changeSign}${changePct.toFixed(2)}%)</span>
         <span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">Vol</span><span style="color: #38bdf8; font-weight: 700;">${volFormatted}</span></span>
         ${hasRs && showRsLineRef.current ? `<span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">RS</span><span style="color: #38bdf8; font-weight: 700;">${hasNormRs ? (bar.normalized_rs >= 0 ? '+' : '') + bar.normalized_rs.toFixed(2) : Number(bar.rs_line).toFixed(2)}</span></span>` : ''}
-        ${isBlueDot && showRsLineRef.current ? `<span style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 1px 6px; border-radius: 4px; font-size: 10.5px; font-weight: 700;">🔵 RS Blue Dot</span>` : ''}
       </div>
     `;
   };
@@ -1872,21 +2147,12 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         lastValueVisible: false,
       });
 
-      const volumeMa50Series = chart.addSeries(LineSeries, {
-        color: 'rgba(234, 179, 8, 0.75)',
-        lineWidth: 1,
-        priceFormat: { type: 'volume' },
-        priceScaleId: 'volume',
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
-      });
-
       chart.priceScale('volume').applyOptions({
         scaleMargins: initialMargins.volume,
         visible: false,
       });
 
+      const isWkOrMo = chartTimeframe === 'weekly' || chartTimeframe === 'monthly';
       const candlestickSeries = chart.addSeries(CandlestickSeries, {
         upColor: '#10b981',
         downColor: '#ef4444',
@@ -1894,7 +2160,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         wickUpColor: '#10b981',
         wickDownColor: '#ef4444',
         priceLineVisible: showPriceLine,
-        lastValueVisible: showPriceLine,
+        lastValueVisible: showPriceLine && !isWkOrMo,
         priceFormat: {
           type: 'custom',
           formatter: (price) => {
@@ -2022,6 +2288,9 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       const markersPlugin = createSeriesMarkers(candlestickSeries, []);
       markersPluginRef.current = markersPlugin;
 
+      const volumeMarkersPlugin = createSeriesMarkers(volumeSeries, []);
+      volumeMarkersPluginRef.current = volumeMarkersPlugin;
+
       const vertLinePrimitive = new VerticalLinePrimitive(null, { color: 'rgba(56, 189, 248, 0.45)', lineWidth: 1 });
       candlestickSeries.attachPrimitive(vertLinePrimitive);
       verticalLineRef.current = vertLinePrimitive;
@@ -2034,7 +2303,6 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       seriesRef.current = {
         candlestickSeries,
         volumeSeries,
-        volumeMa50Series,
         ema10Series,
         ema20Series,
         sma50Series,
@@ -2074,6 +2342,14 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           rs_line: idx !== undefined ? currentData[idx]?.rs_line : undefined,
           normalized_rs: idx !== undefined ? currentData[idx]?.normalized_rs : undefined,
           is_rs_blue_dot: idx !== undefined ? currentData[idx]?.is_rs_blue_dot : false,
+          rvol: idx !== undefined ? currentData[idx]?.rvol : undefined,
+          ud_ratio: idx !== undefined ? currentData[idx]?.ud_ratio : undefined,
+          is_pocket_pivot: idx !== undefined ? currentData[idx]?.is_pocket_pivot : false,
+          is_dry_volume: idx !== undefined ? currentData[idx]?.is_dry_volume : false,
+          is_hve: idx !== undefined ? currentData[idx]?.is_hve : false,
+          is_hvy: idx !== undefined ? currentData[idx]?.is_hvy : false,
+          is_hvq: idx !== undefined ? currentData[idx]?.is_hvq : false,
+          is_lvq: idx !== undefined ? currentData[idx]?.is_lvq : false,
         };
 
         renderLegend(bar, prevBar, curSymbol);
@@ -2132,7 +2408,6 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         const {
           candlestickSeries,
           volumeSeries,
-          volumeMa50Series,
           ema10Series,
           ema20Series,
           sma50Series,
@@ -2141,21 +2416,18 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           rsLineSeries,
         } = seriesRef.current;
 
-        const volumeData = chartData.map(d => ({
-          time: d.time,
-          value: d.volume || 0,
-          color: (d.close >= d.open) ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)',
-        }));
+        const volumeData = computeVolumeBars(chartData, chartTimeframe, showSmartVolume);
         volumeSeries.setData(volumeData);
-
-        const volPeriod = (isWeekly || isMonthly) ? 10 : 50;
-        const ma50VolData = calculateSMA(chartData, volPeriod, 'volume');
-        volumeMa50Series.setData(ma50VolData);
-        if (volumeMa50Series.options().visible !== (ma50VolData.length > 0)) {
-          volumeMa50Series.applyOptions({ visible: ma50VolData.length > 0 });
+        if (volumeMarkersPluginRef.current) {
+          const vMarkers = getVolumeExtremeMarkers(chartData, chartTimeframe, showSmartVolume);
+          volumeMarkersPluginRef.current.setMarkers(vMarkers);
         }
 
         candlestickSeries.setData(chartData);
+        candlestickSeries.applyOptions({
+          priceLineVisible: showPriceLine,
+          lastValueVisible: showPriceLine && !isWeekly && !isMonthly,
+        });
 
         if (isWeekly) {
           // On weekly chart: only show 3 SMAs: 10w (yellow), 30w (cyan), and 40w (white).
@@ -2344,6 +2616,20 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     }
   }, [chartData, height, asOfDate, symbol, setupName, chartTimeframe, tradeExecutions]);
 
+  // Handle immediate toggle of Smart Volume (Pocket Pivot, VDU & 5-color volume)
+  useEffect(() => {
+    if (!seriesRef.current?.volumeSeries || !dataLookupRef.current?.data || dataLookupRef.current.data.length === 0) return;
+    const currentData = dataLookupRef.current.data;
+    const volumeData = computeVolumeBars(currentData, chartTimeframe, showSmartVolume);
+    seriesRef.current.volumeSeries.setData(volumeData);
+    if (volumeMarkersPluginRef.current) {
+      const vMarkers = getVolumeExtremeMarkers(currentData, chartTimeframe, showSmartVolume);
+      volumeMarkersPluginRef.current.setMarkers(vMarkers);
+    }
+    const { defaultBar, defaultPrevBar, symbol: curSymbol } = dataLookupRef.current;
+    renderLegend(defaultBar, defaultPrevBar, curSymbol);
+  }, [showSmartVolume, chartTimeframe]);
+
   // Handle immediate toggle of RS Line and Blue Dot markers
   useEffect(() => {
     if (!seriesRef.current?.rsLineSeries || !dataLookupRef.current?.data) return;
@@ -2502,20 +2788,22 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         chartRef.current = null;
         seriesRef.current = null;
         markersPluginRef.current = null;
+        volumeMarkersPluginRef.current = null;
         verticalLineRef.current = null;
       }
     };
   }, [height]);
 
-  // Synchronize price line and last value label visibility if prop changes dynamically
+  // Synchronize price line and last value label visibility if prop or timeframe changes dynamically
   useEffect(() => {
     if (seriesRef.current?.candlestickSeries) {
+      const isWkOrMo = chartTimeframe === 'weekly' || chartTimeframe === 'monthly';
       seriesRef.current.candlestickSeries.applyOptions({
         priceLineVisible: showPriceLine,
-        lastValueVisible: showPriceLine,
+        lastValueVisible: showPriceLine && !isWkOrMo,
       });
     }
-  }, [showPriceLine]);
+  }, [showPriceLine, chartTimeframe]);
 
   // Coordinate resolver & mouse event handlers for Drawing Tools and Measurement Tool
   const getPointFromEvent = (e) => {
@@ -2964,92 +3252,6 @@ const CandlestickChart = forwardRef(function CandlestickChart({
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
           }}
         >
-          {/* Timeframe Switcher: Daily (D) vs Weekly (W) vs Monthly (M) */}
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              background: 'rgba(255, 255, 255, 0.06)',
-              borderRadius: '5px',
-              padding: '1px',
-              gap: '1px',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => handleTimeframeChange('daily')}
-              title="Daily View (Hotkey: D)"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '0 7px',
-                height: '24px',
-                background: chartTimeframe === 'daily' ? 'rgba(56, 189, 248, 0.28)' : 'transparent',
-                border: chartTimeframe === 'daily' ? '1px solid #38bdf8' : '1px solid transparent',
-                color: chartTimeframe === 'daily' ? '#38bdf8' : '#94a3b8',
-                borderRadius: '4px',
-                fontSize: '11px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                lineHeight: '22px',
-              }}
-            >
-              D
-            </button>
-            <button
-              type="button"
-              onClick={() => handleTimeframeChange('weekly')}
-              title="Weekly Chart (Hotkey: W)"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '0 7px',
-                height: '24px',
-                background: chartTimeframe === 'weekly' ? 'rgba(168, 85, 247, 0.28)' : 'transparent',
-                border: chartTimeframe === 'weekly' ? '1px solid #c084fc' : '1px solid transparent',
-                color: chartTimeframe === 'weekly' ? '#c084fc' : '#94a3b8',
-                borderRadius: '4px',
-                fontSize: '11px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                lineHeight: '22px',
-              }}
-            >
-              W
-            </button>
-            <button
-              type="button"
-              onClick={() => handleTimeframeChange('monthly')}
-              title="Monthly Chart (Hotkey: M)"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '0 7px',
-                height: '24px',
-                background: chartTimeframe === 'monthly' ? 'rgba(245, 158, 11, 0.28)' : 'transparent',
-                border: chartTimeframe === 'monthly' ? '1px solid #fbbf24' : '1px solid transparent',
-                color: chartTimeframe === 'monthly' ? '#fbbf24' : '#94a3b8',
-                borderRadius: '4px',
-                fontSize: '11px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                lineHeight: '22px',
-              }}
-            >
-              M
-            </button>
-          </div>
-
-        {/* Separator between Timeframe and Tools */}
-        <div style={{ width: '1px', height: '14px', background: 'rgba(255,255,255,0.12)', margin: '0 1px' }} />
-
         {/* Straight Line Tool (White, 1px) */}
         <button
           type="button"
@@ -3240,6 +3442,36 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         )}
 
         {showToolbarMore && (
+          /* Smart Volume (TradingView 5-Color Pocket Pivot & VDU) Toggle Button */
+          <button
+            type="button"
+            onClick={toggleSmartVolume}
+            title={showSmartVolume
+              ? 'Smart Volume Active: 5-Color Pocket Pivot (Blue), VDU (Orange), & Institutional Volume (Green/Red) — Click for Classic'
+              : 'Classic Volume Active — Click to enable Smart Volume (Pocket Pivot & Institutional Volume)'
+            }
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0 6px',
+              height: '26px',
+              background: showSmartVolume ? 'rgba(14, 165, 233, 0.22)' : 'rgba(255, 255, 255, 0.05)',
+              border: showSmartVolume ? '1px solid rgba(56, 189, 248, 0.7)' : '1px solid rgba(255, 255, 255, 0.15)',
+              color: showSmartVolume ? '#38bdf8' : 'var(--text-secondary)',
+              borderRadius: '5px',
+              fontSize: '10px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              letterSpacing: '0.5px',
+            }}
+          >
+            SV
+          </button>
+        )}
+
+        {showToolbarMore && (
           /* Stan Weinstein Mansfield Yearly Bar Chart Thumbnail Toggle Button */
           <button
             type="button"
@@ -3356,7 +3588,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         <button
           type="button"
           onClick={() => setShowToolbarMore((v) => !v)}
-          title={showToolbarMore ? 'Collapse toolbar' : 'Expand toolbar (Measure, Earnings, RS, VP, Yearly, Scale)'}
+          title={showToolbarMore ? 'Collapse toolbar' : 'Expand toolbar (Measure, Earnings, RS, VP, SV, Yearly, Scale)'}
           style={{
             display: 'inline-flex',
             alignItems: 'center',

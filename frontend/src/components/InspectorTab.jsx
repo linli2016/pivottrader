@@ -245,8 +245,10 @@ export default function InspectorTab({
                     className="hover-brighten"
                     title={`Click to view Stan Weinstein Stage Analysis Chart for Industry: ${industry}`}
                   >
-                    <span>🏭 Industry: {industry}</span>
-                    <span style={{ fontSize: '11px', opacity: 0.85 }}>📈 Chart</span>
+                    <span style={{ maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      🏭 Industry: {industry}
+                    </span>
+                    <span style={{ fontSize: '11px', opacity: 0.85, flexShrink: 0 }}>📈 Chart</span>
                   </button>
                 ) : (
                   <span

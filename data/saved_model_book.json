@@ -9,7 +9,7 @@
     "notes": "",
     "tags": [],
     "saved_at": "2026-10-13T09:44:02.176772",
-    "updated_at": "2026-10-16T12:12:20.639403"
+    "updated_at": "2026-10-17T17:20:13.368184"
   },
   {
     "id": "4a8f20de-9abc-4597-a8d4-737d35591fac",
@@ -545,6 +545,17 @@
     "saved_at": "2026-10-13T10:00:12.542828"
   },
   {
+    "id": "fc813e63-a2aa-46df-bbb3-b478bb1c4313",
+    "symbol": "DK",
+    "setup_date": "2026-02-04",
+    "setup_type": "low_cheat",
+    "setup_name": "Low Cheat",
+    "market_regime": "BEARISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-17T14:45:51.162974"
+  },
+  {
     "id": "5223e297-04c9-450a-aee3-0896f33d1675",
     "symbol": "MOD",
     "setup_date": "2026-01-29",
@@ -589,6 +600,17 @@
     "saved_at": "2026-10-13T09:47:43.463145"
   },
   {
+    "id": "ab7b7bdd-58a0-4a5d-8daa-b05e149fc01e",
+    "symbol": "IPGP",
+    "setup_date": "2026-01-15",
+    "setup_type": "low_cheat",
+    "setup_name": "Low Cheat",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-17T14:44:38.367021"
+  },
+  {
     "id": "6f3b1442-3c56-4095-b767-bb2c4dad7492",
     "symbol": "AMN",
     "setup_date": "2026-01-14",
@@ -611,6 +633,28 @@
     "saved_at": "2026-10-13T14:35:49.668052"
   },
   {
+    "id": "dc03e28b-0b6b-4147-9131-b0cd828f212e",
+    "symbol": "NTST",
+    "setup_date": "2026-01-13",
+    "setup_type": "low_cheat",
+    "setup_name": "Low Cheat",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-17T14:34:20.944983"
+  },
+  {
+    "id": "d1313c46-da2e-4c7b-9397-e0b9318bd3f1",
+    "symbol": "NXT",
+    "setup_date": "2026-01-12",
+    "setup_type": "low_cheat",
+    "setup_name": "Low Cheat",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-17T14:34:31.990568"
+  },
+  {
     "id": "696fcac5-2998-4d6e-bdd3-16b9fb8418aa",
     "symbol": "BDSX",
     "setup_date": "2026-01-12",
@@ -622,6 +666,28 @@
     "saved_at": "2026-10-13T09:47:17.870128"
   },
   {
+    "id": "066dab00-3311-4a1a-a88e-347aa0f0a5fd",
+    "symbol": "GPGI",
+    "setup_date": "2026-01-08",
+    "setup_type": "low_cheat",
+    "setup_name": "Low Cheat",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-17T14:33:49.700116"
+  },
+  {
+    "id": "96bafce2-4a2e-4017-8df9-70c27357c91f",
+    "symbol": "ESE",
+    "setup_date": "2026-01-08",
+    "setup_type": "low_cheat",
+    "setup_name": "Low Cheat",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-17T14:33:25.396071"
+  },
+  {
     "id": "401b8310-341b-4c68-b5de-aa0351655782",
     "symbol": "ELVN",
     "setup_date": "2026-01-08",
@@ -631,6 +697,50 @@
     "notes": "",
     "tags": [],
     "saved_at": "2026-10-13T14:34:33.538216"
+  },
+  {
+    "id": "d0abaf1c-bc5e-4684-b95c-9d989fd70f19",
+    "symbol": "TNK",
+    "setup_date": "2026-01-07",
+    "setup_type": "low_cheat",
+    "setup_name": "Low Cheat",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-17T14:33:14.956736"
+  },
+  {
+    "id": "298ab60c-126b-4c47-9656-84402f54f35e",
+    "symbol": "INSW",
+    "setup_date": "2026-01-07",
+    "setup_type": "low_cheat",
+    "setup_name": "Low Cheat",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-17T14:32:56.524557"
+  },
+  {
+    "id": "0008d614-9681-4e68-a48d-87d00340e9a5",
+    "symbol": "FRO",
+    "setup_date": "2026-01-07",
+    "setup_type": "low_cheat",
+    "setup_name": "Low Cheat",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-17T14:32:47.217734"
+  },
+  {
+    "id": "991115d0-9c07-49d7-8c05-473a5a38613e",
+    "symbol": "CMBT",
+    "setup_date": "2026-01-07",
+    "setup_type": "low_cheat",
+    "setup_name": "Low Cheat",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-17T14:31:48.097784"
   },
   {
     "id": "5b96b708-bc8e-4a9f-b429-89c228b056cc",
@@ -654,6 +764,50 @@
     "tags": [],
     "saved_at": "2026-09-12T22:09:09.547109",
     "updated_at": "2026-09-13T11:29:27.612408"
+  },
+  {
+    "id": "3c3f2693-ec57-4f8c-acc8-10b768d313ba",
+    "symbol": "NOC",
+    "setup_date": "2026-01-05",
+    "setup_type": "low_cheat",
+    "setup_name": "Low Cheat",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-17T14:31:06.934010"
+  },
+  {
+    "id": "df8b00c4-4db8-48ea-a3dd-061076204e16",
+    "symbol": "KTOS",
+    "setup_date": "2026-01-05",
+    "setup_type": "low_cheat",
+    "setup_name": "Low Cheat",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-17T14:30:41.513823"
+  },
+  {
+    "id": "ad9360d9-9606-4bbb-8161-19513756df1c",
+    "symbol": "EME",
+    "setup_date": "2026-01-05",
+    "setup_type": "low_cheat",
+    "setup_name": "Low Cheat",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-17T14:30:16.309879"
+  },
+  {
+    "id": "16086f68-b134-4236-906c-3a43789401f0",
+    "symbol": "BWXT",
+    "setup_date": "2026-01-05",
+    "setup_type": "low_cheat",
+    "setup_name": "Low Cheat",
+    "market_regime": "BULLISH",
+    "notes": "",
+    "tags": [],
+    "saved_at": "2026-10-17T14:30:00.224944"
   },
   {
     "id": "3f0362f6-a23c-4474-9b8a-f89071b6e03c",

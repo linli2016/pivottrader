@@ -31,6 +31,7 @@ const StockChartPane = forwardRef(function StockChartPane({
   onSelectGroup = null,
   // Header extra elements
   headerExtra = null,
+  showEarningsBadge = true,
   // Chart specific props
   tradeExecutions = null,
   tradePriceLines = null,
@@ -67,6 +68,7 @@ const StockChartPane = forwardRef(function StockChartPane({
         setupName={setupName}
         marketRegime={marketRegime}
         headerExtra={headerExtra}
+        showEarningsBadge={showEarningsBadge}
       />
 
       {/* Main Chart Area */}

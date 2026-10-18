@@ -41,6 +41,7 @@ export default function StockInfo({
   marketRegime = null,
   // Optional extra header elements (non-counter)
   headerExtra = null,
+  showEarningsBadge = true,
 }) {
   const symbol = stock?.symbol || stock?.ticker || (typeof stock === 'string' ? stock : '');
   const rawName = stock?.name || stock?.company_name || stockDetail?.metadata?.name || '';
@@ -51,15 +52,39 @@ export default function StockInfo({
 
   // Telemetry metrics
   const rsRank = stock?.rs_rank ?? stockDetail?.rs_rank ?? null;
-  const hasBlueDot = Boolean(
-    stock?.is_rs_blue_dot ||
-    stockDetail?.is_rs_blue_dot ||
-    (stock?.setups && stock.setups.includes('RS Blue Dot')) ||
-    (stockPrices && stockPrices.length > 0 && stockPrices.slice(-5).some((b) => b.is_rs_blue_dot))
-  );
-
   const adrVal = stock?.adr_20d ?? stockDetail?.adr_20d ?? null;
   const tiVal = stockDetail?.ti_65 ?? stock?.ti_65 ?? null;
+
+  // Check if latest session completed a Pocket Pivot
+  const latestIsPocketPivot = useMemo(() => {
+    if (!stockPrices || stockPrices.length < 2) return false;
+    const latest = stockPrices[stockPrices.length - 1];
+    if (latest.is_pocket_pivot !== undefined) return Boolean(latest.is_pocket_pivot);
+    const n = stockPrices.length;
+    const curr = stockPrices[n - 1];
+    const prev = stockPrices[n - 2];
+    const prevClose = prev ? Number(prev.close) : Number(curr.open);
+    const c = Number(curr.close);
+    const o = Number(curr.open);
+    const isUp = c > prevClose || (c === prevClose && c >= o);
+    if (!isUp) return false;
+    const vol = Number(curr.volume) || 0;
+    let maxDown = 0;
+    let hasDown = false;
+    for (let j = Math.max(0, n - 11); j < n - 1; j++) {
+      const b = stockPrices[j];
+      const p = j > 0 ? stockPrices[j - 1] : null;
+      const pC = p ? Number(p.close) : Number(b.open);
+      const bC = Number(b.close);
+      const bO = Number(b.open);
+      if (bC < pC || (bC === pC && bC < bO)) {
+        hasDown = true;
+        const v = Number(b.volume) || 0;
+        if (v > maxDown) maxDown = v;
+      }
+    }
+    return (hasDown && vol > maxDown);
+  }, [stockPrices]);
 
   // Institutional Sponsorship summary
   const instSummary = useMemo(() => {
@@ -84,18 +109,6 @@ export default function StockInfo({
   const stageBadge = stageNum ? `Stage ${stageNum}${stageName ? ` (${stageName})` : ''}` : null;
   const stageColor =
     stageNum === 2 ? '#10b981' : stageNum === 4 ? '#f43f5e' : stageNum === 1 ? '#38bdf8' : stageNum === 3 ? '#f59e0b' : null;
-
-  // Active Setups
-  const activeSetups = useMemo(() => {
-    const list = [];
-    if (setupName) list.push(setupName);
-    if (Array.isArray(stock?.setups)) {
-      stock.setups.forEach((s) => {
-        if (s && !list.includes(s) && s !== 'RS Blue Dot') list.push(s);
-      });
-    }
-    return list;
-  }, [setupName, stock?.setups]);
 
   // Market Regime
   const effectiveRegime = marketRegime || stock?.market_regime || null;
@@ -154,12 +167,13 @@ export default function StockInfo({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          flexWrap: 'wrap',
+          flexWrap: 'nowrap',
           gap: '12px',
+          minWidth: 0,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flexShrink: 1, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flexShrink: 0 }}>
             <StockBrandIcon symbol={symbol} size={22} />
             <span
               style={{
@@ -168,14 +182,19 @@ export default function StockInfo({
                 color: '#ffffff',
                 letterSpacing: '-0.2px',
                 lineHeight: 1.2,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: '240px',
               }}
+              title={cleanName || symbol}
             >
               {cleanName || symbol}
             </span>
             {loadingPrices && (
               <span
                 className="spin-icon"
-                style={{ fontSize: '13px', color: '#38bdf8' }}
+                style={{ fontSize: '13px', color: '#38bdf8', flexShrink: 0 }}
                 title="Loading latest candles..."
               >
                 ⟳
@@ -201,9 +220,22 @@ export default function StockInfo({
                 fontWeight: 600,
                 cursor: onSelectGroup ? 'pointer' : 'default',
                 transition: 'all 0.15s ease',
+                maxWidth: '160px',
+                minWidth: 0,
+                flexShrink: 1,
+                whiteSpace: 'nowrap',
               }}
             >
-              🏛 {sector}
+              <span style={{ flexShrink: 0 }}>🏛</span>
+              <span
+                style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {sector}
+              </span>
             </button>
           )}
 
@@ -225,15 +257,28 @@ export default function StockInfo({
                 fontWeight: 600,
                 cursor: onSelectGroup ? 'pointer' : 'default',
                 transition: 'all 0.15s ease',
+                maxWidth: 'clamp(140px, 18vw, 240px)',
+                minWidth: 0,
+                flexShrink: 1,
+                whiteSpace: 'nowrap',
               }}
             >
-              🏭 {industry}
+              <span style={{ flexShrink: 0 }}>🏭</span>
+              <span
+                style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {industry}
+              </span>
             </button>
           )}
         </div>
 
         {/* Top Right Controls: Target Watchlist, Multi-Chart Toggle, Detail Drawer Toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, whiteSpace: 'nowrap' }}>
           {/* Optional page extra (non-counter) */}
           {headerExtra}
 
@@ -400,20 +445,22 @@ export default function StockInfo({
           </span>
         )}
 
-        {/* RS Blue Dot */}
-        {hasBlueDot && (
+        {/* Latest Pocket Pivot Badge */}
+        {latestIsPocketPivot && (
           <span
             style={{
               fontSize: '11px',
               padding: '2px 8px',
               borderRadius: '12px',
-              background: 'rgba(56, 189, 248, 0.2)',
+              background: 'rgba(14, 165, 233, 0.22)',
               color: '#38bdf8',
-              border: '1px solid rgba(56, 189, 248, 0.45)',
-              fontWeight: 700,
+              border: '1px solid rgba(56, 189, 248, 0.5)',
+              fontWeight: 800,
+              letterSpacing: '0.3px',
             }}
+            title="Latest session completed a Pocket Pivot: up-day volume greater than highest down-day volume of the last 10 days"
           >
-            🔵 RS Blue Dot
+            ⚡ Pocket Pivot
           </span>
         )}
 
@@ -534,24 +581,6 @@ export default function StockInfo({
           </span>
         )}
 
-        {/* Active Setups */}
-        {activeSetups.map((s) => (
-          <span
-            key={s}
-            style={{
-              fontSize: '10.5px',
-              padding: '2px 6px',
-              borderRadius: '4px',
-              background: 'rgba(56, 189, 248, 0.2)',
-              color: '#38bdf8',
-              fontWeight: 700,
-              border: '1px solid rgba(56, 189, 248, 0.4)',
-            }}
-          >
-            ⚡ {s}
-          </span>
-        ))}
-
         {/* Market Regime Badge */}
         {effectiveRegime && (
           <span
@@ -590,7 +619,7 @@ export default function StockInfo({
         )}
 
         {/* Next Earnings Date Badge */}
-        {earningsBadge && (
+        {showEarningsBadge && earningsBadge && (
           <span
             style={{
               fontSize: '11px',
