@@ -156,6 +156,10 @@ export default function StockList({
         return copy.sort((a, b) => (b.rs_rank ?? -999) - (a.rs_rank ?? -999));
       case 'rs_rank_asc':
         return copy.sort((a, b) => (a.rs_rank ?? 999) - (b.rs_rank ?? 999));
+      case 'ext_atr_50_desc':
+        return copy.sort((a, b) => (Number(b.ext_atr_50) || -999) - (Number(a.ext_atr_50) || -999));
+      case 'ext_atr_50_asc':
+        return copy.sort((a, b) => (Number(a.ext_atr_50) || 999) - (Number(b.ext_atr_50) || 999));
       case 'rs_line':
         return copy.sort((a, b) => {
           const valB = b.normalized_rs !== undefined && b.normalized_rs !== null ? b.normalized_rs : b.rs_line;

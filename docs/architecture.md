@@ -127,7 +127,7 @@ sequenceDiagram
 ### 5.3 Agentic Engineering Harness & Token Economics
 Applying the principles from [`Day_1_v3.pdf`](Day_1_v3.pdf):
 * **Static Context**: Preserved in [`AGENTS.md`](../AGENTS.md) (~25 lines max) to prevent token bloat while strictly enforcing foundational boundaries.
-* **Dynamic Context**: Loaded on-demand from modular documentation files (`modules/*.md`) and setup rules (`../data/setups.yaml`).
+* **Dynamic Context**: Loaded on-demand from modular documentation files (`modules/*.md`) and screener rules (`../data/screeners.yaml`).
 * **The Developer as Factory Manager**: The developer specifies intents, bounds, and requirements in documentation; AI coding agents implement within these guardrails.
 
 ### 5.4 Verification & Testing Discipline

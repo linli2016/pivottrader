@@ -161,6 +161,124 @@ export default function MarketPulseCard({ marketPulse, asOfDate, isLive = true }
         </div>
       </div>
 
+      {/* Situational Awareness Strip (Jeff Sun Regime & 52w Net NH-NL) */}
+      {marketPulse?.situational_awareness && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '7px 12px',
+            marginBottom: '14px',
+            background: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid rgba(255, 255, 255, 0.07)',
+            borderRadius: '10px',
+            flexWrap: 'wrap',
+            fontSize: '11.5px',
+          }}
+        >
+          <span style={{ fontWeight: 700, color: '#94a3b8', fontSize: '10.5px', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span>🧭</span>
+            <span>Situational Awareness:</span>
+          </span>
+
+          {/* SPY 50-ATR Extension */}
+          {(() => {
+            const spy = marketPulse.situational_awareness?.index_extensions?.SPY || marketPulse.situational_awareness?.spy;
+            if (!spy) return null;
+            const ext = typeof spy.ext_atr_50 === 'number' ? spy.ext_atr_50 : parseFloat(spy.ext_atr_50) || 0;
+            const isDanger = spy.is_danger ?? (ext >= 3.5);
+            const isWarn = spy.is_warn ?? (ext >= 2.0 && ext < 3.5);
+            const badgeBg = isDanger ? 'rgba(239, 68, 68, 0.25)' : isWarn ? 'rgba(234, 179, 8, 0.2)' : 'rgba(16, 185, 129, 0.15)';
+            const badgeColor = isDanger ? '#f87171' : isWarn ? '#fde047' : '#34d399';
+            const stance = spy.stance || spy.regime_stance || 'Normal';
+            return (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{ color: '#cbd5e1', fontWeight: 600 }}>SPY 50-ATR:</span>
+                <span
+                  style={{
+                    padding: '2px 6px',
+                    borderRadius: '5px',
+                    fontFamily: 'monospace',
+                    fontWeight: 700,
+                    fontSize: '11px',
+                    background: badgeBg,
+                    color: badgeColor,
+                    border: `1px solid ${isDanger ? 'rgba(239, 68, 68, 0.45)' : 'transparent'}`,
+                  }}
+                  title={`SPY Close: $${spy.close?.toFixed(2)} | 50 SMA: $${spy.sma_50?.toFixed(2)} | ATR: $${((spy.close * (spy.atr_20d || 1.0)) / 100)?.toFixed(2)}`}
+                >
+                  {isDanger && '⚠️ '}
+                  {ext > 0 ? `+${ext.toFixed(1)}x` : `${ext.toFixed(1)}x`} ({stance})
+                </span>
+              </div>
+            );
+          })()}
+
+          {/* QQQ 50-ATR Extension */}
+          {(() => {
+            const qqq = marketPulse.situational_awareness?.index_extensions?.QQQ || marketPulse.situational_awareness?.qqq;
+            if (!qqq) return null;
+            const ext = typeof qqq.ext_atr_50 === 'number' ? qqq.ext_atr_50 : parseFloat(qqq.ext_atr_50) || 0;
+            const isDanger = qqq.is_danger ?? (ext >= 3.5);
+            const isWarn = qqq.is_warn ?? (ext >= 2.0 && ext < 3.5);
+            const badgeBg = isDanger ? 'rgba(239, 68, 68, 0.25)' : isWarn ? 'rgba(234, 179, 8, 0.2)' : 'rgba(16, 185, 129, 0.15)';
+            const badgeColor = isDanger ? '#f87171' : isWarn ? '#fde047' : '#34d399';
+            const stance = qqq.stance || qqq.regime_stance || 'Normal';
+            return (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{ color: '#cbd5e1', fontWeight: 600 }}>QQQ 50-ATR:</span>
+                <span
+                  style={{
+                    padding: '2px 6px',
+                    borderRadius: '5px',
+                    fontFamily: 'monospace',
+                    fontWeight: 700,
+                    fontSize: '11px',
+                    background: badgeBg,
+                    color: badgeColor,
+                    border: `1px solid ${isDanger ? 'rgba(239, 68, 68, 0.45)' : 'transparent'}`,
+                  }}
+                  title={`QQQ Close: $${qqq.close?.toFixed(2)} | 50 SMA: $${qqq.sma_50?.toFixed(2)} | ATR: $${((qqq.close * (qqq.atr_20d || 1.0)) / 100)?.toFixed(2)}`}
+                >
+                  {isDanger && '⚠️ '}
+                  {ext > 0 ? `+${ext.toFixed(1)}x` : `${ext.toFixed(1)}x`} ({stance})
+                </span>
+              </div>
+            );
+          })()}
+
+          {/* 52-Week Net NH-NL */}
+          {(() => {
+            const nhNl = marketPulse.situational_awareness?.net_nh_nl || marketPulse.situational_awareness?.market_breath;
+            if (!nhNl) return null;
+            const net = nhNl.net_nh_nl ?? 0;
+            const highs = nhNl.new_highs ?? nhNl.nh_count ?? 0;
+            const lows = nhNl.new_lows ?? nhNl.nl_count ?? 0;
+            const rating = nhNl.nh_nl_rating || (net > 50 ? 'EXPANDING' : net < -50 ? 'CONTRACTING' : 'NEUTRAL');
+            return (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{ color: '#cbd5e1', fontWeight: 600 }}>52w Net NH-NL:</span>
+                <span
+                  style={{
+                    padding: '2px 6px',
+                    borderRadius: '5px',
+                    fontFamily: 'monospace',
+                    fontWeight: 700,
+                    fontSize: '11px',
+                    background: net > 0 ? 'rgba(16, 185, 129, 0.18)' : net < 0 ? 'rgba(239, 68, 68, 0.18)' : 'rgba(255, 255, 255, 0.08)',
+                    color: net > 0 ? '#34d399' : net < 0 ? '#f87171' : '#94a3b8',
+                  }}
+                  title={`52-Week Highs: ${highs} | 52-Week Lows: ${lows}`}
+                >
+                  {net > 0 ? `+${net}` : net} ({rating})
+                </span>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       {/* 2. Main Content: Side-by-side layout when Graph is active */}
       <div className={`market-pulse-grid ${showGraph ? 'with-graph' : ''}`}>
         {/* Left Column: Pulse Overview & Market Breadth Meters (The Bar Chart) */}

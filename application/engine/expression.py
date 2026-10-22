@@ -144,6 +144,30 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "price",
         "description": "Low price 1 bar ago"
     },
+    "C3": {
+        "sql": "b.lag_c3",
+        "type": "numeric",
+        "is_lag": True,
+        "label": "Close 3d Ago",
+        "category": "price",
+        "description": "Closing price 3 bars ago"
+    },
+    "C4": {
+        "sql": "b.lag_c4",
+        "type": "numeric",
+        "is_lag": True,
+        "label": "Close 4d Ago",
+        "category": "price",
+        "description": "Closing price 4 bars ago"
+    },
+    "C5": {
+        "sql": "b.lag_c5",
+        "type": "numeric",
+        "is_lag": True,
+        "label": "Close 5d Ago",
+        "category": "price",
+        "description": "Closing price 5 bars ago"
+    },
     "V1": {
         "sql": "b.lag_v1",
         "type": "numeric",
@@ -154,6 +178,86 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
     },
 
     # ---------------- Moving Averages ----------------
+    "AVGC10": {
+        "sql": "b.sma_10",
+        "type": "numeric",
+        "is_lag": True,
+        "label": "10 SMA (Close)",
+        "category": "averages",
+        "description": "10-day simple moving average of close"
+    },
+    "SMA10": {
+        "sql": "b.sma_10",
+        "type": "numeric",
+        "is_lag": True,
+        "label": "10 SMA",
+        "category": "averages",
+        "description": "10-day simple moving average"
+    },
+    "SMA_10": {
+        "sql": "b.sma_10",
+        "type": "numeric",
+        "is_lag": True,
+        "label": "10 SMA",
+        "category": "averages",
+        "description": "10-day simple moving average"
+    },
+    "AVGC20": {
+        "sql": "b.sma_20",
+        "type": "numeric",
+        "is_lag": True,
+        "label": "20 SMA (Close)",
+        "category": "averages",
+        "description": "20-day simple moving average of close"
+    },
+    "SMA20": {
+        "sql": "b.sma_20",
+        "type": "numeric",
+        "is_lag": True,
+        "label": "20 SMA",
+        "category": "averages",
+        "description": "20-day simple moving average"
+    },
+    "SMA_20": {
+        "sql": "b.sma_20",
+        "type": "numeric",
+        "is_lag": True,
+        "label": "20 SMA",
+        "category": "averages",
+        "description": "20-day simple moving average"
+    },
+    "XAVGC5": {
+        "sql": "b.ema_5",
+        "type": "numeric",
+        "is_lag": True,
+        "label": "5 EMA",
+        "category": "averages",
+        "description": "5-day exponential moving average"
+    },
+    "EMA5": {
+        "sql": "b.ema_5",
+        "type": "numeric",
+        "is_lag": True,
+        "label": "5 EMA",
+        "category": "averages",
+        "description": "5-day exponential moving average"
+    },
+    "EMA_5": {
+        "sql": "b.ema_5",
+        "type": "numeric",
+        "is_lag": True,
+        "label": "5 EMA",
+        "category": "averages",
+        "description": "5-day exponential moving average"
+    },
+    "DIST_EMA5": {
+        "sql": "((b.close - b.ema_5) / NULLIF(b.ema_5, 0) * 100.0)",
+        "type": "numeric",
+        "is_lag": True,
+        "label": "Dist 5 EMA %",
+        "category": "averages",
+        "description": "Percentage distance of Close from 5 EMA"
+    },
     "AVGC50": {
         "sql": "b.sma_50",
         "type": "numeric",
@@ -513,6 +617,22 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "trend",
         "description": "Trading days elapsed since 52-week high"
     },
+    "RET_1W": {
+        "sql": "b.ret_1w",
+        "type": "numeric",
+        "is_lag": True,
+        "label": "1-Week Return %",
+        "category": "trend",
+        "description": "1-week percentage return (5 trading days)"
+    },
+    "RET_5D": {
+        "sql": "b.ret_1w",
+        "type": "numeric",
+        "is_lag": True,
+        "label": "5-Day Return %",
+        "category": "trend",
+        "description": "5-day percentage return (1 week)"
+    },
     "RET_1M": {
         "sql": "b.ret_1m",
         "type": "numeric",
@@ -536,6 +656,20 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
     },
 
     # ---------------- Volatility & Pivot Range ----------------
+    "VOLATILITY_1M": {
+        "sql": "b.adr_20d",
+        "type": "numeric",
+        "label": "1M Volatility (ADR%)",
+        "category": "volatility",
+        "description": "1-month volatility represented by 20-day ADR%"
+    },
+    "VOLATILITY": {
+        "sql": "b.adr_20d",
+        "type": "numeric",
+        "label": "Volatility (ADR%)",
+        "category": "volatility",
+        "description": "20-day Average Daily Range (ADR%) volatility"
+    },
     "ADR20": {
         "sql": "b.adr_20d",
         "type": "numeric",
@@ -720,6 +854,34 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "label": "Dist 50 EMA %",
         "category": "pattern",
         "description": "Percentage stretch above 50 EMA"
+    },
+    "EXT_ATR_50": {
+        "sql": "((b.close - b.sma_50) / NULLIF(b.close * (b.atr_20d / 100.0), 0))",
+        "type": "numeric",
+        "label": "50 SMA ATR Extension",
+        "category": "trend",
+        "description": "Price extension above or below 50 SMA in multiples of 20-day ATR (Jeff Sun Guardrail <= 4x)"
+    },
+    "DIST_ATR_50": {
+        "sql": "((b.close - b.sma_50) / NULLIF(b.close * (b.atr_20d / 100.0), 0))",
+        "type": "numeric",
+        "label": "50 SMA ATR Extension",
+        "category": "trend",
+        "description": "Price extension above or below 50 SMA in multiples of 20-day ATR"
+    },
+    "EXT_ATR_10": {
+        "sql": "((b.close - b.ema_10) / NULLIF(b.close * (b.atr_20d / 100.0), 0))",
+        "type": "numeric",
+        "label": "10 EMA ATR Extension",
+        "category": "pattern",
+        "description": "Price stretch above 10 EMA in multiples of 20-day ATR"
+    },
+    "EXT_ATR_20": {
+        "sql": "((b.close - b.ema_20) / NULLIF(b.close * (b.atr_20d / 100.0), 0))",
+        "type": "numeric",
+        "label": "20 EMA ATR Extension",
+        "category": "pattern",
+        "description": "Price stretch above 20 EMA in multiples of 20-day ATR"
     },
     "UP_DAYS": {
         "sql": "b.parabolic_up_days",
@@ -1043,6 +1205,13 @@ ALIAS_CATALOG: Dict[str, Dict[str, Any]] = {
         "label": "Highest Volume Ever Breakout",
         "category": "pattern",
         "description": "Breakout on 52-week peak volume with strong closing range"
+    },
+    "INSIDE_DAY": {
+        "expr": "H <= H1 AND L >= L1",
+        "type": "boolean",
+        "label": "Inside Day",
+        "category": "pattern",
+        "description": "Inside Day consolidation (High <= Prior High and Low >= Prior Low)"
     }
 }
 

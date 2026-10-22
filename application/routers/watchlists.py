@@ -1,6 +1,6 @@
 """Watchlists REST API router."""
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from application.services.database import db_service
@@ -20,10 +20,28 @@ class WatchlistUpdateSchema(BaseModel):
 class WatchlistItemAddSchema(BaseModel):
     symbol: Optional[str] = None
     symbols: Optional[List[str]] = None
+    tag: Optional[str] = None
+    tags: Optional[List[str]] = None
+    items: Optional[List[Dict[str, Any]]] = None
+
+
+class WatchlistItemTagsUpdateSchema(BaseModel):
+    tags: List[str]
 
 
 class WatchlistBatchRemoveSchema(BaseModel):
     symbols: List[str]
+
+
+@router.get("/tags")
+def get_watchlist_tags():
+    """Retrieve configured playbook setup tags."""
+    try:
+        from application.services.setup_service import setup_service
+        return setup_service.get_tags()
+    except Exception as e:
+        logger.error(f"Error in get_watchlist_tags: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("")
@@ -82,12 +100,16 @@ def get_watchlist_items(watchlist_id: int):
 def add_watchlist_item(watchlist_id: int, payload: WatchlistItemAddSchema):
     """Add a stock symbol or batch of symbols to a specific watchlist."""
     try:
+        if payload.items:
+            count = db_service.add_watchlist_items_batch(watchlist_id, items=payload.items)
+            return {"status": "ok", "added_count": count, "watchlist_id": watchlist_id}
         if payload.symbols:
-            count = db_service.add_watchlist_items_batch(watchlist_id, payload.symbols)
+            count = db_service.add_watchlist_items_batch(watchlist_id, symbols=payload.symbols, tag=payload.tag, tags=payload.tags)
             return {"status": "ok", "added_count": count, "watchlist_id": watchlist_id}
         if payload.symbol:
-            return db_service.add_watchlist_item(watchlist_id, payload.symbol)
-        raise HTTPException(status_code=400, detail="Either 'symbol' or 'symbols' must be provided")
+            db_service.add_watchlist_item(watchlist_id, payload.symbol, tag=payload.tag, tags=payload.tags)
+            return {"status": "ok", "symbol": payload.symbol, "watchlist_id": watchlist_id}
+        raise HTTPException(status_code=400, detail="Either 'symbol', 'symbols', or 'items' must be provided")
     except HTTPException:
         raise
     except Exception as e:
@@ -95,12 +117,26 @@ def add_watchlist_item(watchlist_id: int, payload: WatchlistItemAddSchema):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.put("/{watchlist_id}/items/{symbol}/tags")
+def update_watchlist_item_tags_endpoint(watchlist_id: int, symbol: str, payload: WatchlistItemTagsUpdateSchema):
+    """Update or replace the tags of a specific watchlist symbol."""
+    try:
+        db_service.update_watchlist_item_tags(watchlist_id, symbol, payload.tags)
+        return {"status": "ok", "watchlist_id": watchlist_id, "symbol": symbol, "tags": payload.tags}
+    except Exception as e:
+        logger.error(f"Error in update_watchlist_item_tags_endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/{watchlist_id}/items/batch")
 def add_watchlist_items_batch_endpoint(watchlist_id: int, payload: WatchlistItemAddSchema):
     """Add a batch of stock symbols to a specific watchlist."""
     try:
+        if payload.items:
+            count = db_service.add_watchlist_items_batch(watchlist_id, items=payload.items)
+            return {"status": "ok", "added_count": count, "watchlist_id": watchlist_id}
         symbols = payload.symbols or ([payload.symbol] if payload.symbol else [])
-        count = db_service.add_watchlist_items_batch(watchlist_id, symbols)
+        count = db_service.add_watchlist_items_batch(watchlist_id, symbols=symbols, tag=payload.tag, tags=payload.tags)
         return {"status": "ok", "added_count": count, "watchlist_id": watchlist_id}
     except Exception as e:
         logger.error(f"Error in add_watchlist_items_batch: {e}", exc_info=True)

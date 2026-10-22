@@ -3,6 +3,7 @@ import StockView from './stock-view';
 import StockList, { StockListSplitter, useStockListResize } from './stock-list';
 import StockBrandIcon from './StockBrandIcon';
 import GroupStageChart from './GroupStageChart';
+import { SETUP_TAG_META } from './stock-list/StockListRow';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
@@ -35,9 +36,6 @@ export default function ModelBookTab({
   const [loadingSavedPrices, setLoadingSavedPrices] = useState(false);
   const [savedTradeFilterSetup, setSavedTradeFilterSetup] = useState('ALL');
   const [savedTradeSearch, setSavedTradeSearch] = useState('');
-  const [traderNote, setTraderNote] = useState('');
-  const [isSavingNote, setIsSavingNote] = useState(false);
-  const [noteSavedFeedback, setNoteSavedFeedback] = useState(false);
   const [isEditingTrade, setIsEditingTrade] = useState(false);
   const [editSetupType, setEditSetupType] = useState('');
   const [editTriggerDate, setEditTriggerDate] = useState('');
@@ -108,18 +106,12 @@ export default function ModelBookTab({
     }
   };
 
-  // Setup options from centralized config
-  const allScreeners = useMemo(() => {
-    if (setupsConfig?.folders && setupsConfig.folders.length > 0) {
-      const list = [];
-      setupsConfig.folders.filter(f => f.visible !== false).forEach(f => {
-        (f.screeners || []).filter(sc => sc.visible !== false).forEach(sc => {
-          list.push(sc);
-        });
-      });
-      return list;
+  // Setup tags from centralized config or fallback
+  const setupTags = useMemo(() => {
+    if (setupsConfig?.tags && Object.keys(setupsConfig.tags).length > 0) {
+      return Object.values(setupsConfig.tags);
     }
-    return (setupsConfig?.setups || []).filter(s => s.visible !== false);
+    return Object.values(SETUP_TAG_META);
   }, [setupsConfig]);
 
   // Fetch prices
@@ -186,18 +178,25 @@ export default function ModelBookTab({
     fetchSavedTrades();
   }, [fetchSavedTrades]);
 
-  // Filter saved trades by search & setup
+  // Filter saved trades by search & setup tag
   const filteredSavedTrades = useMemo(() => {
     let list = savedTrades || [];
     if (savedTradeFilterSetup !== 'ALL') {
-      list = list.filter(t => t.setup_type === savedTradeFilterSetup);
+      const targetTag = savedTradeFilterSetup.toUpperCase();
+      list = list.filter(t => {
+        const tType = (t.setup_type || '').toUpperCase();
+        if (tType === targetTag) return true;
+        if (Array.isArray(t.tags) && t.tags.some(x => String(x).toUpperCase() === targetTag)) return true;
+        return false;
+      });
     }
     if (savedTradeSearch.trim()) {
       const q = savedTradeSearch.toLowerCase();
       list = list.filter(t =>
         t.symbol.toLowerCase().includes(q) ||
         (t.notes && t.notes.toLowerCase().includes(q)) ||
-        (t.setup_name && t.setup_name.toLowerCase().includes(q))
+        (t.setup_name && t.setup_name.toLowerCase().includes(q)) ||
+        (t.setup_type && t.setup_type.toLowerCase().includes(q))
       );
     }
     return [...list].sort((a, b) => {
@@ -217,14 +216,12 @@ export default function ModelBookTab({
     setIsEditingTrade(false);
   }, [currentTrade?.id]);
 
-  // Load prices and notes when selected trade changes
+  // Load prices when selected trade changes
   useEffect(() => {
     if (!currentTrade) {
       setSavedTradePrices([]);
-      setTraderNote('');
       return;
     }
-    setTraderNote(currentTrade.notes || '');
     let isCancelled = false;
     setLoadingSavedPrices(true);
 
@@ -272,6 +269,16 @@ export default function ModelBookTab({
 
     const handleKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (e.key === 'w' || e.key === 'W' || e.key === 's' || e.key === 'S') {
+        const sym = currentTrade?.symbol;
+        if (sym) {
+          e.preventDefault();
+          handleToggleWatchlist(sym);
+        }
+        return;
+      }
 
       if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'k' || e.key === 'K') {
         e.preventDefault();
@@ -284,35 +291,14 @@ export default function ModelBookTab({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [filteredSavedTrades.length]);
-
-  // Save Notes handler
-  const handleSaveNotes = async () => {
-    if (!currentTrade) return;
-    setIsSavingNote(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/model-book/saved/${currentTrade.id}/notes`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes: traderNote })
-      });
-      if (res.ok) {
-        const updated = await res.json();
-        setSavedTrades(prev => prev.map(t => t.id === updated.id ? updated : t));
-        setNoteSavedFeedback(true);
-        setTimeout(() => setNoteSavedFeedback(false), 2000);
-      }
-    } catch (e) {
-      console.error('Error saving notes:', e);
-    } finally {
-      setIsSavingNote(false);
-    }
-  };
+  }, [filteredSavedTrades.length, currentTrade?.symbol, handleToggleWatchlist]);
 
   // Start editing setup type and trigger date
   const handleStartEditTrade = () => {
     if (!currentTrade) return;
-    setEditSetupType(currentTrade.setup_type || '');
+    const currentTypeUpper = (currentTrade.setup_type || '').toUpperCase();
+    const matchedTag = setupTags.find(t => t.id.toUpperCase() === currentTypeUpper);
+    setEditSetupType(matchedTag ? matchedTag.id : (currentTrade.setup_type || setupTags[0]?.id || ''));
     setEditTriggerDate(currentTrade.setup_date || '');
     setIsEditingTrade(true);
   };
@@ -337,12 +323,12 @@ export default function ModelBookTab({
       let latestTrade = currentTrade;
 
       if (editSetupType && editSetupType !== currentTrade.setup_type) {
-        const screener = allScreeners.find(s => s.id === editSetupType);
-        const newName = screener?.name || screener?.label || editSetupType;
+        const tag = setupTags.find(s => s.id.toUpperCase() === editSetupType.toUpperCase());
+        const newName = tag?.name || tag?.label || editSetupType;
         const res = await fetch(`${API_BASE}/api/model-book/saved/${currentTrade.id}/setup-type`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ setup_type: editSetupType, setup_name: newName })
+          body: JSON.stringify({ setup_type: tag?.id || editSetupType, setup_name: newName })
         });
         if (res.ok) {
           latestTrade = await res.json();
@@ -446,7 +432,7 @@ export default function ModelBookTab({
                           value={editSetupType}
                           onChange={e => setEditSetupType(e.target.value)}
                           disabled={isSavingTradeEdit}
-                          title="Select setup type"
+                          title="Select setup tag"
                           style={{
                             padding: '4px 8px',
                             borderRadius: '6px',
@@ -460,9 +446,9 @@ export default function ModelBookTab({
                             height: '28px'
                           }}
                         >
-                          {allScreeners.map(opt => (
-                            <option key={opt.id} value={opt.id} style={{ backgroundColor: '#181b22', color: 'var(--text-primary)' }}>
-                              {opt.icon || '📌'} {opt.name || opt.label}
+                          {setupTags.map(tag => (
+                            <option key={tag.id} value={tag.id} style={{ backgroundColor: '#181b22', color: 'var(--text-primary)' }}>
+                              {tag.icon ? `${tag.icon} ` : ''}{tag.name || tag.label || tag.id}
                             </option>
                           ))}
                         </select>
@@ -585,47 +571,6 @@ export default function ModelBookTab({
                 }
                 style={{ flex: 1, minHeight: 0 }}
               />
-
-              {/* Study Notes Textarea */}
-              <div
-                style={{
-                  padding: '8px 12px',
-                  borderTop: '1px solid var(--border-color)',
-                  background: 'rgba(0, 0, 0, 0.25)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '6px',
-                  flexShrink: 0
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#f8fafc' }}>
-                    📝 Trader Study Notes:
-                  </span>
-                  {noteSavedFeedback && (
-                    <span style={{ fontSize: '11px', color: '#34d399', fontWeight: 600 }}>
-                      ✓ Notes Saved to Git
-                    </span>
-                  )}
-                </div>
-                <textarea
-                  rows={2}
-                  value={traderNote}
-                  onChange={e => setTraderNote(e.target.value)}
-                  onBlur={handleSaveNotes}
-                  placeholder="Why was this trade a textbook winner? What made the base special? (Auto-saved on blur)..."
-                  style={{
-                    width: '100%',
-                    padding: '6px 10px',
-                    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '6px',
-                    color: 'var(--text-primary)',
-                    fontSize: '12px',
-                    resize: 'vertical'
-                  }}
-                />
-              </div>
             </>
           ) : (
             <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', gap: '10px' }}>
@@ -744,14 +689,18 @@ export default function ModelBookTab({
                     outline: 'none',
                     cursor: 'pointer'
                   }}
-                  title="Filter saved setups by setup category"
+                  title="Filter saved setups by setup tag"
                 >
                   <option value="ALL">All Setups ({savedTrades.length})</option>
-                  {allScreeners.map((opt) => {
-                    const count = savedTrades.filter((t) => t.setup_type === opt.id).length;
+                  {setupTags.map((tag) => {
+                    const tagIdUpper = tag.id.toUpperCase();
+                    const count = savedTrades.filter((t) => {
+                      const tType = (t.setup_type || '').toUpperCase();
+                      return tType === tagIdUpper || (Array.isArray(t.tags) && t.tags.some(x => String(x).toUpperCase() === tagIdUpper));
+                    }).length;
                     return (
-                      <option key={opt.id} value={opt.id}>
-                        {opt.icon || '📌'} {opt.name || opt.label} ({count})
+                      <option key={tag.id} value={tag.id}>
+                        {tag.icon ? `${tag.icon} ` : ''}{tag.name || tag.label || tag.id} ({count})
                       </option>
                     );
                   })}

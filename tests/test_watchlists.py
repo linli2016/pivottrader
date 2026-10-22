@@ -108,6 +108,42 @@ class TestWatchlists(unittest.TestCase):
             deleted = db_service.delete_watchlist(wl_id)
             self.assertTrue(deleted)
 
+    def test_watchlist_item_tags_and_merging(self):
+        wl = db_service.create_watchlist("Test_Tags_WL")
+        wl_id = wl["id"]
+        try:
+            # 1. Add single item with tag HTF
+            db_service.add_watchlist_item(wl_id, "NVDA", tag="HTF")
+            items = db_service.get_watchlist_items(wl_id)
+            nvda = next(i for i in items if i["symbol"] == "NVDA")
+            self.assertIn("HTF", nvda["tags"])
+
+            # 2. Add same symbol with another tag VCP -> should merge tags
+            db_service.add_watchlist_item(wl_id, "NVDA", tag="VCP")
+            items = db_service.get_watchlist_items(wl_id)
+            nvda = next(i for i in items if i["symbol"] == "NVDA")
+            self.assertIn("HTF", nvda["tags"])
+            self.assertIn("VCP", nvda["tags"])
+
+            # 3. Add batch items with tag EP
+            db_service.add_watchlist_items_batch(wl_id, ["NVDA", "AAPL"], tag="EP")
+            items = db_service.get_watchlist_items(wl_id)
+            nvda = next(i for i in items if i["symbol"] == "NVDA")
+            self.assertIn("HTF", nvda["tags"])
+            self.assertIn("VCP", nvda["tags"])
+            self.assertIn("EP", nvda["tags"])
+            aapl = next(i for i in items if i["symbol"] == "AAPL")
+            self.assertIn("EP", aapl["tags"])
+
+            # 4. Explicitly update tags for a symbol
+            db_service.update_watchlist_item_tags(wl_id, "AAPL", ["IPO", "SHORT"])
+            items = db_service.get_watchlist_items(wl_id)
+            aapl = next(i for i in items if i["symbol"] == "AAPL")
+            self.assertEqual(set(aapl["tags"]), {"IPO", "SHORT"})
+        finally:
+            db_service.delete_watchlist(wl_id)
+
+
 if __name__ == "__main__":
     unittest.main()
 

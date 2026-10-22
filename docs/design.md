@@ -53,7 +53,7 @@ PivotTrader/
 │   │   ├── App.jsx           # Master application container and navigation
 │   │   └── index.css         # Glassmorphic dark-theme styles
 ├── data/                     # Data directory (setups, themes, playbook, saved trades, DuckDB)
-│   ├── setups.yaml           # YAML configuration for momentum setups & filter definitions
+│   ├── screeners.yaml        # YAML configuration for momentum setups & screener definitions
 │   ├── themes.yaml           # Curated market themes & constituent tickers
 │   ├── setups_and_rules.md   # Interactive trading playbook & execution checklists
 │   ├── saved_model_book.json # Saved model book trade archive

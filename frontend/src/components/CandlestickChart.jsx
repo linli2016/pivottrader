@@ -58,7 +58,7 @@ function calculateEMA(data, period) {
  *    Up-day where volume > 50-period SMA volume (10 on weekly/monthly).
  * 4. High Down Volume / Institutional Distribution (Vivid Red):
  *    Down-day where volume > 50-period SMA volume.
- * 5. Low / Below-Average Volume Noise (Muted Gray):
+ * 5. Low / Below-Average Volume Noise (Gray #797b86):
  *    Volume <= 50-period SMA volume, non-actionable churning.
  *
  * Classic Mode (when isSmart is false):
@@ -229,8 +229,8 @@ export function computeVolumeBars(chartData, timeframe = 'daily', isSmart = true
         // Above-average distribution: Rose Red
         barColor = 'rgba(239, 68, 68, 0.85)';
       } else {
-        // Routine below-average volume: Muted Slate Gray
-        barColor = 'rgba(100, 116, 139, 0.35)';
+        // Routine below-average volume: Gray (#797b86)
+        barColor = '#797b86';
       }
     } else {
       // Classic Mode: binary green/red

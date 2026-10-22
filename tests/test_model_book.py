@@ -47,6 +47,33 @@ class TestModelBookService(unittest.TestCase):
             self.assertIn("ti_65", t)
             self.assertIn("ret_1m", t)
 
+    def test_save_trade_resolves_screener_to_setup_tag(self):
+        from application.services.saved_trades_service import saved_trades_service
+        # Test direct tag resolution
+        t_type, t_name = saved_trades_service.resolve_setup_tag("ipo_base")
+        self.assertEqual(t_type, "IPO")
+        self.assertEqual(t_name, "IPO Base")
+
+        t_type_ep, t_name_ep = saved_trades_service.resolve_setup_tag("episodic_pivot")
+        self.assertEqual(t_type_ep, "EP")
+
+        t_type_htf, t_name_htf = saved_trades_service.resolve_setup_tag("power_play")
+        self.assertEqual(t_type_htf, "HTF")
+
+        # Test saving trade with screener id or tag
+        saved = saved_trades_service.save_trade({
+            "symbol": "TEST_IPO",
+            "setup_date": "2026-01-05",
+            "setup_type": "ipo_base",
+            "notes": "Test IPO setup tag mapping"
+        })
+        try:
+            self.assertEqual(saved["setup_type"], "IPO")
+            self.assertEqual(saved["setup_name"], "IPO Base")
+            self.assertIn("IPO", saved["tags"])
+        finally:
+            saved_trades_service.delete_saved_trade(saved["id"])
+
 if __name__ == '__main__':
     unittest.main()
 

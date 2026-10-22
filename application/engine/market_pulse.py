@@ -536,6 +536,88 @@ def calculate_market_pulse_history(
     return history
 
 
+def calculate_situational_awareness(conn, as_of_date: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Calculates Jeff Sun Situational Awareness metrics:
+    1. SPY & QQQ extension from 50 SMA in multiples of 20-day ATR (overbought/oversold gauge).
+    2. 52-Week Net New Highs - New Lows (NH-NL).
+    """
+    date_filter = f"AND date <= '{as_of_date}'" if as_of_date else "AND date <= CURRENT_DATE"
+    
+    # 1. Index ATR Extension
+    query_ext = f"""
+        WITH ranked AS (
+            SELECT 
+                symbol,
+                date,
+                close,
+                sma_50,
+                atr_20d,
+                ROUND(((close - sma_50) / NULLIF(close * (atr_20d / 100.0), 0)), 2) as ext_atr_50,
+                ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
+            FROM daily_bars
+            WHERE symbol IN ('SPY', 'QQQ') {date_filter}
+        )
+        SELECT symbol, date, close, sma_50, atr_20d, ext_atr_50 
+        FROM ranked 
+        WHERE rn = 1;
+    """
+    df_ext = conn.execute(query_ext).df()
+    index_ext = {}
+    for _, row in df_ext.iterrows():
+        sym = row["symbol"]
+        ext = float(row["ext_atr_50"]) if pd.notna(row["ext_atr_50"]) else 0.0
+        if ext >= 3.5:
+            stance = "Extreme Extension (> +3.5x ATR)"
+            badge_color = "#f43f5e"
+        elif ext >= 2.0:
+            stance = "Elevated (+2.0x to +3.5x ATR)"
+            badge_color = "#f59e0b"
+        elif ext <= -3.0:
+            stance = "Oversold Bounce Zone (< -3.0x ATR)"
+            badge_color = "#38bdf8"
+        elif ext <= -1.5:
+            stance = "Pullback (-1.5x to -3.0x ATR)"
+            badge_color = "#fb7185"
+        else:
+            stance = "Normal Range (-1.5x to +2.0x ATR)"
+            badge_color = "#10b981"
+            
+        index_ext[sym] = {
+            "close": round(float(row["close"]), 2),
+            "sma_50": round(float(row["sma_50"]), 2) if pd.notna(row["sma_50"]) else None,
+            "atr_20d": round(float(row["atr_20d"]), 2) if pd.notna(row["atr_20d"]) else None,
+            "ext_atr_50": ext,
+            "stance": stance,
+            "badge_color": badge_color,
+            "date": str(row["date"])
+        }
+
+    # 2. Net New Highs - New Lows (52-week)
+    query_nh = f"""
+        WITH target_date AS (
+            SELECT MAX(date) as dt FROM daily_bars WHERE 1=1 {date_filter}
+        )
+        SELECT 
+            COUNT(CASE WHEN is_52w_high THEN 1 END) as new_highs,
+            COUNT(CASE WHEN close <= low_52w * 1.03 THEN 1 END) as new_lows,
+            COUNT(CASE WHEN is_52w_high THEN 1 END) - COUNT(CASE WHEN close <= low_52w * 1.03 THEN 1 END) as net_nh_nl
+        FROM daily_bars
+        WHERE date = (SELECT dt FROM target_date);
+    """
+    row_nh = conn.execute(query_nh).fetchone()
+    nh_data = {
+        "new_highs": int(row_nh[0]) if row_nh and row_nh[0] is not None else 0,
+        "new_lows": int(row_nh[1]) if row_nh and row_nh[1] is not None else 0,
+        "net_nh_nl": int(row_nh[2]) if row_nh and row_nh[2] is not None else 0,
+    }
+
+    return {
+        "index_extensions": index_ext,
+        "net_nh_nl": nh_data
+    }
+
+
 def get_market_pulse(conn, as_of_date: Optional[str] = None, force_refresh: bool = False) -> Dict[str, Any]:
     """
     Master function returning the complete Market Pulse dashboard payload:
@@ -546,6 +628,7 @@ def get_market_pulse(conn, as_of_date: Optional[str] = None, force_refresh: bool
     - Liquid universe moving average breadth with 1-year percentiles
     - Detailed mark list for interactive popovers
     - Full chronological history for pulse dynamics graph comparison
+    - Jeff Sun Situational Awareness (Index ATR extension & Net NH-NL)
     """
     cache_key = as_of_date or "latest"
     now = time.time()
@@ -555,6 +638,7 @@ def get_market_pulse(conn, as_of_date: Optional[str] = None, force_refresh: bool
     dist_data = calculate_distribution_days(conn, as_of_date=as_of_date)
     ftd_data = calculate_ftd_status(conn, as_of_date=as_of_date)
     breadth_data = calculate_breadth_moving_averages(conn, as_of_date=as_of_date)
+    situational_data = calculate_situational_awareness(conn, as_of_date=as_of_date)
     raw_df = breadth_data.pop("_df", None)
     history_data = calculate_market_pulse_history(
         conn, as_of_date=as_of_date, lookback_sessions=252, df_breadth=raw_df
@@ -579,6 +663,7 @@ def get_market_pulse(conn, as_of_date: Optional[str] = None, force_refresh: bool
         "breadth_metrics": breadth_data.get("metrics", []),
         "distribution_marks": dist_data.get("marks", []),
         "indices_breakdown": dist_data.get("indices", {}),
+        "situational_awareness": situational_data,
         "history": history_data
     }
 

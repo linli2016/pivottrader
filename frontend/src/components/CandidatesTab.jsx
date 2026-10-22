@@ -13,6 +13,7 @@ const SETUP_COLORS = {
   short: '#f43f5e',
   others: '#94a3b8',
   // Daily Setups
+  five_ema_below_5pct: '#38bdf8',
   power_play: '#38bdf8',
   breakout: '#f59e0b',
   breakouts: '#f59e0b',
@@ -353,6 +354,10 @@ export default function CandidatesTab({
   }, [displayedCandidates.length, browseIndex]);
 
   const currentCandidate = displayedCandidates[browseIndex] || null;
+  const currentCandidateRef = React.useRef(currentCandidate);
+  React.useEffect(() => {
+    currentCandidateRef.current = currentCandidate;
+  }, [currentCandidate]);
 
   React.useEffect(() => {
     if (currentCandidate?.symbol) {
@@ -388,6 +393,15 @@ export default function CandidatesTab({
   }, [setupsConfig, curFolder, activeScreenerId, activeSetupKey]);
 
   const currentSetup = curScreener;
+
+  const activeScreenerTag = React.useMemo(() => {
+    return curScreener?.tag || (activeFolderId === 'short' ? 'SHORT' : null);
+  }, [curScreener, activeFolderId]);
+
+  const activeTagConfig = React.useMemo(() => {
+    if (!activeScreenerTag || !setupsConfig?.tags) return null;
+    return setupsConfig.tags[activeScreenerTag] || null;
+  }, [activeScreenerTag, setupsConfig]);
 
   const activeSetupName = React.useMemo(() => {
     if (curScreener?.name || curScreener?.label) {
@@ -574,24 +588,13 @@ export default function CandidatesTab({
     }
   }, [browseIndex, currentCandidate?.symbol, displayedCandidates, fetchBrowsePrices, prefetchSymbols]);
 
-  // Keyboard Arrow Navigation Listener for Browse Mode (Up/Down or Left/Right)
-  React.useEffect(() => {
-    if (displayedCandidates.length === 0) return;
-    const handleKeyDown = (e) => {
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        setBrowseIndex((prev) => Math.max(prev - 1, 0));
-      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        setBrowseIndex((prev) => Math.min(prev + 1, displayedCandidates.length - 1));
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [displayedCandidates.length]);
-
   const [activeWatchlistSymbols, setActiveWatchlistSymbols] = React.useState(new Set());
+  const [watchlistToast, setWatchlistToast] = React.useState(null);
+
+  const triggerToast = React.useCallback((msg) => {
+    setWatchlistToast(msg);
+    setTimeout(() => setWatchlistToast(null), 2200);
+  }, []);
 
   const fetchTargetWatchlistItems = async (watchlistId) => {
     if (!watchlistId) return;
@@ -613,39 +616,88 @@ export default function CandidatesTab({
     }
   }, [targetWatchlistId, watchlists]);
 
-  const handleToggleWatchlist = async (symbol) => {
-    if (!targetWatchlistId || !symbol) return;
+  const handleToggleWatchlist = React.useCallback(async (symbol) => {
+    const targetWId = targetWatchlistId || (watchlists && watchlists.length > 0 ? watchlists[0].id : null);
+    if (!targetWId || !symbol) return;
     const symUpper = symbol.toUpperCase();
     const isSaved = activeWatchlistSymbols.has(symUpper);
+    const targetWl = watchlists?.find(w => w.id === targetWId);
+    const targetName = targetWl?.name || 'Watchlist';
 
     try {
       if (isSaved) {
-        const res = await fetch(`${API_BASE}/api/watchlists/${targetWatchlistId}/items/${symbol}`, {
+        const res = await fetch(`${API_BASE}/api/watchlists/${targetWId}/items/${symbol}`, {
           method: 'DELETE',
         });
         if (res.ok) {
-          const nextSet = new Set(activeWatchlistSymbols);
-          nextSet.delete(symUpper);
-          setActiveWatchlistSymbols(nextSet);
+          setActiveWatchlistSymbols((prev) => {
+            const next = new Set(prev);
+            next.delete(symUpper);
+            return next;
+          });
           if (fetchWatchlists) fetchWatchlists();
+          triggerToast(`Removed ${symUpper} from ${targetName}`);
         }
       } else {
-        const res = await fetch(`${API_BASE}/api/watchlists/${targetWatchlistId}/items`, {
+        const candidateObj = displayedCandidates?.find(c => c.symbol?.toUpperCase() === symUpper) || currentCandidate;
+        const candidateTags = candidateObj?.tags && candidateObj.tags.length > 0
+          ? candidateObj.tags
+          : (candidateObj?.setup_tag ? [candidateObj.setup_tag] : (activeScreenerTag ? [activeScreenerTag] : []));
+        const primaryTag = candidateTags.length > 0 ? candidateTags[0] : activeScreenerTag;
+
+        const res = await fetch(`${API_BASE}/api/watchlists/${targetWId}/items`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbol }),
+          body: JSON.stringify({ symbol: symUpper, tag: primaryTag, tags: candidateTags }),
         });
         if (res.ok) {
-          const nextSet = new Set(activeWatchlistSymbols);
-          nextSet.add(symUpper);
-          setActiveWatchlistSymbols(nextSet);
+          setActiveWatchlistSymbols((prev) => {
+            const next = new Set(prev);
+            next.add(symUpper);
+            return next;
+          });
           if (fetchWatchlists) fetchWatchlists();
+          const tagDisplay = candidateTags.length > 0 ? ` [${candidateTags.join(', ')}]` : '';
+          triggerToast(`⭐️ Added ${symUpper} to ${targetName}${tagDisplay}`);
         }
       }
     } catch (e) {
       console.error(`Error toggling watchlist item: ${e.message}`);
     }
-  };
+  }, [targetWatchlistId, watchlists, activeWatchlistSymbols, activeScreenerTag, displayedCandidates, currentCandidate, fetchWatchlists, triggerToast]);
+
+  const handleToggleWatchlistRef = React.useRef(handleToggleWatchlist);
+  React.useEffect(() => {
+    handleToggleWatchlistRef.current = handleToggleWatchlist;
+  }, [handleToggleWatchlist]);
+
+  // Keyboard Navigation across candidates and Watchlist Shortcut (W or S)
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (e.key === 'w' || e.key === 'W' || e.key === 's' || e.key === 'S') {
+        const sym = currentCandidateRef.current?.symbol;
+        if (sym) {
+          e.preventDefault();
+          handleToggleWatchlistRef.current?.(sym);
+        }
+        return;
+      }
+
+      if (displayedCandidates.length === 0) return;
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        setBrowseIndex((prev) => Math.max(prev - 1, 0));
+      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        setBrowseIndex((prev) => Math.min(prev + 1, displayedCandidates.length - 1));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [displayedCandidates.length]);
 
   const [isProcessingAll, setIsProcessingAll] = React.useState(false);
   const [batchFeedback, setBatchFeedback] = React.useState(null);
@@ -727,17 +779,27 @@ export default function CandidatesTab({
     } else {
       setIsProcessingAll(true);
       try {
+        const itemsToSave = displayedCandidates.map(c => {
+          const cTags = c.tags && c.tags.length > 0
+            ? c.tags
+            : (c.setup_tag ? [c.setup_tag] : (activeScreenerTag ? [activeScreenerTag] : []));
+          return {
+            symbol: c.symbol.toUpperCase(),
+            tag: cTags[0] || null,
+            tags: cTags
+          };
+        });
         const res = await fetch(`${API_BASE}/api/watchlists/${wlId}/items/batch`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbols }),
+          body: JSON.stringify({ items: itemsToSave }),
         });
         if (res.ok) {
           const nextSet = new Set(activeWatchlistSymbols);
           symbols.forEach(s => nextSet.add(s.toUpperCase()));
           setActiveWatchlistSymbols(nextSet);
           if (fetchWatchlists) fetchWatchlists();
-          setBatchFeedback(`✓ Added`);
+          setBatchFeedback(`✓ Added${activeScreenerTag ? ` [${activeScreenerTag}]` : ''}`);
           setTimeout(() => setBatchFeedback(null), 2500);
         } else {
           alert("Failed to batch add candidates to watchlist.");
@@ -1374,6 +1436,7 @@ export default function CandidatesTab({
         <div
           className="browse-split-container"
           style={{
+            position: 'relative',
             gap: 0,
             borderRadius: 'var(--border-radius-lg)',
             border: '1px solid var(--border-color)',
@@ -1382,6 +1445,27 @@ export default function CandidatesTab({
             background: 'var(--bg-primary)'
           }}
         >
+          {/* Watchlist Toast Notification */}
+          {watchlistToast && (
+            <div style={{
+              position: 'absolute',
+              top: '16px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'rgba(16, 185, 129, 0.95)',
+              color: '#ffffff',
+              padding: '6px 16px',
+              borderRadius: '20px',
+              fontSize: '12px',
+              fontWeight: 700,
+              zIndex: 9999,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+              pointerEvents: 'none'
+            }}>
+              ✓ {watchlistToast}
+            </div>
+          )}
+
           {/* Main Browse Column (Left) with Unified StockView */}
           <div className="browse-main-col" style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', overflow: 'hidden', background: 'var(--bg-primary)' }}>
             <StockView
@@ -1482,7 +1566,7 @@ export default function CandidatesTab({
                   ) : allDisplayedAreAdded ? (
                     <><span>⭐️-</span> Remove All</>
                   ) : (
-                    <><span>⭐️+</span> Add All</>
+                    <><span>⭐️+</span> Add All {activeTagConfig?.icon ? `${activeTagConfig.icon} ` : ''}{activeScreenerTag ? `(${activeScreenerTag})` : ''}</>
                   )}
                 </button>
                 <button
@@ -1522,7 +1606,7 @@ export default function CandidatesTab({
                   if (idx !== -1) setBrowseIndex(idx);
                 }
               }}
-              columns={['symbol', 'today_pct', 'rs_rank', 'rs_line']}
+              columns={['symbol', 'today_pct', 'rs_rank', 'ext_atr_50', 'rs_line']}
               sortBy={sortBy}
               onSortChange={(newSort) => {
                 setSortBy(newSort);
@@ -1609,7 +1693,7 @@ export default function CandidatesTab({
                       {isItemSaved && (
                         <span
                           style={{ fontSize: '11px', cursor: 'pointer' }}
-                          title="In active watchlist (click to toggle)"
+                          title="In active watchlist (Click or press W to toggle)"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleToggleWatchlist(c.symbol);
@@ -1629,10 +1713,20 @@ export default function CandidatesTab({
               onBatchAddToWatchlist={async (targetWId, symbolsArray) => {
                 if (!targetWId || !symbolsArray || symbolsArray.length === 0) return;
                 try {
+                  const symSet = new Set(symbolsArray.map(s => s.toUpperCase()));
+                  const selectedCands = displayedCandidates.filter(c => symSet.has(c.symbol.toUpperCase()));
+                  const itemsToSave = (selectedCands.length > 0 ? selectedCands : symbolsArray.map(s => ({ symbol: s }))).map(c => {
+                    const cTags = c.tags && c.tags.length > 0 ? c.tags : (c.setup_tag ? [c.setup_tag] : (activeScreenerTag ? [activeScreenerTag] : []));
+                    return {
+                      symbol: (c.symbol || c).toUpperCase(),
+                      tag: cTags[0] || null,
+                      tags: cTags
+                    };
+                  });
                   const res = await fetch(`${API_BASE}/api/watchlists/${targetWId}/items/batch`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ symbols: symbolsArray })
+                    body: JSON.stringify({ items: itemsToSave })
                   });
                   if (res.ok) {
                     if (targetWId === targetWatchlistId) {

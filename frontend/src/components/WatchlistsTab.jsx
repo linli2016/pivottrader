@@ -7,6 +7,7 @@ import { getLocalDateStr } from '../utils/dateUtils';
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
 import StockBrandIcon from './StockBrandIcon';
+import { SETUP_TAG_META } from './stock-list/StockListRow';
 export { StockBrandIcon };
 
 
@@ -21,7 +22,7 @@ export const QUADRANT_COLORS = {
 const globalWatchlistItemsCache = new Map(); // watchlistId -> items[]
 const globalStockDataCache = new Map(); // symbol -> { prices, detail, peersData }
 
-export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetchWatchlists }) {
+export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetchWatchlists, setupsConfig = {} }) {
   // Main Navigation Mode for Right Dock: 'watchlists' | 'groups' | 'positions'
   const [dockTab, setDockTab] = useState('watchlists');
   const dockTabRef = useRef(dockTab);
@@ -76,6 +77,53 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     } catch (_) {}
     return [];
   });
+
+  // Setup Tag Filter: 'ALL' | 'HTF' | 'VCP' | 'IPO' | 'EP' | 'SHORT' | 'Others'
+  const [selectedTag, setSelectedTag] = useState('ALL');
+
+  const tagsConfig = useMemo(() => {
+    return setupsConfig?.tags && Object.keys(setupsConfig.tags).length > 0
+      ? setupsConfig.tags
+      : SETUP_TAG_META;
+  }, [setupsConfig]);
+
+  const tagCounts = useMemo(() => {
+    const counts = { ALL: items.length };
+    Object.keys(tagsConfig).forEach((tKey) => {
+      counts[tKey] = 0;
+    });
+    items.forEach((item) => {
+      const itemTags = item.tags || [];
+      if (itemTags.length === 0) {
+        counts.Others = (counts.Others || 0) + 1;
+      } else {
+        itemTags.forEach((t) => {
+          if (counts[t] !== undefined) {
+            counts[t] = (counts[t] || 0) + 1;
+          } else {
+            counts.Others = (counts.Others || 0) + 1;
+          }
+        });
+      }
+    });
+    return counts;
+  }, [items, tagsConfig]);
+
+  const displayedItems = useMemo(() => {
+    if (selectedTag === 'ALL') return items;
+    return items.filter((item) => {
+      const itemTags = item.tags || [];
+      if (selectedTag === 'Others') {
+        return itemTags.length === 0 || itemTags.includes('Others');
+      }
+      return itemTags.includes(selectedTag);
+    });
+  }, [items, selectedTag]);
+
+  // Reset tag filter when switching active watchlist
+  useEffect(() => {
+    setSelectedTag('ALL');
+  }, [selectedWatchlistId]);
 
   // Active Stock & Chart Data (persisted & restored from cache for 0ms initial render)
   const [selectedStock, setSelectedStock] = useState(() => {
@@ -881,6 +929,112 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     }
   };
 
+  // 3-Tier Workflow Watchlists: Tier 2 (Focus List) & Tier 3 (Actionable)
+  const focusWatchlist = useMemo(() => watchlists?.find((w) => w.name?.toLowerCase() === 'focus list') || watchlists?.find((w) => w.name?.toLowerCase().includes('focus')), [watchlists]);
+  const actionableWatchlist = useMemo(() => watchlists?.find((w) => w.name?.toLowerCase() === 'actionable') || watchlists?.find((w) => w.name?.toLowerCase().includes('action') || w.name?.toLowerCase().includes('trigger')), [watchlists]);
+
+  const handlePromoteToFocus = useCallback(async (stockOrSym) => {
+    const sym = (typeof stockOrSym === 'string' ? stockOrSym : stockOrSym?.symbol || selectedStockRef.current?.symbol)?.toUpperCase();
+    if (!sym) return;
+
+    let targetWl = focusWatchlist;
+    if (!targetWl) {
+      try {
+        const createRes = await fetch(`${API_BASE}/api/watchlists`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Focus List' })
+        });
+        if (createRes.ok) {
+          targetWl = await createRes.json();
+          if (fetchWatchlists) fetchWatchlists();
+        }
+      } catch (err) {
+        console.error('Error auto-creating Focus List:', err);
+      }
+    }
+
+    if (!targetWl) {
+      triggerToast('Focus List watchlist not found');
+      return;
+    }
+
+    const currentObj = typeof stockOrSym === 'object' && stockOrSym ? stockOrSym : (selectedStockRef.current || {});
+    const tags = currentObj.tags || [];
+
+    try {
+      const res = await fetch(`${API_BASE}/api/watchlists/${targetWl.id}/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: sym, tags })
+      });
+      if (res.ok) {
+        globalWatchlistItemsCache.delete(targetWl.id);
+        if (selectedWatchlistId === targetWl.id) {
+          fetchItems(targetWl.id);
+        }
+        if (fetchWatchlists) fetchWatchlists();
+        triggerToast(`⚡ Promoted ${sym} to Focus List (Tier 2)`);
+      } else {
+        triggerToast(`Failed to add ${sym} to Focus List`);
+      }
+    } catch (e) {
+      console.error('Error promoting to focus:', e);
+      triggerToast('Error promoting to Focus List');
+    }
+  }, [focusWatchlist, selectedWatchlistId, fetchWatchlists]);
+
+  const handlePromoteToActionable = useCallback(async (stockOrSym) => {
+    const sym = (typeof stockOrSym === 'string' ? stockOrSym : stockOrSym?.symbol || selectedStockRef.current?.symbol)?.toUpperCase();
+    if (!sym) return;
+
+    let targetWl = actionableWatchlist;
+    if (!targetWl) {
+      try {
+        const createRes = await fetch(`${API_BASE}/api/watchlists`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Actionable' })
+        });
+        if (createRes.ok) {
+          targetWl = await createRes.json();
+          if (fetchWatchlists) fetchWatchlists();
+        }
+      } catch (err) {
+        console.error('Error auto-creating Actionable watchlist:', err);
+      }
+    }
+
+    if (!targetWl) {
+      triggerToast('Actionable watchlist not found');
+      return;
+    }
+
+    const currentObj = typeof stockOrSym === 'object' && stockOrSym ? stockOrSym : (selectedStockRef.current || {});
+    const tags = currentObj.tags || [];
+
+    try {
+      const res = await fetch(`${API_BASE}/api/watchlists/${targetWl.id}/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: sym, tags })
+      });
+      if (res.ok) {
+        globalWatchlistItemsCache.delete(targetWl.id);
+        if (selectedWatchlistId === targetWl.id) {
+          fetchItems(targetWl.id);
+        }
+        if (fetchWatchlists) fetchWatchlists();
+        triggerToast(`🎯 Promoted ${sym} to Actionable (Tier 3)`);
+      } else {
+        triggerToast(`Failed to add ${sym} to Actionable List`);
+      }
+    } catch (e) {
+      console.error('Error promoting to Actionable:', e);
+      triggerToast('Error promoting to Actionable List');
+    }
+  }, [actionableWatchlist, selectedWatchlistId, fetchWatchlists]);
+
   // Batch remove selected symbols
   const handleRemoveBatch = async (customSymbols) => {
     const symbolsArray = customSymbols || Array.from(selectedSymbols);
@@ -1229,9 +1383,32 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   }, [displayItems]);
 
   // Keyboard Navigation across currently visible display items or groups (ArrowUp / ArrowDown)
+  // and Hotkeys F (Promote to Focus / Tier 2), A (Promote to Actionable / Tier 3), & W (Toggle in Watchlist)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        handlePromoteToFocus();
+        return;
+      }
+
+      if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        handlePromoteToActionable();
+        return;
+      }
+
+      if (e.key === 'w' || e.key === 'W' || e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        const sym = selectedStockRef.current?.symbol || selectedStock?.symbol;
+        if (sym) {
+          handleToggleWatchlist(sym);
+        }
+        return;
+      }
 
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         e.preventDefault();
@@ -1258,7 +1435,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [displayItems, selectedStock, activeGroupChart, dockTab, handlePrevGroup, handleNextGroup, selectStock]);
+  }, [displayItems, selectedStock, activeGroupChart, dockTab, handlePrevGroup, handleNextGroup, selectStock, handlePromoteToFocus, handlePromoteToActionable, handleToggleWatchlist]);
 
   const activeWatchlist = watchlists.find((w) => w.id === selectedWatchlistId);
   const targetWatchlist = watchlists.find((w) => w.id === targetWatchlistId);
@@ -1626,7 +1803,8 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
               borderBottom: '1px solid var(--border-color)',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between'
+              justifyContent: 'space-between',
+              position: 'relative'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
                 <span style={{ fontSize: '12px' }}>📁</span>
@@ -1652,31 +1830,72 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                 </select>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(true)}
-                  title="New Watchlist"
-                  style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '13px', padding: '2px 4px' }}
+                  onClick={() => handlePromoteToFocus(selectedStock)}
+                  disabled={!selectedStock?.symbol}
+                  title="Promote selected stock to Focus List (Hotkey: F)"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '2px',
+                    height: '22px',
+                    padding: '0 6px',
+                    borderRadius: '4px',
+                    background: 'rgba(234, 179, 8, 0.15)',
+                    border: '1px solid rgba(234, 179, 8, 0.35)',
+                    color: '#fbbf24',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    cursor: selectedStock?.symbol ? 'pointer' : 'not-allowed',
+                    opacity: selectedStock?.symbol ? 1 : 0.4,
+                  }}
                 >
-                  ➕
+                  ⚡ Focus
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setRenameInput(activeWatchlist?.name || '');
-                    setShowRenameModal(true);
+                  onClick={() => handlePromoteToActionable(selectedStock)}
+                  disabled={!selectedStock?.symbol}
+                  title="Promote selected stock to Actionable / Tier 3 (Hotkey: A)"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '2px',
+                    height: '22px',
+                    padding: '0 6px',
+                    borderRadius: '4px',
+                    background: 'rgba(236, 72, 153, 0.15)',
+                    border: '1px solid rgba(236, 72, 153, 0.35)',
+                    color: '#f472b6',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    cursor: selectedStock?.symbol ? 'pointer' : 'not-allowed',
+                    opacity: selectedStock?.symbol ? 1 : 0.4,
                   }}
-                  title="Rename Watchlist"
-                  style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '13px', padding: '2px 4px' }}
                 >
-                  ✏️
+                  🎯 Actionable
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowDropdownMenu(!showDropdownMenu)}
                   title="Watchlist Options"
-                  style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '13px', padding: '2px 4px' }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '22px',
+                    width: '24px',
+                    padding: 0,
+                    borderRadius: '4px',
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    color: 'var(--text-primary)',
+                    cursor: 'pointer',
+                    fontSize: '16px',
+                    lineHeight: 1
+                  }}
                 >
                   ≡
                 </button>
@@ -1698,6 +1917,23 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                     zIndex: 100,
                     minWidth: '180px'
                   }}>
+                    <button
+                      onClick={() => { setShowDropdownMenu(false); setShowCreateModal(true); }}
+                      style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: '6px 12px', fontSize: '11.5px', color: '#ffffff', cursor: 'pointer' }}
+                    >
+                      ➕ New Watchlist
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowDropdownMenu(false);
+                        setRenameInput(activeWatchlist?.name || '');
+                        setShowRenameModal(true);
+                      }}
+                      style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: '6px 12px', fontSize: '11.5px', color: '#ffffff', cursor: 'pointer' }}
+                    >
+                      ✏️ Rename Watchlist
+                    </button>
+                    <div style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0' }} />
                     <button
                       onClick={() => { setShowDropdownMenu(false); handleExportTradingView(); }}
                       style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: '6px 12px', fontSize: '11.5px', color: '#ffffff', cursor: 'pointer' }}
@@ -1731,11 +1967,79 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                 </>
               )}
             </div>
+
+            {/* Playbook Setup Track Filter Bar */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              overflowX: 'auto',
+              padding: '6px 10px',
+              background: 'rgba(15, 23, 42, 0.45)',
+              borderBottom: '1px solid var(--border-color)',
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none'
+            }}>
+              <button
+                type="button"
+                onClick={() => setSelectedTag('ALL')}
+                style={{
+                  padding: '3px 8px',
+                  borderRadius: '5px',
+                  fontSize: '11px',
+                  fontWeight: selectedTag === 'ALL' ? 700 : 500,
+                  background: selectedTag === 'ALL' ? 'rgba(56, 189, 248, 0.2)' : 'transparent',
+                  border: selectedTag === 'ALL' ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.08)',
+                  color: selectedTag === 'ALL' ? '#38bdf8' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0
+                }}
+              >
+                <span>All</span>
+                <span style={{ fontSize: '9.5px', opacity: 0.8 }}>({tagCounts.ALL || 0})</span>
+              </button>
+              {Object.entries(tagsConfig).map(([tKey, tDef]) => {
+                const isSelected = selectedTag === tKey;
+                const count = tagCounts[tKey] || 0;
+                return (
+                  <button
+                    key={tKey}
+                    type="button"
+                    onClick={() => setSelectedTag(tKey)}
+                    style={{
+                      padding: '3px 8px',
+                      borderRadius: '5px',
+                      fontSize: '11px',
+                      fontWeight: isSelected ? 700 : 500,
+                      background: isSelected ? `${tDef.color}25` : 'transparent',
+                      border: isSelected ? `1px solid ${tDef.color}` : '1px solid rgba(255, 255, 255, 0.08)',
+                      color: isSelected ? tDef.color : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
+                      opacity: count > 0 || isSelected ? 1 : 0.5
+                    }}
+                    title={tDef.description || tDef.name}
+                  >
+                    <span>{tDef.label || tKey}</span>
+                    <span style={{ fontSize: '9.5px', opacity: 0.85 }}>({count})</span>
+                  </button>
+                );
+              })}
+            </div>
+
             <StockList
-              items={items}
+              items={displayedItems}
               selectedStock={selectedStock}
               onSelectStock={selectStock}
-              columns={['symbol', 'today_pct', 'rs_rank', 'rs_line', 'actions']}
+              columns={['symbol', 'today_pct', 'rs_rank', 'ext_atr_50', 'rs_line', 'actions']}
               sortBy={sortBy}
               onSortChange={setSortBy}
               showIndustryFilter={true}

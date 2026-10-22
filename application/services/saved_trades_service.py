@@ -79,6 +79,35 @@ class SavedTradesService:
             logger.warning(f"Failed to resolve market regime for date {setup_date}: {e}")
             return None
 
+    def resolve_setup_tag(self, s_type: str, s_name: Optional[str] = None) -> tuple[str, str]:
+        """
+        Resolves setup_type to a canonical setup tag (e.g. 'IPO', 'HTF', 'VCP', 'EP', 'SHORT', 'Others').
+        If s_type is a screener ID (e.g. 'ipo_base', 'episodic_pivot'), maps it to the screener's tag.
+        """
+        try:
+            from application.services.setup_service import setup_service
+            tags = setup_service.get_tags()
+            cleaned = str(s_type).strip() if s_type else ""
+
+            # 1. Match tag keys case-insensitively (e.g. 'IPO', 'ipo', 'HTF', 'htf')
+            for t_key, t_def in tags.items():
+                if cleaned.upper() == t_key.upper():
+                    name = s_name or t_def.get("name") or t_def.get("label") or t_key
+                    return t_key, name
+
+            # 2. Match screener ID (e.g. 'ipo_base', 'episodic_pivot', 'power_play')
+            screener_tag = setup_service.get_screener_tag(cleaned.lower())
+            if screener_tag and screener_tag in tags:
+                t_def = tags[screener_tag]
+                name = s_name or t_def.get("name") or t_def.get("label") or screener_tag
+                return screener_tag, name
+
+            # 3. Fallback
+            return cleaned or "Others", s_name or cleaned.replace("_", " ").title()
+        except Exception as e:
+            logger.warning(f"Failed to resolve setup tag for {s_type}: {e}")
+            return str(s_type).strip() or "Others", s_name or str(s_type).replace("_", " ").title()
+
     def _load_raw_trades(self) -> List[Dict[str, Any]]:
         """Load all saved model book trades from disk, synchronizing market_regime with trigger date and sanitizing fields."""
         _ensure_file()
@@ -105,8 +134,16 @@ class SavedTradesService:
                 has_changes = True
 
             s_date = str(raw.get("setup_date", "")).strip()
-            s_type = str(raw.get("setup_type", "general")).strip().lower()
-            s_name = raw.get("setup_name") or s_type.replace("_", " ").title()
+            raw_type = str(raw.get("setup_type", "general")).strip()
+            raw_name = raw.get("setup_name")
+            s_type, s_name = self.resolve_setup_tag(raw_type, raw_name)
+            if s_type != raw_type or s_name != raw_name:
+                has_changes = True
+
+            tags = raw.get("tags") or []
+            if s_type and s_type not in tags:
+                tags = [s_type] + [t for t in tags if t != s_type]
+                has_changes = True
 
             regime = raw.get("market_regime")
             if s_date:
@@ -123,7 +160,7 @@ class SavedTradesService:
                 "setup_name": s_name,
                 "market_regime": regime,
                 "notes": raw.get("notes", "") or "",
-                "tags": raw.get("tags") or [],
+                "tags": tags,
                 "saved_at": raw.get("saved_at") or datetime.now().isoformat(),
             }
             if raw.get("updated_at"):
@@ -284,7 +321,9 @@ class SavedTradesService:
         """Add or update a saved trade."""
         symbol = str(trade_data.get("symbol", "")).upper().strip()
         setup_date = str(trade_data.get("setup_date", "")).strip()
-        setup_type = str(trade_data.get("setup_type", "general")).strip().lower()
+        raw_type = str(trade_data.get("setup_type", "general")).strip()
+        raw_name = trade_data.get("setup_name")
+        setup_type, setup_name = self.resolve_setup_tag(raw_type, raw_name)
 
         if not symbol or not setup_date:
             raise ValueError("symbol and setup_date are required")
@@ -297,7 +336,7 @@ class SavedTradesService:
         if given_id and _is_uuid(given_id):
             existing_index = next((i for i, t in enumerate(trades) if t.get("id") == given_id), None)
         if existing_index is None:
-            existing_index = next((i for i, t in enumerate(trades) if t.get("symbol") == symbol and t.get("setup_date") == setup_date and t.get("setup_type") == setup_type), None)
+            existing_index = next((i for i, t in enumerate(trades) if t.get("symbol") == symbol and t.get("setup_date") == setup_date and (t.get("setup_type") or "").upper() == setup_type.upper()), None)
 
         now_iso = datetime.now().isoformat()
 
@@ -307,15 +346,19 @@ class SavedTradesService:
 
         trade_id = trades[existing_index]["id"] if existing_index is not None else (given_id if given_id and _is_uuid(given_id) else str(uuid.uuid4()))
 
+        tags = trade_data.get("tags") or []
+        if setup_type and setup_type not in tags:
+            tags = [setup_type] + [t for t in tags if t != setup_type]
+
         record = {
             "id": trade_id,
             "symbol": symbol,
             "setup_date": setup_date,
             "setup_type": setup_type,
-            "setup_name": trade_data.get("setup_name") or setup_type.replace("_", " ").title(),
+            "setup_name": setup_name,
             "market_regime": market_regime,
             "notes": trade_data.get("notes", "") or "",
-            "tags": trade_data.get("tags") or [],
+            "tags": tags,
             "saved_at": now_iso
         }
 
@@ -397,25 +440,28 @@ class SavedTradesService:
 
     def update_setup_type(self, trade_id: str, new_setup_type: str, new_setup_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Update setup_type and setup_name for a saved trade."""
-        new_setup_type = str(new_setup_type).strip().lower()
         if not new_setup_type:
             raise ValueError("setup_type cannot be empty")
+
+        resolved_type, resolved_name = self.resolve_setup_tag(new_setup_type, new_setup_name)
 
         trades = self._load_raw_trades()
         target_trade = next((t for t in trades if t.get("id") == trade_id), None)
         if not target_trade:
             return None
 
-        if target_trade.get("setup_type") == new_setup_type and (not new_setup_name or target_trade.get("setup_name") == new_setup_name):
+        old_type = target_trade.get("setup_type")
+        tags = target_trade.get("tags") or []
+        if resolved_type and resolved_type not in tags:
+            tags = [resolved_type] + [t for t in tags if t != old_type and t != resolved_type]
+
+        if target_trade.get("setup_type") == resolved_type and target_trade.get("setup_name") == resolved_name and target_trade.get("tags") == tags:
             enriched = self._enrich_trades([target_trade])
             return enriched[0] if enriched else target_trade
 
-        target_trade["setup_type"] = new_setup_type
-        if new_setup_name:
-            target_trade["setup_name"] = new_setup_name
-        else:
-            target_trade["setup_name"] = new_setup_type.replace("_", " ").title()
-
+        target_trade["setup_type"] = resolved_type
+        target_trade["setup_name"] = resolved_name
+        target_trade["tags"] = tags
         target_trade["updated_at"] = datetime.now().isoformat()
 
         self._write_trades(trades)

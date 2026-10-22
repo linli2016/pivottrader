@@ -1,13 +1,13 @@
 import os
 import yaml
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger("pivottrader.setup_service")
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DATA_DIR = os.path.join(ROOT_DIR, "data")
-DEFAULT_SETUPS_PATH = os.path.join(DATA_DIR, "setups.yaml")
+DEFAULT_SETUPS_PATH = os.path.join(DATA_DIR, "screeners.yaml")
 
 class SetupService:
     def __init__(self, yaml_path: str = DEFAULT_SETUPS_PATH):
@@ -36,7 +36,7 @@ class SetupService:
         return target_path
 
     def load_config(self) -> Dict[str, Any]:
-        """Loads and validates setups.yaml."""
+        """Loads and validates screeners.yaml."""
         resolved_setups_path = self._resolve_file_path(self.yaml_path)
 
         raw_setups_data = {}
@@ -138,14 +138,23 @@ class SetupService:
 
         folders_list.sort(key=lambda f: f.get("display_order", 99))
 
+        tags_raw = raw_setups_data.get("tags", {}) if isinstance(raw_setups_data, dict) else {}
+        tags_dict: Dict[str, Any] = {}
+        if isinstance(tags_raw, dict):
+            for t_key, t_val in tags_raw.items():
+                if isinstance(t_val, dict):
+                    t_val.setdefault("id", t_key)
+                    tags_dict[t_key] = t_val
+
         self._cached_config = {
             "base_setup": {},
             "folders": folders_list,
             "setups": setups_list,
-            "filters": {}
+            "filters": {},
+            "tags": tags_dict
         }
         self._last_mtime = os.path.getmtime(resolved_setups_path) if os.path.exists(resolved_setups_path) else 0.0
-        logger.info(f"Loaded {len(folders_list)} folders and {len(setups_list)} setups from {resolved_setups_path}")
+        logger.info(f"Loaded {len(folders_list)} folders, {len(setups_list)} setups, and {len(tags_dict)} tags from {resolved_setups_path}")
         return self._cached_config
 
     def get_setups_config(self, visible_only: bool = False) -> Dict[str, Any]:
@@ -202,6 +211,16 @@ class SetupService:
         """Returns the categorized catalog of supported scan expression variables."""
         from application.engine.expression import ScanExpressionEngine
         return ScanExpressionEngine.get_variables_by_category()
+
+    def get_tags(self) -> Dict[str, Any]:
+        """Returns the dictionary of configured setup tags."""
+        config = self.get_setups_config(visible_only=False)
+        return config.get("tags", {})
+
+    def get_screener_tag(self, screener_id: str) -> Optional[str]:
+        """Returns the setup tag associated with a screener ID, or None if not configured."""
+        sc = self.get_setup_by_id(screener_id)
+        return sc.get("tag")
 
 
 setup_service = SetupService()

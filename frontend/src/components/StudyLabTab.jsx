@@ -4,6 +4,7 @@ import StockList, { StockListSplitter, useStockListResize } from './stock-list';
 import StockBrandIcon from './StockBrandIcon';
 import GroupStageChart from './GroupStageChart';
 import { getLocalDateStr } from '../utils/dateUtils';
+import { SETUP_TAG_META } from './stock-list/StockListRow';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
@@ -394,13 +395,20 @@ export default function StudyLabTab({
 
     setSavingToModelBook(true);
     const date = cand.setup_date || cand.date || cand.screen_date;
+    
+    // Target setup tag associated with the screener (e.g. IPO Base -> IPO)
+    const targetTag = cand.setup_tag || cand.tag || curScreener?.tag || 'Others';
+    const tagDef = (setupsConfig?.tags && setupsConfig.tags[targetTag]) || SETUP_TAG_META[targetTag] || { id: targetTag, name: targetTag, label: targetTag };
+    const targetSetupName = tagDef.name || tagDef.label || targetTag;
+
     const payload = {
       symbol: cand.symbol,
       setup_date: date,
-      setup_type: setupType,
-      setup_name: currentSetupDisplayName,
+      setup_type: targetTag,
+      setup_name: targetSetupName,
       market_regime: cand.market_regime || 'UNKNOWN',
-      notes: ''
+      notes: '',
+      tags: [targetTag]
     };
 
     try {
@@ -552,6 +560,16 @@ export default function StudyLabTab({
 
     const handleKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (e.key === 'w' || e.key === 'W' || e.key === 's' || e.key === 'S') {
+        const sym = currentCandidate?.symbol;
+        if (sym) {
+          e.preventDefault();
+          handleToggleWatchlist(sym);
+        }
+        return;
+      }
 
       if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'k' || e.key === 'K') {
         e.preventDefault();
@@ -564,7 +582,7 @@ export default function StudyLabTab({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [displayedCandidates.length]);
+  }, [displayedCandidates.length, currentCandidate?.symbol, handleToggleWatchlist]);
 
   // Handlers for Folder & Screener clicks
   const handleSelectFolder = (folderId) => {

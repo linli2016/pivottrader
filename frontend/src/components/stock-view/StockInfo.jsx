@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import StockBrandIcon from '../StockBrandIcon';
+import ThreeStopCalculatorModal from '../ThreeStopCalculatorModal';
 
 export function cleanCompanyName(rawName, symbol) {
   if (!rawName) return symbol || '';
@@ -147,6 +148,35 @@ export default function StockInfo({
     if (!targetWatchlistId || !watchlists) return null;
     return watchlists.find((w) => w.id === targetWatchlistId) || null;
   }, [watchlists, targetWatchlistId]);
+
+  // Three-Stop Risk Sizer state & derivations
+  const [showCalcModal, setShowCalcModal] = useState(false);
+
+  const latestPrice = useMemo(() => {
+    if (stockPrices && stockPrices.length > 0) {
+      return stockPrices[stockPrices.length - 1];
+    }
+    return null;
+  }, [stockPrices]);
+
+  const extAtrVal = useMemo(() => {
+    const val = stock?.ext_atr_50 ?? stockDetail?.ext_atr_50 ?? latestPrice?.ext_atr_50 ?? null;
+    return val !== null && val !== undefined ? Number(val) : null;
+  }, [stock?.ext_atr_50, stockDetail?.ext_atr_50, latestPrice?.ext_atr_50]);
+
+  const isExtDanger = extAtrVal !== null && extAtrVal > 4.0;
+  const isExtWarn = extAtrVal !== null && extAtrVal > 3.2 && extAtrVal <= 4.0;
+
+  const entryPriceVal = latestPrice?.close ?? stock?.close ?? stockDetail?.close ?? null;
+  const stopPriceVal = latestPrice?.low ?? stock?.low ?? null;
+  const dollarAtrVal = useMemo(() => {
+    const c = Number(entryPriceVal);
+    const atrPct = Number(latestPrice?.atr_20d ?? stock?.atr_20d ?? stockDetail?.atr_20d ?? adrVal ?? 3.0);
+    if (c > 0 && atrPct > 0) {
+      return c * (atrPct / 100.0);
+    }
+    return null;
+  }, [entryPriceVal, latestPrice, stock, stockDetail, adrVal]);
 
   return (
     <div
@@ -317,8 +347,8 @@ export default function StockInfo({
               disabled={!symbol}
               title={
                 isWatchlistSaved
-                  ? `Saved in "${targetWatchlist?.name || 'target watchlist'}" (Click to remove)`
-                  : `Save ${symbol || 'stock'} to "${targetWatchlist?.name || 'target watchlist'}"`
+                  ? `Saved in "${targetWatchlist?.name || 'target watchlist'}" (Click or press W to remove)`
+                  : `Save ${symbol || 'stock'} to "${targetWatchlist?.name || 'target watchlist'}" (Hotkey: W)`
               }
               aria-label={isWatchlistSaved ? 'Remove from watchlist' : 'Save to watchlist'}
               style={{
@@ -350,6 +380,34 @@ export default function StockInfo({
               )}
             </button>
           )}
+
+          {/* 3-Stop Position Sizer Calculator Button */}
+          <button
+            type="button"
+            onClick={() => setShowCalcModal(true)}
+            title="Open Jeff Sun 3-Stop Position Sizer & LoD Risk Calculator"
+            aria-label="3-Stop Position Sizer"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              height: '28px',
+              padding: '0 8px',
+              borderRadius: '5px',
+              boxSizing: 'border-box',
+              background: 'rgba(56, 189, 248, 0.12)',
+              border: '1px solid rgba(56, 189, 248, 0.35)',
+              color: '#38bdf8',
+              cursor: 'pointer',
+              fontSize: '11px',
+              fontWeight: 700,
+              transition: 'all 0.15s ease',
+              flexShrink: 0,
+            }}
+          >
+            <span>🧮</span>
+            <span>3-Stop Sizer</span>
+          </button>
 
           {/* Multi-Chart View (Daily + Monthly + Weekly) Toggle Button */}
           {onToggleMultiCharts && (
@@ -442,6 +500,44 @@ export default function StockInfo({
             }}
           >
             RS: {rsRank}
+          </span>
+        )}
+
+        {/* 50-SMA ATR Extension (Jeff Sun Extension Guardrail) */}
+        {extAtrVal !== null && (
+          <span
+            title={
+              isExtDanger
+                ? '⚠️ Extended > 4x ATR from 50 SMA (Jeff Sun Hard Guardrail: Avoid Focus List)'
+                : isExtWarn
+                ? 'Caution: Extended > 3.2x ATR from 50 SMA'
+                : 'Extension from 50 SMA in multiples of 20-day ATR'
+            }
+            style={{
+              fontSize: '11px',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              background: isExtDanger
+                ? 'rgba(239, 68, 68, 0.25)'
+                : isExtWarn
+                ? 'rgba(234, 179, 8, 0.2)'
+                : 'rgba(16, 185, 129, 0.15)',
+              color: isExtDanger ? '#f87171' : isExtWarn ? '#fde047' : '#34d399',
+              border: `1px solid ${
+                isExtDanger
+                  ? 'rgba(239, 68, 68, 0.5)'
+                  : isExtWarn
+                  ? 'rgba(234, 179, 8, 0.4)'
+                  : 'rgba(16, 185, 129, 0.3)'
+              }`,
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            {isExtDanger && <span>⚠️</span>}
+            50-ATR: {extAtrVal > 0 ? `+${extAtrVal.toFixed(1)}x` : `${extAtrVal.toFixed(1)}x`}
           </span>
         )}
 
@@ -636,6 +732,16 @@ export default function StockInfo({
           </span>
         )}
       </div>
+
+      {/* Jeff Sun 3-Stop Risk & Position Sizing Calculator Modal */}
+      <ThreeStopCalculatorModal
+        isOpen={showCalcModal}
+        onClose={() => setShowCalcModal(false)}
+        symbol={symbol}
+        initialEntryPrice={entryPriceVal}
+        initialStopPrice={stopPriceVal}
+        initialAtr={dollarAtrVal}
+      />
     </div>
   );
 }

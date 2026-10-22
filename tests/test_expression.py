@@ -440,15 +440,36 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertIn("b.gap_pct", res_gap["sql"])
         self.assertIn("(-7.0)", res_gap["sql"])
 
-        # 6. Test setups.yaml short folder screeners
+        # 6. Test screeners.yaml short folder screeners
         from application.services.setup_service import setup_service
         config = setup_service.get_setups_config()
         short_folder = next((f for f in config.get("folders", []) if f.get("id") == "short"), None)
-        self.assertIsNotNone(short_folder, "Short folder must exist in setups.yaml")
-        self.assertEqual(len(short_folder.get("screeners", [])), 5)
+        self.assertIsNotNone(short_folder, "Short folder must exist in screeners.yaml")
+        self.assertGreaterEqual(len(short_folder.get("screeners", [])), 5)
         for screener in short_folder["screeners"]:
             val = ScanExpressionEngine.validate(screener["expression"])
             self.assertTrue(val["valid"], f"Screener '{screener['id']}' expression failed: {val.get('error')}")
+
+    def test_numeric_literals_with_underscores(self):
+        # Python AST & DuckDB support digit separators (PEP 515)
+        res = ScanExpressionEngine.validate("DOLLAR_VOL >= 10_000_000 AND V >= 100_000")
+        self.assertTrue(res["valid"])
+        self.assertIn(">= 10000000", res["sql"])
+        self.assertIn(">= 100000", res["sql"])
+
+    def test_jeff_sun_metrics_and_aliases(self):
+        # EXT_ATR_50 guardrail validation
+        res_ext = ScanExpressionEngine.validate("EXT_ATR_50 <= 4.0")
+        self.assertTrue(res_ext["valid"], res_ext.get("error"))
+        self.assertIn("b.sma_50", res_ext["sql"])
+        self.assertIn("b.atr_20d", res_ext["sql"])
+
+        # INSIDE_DAY alias validation
+        res_inside = ScanExpressionEngine.validate("INSIDE_DAY AND ADR20 >= 4.0")
+        self.assertTrue(res_inside["valid"], res_inside.get("error"))
+        self.assertIn("b.lag_h1", res_inside["sql"])
+        self.assertIn("b.lag_l1", res_inside["sql"])
+        self.assertTrue(res_inside["has_lags"])
 
 if __name__ == "__main__":
     unittest.main()

@@ -125,6 +125,7 @@ class CandidateFilterSchema(BaseModel):
     expression: Optional[str] = None
     sort_by: Optional[str] = None
     sort_order: Optional[str] = None
+    screener_id: Optional[str] = None
 
 class SavedTradeCreateSchema(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -205,7 +206,8 @@ def post_candidates(payload: CandidateFilterSchema):
             filters=payload.filters,
             expression=payload.expression,
             sort_by=payload.sort_by,
-            sort_order=payload.sort_order
+            sort_order=payload.sort_order,
+            screener_id=payload.screener_id
         )
         return Response(content=json.dumps(data), media_type="application/json")
     except Exception as e:

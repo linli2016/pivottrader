@@ -1,6 +1,15 @@
 import React from 'react';
 import StockBrandIcon from '../StockBrandIcon';
 
+export const SETUP_TAG_META = {
+  HTF: { id: 'HTF', label: 'HTF', name: 'High Tight Flag', icon: '⚡', color: '#f59e0b' },
+  VCP: { id: 'VCP', label: 'VCP', name: 'VCP Base', icon: '📐', color: '#10b981' },
+  IPO: { id: 'IPO', label: 'IPO', name: 'IPO Base', icon: '🐣', color: '#06b6d4' },
+  EP: { id: 'EP', label: 'EP', name: 'Post EP', icon: '💥', color: '#ec4899' },
+  SHORT: { id: 'SHORT', label: 'Short', name: 'Short Setup', icon: '🐻', color: '#f43f5e' },
+  Others: { id: 'Others', label: 'Others', name: 'Others', icon: '📁', color: '#94a3b8' },
+};
+
 export default function StockListRow({
   item,
   index = 0,
@@ -24,6 +33,11 @@ export default function StockListRow({
   const rsColor = normRs === null ? 'var(--text-muted, #94a3b8)' : normRs > 0 ? '#34d399' : normRs < 0 ? '#fb7185' : 'var(--text-secondary, #cbd5e1)';
 
   const hasRsBlueDot = item.is_rs_blue_dot || (item.setups && item.setups.includes('RS Blue Dot'));
+  const [showTagTooltip, setShowTagTooltip] = React.useState(false);
+
+  const matchedTooltipText = item.matched_setups && item.matched_setups.length > 0
+    ? `Weekly Setups for ${item.symbol}:\n` + item.matched_setups.map(m => `• [${m.tag}] ${m.name}`).join('\n')
+    : (item.setup_name ? `Setup: ${item.setup_name}` : item.symbol);
 
   return (
     <tr
@@ -52,12 +66,63 @@ export default function StockListRow({
 
         switch (colKey) {
           case 'symbol':
-            cellStyle = { padding: '6px 8px' };
+            cellStyle = { padding: '6px 8px', position: 'relative' };
             cellContent = (
               <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-                <StockBrandIcon symbol={item.symbol} size={18} />
+                <div
+                  style={{ position: 'relative', display: 'inline-flex', cursor: item.matched_setups ? 'pointer' : 'default' }}
+                  onClick={(e) => {
+                    if (item.matched_setups && item.matched_setups.length > 0) {
+                      e.stopPropagation();
+                      setShowTagTooltip(prev => !prev);
+                    }
+                  }}
+                  title={matchedTooltipText}
+                >
+                  <StockBrandIcon symbol={item.symbol} size={18} />
+                  {showTagTooltip && item.matched_setups && item.matched_setups.length > 0 && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: '24px',
+                        top: '-4px',
+                        zIndex: 9999,
+                        background: '#0f172a',
+                        border: '1px solid #334155',
+                        borderRadius: '6px',
+                        padding: '8px 10px',
+                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.8)',
+                        fontSize: '11px',
+                        whiteSpace: 'nowrap',
+                        color: '#f8fafc',
+                        pointerEvents: 'auto',
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '4px', borderBottom: '1px solid #334155', paddingBottom: '3px' }}>
+                        <span style={{ fontWeight: 800, color: '#38bdf8', fontSize: '10.5px' }}>{item.symbol} Weekly Setups</span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setShowTagTooltip(false); }}
+                          style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '11px', padding: 0 }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      {item.matched_setups.map((m, idx) => {
+                        const tagMeta = SETUP_TAG_META[m.tag] || { icon: '📁', color: '#94a3b8' };
+                        return (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px', fontSize: '10.5px' }}>
+                            <span style={{ color: tagMeta.color, fontWeight: 700 }}>{tagMeta.icon} [{m.tag}]</span>
+                            <span style={{ color: '#cbd5e1' }}>{m.name}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
                 <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: 800, color: '#ffffff', fontSize: '11.5px' }}>
                       {item.symbol}
                     </span>
@@ -120,6 +185,39 @@ export default function StockListRow({
                   </span>
                 )}
               </div>
+            );
+            break;
+
+          case 'ext_atr_50':
+            const extAtr = item.ext_atr_50 !== undefined && item.ext_atr_50 !== null ? Number(item.ext_atr_50) : null;
+            const isDanger = extAtr !== null && extAtr > 4.0;
+            const isWarn = extAtr !== null && extAtr > 3.2 && extAtr <= 4.0;
+            cellStyle = {
+              textAlign: 'center',
+              padding: '6px 6px',
+              fontFamily: 'var(--font-mono, monospace)',
+              fontWeight: 700,
+            };
+            cellContent = extAtr !== null ? (
+              <span
+                title={isDanger ? '⚠️ Extended > 4x ATR from 50 SMA (Jeff Sun Hard Guardrail: Avoid Focus)' : 'Extension from 50 SMA in multiples of 20-day ATR'}
+                style={{
+                  fontSize: '10px',
+                  padding: '1.5px 5px',
+                  borderRadius: '4px',
+                  background: isDanger ? 'rgba(239, 68, 68, 0.25)' : isWarn ? 'rgba(234, 179, 8, 0.2)' : 'rgba(16, 185, 129, 0.15)',
+                  color: isDanger ? '#f87171' : isWarn ? '#fde047' : '#34d399',
+                  border: isDanger ? '1px solid rgba(239, 68, 68, 0.45)' : '1px solid transparent',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '2px',
+                }}
+              >
+                {isDanger && <span style={{ fontSize: '9px' }}>⚠️</span>}
+                {extAtr > 0 ? `+${extAtr.toFixed(1)}x` : `${extAtr.toFixed(1)}x`}
+              </span>
+            ) : (
+              '—'
             );
             break;
 

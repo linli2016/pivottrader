@@ -448,14 +448,241 @@ class DatabaseService:
                 
             return summary
 
+    def _combine_expressions(self, daily_expr: Optional[str], weekly_expr: Optional[str]) -> str:
+        d = (daily_expr or "").strip()
+        w = (weekly_expr or "").strip()
+        if not d and not w:
+            return ""
+        if not d:
+            return w
+        if not w:
+            return d
+
+        import re
+        trailing_pattern = re.compile(
+            r'\s+(ORDER\s+BY\s+[A-Za-z0-9_]+(?:\s+(?:ASC|DESC))?(?:\s+LIMIT\s+\d+)?|LIMIT\s+\d+)\s*$',
+            re.IGNORECASE
+        )
+        m = trailing_pattern.search(w)
+        if m:
+            core_w = w[:m.start()].strip()
+            trailing = w[m.start():].strip()
+            return f"({d}) AND ({core_w}) {trailing}"
+        return f"({d}) AND ({w})"
+
+    def _get_compound_folder_candidates(
+        self,
+        target_date: Optional[str] = None,
+        filters: Optional[Dict[str, Any]] = None,
+        daily_expression: Optional[str] = None,
+        target_folder: str = "weekly",
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        from application.services.setup_service import setup_service
+        config = setup_service.get_setups_config(visible_only=True)
+        folder = next((f for f in config.get("folders", []) if f.get("id") == target_folder), None)
+        if not folder:
+            return []
+
+        weekly_screeners = [s for s in folder.get("screeners", []) if s.get("visible") is not False]
+        if not weekly_screeners:
+            return []
+
+        # Pre-calculate point-in-time sector ranks once for all weekly sub-screeners
+        cached_sector_ranks = None
+        try:
+            with self.get_read_only_conn() as conn:
+                max_dt_row = conn.execute("SELECT MAX(date) FROM daily_bars WHERE date <= CAST(? AS DATE)", [target_date or '9999-12-31']).fetchone()
+                act_dt = max_dt_row[0] if max_dt_row and max_dt_row[0] else target_date
+                if act_dt:
+                    sec_rows = conn.execute("""
+                        WITH sec_bars AS (
+                            SELECT s.sector, AVG(d.rs_score) as avg_rs
+                            FROM daily_bars d
+                            JOIN symbols s ON d.symbol = s.symbol
+                            WHERE d.date = CAST(? AS DATE)
+                              AND s.active = true
+                              AND s.asset_type = 'Common Stock'
+                              AND s.sector IS NOT NULL AND s.sector != ''
+                              AND d.close >= 3.0
+                            GROUP BY s.sector
+                        )
+                        SELECT sector, ROW_NUMBER() OVER (ORDER BY avg_rs DESC) as rk
+                        FROM sec_bars
+                    """, [str(act_dt)]).fetchall()
+                    cached_sector_ranks = {sec_name: rk for sec_name, rk in sec_rows}
+        except Exception:
+            cached_sector_ranks = {}
+
+        merged_candidates = {}
+
+        for sc in weekly_screeners:
+            sc_id = sc.get("id")
+            sc_name = sc.get("name") or sc_id
+            sc_tag = sc.get("tag") or "Others"
+            sc_expr = sc.get("expression")
+
+            combined_expr = self._combine_expressions(daily_expression, sc_expr)
+            candidates = self.get_candidates(
+                target_date=target_date,
+                filters=filters,
+                expression=combined_expr,
+                sort_by=None,
+                sort_order=None,
+                screener_id=None,
+                compute_forward=False,
+                compute_rs=False,
+                sector_ranks_cache=cached_sector_ranks
+            )
+
+            for c in candidates:
+                sym = c["symbol"]
+                if sym not in merged_candidates:
+                    c_copy = dict(c)
+                    c_copy["matched_setups"] = [{"id": sc_id, "name": sc_name, "tag": sc_tag}]
+                    c_copy["tags"] = [sc_tag]
+                    c_copy["setup_tag"] = sc_tag
+                    c_copy["setup_name"] = sc_name
+                    merged_candidates[sym] = c_copy
+                else:
+                    existing = merged_candidates[sym]
+                    if not any(m["id"] == sc_id for m in existing.get("matched_setups", [])):
+                        existing.setdefault("matched_setups", []).append({"id": sc_id, "name": sc_name, "tag": sc_tag})
+                    if sc_tag not in existing.get("tags", []):
+                        existing.setdefault("tags", []).append(sc_tag)
+
+        results = list(merged_candidates.values())
+
+        # Calculate forward performance once on final merged candidates list
+        if results and target_date:
+            try:
+                with self.get_read_only_conn() as conn:
+                    cand_symbols = [c["symbol"] for c in results]
+                    symbols_str = ", ".join(f"'{s}'" for s in cand_symbols)
+                    forward_rows = conn.execute(f"""
+                        SELECT symbol, date, open, high, low, close 
+                        FROM daily_bars 
+                        WHERE symbol IN ({symbols_str}) AND date > CAST(? AS DATE)
+                        ORDER BY symbol, date ASC
+                    """, [target_date]).fetchall()
+
+                    from collections import defaultdict
+                    sym_forward = defaultdict(list)
+                    for sym, dt, op, h, l, cl in forward_rows:
+                        sym_forward[sym].append((op, h, l, cl, dt))
+
+                    for c in results:
+                        symbol = c["symbol"]
+                        f_bars = sym_forward.get(symbol, [])
+                        if f_bars:
+                            entry_bar = f_bars[0]
+                            entry_dt = entry_bar[4]
+                            entry_date_str = entry_dt.strftime("%Y-%m-%d") if hasattr(entry_dt, "strftime") else str(entry_dt)
+                            entry_price = round(float(entry_bar[0]), 2)
+                            c["entry_date"] = entry_date_str
+                            c["entry_price"] = entry_price
+
+                            b5 = f_bars[:5]
+                            close_5 = b5[-1][3]
+                            c["return_5d"] = round(((close_5 - entry_price) / entry_price) * 100.0, 2)
+                            max_h_5 = max(b[1] for b in b5)
+                            c["max_runup_5d"] = round(((max_h_5 - entry_price) / entry_price) * 100.0, 2)
+                            min_l_5 = min(b[2] for b in b5)
+                            c["max_drawdown_5d"] = round(((min_l_5 - entry_price) / entry_price) * 100.0, 2)
+                            c["forward_bars_count_5d"] = len(b5)
+
+                            b20 = f_bars[:20]
+                            close_20 = b20[-1][3]
+                            c["return_20d"] = round(((close_20 - entry_price) / entry_price) * 100.0, 2)
+                            max_h_20 = max(b[1] for b in b20)
+                            c["max_runup_20d"] = round(((max_h_20 - entry_price) / entry_price) * 100.0, 2)
+                            min_l_20 = min(b[2] for b in b20)
+                            c["max_drawdown_20d"] = round(((min_l_20 - entry_price) / entry_price) * 100.0, 2)
+                            c["forward_bars_count_20d"] = len(b20)
+            except Exception as e:
+                logger.warning(f"Error computing forward performance for compound screener: {e}")
+
+        # Enrich merged candidates with normalized RS
+        if results and target_date:
+            try:
+                with self.get_read_only_conn() as conn:
+                    cand_symbols = list({c["symbol"] for c in results if c.get("symbol")})
+                    if cand_symbols:
+                        rs_query = """
+                            WITH spy_bars AS (
+                                SELECT date, close as spy_close 
+                                FROM daily_bars 
+                                WHERE symbol = 'SPY' AND date <= CAST(? AS DATE)
+                            ),
+                            stock_bars AS (
+                                SELECT d.symbol, d.date, d.close, s.spy_close,
+                                       (d.close / NULLIF(s.spy_close, 0)) * 100.0 as rs_line,
+                                       ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date DESC) as rn
+                                FROM daily_bars d
+                                JOIN spy_bars s ON d.date = s.date
+                                WHERE d.symbol IN (SELECT unnest(?)) AND d.date <= CAST(? AS DATE)
+                            ),
+                            rs_win AS (
+                                SELECT symbol, date, close, rs_line, rn,
+                                       MIN(rs_line) OVER (PARTITION BY symbol) as min_rs,
+                                       MAX(rs_line) OVER (PARTITION BY symbol) as max_rs,
+                                       MAX(rs_line) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_max_rs,
+                                       MAX(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_max_close
+                                FROM stock_bars
+                                WHERE rn <= 3500
+                            )
+                            SELECT symbol,
+                                   ROUND(GREATEST(-1.0, LEAST(1.0, ((rs_line - min_rs) / NULLIF(max_rs - min_rs, 0)) * 2.0 - 1.0)), 2) as normalized_rs,
+                                   (rs_line >= prev_max_rs AND close < prev_max_close) as is_rs_blue_dot,
+                                   ROUND(rs_line, 2) as rs_line
+                            FROM rs_win
+                            WHERE rn = 1;
+                        """
+                        rs_rows = conn.execute(rs_query, [str(target_date), cand_symbols, str(target_date)]).fetchall()
+                        rs_data = {r[0]: {"normalized_rs": r[1], "is_rs_blue_dot": bool(r[2]), "rs_line": r[3]} for r in rs_rows}
+                        for c in results:
+                            sym = c.get("symbol")
+                            if sym in rs_data:
+                                c["normalized_rs"] = rs_data[sym]["normalized_rs"]
+                                if not c.get("is_rs_blue_dot"):
+                                    c["is_rs_blue_dot"] = rs_data[sym]["is_rs_blue_dot"]
+                                c["rs_line"] = rs_data[sym]["rs_line"]
+            except Exception as e:
+                logger.warning(f"Error enriching compound screener with normalized RS: {e}")
+
+        eff_sort_by = sort_by or "rs_rank"
+        eff_order = (sort_order or "desc").lower()
+        is_reverse = eff_order != "asc"
+        results.sort(key=lambda x: (x.get(eff_sort_by) is not None, x.get(eff_sort_by) or 0), reverse=is_reverse)
+        return results
+
     def get_candidates(
         self,
         target_date: Optional[str] = None,
         filters: Optional[Dict[str, Any]] = None,
         expression: Optional[str] = None,
         sort_by: Optional[str] = None,
-        sort_order: Optional[str] = None
+        sort_order: Optional[str] = None,
+        screener_id: Optional[str] = None,
+        compute_forward: bool = True,
+        compute_rs: bool = True,
+        sector_ranks_cache: Optional[Dict[str, int]] = None
     ) -> List[Dict[str, Any]]:
+        if screener_id:
+            from application.services.setup_service import setup_service
+            sc_config = setup_service.get_setup_by_id(screener_id)
+            target_folder = sc_config.get("target_folder")
+            if target_folder:
+                return self._get_compound_folder_candidates(
+                    target_date=target_date,
+                    filters=filters,
+                    daily_expression=expression or sc_config.get("expression"),
+                    target_folder=target_folder,
+                    sort_by=sort_by,
+                    sort_order=sort_order
+                )
+
         with self.get_read_only_conn() as conn:
             # Check if tables exist
             tables = conn.execute("SHOW TABLES").fetchall()
@@ -721,12 +948,23 @@ class DatabaseService:
                         db.*,
                         LAG(db.close, 1) OVER (PARTITION BY db.symbol ORDER BY db.date) as lag_c1,
                         LAG(db.close, 2) OVER (PARTITION BY db.symbol ORDER BY db.date) as lag_c2,
+                        LAG(db.close, 3) OVER (PARTITION BY db.symbol ORDER BY db.date) as lag_c3,
+                        LAG(db.close, 4) OVER (PARTITION BY db.symbol ORDER BY db.date) as lag_c4,
+                        LAG(db.close, 5) OVER (PARTITION BY db.symbol ORDER BY db.date) as lag_c5,
                         LAG(db.open, 1) OVER (PARTITION BY db.symbol ORDER BY db.date) as lag_o1,
                         LAG(db.high, 1) OVER (PARTITION BY db.symbol ORDER BY db.date) as lag_h1,
                         LAG(db.low, 1) OVER (PARTITION BY db.symbol ORDER BY db.date) as lag_l1,
-                        LAG(db.volume, 1) OVER (PARTITION BY db.symbol ORDER BY db.date) as lag_v1
+                        LAG(db.volume, 1) OVER (PARTITION BY db.symbol ORDER BY db.date) as lag_v1,
+                        AVG(db.close) OVER (PARTITION BY db.symbol ORDER BY db.date ROWS BETWEEN 9 PRECEDING AND CURRENT ROW) as sma_10,
+                        AVG(db.close) OVER (PARTITION BY db.symbol ORDER BY db.date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) as sma_20,
+                        ROUND((db.close * 0.3839 + 
+                            LAG(db.close, 1) OVER (PARTITION BY db.symbol ORDER BY db.date) * 0.2559 + 
+                            LAG(db.close, 2) OVER (PARTITION BY db.symbol ORDER BY db.date) * 0.1706 + 
+                            LAG(db.close, 3) OVER (PARTITION BY db.symbol ORDER BY db.date) * 0.1137 + 
+                            LAG(db.close, 4) OVER (PARTITION BY db.symbol ORDER BY db.date) * 0.0758), 2) as ema_5,
+                        ROUND((db.close - LAG(db.close, 5) OVER (PARTITION BY db.symbol ORDER BY db.date)) / NULLIF(LAG(db.close, 5) OVER (PARTITION BY db.symbol ORDER BY db.date), 0) * 100.0, 2) as ret_1w
                     FROM daily_bars db
-                    WHERE db.date >= CAST('{actual_date_str}' AS DATE) - INTERVAL 10 DAY
+                    WHERE db.date >= CAST('{actual_date_str}' AS DATE) - INTERVAL 45 DAY
                       AND db.date <= CAST('{actual_date_str}' AS DATE)
                 ),
             """ if has_lags else ""
@@ -859,27 +1097,30 @@ class DatabaseService:
             """
             
             # Calculate point-in-time sector ranks from the 30 tactical sectors
-            sector_ranks = {}
-            try:
-                sector_rows = conn.execute("""
-                    WITH sec_bars AS (
-                        SELECT s.sector, AVG(d.rs_score) as avg_rs
-                        FROM daily_bars d
-                        JOIN symbols s ON d.symbol = s.symbol
-                        WHERE d.date = CAST(? AS DATE)
-                          AND s.active = true
-                          AND s.asset_type = 'Common Stock'
-                          AND s.sector IS NOT NULL AND s.sector != ''
-                          AND d.close >= 3.0
-                        GROUP BY s.sector
-                    )
-                    SELECT sector, ROW_NUMBER() OVER (ORDER BY avg_rs DESC) as rk
-                    FROM sec_bars
-                """, [actual_date_str]).fetchall()
-                for sec_name, rk in sector_rows:
-                    sector_ranks[sec_name] = rk
-            except Exception as e:
-                print(f"Error calculating sector ranks: {e}")
+            if sector_ranks_cache is not None:
+                sector_ranks = sector_ranks_cache
+            else:
+                sector_ranks = {}
+                try:
+                    sector_rows = conn.execute("""
+                        WITH sec_bars AS (
+                            SELECT s.sector, AVG(d.rs_score) as avg_rs
+                            FROM daily_bars d
+                            JOIN symbols s ON d.symbol = s.symbol
+                            WHERE d.date = CAST(? AS DATE)
+                              AND s.active = true
+                              AND s.asset_type = 'Common Stock'
+                              AND s.sector IS NOT NULL AND s.sector != ''
+                              AND d.close >= 3.0
+                            GROUP BY s.sector
+                        )
+                        SELECT sector, ROW_NUMBER() OVER (ORDER BY avg_rs DESC) as rk
+                        FROM sec_bars
+                    """, [actual_date_str]).fetchall()
+                    for sec_name, rk in sector_rows:
+                        sector_ranks[sec_name] = rk
+                except Exception as e:
+                    print(f"Error calculating sector ranks: {e}")
 
             res = conn.execute(query, params).fetchall()
             
@@ -970,7 +1211,8 @@ class DatabaseService:
                     "stage": int(row[75]) if len(row) > 75 and row[75] is not None else None,
                     "is_confirmed_staged": bool(row[64]) if len(row) > 64 and row[64] is not None else False,
                     "chg_pct": float(row[76]) if len(row) > 76 and row[76] is not None else None,
-                    "today_pct": float(row[76]) if len(row) > 76 and row[76] is not None else None
+                    "today_pct": float(row[76]) if len(row) > 76 and row[76] is not None else None,
+                    "ext_atr_50": round((row[1] - row[17]) / (row[1] * (row[12] / 100.0)), 2) if (row[1] is not None and row[17] is not None and row[12] is not None and row[12] > 0 and row[1] > 0) else None
                 })
 
             if not candidates:
@@ -1476,67 +1718,68 @@ class DatabaseService:
                 return []
 
             # 4. Forward performance calculation
-            try:
-                cand_symbols = [c["symbol"] for c in candidates]
-                symbols_str = ", ".join(f"'{s}'" for s in cand_symbols)
-                forward_rows = conn.execute(f"""
-                    SELECT symbol, date, open, high, low, close 
-                    FROM daily_bars 
-                    WHERE symbol IN ({symbols_str}) AND date > CAST(? AS DATE)
-                    ORDER BY symbol, date ASC
-                """, [actual_date_str]).fetchall()
+            if compute_forward:
+                try:
+                    cand_symbols = [c["symbol"] for c in candidates]
+                    symbols_str = ", ".join(f"'{s}'" for s in cand_symbols)
+                    forward_rows = conn.execute(f"""
+                        SELECT symbol, date, open, high, low, close 
+                        FROM daily_bars 
+                        WHERE symbol IN ({symbols_str}) AND date > CAST(? AS DATE)
+                        ORDER BY symbol, date ASC
+                    """, [actual_date_str]).fetchall()
 
-                sym_forward = defaultdict(list)
-                for sym, dt, op, h, l, cl in forward_rows:
-                    sym_forward[sym].append((op, h, l, cl, dt))
+                    sym_forward = defaultdict(list)
+                    for sym, dt, op, h, l, cl in forward_rows:
+                        sym_forward[sym].append((op, h, l, cl, dt))
 
-                for c in candidates:
-                    symbol = c["symbol"]
-                    f_bars = sym_forward.get(symbol, [])
-                    if f_bars:
-                        # Next Day Open is entry price
-                        entry_bar = f_bars[0]
-                        entry_dt = entry_bar[4]
-                        entry_date_str = entry_dt.strftime("%Y-%m-%d") if hasattr(entry_dt, "strftime") else str(entry_dt)
-                        entry_price = round(float(entry_bar[0]), 2)
+                    for c in candidates:
+                        symbol = c["symbol"]
+                        f_bars = sym_forward.get(symbol, [])
+                        if f_bars:
+                            # Next Day Open is entry price
+                            entry_bar = f_bars[0]
+                            entry_dt = entry_bar[4]
+                            entry_date_str = entry_dt.strftime("%Y-%m-%d") if hasattr(entry_dt, "strftime") else str(entry_dt)
+                            entry_price = round(float(entry_bar[0]), 2)
 
-                        c["entry_date"] = entry_date_str
-                        c["entry_price"] = entry_price
+                            c["entry_date"] = entry_date_str
+                            c["entry_price"] = entry_price
 
-                        # 5-Day Window
-                        b5 = f_bars[:5]
-                        close_5 = b5[-1][3]
-                        c["return_5d"] = round(((close_5 - entry_price) / entry_price) * 100.0, 2)
-                        max_h_5 = max(b[1] for b in b5)
-                        c["max_runup_5d"] = round(((max_h_5 - entry_price) / entry_price) * 100.0, 2)
-                        min_l_5 = min(b[2] for b in b5)
-                        c["max_drawdown_5d"] = round(((min_l_5 - entry_price) / entry_price) * 100.0, 2)
-                        c["forward_bars_count_5d"] = len(b5)
+                            # 5-Day Window
+                            b5 = f_bars[:5]
+                            close_5 = b5[-1][3]
+                            c["return_5d"] = round(((close_5 - entry_price) / entry_price) * 100.0, 2)
+                            max_h_5 = max(b[1] for b in b5)
+                            c["max_runup_5d"] = round(((max_h_5 - entry_price) / entry_price) * 100.0, 2)
+                            min_l_5 = min(b[2] for b in b5)
+                            c["max_drawdown_5d"] = round(((min_l_5 - entry_price) / entry_price) * 100.0, 2)
+                            c["forward_bars_count_5d"] = len(b5)
 
-                        # 20-Day Window
-                        b20 = f_bars[:20]
-                        close_20 = b20[-1][3]
-                        c["return_20d"] = round(((close_20 - entry_price) / entry_price) * 100.0, 2)
-                        max_h_20 = max(b[1] for b in b20)
-                        c["max_runup_20d"] = round(((max_h_20 - entry_price) / entry_price) * 100.0, 2)
-                        min_l_20 = min(b[2] for b in b20)
-                        c["max_drawdown_20d"] = round(((min_l_20 - entry_price) / entry_price) * 100.0, 2)
-                        c["forward_bars_count_20d"] = len(b20)
-                    else:
-                        c["entry_date"] = None
-                        c["entry_price"] = None
-                        c["return_5d"] = None
-                        c["max_runup_5d"] = None
-                        c["max_drawdown_5d"] = None
-                        c["forward_bars_count_5d"] = 0
-                        c["return_20d"] = None
-                        c["max_runup_20d"] = None
-                        c["max_drawdown_20d"] = None
-                        c["forward_bars_count_20d"] = 0
-            except Exception as e:
-                print(f"Error calculating forward performance for candidates on {actual_date_str}: {e}")
+                            # 20-Day Window
+                            b20 = f_bars[:20]
+                            close_20 = b20[-1][3]
+                            c["return_20d"] = round(((close_20 - entry_price) / entry_price) * 100.0, 2)
+                            max_h_20 = max(b[1] for b in b20)
+                            c["max_runup_20d"] = round(((max_h_20 - entry_price) / entry_price) * 100.0, 2)
+                            min_l_20 = min(b[2] for b in b20)
+                            c["max_drawdown_20d"] = round(((min_l_20 - entry_price) / entry_price) * 100.0, 2)
+                            c["forward_bars_count_20d"] = len(b20)
+                        else:
+                            c["entry_date"] = None
+                            c["entry_price"] = None
+                            c["return_5d"] = None
+                            c["max_runup_5d"] = None
+                            c["max_drawdown_5d"] = None
+                            c["forward_bars_count_5d"] = 0
+                            c["return_20d"] = None
+                            c["max_runup_20d"] = None
+                            c["max_drawdown_20d"] = None
+                            c["forward_bars_count_20d"] = 0
+                except Exception as e:
+                    print(f"Error calculating forward performance for candidates on {actual_date_str}: {e}")
 
-            if candidates:
+            if candidates and compute_rs:
                 try:
                     from application.services.group_radar_service import GroupRadarService
                     gr_service = GroupRadarService(self.get_db_path())
@@ -1980,7 +2223,7 @@ class DatabaseService:
             if limit and limit > 0:
                 lookback = limit + 260
                 rows = conn.execute("""
-                    SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65, vol_50d_ma, high_52w, low_52w, dist_from_52w_high
+                    SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65, vol_50d_ma, high_52w, low_52w, dist_from_52w_high, atr_20d, adr_20d
                     FROM daily_bars
                     WHERE symbol = ?
                     ORDER BY date DESC
@@ -1988,7 +2231,7 @@ class DatabaseService:
                 """, [symbol, lookback]).fetchall()
             else:
                 rows = conn.execute("""
-                    SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65, vol_50d_ma, high_52w, low_52w, dist_from_52w_high
+                    SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65, vol_50d_ma, high_52w, low_52w, dist_from_52w_high, atr_20d, adr_20d
                     FROM daily_bars
                     WHERE symbol = ?
                     ORDER BY date ASC
@@ -2001,7 +2244,7 @@ class DatabaseService:
         rs_lines = []
         closes = []
         for r in rows:
-            d, o, h, l, cl, v, s50, s150, s200, rs_r, ti, v50m, h52, l52, d52h = r
+            d, o, h, l, cl, v, s50, s150, s200, rs_r, ti, v50m, h52, l52, d52h, atr, adr = r
             sc = self._spy_daily_cache.get(d)
             rsl = round((cl / sc * 100.0), 4) if sc else None
             prev_rsl_max = max(rs_lines[-252:]) if rs_lines else None
@@ -2009,6 +2252,8 @@ class DatabaseService:
             bd = bool(rsl and prev_rsl_max and rsl >= prev_rsl_max and prev_c_max and cl < prev_c_max)
             rs_lines.append(rsl if rsl is not None else -999999)
             closes.append(cl)
+
+            ext_atr_50 = round((cl - s50) / (cl * (atr / 100.0)), 2) if (cl and s50 and atr and atr > 0) else None
 
             bars_list.append({
                 "symbol": symbol,
@@ -2028,7 +2273,10 @@ class DatabaseService:
                 "rs_rank": rs_r,
                 "ti_65": ti,
                 "rs_line": rsl,
-                "is_rs_blue_dot": bd
+                "is_rs_blue_dot": bd,
+                "atr_20d": float(atr) if atr is not None else None,
+                "adr_20d": float(adr) if adr is not None else None,
+                "ext_atr_50": ext_atr_50
             })
 
         if limit and len(bars_list) > limit:
@@ -3224,9 +3472,12 @@ class DatabaseService:
             if "watchlist_items" not in tables:
                 return []
 
-            query = """
+            cols = [c[1] for c in conn.execute("PRAGMA table_info('watchlist_items')").fetchall()]
+            tags_select = "COALESCE(tags, '') as tags" if "tags" in cols else "'' as tags"
+
+            query = f"""
                 WITH target_symbols AS (
-                    SELECT symbol, added_at FROM watchlist_items WHERE watchlist_id = ?
+                    SELECT symbol, added_at, {tags_select} FROM watchlist_items WHERE watchlist_id = ?
                 ),
                 recent_bars AS (
                     SELECT 
@@ -3244,7 +3495,9 @@ class DatabaseService:
                         db.ema_10,
                         db.ema_20,
                         db.ema_50,
+                        db.sma_50,
                         db.sma_200,
+                        db.pivot_spread_pct,
                         db.vcp_is_setup,
                         db.low_cheat_is_setup,
                         db.ti_65,
@@ -3278,7 +3531,9 @@ class DatabaseService:
                         db.ema_10,
                         db.ema_20,
                         db.ema_50,
+                        db.sma_50,
                         db.sma_200,
+                        db.pivot_spread_pct,
                         db.vcp_is_setup,
                         db.low_cheat_is_setup,
                         db.ti_65,
@@ -3396,7 +3651,11 @@ class DatabaseService:
                     f.sponsorship_streak,
                     COALESCE(trs.is_rs_blue_dot, lb.is_rs_blue_dot, false) as is_rs_blue_dot,
                     ROUND((lb.close / NULLIF(COALESCE(spy.spy_close, (SELECT default_spy_close FROM default_spy)), 0)) * 100.0, 2) as rs_line,
-                    trs.normalized_rs
+                    trs.normalized_rs,
+                    lb.sma_50,
+                    lb.pivot_spread_pct,
+                    ROUND((lb.close - lb.sma_50) / NULLIF(lb.close * (lb.atr_20d / 100.0), 0), 2) as ext_atr_50,
+                    ts.tags
                 FROM target_symbols ts
                 JOIN symbols s ON ts.symbol = s.symbol
                 LEFT JOIN all_latest_bars lb ON s.symbol = lb.symbol
@@ -3446,7 +3705,11 @@ class DatabaseService:
                     "sponsorship_streak": row[34] if len(row) > 34 else 0,
                     "is_rs_blue_dot": bool(row[35]) if len(row) > 35 and row[35] is not None else False,
                     "rs_line": float(row[36]) if len(row) > 36 and row[36] is not None else None,
-                    "normalized_rs": float(row[37]) if len(row) > 37 and row[37] is not None else None
+                    "normalized_rs": float(row[37]) if len(row) > 37 and row[37] is not None else None,
+                    "sma_50": row[38] if len(row) > 38 else None,
+                    "pivot_spread_pct": row[39] if len(row) > 39 else None,
+                    "ext_atr_50": row[40] if len(row) > 40 else None,
+                    "tags": [t.strip() for t in (row[41] or "").split(",") if t.strip()] if len(row) > 41 and row[41] else []
                 }
                 for row in rows
             ]
@@ -3516,36 +3779,122 @@ class DatabaseService:
                 "peers": peers
             }
 
-    def add_watchlist_item(self, watchlist_id: int, symbol: str) -> bool:
+    def _normalize_watchlist_tags(self, tag: Optional[str] = None, tags: Optional[List[str]] = None) -> str:
+        all_tags = []
+        if tag and isinstance(tag, str):
+            all_tags.extend([t.strip().upper() for t in tag.split(",") if t.strip()])
+        if tags and isinstance(tags, list):
+            for t in tags:
+                if isinstance(t, str):
+                    all_tags.extend([sub.strip().upper() for sub in t.split(",") if sub.strip()])
+        seen = set()
+        deduped = []
+        for t in all_tags:
+            if t not in seen:
+                seen.add(t)
+                deduped.append(t)
+        return ",".join(deduped)
+
+    def add_watchlist_item(self, watchlist_id: int, symbol: str, tag: Optional[str] = None, tags: Optional[List[str]] = None) -> bool:
         with self.get_write_conn() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS watchlist_items (
                     watchlist_id INTEGER NOT NULL,
                     symbol VARCHAR NOT NULL,
+                    tags VARCHAR DEFAULT '',
                     added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (watchlist_id, symbol)
                 );
             """)
+            try:
+                conn.execute("ALTER TABLE watchlist_items ADD COLUMN tags VARCHAR DEFAULT '';")
+            except Exception:
+                pass
             symbol_upper = symbol.strip().upper()
-            conn.execute("INSERT OR IGNORE INTO watchlist_items (watchlist_id, symbol) VALUES (?, ?)", [watchlist_id, symbol_upper])
+            tag_str = self._normalize_watchlist_tags(tag=tag, tags=tags)
+            conn.execute("""
+                INSERT INTO watchlist_items (watchlist_id, symbol, tags)
+                VALUES (?, ?, ?)
+                ON CONFLICT (watchlist_id, symbol) DO UPDATE SET
+                    tags = array_to_string(
+                        list_distinct(
+                            list_filter(
+                                list_concat(
+                                    string_split(COALESCE(watchlist_items.tags, ''), ','),
+                                    string_split(COALESCE(EXCLUDED.tags, ''), ',')
+                                ),
+                                x -> x != ''
+                            )
+                        ),
+                        ','
+                    );
+            """, [watchlist_id, symbol_upper, tag_str])
             return True
 
-    def add_watchlist_items_batch(self, watchlist_id: int, symbols: List[str]) -> int:
+    def add_watchlist_items_batch(
+        self,
+        watchlist_id: int,
+        symbols: Optional[List[str]] = None,
+        tag: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        items: Optional[List[Dict[str, Any]]] = None
+    ) -> int:
         with self.get_write_conn() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS watchlist_items (
                     watchlist_id INTEGER NOT NULL,
                     symbol VARCHAR NOT NULL,
+                    tags VARCHAR DEFAULT '',
                     added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (watchlist_id, symbol)
                 );
             """)
-            cleaned = list(set(s.strip().upper() for s in symbols if s and s.strip()))
-            if not cleaned:
+            try:
+                conn.execute("ALTER TABLE watchlist_items ADD COLUMN tags VARCHAR DEFAULT '';")
+            except Exception:
+                pass
+            
+            rows = []
+            if items:
+                for it in items:
+                    sym = it.get("symbol", "").strip().upper()
+                    if not sym:
+                        continue
+                    t_str = self._normalize_watchlist_tags(tag=it.get("tag"), tags=it.get("tags"))
+                    rows.append((watchlist_id, sym, t_str))
+            elif symbols:
+                cleaned = list(set(s.strip().upper() for s in symbols if s and s.strip()))
+                tag_str = self._normalize_watchlist_tags(tag=tag, tags=tags)
+                rows = [(watchlist_id, s, tag_str) for s in cleaned]
+
+            if not rows:
                 return 0
-            rows = [(watchlist_id, s) for s in cleaned]
-            conn.executemany("INSERT OR IGNORE INTO watchlist_items (watchlist_id, symbol) VALUES (?, ?)", rows)
-            return len(cleaned)
+
+            conn.executemany("""
+                INSERT INTO watchlist_items (watchlist_id, symbol, tags)
+                VALUES (?, ?, ?)
+                ON CONFLICT (watchlist_id, symbol) DO UPDATE SET
+                    tags = array_to_string(
+                        list_distinct(
+                            list_filter(
+                                list_concat(
+                                    string_split(COALESCE(watchlist_items.tags, ''), ','),
+                                    string_split(COALESCE(EXCLUDED.tags, ''), ',')
+                                ),
+                                x -> x != ''
+                            )
+                        ),
+                        ','
+                    );
+            """, rows)
+            return len(rows)
+
+    def update_watchlist_item_tags(self, watchlist_id: int, symbol: str, tags: List[str]) -> bool:
+        with self.get_write_conn() as conn:
+            symbol_upper = symbol.strip().upper()
+            tag_str = self._normalize_watchlist_tags(tags=tags)
+            conn.execute("UPDATE watchlist_items SET tags = ? WHERE watchlist_id = ? AND symbol = ?", [tag_str, watchlist_id, symbol_upper])
+            return True
 
     def remove_watchlist_item(self, watchlist_id: int, symbol: str) -> bool:
         with self.get_write_conn() as conn:

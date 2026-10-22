@@ -130,9 +130,9 @@ function App() {
   // Centralized setups configuration and filter states
   const [setupsConfig, setSetupsConfig] = useState({ folders: [], setups: [], filters: {} });
   const [activeFolderId, setActiveFolderId] = useState('daily');
-  const [activeScreenerId, setActiveScreenerId] = useState('power_play');
-  const [folderMemory, setFolderMemory] = useState({ daily: 'power_play', weekly: 'leaders', others: 'confirmed_staged' });
-  const [activeSetupKey, setActiveSetupKey] = useState('power_play');
+  const [activeScreenerId, setActiveScreenerId] = useState('five_ema_below_5pct');
+  const [folderMemory, setFolderMemory] = useState({ daily: 'five_ema_below_5pct', weekly: 'leaders', others: 'confirmed_staged' });
+  const [activeSetupKey, setActiveSetupKey] = useState('five_ema_below_5pct');
   const [activeExpression, setActiveExpression] = useState('');
 
   // References
@@ -273,13 +273,15 @@ function App() {
   };
 
   // Fetch candidates from backend with server-side filtering
-  const fetchCandidates = async (targetDt = selectedDate, currentExpr = null) => {
+  const fetchCandidates = async (targetDt = selectedDate, currentExpr = null, screenerId = null) => {
     setLoadingCandidates(true);
     try {
       const exprToSend = currentExpr !== null ? currentExpr : (activeExpressionRef.current !== undefined ? activeExpressionRef.current : activeExpression);
+      const scId = screenerId !== null ? screenerId : activeScreenerId;
       const payload = {
         date: targetDt && targetDt !== 'latest' ? targetDt : undefined,
-        expression: exprToSend ? exprToSend.trim() : undefined
+        expression: exprToSend ? exprToSend.trim() : undefined,
+        screener_id: scId || undefined
       };
       const res = await fetch(`${API_BASE}/api/candidates`, {
         method: 'POST',
@@ -526,14 +528,14 @@ function App() {
 
   activeExpressionRef.current = activeExpression;
 
-  // Debounced server-side candidate fetching when expression or selected date change
+  // Debounced server-side candidate fetching when expression, selected date, or screener change
   useEffect(() => {
-    if (!activeExpression) return;
+    if (!activeExpression && !activeScreenerId) return;
     const handler = setTimeout(() => {
-      fetchCandidates(selectedDate, activeExpression);
+      fetchCandidates(selectedDate, activeExpression, activeScreenerId);
     }, 250);
     return () => clearTimeout(handler);
-  }, [selectedDate, activeExpression]);
+  }, [selectedDate, activeExpression, activeScreenerId]);
 
   // Sidebar collapse state with localStorage persistence
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
@@ -829,6 +831,7 @@ function App() {
             handleSelectStock={handleSelectStock}
             watchlists={watchlists}
             fetchWatchlists={fetchWatchlists}
+            setupsConfig={setupsConfig}
           />
         )}
 

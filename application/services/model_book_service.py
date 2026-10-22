@@ -442,6 +442,8 @@ class ModelBookService:
                         "market_badge": m_info.get("badge", "-"),
                         "market_stack": m_info.get("stack", "-"),
                         "market_index_close": m_info.get("close"),
+                        "setup_type": setup_type,
+                        "setup_tag": setup_service.get_screener_tag(setup_type) or "Others",
                     }
                     candidate_trades.append(cand)
 
@@ -534,7 +536,7 @@ class ModelBookService:
 
         base_params = [buffer_start_str, start_date_str, end_date_str, min_price, min_volume_50d, min_dollar_vol] + rs_params
 
-        # Check if setup_type or screener defines an expression in setups.yaml
+        # Check if setup_type or screener defines an expression in screeners.yaml
         setup_def = setup_service.get_setup_by_id(setup_type)
         screener_expr = None
         if setup_def:

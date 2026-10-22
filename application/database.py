@@ -58,14 +58,25 @@ class DatabaseManager:
                 CREATE TABLE IF NOT EXISTS watchlist_items (
                     watchlist_id INTEGER NOT NULL,
                     symbol VARCHAR NOT NULL,
+                    tags VARCHAR DEFAULT '',
                     added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (watchlist_id, symbol)
                 );
             """)
 
+            try:
+                conn.execute("ALTER TABLE watchlist_items ADD COLUMN tags VARCHAR DEFAULT '';")
+            except Exception:
+                pass
+
             res = conn.execute("SELECT COUNT(*) FROM watchlists").fetchone()
             if res and res[0] == 0:
-                conn.execute("INSERT INTO watchlists (name) VALUES ('Default')")
+                conn.execute("INSERT INTO watchlists (name) VALUES ('Focus List'), ('Actionable'), ('Liquid Mega-Caps'), ('Default')")
+            else:
+                try:
+                    conn.execute("INSERT OR IGNORE INTO watchlists (name) VALUES ('Focus List'), ('Actionable')")
+                except Exception:
+                    pass
             
             try:
                 conn.execute("ALTER TABLE symbols ADD COLUMN ipo_date VARCHAR;")

@@ -5,6 +5,7 @@ const COLUMN_DEFAULTS = {
   symbol: { label: 'Symbol', align: 'left', sortable: true, sortAsc: 'symbol', sortDesc: 'symbol_desc' },
   today_pct: { label: 'Today', align: 'right', sortable: true, sortAsc: 'chg_pct_asc', sortDesc: 'chg_pct_desc' },
   rs_rank: { label: 'RS', align: 'center', sortable: true, sortAsc: 'rs_rank_asc', sortDesc: 'rs_rank', tooltip: 'IBD Relative Strength Rank (1–99). Click to sort.' },
+  ext_atr_50: { label: '50-ATR', align: 'center', sortable: true, sortAsc: 'ext_atr_50_asc', sortDesc: 'ext_atr_50_desc', tooltip: 'Extension from 50 SMA in multiples of 20-day ATR (Jeff Sun Guardrail <= 4x). Click to sort.' },
   rs_line: { label: 'RS Line', align: 'right', sortable: true, sortAsc: 'rs_line_asc', sortDesc: 'rs_line', tooltip: 'Normalized Relative Strength Line vs SPY [-1.00 to +1.00]. Click to sort.' },
   date: { label: 'Date', align: 'right', sortable: true, sortAsc: 'date_asc', sortDesc: 'date_desc' },
   price: { label: 'Price', align: 'right', sortable: true, sortAsc: 'price_asc', sortDesc: 'price_desc' },
