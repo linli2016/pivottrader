@@ -16,6 +16,16 @@ export default function ThreeStopCalculatorModal({
   initialStopPrice = null,
   initialAtr = null,
 }) {
+  // Stop Mode: '2-stop' (default for small positions) or '3-stop' (Jeff Sun)
+  const [stopMode, setStopMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pt_calc_stop_mode');
+      return saved || '2-stop';
+    } catch (_) {
+      return '2-stop';
+    }
+  });
+
   // Saved user preferences
   const [equity, setEquity] = useState(() => {
     try {
@@ -71,10 +81,16 @@ export default function ThreeStopCalculatorModal({
     } catch (_) {}
   }, [riskPct]);
 
-  // Close on Escape
+  useEffect(() => {
+    try {
+      localStorage.setItem('pt_calc_stop_mode', stopMode);
+    } catch (_) {}
+  }, [stopMode]);
+
+  // Close on Escape or Cancel key
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isOpen) {
+      if ((e.key === 'Escape' || e.key === 'Cancel') && isOpen) {
         onClose();
       }
     };
@@ -106,25 +122,43 @@ export default function ThreeStopCalculatorModal({
     const positionValue = fullShares * entry;
     const portfolioPct = eq > 0 ? (positionValue / eq) * 100 : 0;
 
-    // 3-Stop Tranches
-    const t1Shares = Math.floor(fullShares / 3);
-    const t2Shares = Math.floor(fullShares / 3);
-    const t3Shares = Math.max(0, fullShares - t1Shares - t2Shares);
+    const is2Stop = stopMode === '2-stop';
 
-    // Stop Prices:
-    // Tranche 1: Tight pivot / BE (0.33 of stop distance)
-    const stop1Price = Math.max(0, entry - 0.33 * stopDistance);
-    // Tranche 2: LoD (full stop distance)
-    const stop2Price = stop;
-    // Tranche 3: Structural cushion (1.0x stop distance)
-    const stop3Price = stop;
+    // 2-Stop (50% / 50% split @ -0.50R & -1.0R)
+    const t1Shares2 = Math.floor(fullShares / 2);
+    const t2Shares2 = Math.max(0, fullShares - t1Shares2);
+    const stop1Price2 = Math.max(0, entry - 0.50 * stopDistance);
+    const stop2Price2 = stop;
+    const loss1_2 = t1Shares2 * (entry - stop1Price2);
+    const loss2_2 = t2Shares2 * (entry - stop2Price2);
+    const total2StopLoss = loss1_2 + loss2_2;
+    const blendedRPct2 = dollarRisk > 0 ? (total2StopLoss / dollarRisk) : 0.75;
 
-    // Mathematical Expected Loss if stopped out sequentially
-    const loss1 = t1Shares * (entry - stop1Price);
-    const loss2 = t2Shares * (entry - stop2Price);
-    const loss3 = t3Shares * (entry - stop3Price);
-    const total3StopLoss = loss1 + loss2 + loss3;
-    const blendedRPct = dollarRisk > 0 ? (total3StopLoss / dollarRisk) : 0.67;
+    // 3-Stop (1/3s split @ -0.33R, -0.67R, -1.0R)
+    const t1Shares3 = Math.floor(fullShares / 3);
+    const t2Shares3 = Math.floor(fullShares / 3);
+    const t3Shares3 = Math.max(0, fullShares - t1Shares3 - t2Shares3);
+    const stop1Price3 = Math.max(0, entry - (1 / 3) * stopDistance);
+    const stop2Price3 = Math.max(0, entry - (2 / 3) * stopDistance);
+    const stop3Price3 = stop;
+    const loss1_3 = t1Shares3 * (entry - stop1Price3);
+    const loss2_3 = t2Shares3 * (entry - stop2Price3);
+    const loss3_3 = t3Shares3 * (entry - stop3Price3);
+    const total3StopLoss = loss1_3 + loss2_3 + loss3_3;
+    const blendedRPct3 = dollarRisk > 0 ? (total3StopLoss / dollarRisk) : 0.67;
+
+    // Active mode values
+    const t1Shares = is2Stop ? t1Shares2 : t1Shares3;
+    const t2Shares = is2Stop ? t2Shares2 : t2Shares3;
+    const t3Shares = is2Stop ? 0 : t3Shares3;
+
+    const stop1Price = is2Stop ? stop1Price2 : stop1Price3;
+    const stop2Price = is2Stop ? stop2Price2 : stop2Price3;
+    const stop3Price = is2Stop ? null : stop3Price3;
+
+    const totalStopLoss = is2Stop ? total2StopLoss : total3StopLoss;
+    const blendedRPct = is2Stop ? blendedRPct2 : blendedRPct3;
+    const lossCapLabel = is2Stop ? '-0.75R' : '-0.67R';
 
     // Profit Targets
     const target2R = entry + 2 * stopDistance;
@@ -144,32 +178,45 @@ export default function ThreeStopCalculatorModal({
       fullShares,
       positionValue,
       portfolioPct,
+      is2Stop,
       t1Shares,
       t2Shares,
       t3Shares,
       stop1Price,
       stop2Price,
       stop3Price,
-      total3StopLoss,
+      totalStopLoss,
       blendedRPct,
+      lossCapLabel,
       target2R,
       target3R,
       target5R,
     };
-  }, [entryPrice, stopPrice, dollarAtr, equity, riskPct]);
+  }, [entryPrice, stopPrice, dollarAtr, equity, riskPct, stopMode]);
 
   const handleCopyPlan = () => {
     if (!calc.fullShares || !symbol) return;
-    const text = [
-      `🎯 ${symbol.toUpperCase()} 3-STOP EXECUTION PLAN:`,
-      `• Entry: $${calc.entry.toFixed(2)} | Planned Size: ${calc.fullShares} shs ($${calc.positionValue.toLocaleString(undefined, { maximumFractionDigits: 0 })} / ${calc.portfolioPct.toFixed(1)}% acct)`,
-      `• Stop Guardrail: $${calc.stopDistance.toFixed(2)} (${calc.stopDistancePct.toFixed(2)}%) = ${calc.atrMultiple.toFixed(2)}x ATR ${calc.isWithinAtrCorridor ? '✅ PASS (<=0.60x)' : '⚠️ WIDE (>0.60x)'}`,
-      `• Tranche 1 (1/3): ${calc.t1Shares} shs @ Stop $${calc.stop1Price.toFixed(2)} (-0.33R)`,
-      `• Tranche 2 (1/3): ${calc.t2Shares} shs @ Stop $${calc.stop2Price.toFixed(2)} (LoD / -1.0R)`,
-      `• Tranche 3 (1/3): ${calc.t3Shares} shs @ Stop $${calc.stop3Price.toFixed(2)} (Structural / -1.0R)`,
-      `• Max Mathematical Loss: -$${calc.total3StopLoss.toFixed(0)} (${(calc.blendedRPct * 100).toFixed(0)}% of 1R budget)`,
-      `• Targets: +2R = $${calc.target2R.toFixed(2)} | +3R = $${calc.target3R.toFixed(2)} | +5R = $${calc.target5R.toFixed(2)}`,
-    ].join('\n');
+    const is2Stop = stopMode === '2-stop';
+    const text = is2Stop
+      ? [
+          `🎯 ${symbol.toUpperCase()} 2-STOP EXECUTION PLAN (50/50):`,
+          `• Entry: $${calc.entry.toFixed(2)} | Planned Size: ${calc.fullShares} shs ($${calc.positionValue.toLocaleString(undefined, { maximumFractionDigits: 0 })} / ${calc.portfolioPct.toFixed(1)}% acct)`,
+          `• Stop Guardrail: $${calc.stopDistance.toFixed(2)} (${calc.stopDistancePct.toFixed(2)}%) = ${calc.atrMultiple.toFixed(2)}x ATR ${calc.isWithinAtrCorridor ? '✅ PASS (<=0.60x)' : '⚠️ WIDE (>0.60x)'}`,
+          `• Tranche 1 (50%): ${calc.t1Shares} shs @ Stop $${calc.stop1Price.toFixed(2)} (-0.50R / Midpoint)`,
+          `• Tranche 2 (50%): ${calc.t2Shares} shs @ Stop $${calc.stop2Price.toFixed(2)} (LoD / -1.0R)`,
+          `• Max Mathematical Loss: -$${calc.totalStopLoss.toFixed(0)} (${(calc.blendedRPct * 100).toFixed(0)}% of 1R budget)`,
+          `• Targets: +2R = $${calc.target2R.toFixed(2)} | +3R = $${calc.target3R.toFixed(2)} | +5R = $${calc.target5R.toFixed(2)}`,
+        ].join('\n')
+      : [
+          `🎯 ${symbol.toUpperCase()} 3-STOP EXECUTION PLAN (1/3s):`,
+          `• Entry: $${calc.entry.toFixed(2)} | Planned Size: ${calc.fullShares} shs ($${calc.positionValue.toLocaleString(undefined, { maximumFractionDigits: 0 })} / ${calc.portfolioPct.toFixed(1)}% acct)`,
+          `• Stop Guardrail: $${calc.stopDistance.toFixed(2)} (${calc.stopDistancePct.toFixed(2)}%) = ${calc.atrMultiple.toFixed(2)}x ATR ${calc.isWithinAtrCorridor ? '✅ PASS (<=0.60x)' : '⚠️ WIDE (>0.60x)'}`,
+          `• Tranche 1 (1/3): ${calc.t1Shares} shs @ Stop $${calc.stop1Price.toFixed(2)} (-0.33R)`,
+          `• Tranche 2 (1/3): ${calc.t2Shares} shs @ Stop $${calc.stop2Price.toFixed(2)} (-0.67R)`,
+          `• Tranche 3 (1/3): ${calc.t3Shares} shs @ Stop $${calc.stop3Price.toFixed(2)} (LoD / -1.0R)`,
+          `• Max Mathematical Loss: -$${calc.totalStopLoss.toFixed(0)} (${(calc.blendedRPct * 100).toFixed(0)}% of 1R budget)`,
+          `• Targets: +2R = $${calc.target2R.toFixed(2)} | +3R = $${calc.target3R.toFixed(2)} | +5R = $${calc.target5R.toFixed(2)}`,
+        ].join('\n');
 
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -191,7 +238,6 @@ export default function ThreeStopCalculatorModal({
         justifyContent: 'center',
         padding: '16px',
       }}
-      onClick={onClose}
     >
       <div
         style={{
@@ -217,10 +263,12 @@ export default function ThreeStopCalculatorModal({
             <span style={{ fontSize: '20px' }}>🧮</span>
             <div>
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#ffffff' }}>
-                3-Stop Position Sizer {symbol ? `(${symbol.toUpperCase()})` : ''}
+                {stopMode === '2-stop' ? '2-Stop' : '3-Stop'} Position Sizer {symbol ? `(${symbol.toUpperCase()})` : ''}
               </h3>
               <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                Jeff Sun Risk Protocol: 0.60x ATR LoD Guardrail & -0.67R Loss Cap
+                {stopMode === '2-stop'
+                  ? '50/50 Scaled Exit Protocol: -0.50R Half-Cut & -0.75R Loss Cap'
+                  : 'Jeff Sun Risk Protocol: 0.60x ATR LoD Guardrail & -0.67R Loss Cap'}
               </span>
             </div>
           </div>
@@ -238,6 +286,62 @@ export default function ThreeStopCalculatorModal({
           >
             ✕
           </button>
+        </div>
+
+        {/* Stop Mode Toggle (2-Stop vs 3-Stop) */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'rgba(255, 255, 255, 0.04)',
+            padding: '7px 12px',
+            borderRadius: '10px',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+          }}
+        >
+          <div>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: '#ffffff' }}>Stop Model:</span>
+            <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: '6px' }}>
+              {stopMode === '2-stop' ? '50/50 Split (Simpler for < $5k size)' : '3-Tier Scale (Jeff Sun 1/3s)'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '4px', background: 'rgba(0, 0, 0, 0.35)', padding: '3px', borderRadius: '7px' }}>
+            <button
+              type="button"
+              onClick={() => setStopMode('2-stop')}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '5px',
+                fontSize: '11px',
+                fontWeight: stopMode === '2-stop' ? 800 : 600,
+                cursor: 'pointer',
+                background: stopMode === '2-stop' ? '#38bdf8' : 'transparent',
+                color: stopMode === '2-stop' ? '#0f172a' : '#94a3b8',
+                border: 'none',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              2-Stop (50/50)
+            </button>
+            <button
+              type="button"
+              onClick={() => setStopMode('3-stop')}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '5px',
+                fontSize: '11px',
+                fontWeight: stopMode === '3-stop' ? 800 : 600,
+                cursor: 'pointer',
+                background: stopMode === '3-stop' ? '#38bdf8' : 'transparent',
+                color: stopMode === '3-stop' ? '#0f172a' : '#94a3b8',
+                border: 'none',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              3-Stop (1/3s)
+            </button>
+          </div>
         </div>
 
         {/* Input Parameters Grid */}
@@ -482,11 +586,11 @@ export default function ThreeStopCalculatorModal({
           </div>
         </div>
 
-        {/* 3-Stop Tranches Execution Plan */}
+        {/* Tranches Execution Plan */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <div style={{ fontSize: '12px', fontWeight: 700, color: '#38bdf8', display: 'flex', justifyContent: 'space-between' }}>
-            <span>🛡️ 3-Stop Tranche Execution (Mathematical Loss Capped at -0.67R):</span>
-            <span style={{ color: '#34d399' }}>Max Loss: -${calc.total3StopLoss.toFixed(0)} ({(calc.blendedRPct * 100).toFixed(0)}% of 1R)</span>
+            <span>🛡️ {calc.is2Stop ? '2-Stop' : '3-Stop'} Tranche Execution (Loss Capped at {calc.lossCapLabel}):</span>
+            <span style={{ color: '#34d399' }}>Max Loss: -${calc.totalStopLoss.toFixed(0)} ({(calc.blendedRPct * 100).toFixed(0)}% of 1R)</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -503,12 +607,16 @@ export default function ThreeStopCalculatorModal({
               }}
             >
               <div>
-                <span style={{ fontWeight: 700, color: '#ffffff' }}>Tranche 1 (1/3): </span>
+                <span style={{ fontWeight: 700, color: '#ffffff' }}>
+                  {calc.is2Stop ? 'Tranche 1 (50%): ' : 'Tranche 1 (1/3): '}
+                </span>
                 <span style={{ color: '#94a3b8' }}>{calc.t1Shares} shares</span>
               </div>
               <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#fde047' }}>
                 Stop: ${calc.stop1Price.toFixed(2)}{' '}
-                <span style={{ fontSize: '10.5px', color: '#94a3b8' }}>(-0.33R / BE)</span>
+                <span style={{ fontSize: '10.5px', color: '#94a3b8' }}>
+                  {calc.is2Stop ? '(-0.50R / Midpoint)' : '(-0.33R / BE)'}
+                </span>
               </div>
             </div>
 
@@ -525,36 +633,42 @@ export default function ThreeStopCalculatorModal({
               }}
             >
               <div>
-                <span style={{ fontWeight: 700, color: '#ffffff' }}>Tranche 2 (1/3): </span>
+                <span style={{ fontWeight: 700, color: '#ffffff' }}>
+                  {calc.is2Stop ? 'Tranche 2 (50%): ' : 'Tranche 2 (1/3): '}
+                </span>
                 <span style={{ color: '#94a3b8' }}>{calc.t2Shares} shares</span>
               </div>
-              <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#fb923c' }}>
+              <div style={{ fontFamily: 'monospace', fontWeight: 700, color: calc.is2Stop ? '#f87171' : '#fb923c' }}>
                 Stop: ${calc.stop2Price.toFixed(2)}{' '}
-                <span style={{ fontSize: '10.5px', color: '#94a3b8' }}>(LoD / -1.0R)</span>
+                <span style={{ fontSize: '10.5px', color: '#94a3b8' }}>
+                  {calc.is2Stop ? '(LoD / -1.0R)' : '(-0.67R)'}
+                </span>
               </div>
             </div>
 
-            {/* Tranche 3 */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '8px 12px',
-                background: 'rgba(255, 255, 255, 0.04)',
-                borderRadius: '8px',
-                fontSize: '12px',
-              }}
-            >
-              <div>
-                <span style={{ fontWeight: 700, color: '#ffffff' }}>Tranche 3 (1/3): </span>
-                <span style={{ color: '#94a3b8' }}>{calc.t3Shares} shares</span>
+            {/* Tranche 3 (Only shown in 3-Stop mode) */}
+            {!calc.is2Stop && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 12px',
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                }}
+              >
+                <div>
+                  <span style={{ fontWeight: 700, color: '#ffffff' }}>Tranche 3 (1/3): </span>
+                  <span style={{ color: '#94a3b8' }}>{calc.t3Shares} shares</span>
+                </div>
+                <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#f87171' }}>
+                  Stop: ${calc.stop3Price?.toFixed(2)}{' '}
+                  <span style={{ fontSize: '10.5px', color: '#94a3b8' }}>(LoD / -1.0R)</span>
+                </div>
               </div>
-              <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#f87171' }}>
-                Stop: ${calc.stop3Price.toFixed(2)}{' '}
-                <span style={{ fontSize: '10.5px', color: '#94a3b8' }}>(Structural / -1.0R)</span>
-              </div>
-            </div>
+            )}
           </div>
         </div>
 

@@ -381,12 +381,12 @@ export default function StockInfo({
             </button>
           )}
 
-          {/* 3-Stop Position Sizer Calculator Button */}
+          {/* Stop Position Sizer Calculator Button */}
           <button
             type="button"
             onClick={() => setShowCalcModal(true)}
-            title="Open Jeff Sun 3-Stop Position Sizer & LoD Risk Calculator"
-            aria-label="3-Stop Position Sizer"
+            title="Open 2-Stop / 3-Stop Position Sizer & LoD Risk Calculator"
+            aria-label="Stop Position Sizer"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -406,7 +406,7 @@ export default function StockInfo({
             }}
           >
             <span>🧮</span>
-            <span>3-Stop Sizer</span>
+            <span>Stop Sizer</span>
           </button>
 
           {/* Multi-Chart View (Daily + Monthly + Weekly) Toggle Button */}
