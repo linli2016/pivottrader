@@ -23,6 +23,10 @@ const globalWatchlistItemsCache = new Map(); // watchlistId -> items[]
 const globalStockDataCache = new Map(); // symbol -> { prices, detail, peersData }
 
 export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetchWatchlists, setupsConfig = {} }) {
+  // Visible Watchlists (filtered to exclude Actionable)
+  const visibleWatchlists = useMemo(() => (watchlists || []).filter((w) => w.name?.toLowerCase() !== 'actionable' && !w.name?.toLowerCase().startsWith('actionable')), [watchlists]);
+  const focusWatchlist = useMemo(() => visibleWatchlists?.find((w) => w.name?.toLowerCase() === 'focus list') || visibleWatchlists?.find((w) => w.name?.toLowerCase().includes('focus')), [visibleWatchlists]);
+
   // Main Navigation Mode for Right Dock: 'watchlists' | 'groups' | 'positions'
   const [dockTab, setDockTab] = useState('watchlists');
   const dockTabRef = useRef(dockTab);
@@ -39,9 +43,9 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         if (!isNaN(val)) return val;
       }
     } catch (_) {}
-    if (watchlists && watchlists.length > 0) {
-      const mag7 = watchlists.find((w) => w.name.toLowerCase() === 'mag 7');
-      return mag7 ? mag7.id : watchlists[0].id;
+    if (visibleWatchlists && visibleWatchlists.length > 0) {
+      const mag7 = visibleWatchlists.find((w) => w.name.toLowerCase() === 'mag 7');
+      return mag7 ? mag7.id : visibleWatchlists[0].id;
     }
     return null;
   });
@@ -54,9 +58,9 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         if (!isNaN(val)) return val;
       }
     } catch (_) {}
-    if (watchlists && watchlists.length > 0) {
-      const mag7 = watchlists.find((w) => w.name.toLowerCase() === 'mag 7');
-      return mag7 ? mag7.id : watchlists[0].id;
+    if (visibleWatchlists && visibleWatchlists.length > 0) {
+      const mag7 = visibleWatchlists.find((w) => w.name.toLowerCase() === 'mag 7');
+      return mag7 ? mag7.id : visibleWatchlists[0].id;
     }
     return null;
   });
@@ -287,6 +291,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   const [loadingItems, setLoadingItems] = useState(false);
   const [selectedIndustry, setSelectedIndustry] = useState('ALL');
   const [sortBy, setSortBy] = useState('rs_rank');
+  const [watchlistVisibleItems, setWatchlistVisibleItems] = useState(null);
   const [newSymbolInput, setNewSymbolInput] = useState('');
   const [isAddingSymbol, setIsAddingSymbol] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -406,17 +411,18 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     setTimeout(() => setQuickAddToast(null), 2500);
   };
 
-  // Initialize selected and target watchlists (prefer 'Mag 7' if present, otherwise first available)
+  // Initialize selected and target watchlists (prefer 'Mag 7' if present, otherwise first available visible)
   useEffect(() => {
-    if (watchlists.length > 0) {
-      if (!selectedWatchlistId) {
-        const mag7 = watchlists.find((w) => w.name.toLowerCase() === 'mag 7');
-        const fallbackId = mag7 ? mag7.id : watchlists[0].id;
+    if (visibleWatchlists.length > 0) {
+      const isCurrentValid = visibleWatchlists.some((w) => w.id === selectedWatchlistId);
+      if (!selectedWatchlistId || !isCurrentValid) {
+        const mag7 = visibleWatchlists.find((w) => w.name.toLowerCase() === 'mag 7');
+        const fallbackId = mag7 ? mag7.id : visibleWatchlists[0].id;
         setSelectedWatchlistId(fallbackId);
         setTargetWatchlistId(fallbackId);
       }
     }
-  }, [watchlists, selectedWatchlistId]);
+  }, [visibleWatchlists, selectedWatchlistId]);
 
   useEffect(() => {
     if (selectedWatchlistId) {
@@ -929,9 +935,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     }
   };
 
-  // 3-Tier Workflow Watchlists: Tier 2 (Focus List) & Tier 3 (Actionable)
-  const focusWatchlist = useMemo(() => watchlists?.find((w) => w.name?.toLowerCase() === 'focus list') || watchlists?.find((w) => w.name?.toLowerCase().includes('focus')), [watchlists]);
-  const actionableWatchlist = useMemo(() => watchlists?.find((w) => w.name?.toLowerCase() === 'actionable') || watchlists?.find((w) => w.name?.toLowerCase().includes('action') || w.name?.toLowerCase().includes('trigger')), [watchlists]);
 
   const handlePromoteToFocus = useCallback(async (stockOrSym) => {
     const sym = (typeof stockOrSym === 'string' ? stockOrSym : stockOrSym?.symbol || selectedStockRef.current?.symbol)?.toUpperCase();
@@ -983,57 +986,6 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       triggerToast('Error promoting to Focus List');
     }
   }, [focusWatchlist, selectedWatchlistId, fetchWatchlists]);
-
-  const handlePromoteToActionable = useCallback(async (stockOrSym) => {
-    const sym = (typeof stockOrSym === 'string' ? stockOrSym : stockOrSym?.symbol || selectedStockRef.current?.symbol)?.toUpperCase();
-    if (!sym) return;
-
-    let targetWl = actionableWatchlist;
-    if (!targetWl) {
-      try {
-        const createRes = await fetch(`${API_BASE}/api/watchlists`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'Actionable' })
-        });
-        if (createRes.ok) {
-          targetWl = await createRes.json();
-          if (fetchWatchlists) fetchWatchlists();
-        }
-      } catch (err) {
-        console.error('Error auto-creating Actionable watchlist:', err);
-      }
-    }
-
-    if (!targetWl) {
-      triggerToast('Actionable watchlist not found');
-      return;
-    }
-
-    const currentObj = typeof stockOrSym === 'object' && stockOrSym ? stockOrSym : (selectedStockRef.current || {});
-    const tags = currentObj.tags || [];
-
-    try {
-      const res = await fetch(`${API_BASE}/api/watchlists/${targetWl.id}/items`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: sym, tags })
-      });
-      if (res.ok) {
-        globalWatchlistItemsCache.delete(targetWl.id);
-        if (selectedWatchlistId === targetWl.id) {
-          fetchItems(targetWl.id);
-        }
-        if (fetchWatchlists) fetchWatchlists();
-        triggerToast(`🎯 Promoted ${sym} to Actionable (Tier 3)`);
-      } else {
-        triggerToast(`Failed to add ${sym} to Actionable List`);
-      }
-    } catch (e) {
-      console.error('Error promoting to Actionable:', e);
-      triggerToast('Error promoting to Actionable List');
-    }
-  }, [actionableWatchlist, selectedWatchlistId, fetchWatchlists]);
 
   // Batch remove selected symbols
   const handleRemoveBatch = async (customSymbols) => {
@@ -1195,22 +1147,44 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     }
   };
 
-  // Export to TradingView (.txt)
-  const handleExportTradingView = () => {
-    if (items.length === 0) return;
-    const currentW = watchlists.find((w) => w.id === selectedWatchlistId);
-    const filename = `${(currentW?.name || 'watchlist').toLowerCase().replace(/\s+/g, '_')}_tradingview.txt`;
-    const symbolsList = items.map((i) => i.symbol.toUpperCase()).join('\n');
-    const blob = new Blob([symbolsList], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    triggerToast('Exported to TradingView format');
+  // Copy symbols to TradingView (comma-separated string)
+  const handleExportTradingView = async () => {
+    const targetSymbols = (isSelectMode && selectedSymbols && selectedSymbols.size > 0)
+      ? Array.from(selectedSymbols).map((s) => String(s).toUpperCase())
+      : (displayedItems && displayedItems.length > 0 ? displayedItems : items).map((i) => (i.symbol || '').toUpperCase()).filter(Boolean);
+
+    if (targetSymbols.length === 0) {
+      triggerToast('No symbols to copy');
+      return;
+    }
+
+    const commaSeparated = targetSymbols.join(', ');
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(commaSeparated);
+        triggerToast(`Copied ${targetSymbols.length} symbol${targetSymbols.length > 1 ? 's' : ''} for TradingView`);
+        return;
+      }
+    } catch (_) {}
+
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = commaSeparated;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const success = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      if (success) {
+        triggerToast(`Copied ${targetSymbols.length} symbol${targetSymbols.length > 1 ? 's' : ''} for TradingView`);
+        return;
+      }
+    } catch (_) {}
+
+    prompt('Copy comma-separated symbols for TradingView:', commaSeparated);
   };
 
 
@@ -1235,14 +1209,15 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   }, [industryCounts, selectedIndustry]);
 
   const filteredItems = useMemo(() => {
+    const base = displayedItems || [];
     if (!selectedIndustry || selectedIndustry === 'ALL') {
-      return items;
+      return base;
     }
-    return items.filter((item) => {
+    return base.filter((item) => {
       const ind = (item.industry || item.group_name || item.sector || '').trim() || 'Unclassified';
       return ind === selectedIndustry;
     });
-  }, [items, selectedIndustry]);
+  }, [displayedItems, selectedIndustry]);
 
   const sortedItems = useMemo(() => {
     const copy = [...filteredItems];
@@ -1267,10 +1242,35 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         return copy.sort((a, b) => (b.rs_rank ?? -999) - (a.rs_rank ?? -999));
       case 'rs_rank_asc':
         return copy.sort((a, b) => (a.rs_rank ?? 999) - (b.rs_rank ?? 999));
+      case 'ext_atr_50_desc':
+        return copy.sort((a, b) => (Number(b.ext_atr_50) || -999) - (Number(a.ext_atr_50) || -999));
+      case 'ext_atr_50_asc':
+        return copy.sort((a, b) => (Number(a.ext_atr_50) || 999) - (Number(b.ext_atr_50) || 999));
       case 'chg_pct_desc':
         return copy.sort((a, b) => ((b.today_pct ?? b.chg_pct) ?? -999) - ((a.today_pct ?? a.chg_pct) ?? -999));
       case 'chg_pct_asc':
         return copy.sort((a, b) => ((a.today_pct ?? a.chg_pct) ?? 999) - ((b.today_pct ?? b.chg_pct) ?? 999));
+      case 'price_desc':
+        return copy.sort((a, b) => ((b.close ?? b.price) ?? -999) - ((a.close ?? a.price) ?? -999));
+      case 'price_asc':
+        return copy.sort((a, b) => ((a.close ?? a.price) ?? 999) - ((b.close ?? b.price) ?? 999));
+      case 'date':
+      case 'date_asc':
+        return copy.sort((a, b) => {
+          const dateA = a.setup_date || a.date || a.added_at || '';
+          const dateB = b.setup_date || b.date || b.added_at || '';
+          const cmp = String(dateA).localeCompare(String(dateB));
+          if (cmp !== 0) return cmp;
+          return (a.symbol || '').localeCompare(b.symbol || '');
+        });
+      case 'date_desc':
+        return copy.sort((a, b) => {
+          const dateA = a.setup_date || a.date || a.added_at || '';
+          const dateB = b.setup_date || b.date || b.added_at || '';
+          const cmp = String(dateB).localeCompare(String(dateA));
+          if (cmp !== 0) return cmp;
+          return (a.symbol || '').localeCompare(b.symbol || '');
+        });
       case 'group_rs':
         return copy.sort((a, b) => (b.group_rs_rank ?? b.rs_rank ?? 0) - (a.group_rs_rank ?? a.rs_rank ?? 0));
       case 'added':
@@ -1359,7 +1359,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   // -------------------------------------------------------------
   const displayItems = useMemo(() => {
     if (dockTab === 'watchlists') {
-      return sortedItems;
+      return watchlistVisibleItems || sortedItems;
     }
     if (dockTab === 'groups') {
       const flat = [];
@@ -1375,29 +1375,48 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     if (dockTab === 'positions') {
       return displayedPositions;
     }
-    return sortedItems;
-  }, [dockTab, sortedItems, expandedMarketGroups, groupType, groupConstituents, displayedPositions]);
+    return watchlistVisibleItems || sortedItems;
+  }, [dockTab, watchlistVisibleItems, sortedItems, expandedMarketGroups, groupType, groupConstituents, displayedPositions]);
 
   useEffect(() => {
     displayItemsRef.current = displayItems;
   }, [displayItems]);
 
   // Keyboard Navigation across currently visible display items or groups (ArrowUp / ArrowDown)
-  // and Hotkeys F (Promote to Focus / Tier 2), A (Promote to Actionable / Tier 3), & W (Toggle in Watchlist)
+  // and Hotkeys:
+  // - F (Promote to Focus / Tier 2)
+  // - W / S (Toggle in Watchlist)
+  // - Delete / Backspace (Remove stock from active watchlist)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (showCreateModal || showRenameModal) return;
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        // Only active when viewing the watchlists dock tab
+        if (dockTabRef.current !== 'watchlists') return;
+        if (isDeletingItems) return;
+
+        // If batch select mode is active and there are selected symbols, batch remove them
+        if (isSelectMode && selectedSymbols && selectedSymbols.size > 0) {
+          e.preventDefault();
+          handleRemoveBatch();
+          return;
+        }
+
+        // Otherwise remove the currently focused / selected stock from the active watchlist
+        const sym = selectedStockRef.current?.symbol || selectedStock?.symbol;
+        if (sym && selectedWatchlistId) {
+          e.preventDefault();
+          handleRemoveSymbol(sym);
+        }
+        return;
+      }
 
       if (e.key === 'f' || e.key === 'F') {
         e.preventDefault();
         handlePromoteToFocus();
-        return;
-      }
-
-      if (e.key === 'a' || e.key === 'A') {
-        e.preventDefault();
-        handlePromoteToActionable();
         return;
       }
 
@@ -1423,19 +1442,39 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
         const currentIdx = displayItems.findIndex(
           (i) => (i.symbol || '').toUpperCase() === (selectedStock?.symbol || '').toUpperCase()
         );
-        if (e.key === 'ArrowUp') {
-          const prevIdx = currentIdx > 0 ? currentIdx - 1 : displayItems.length - 1;
-          selectStock(displayItems[prevIdx]);
+        let targetIdx = 0;
+        if (currentIdx === -1) {
+          targetIdx = e.key === 'ArrowUp' ? displayItems.length - 1 : 0;
+        } else if (e.key === 'ArrowUp') {
+          targetIdx = currentIdx > 0 ? currentIdx - 1 : displayItems.length - 1;
         } else {
-          const nextIdx = currentIdx < displayItems.length - 1 ? currentIdx + 1 : 0;
-          selectStock(displayItems[nextIdx]);
+          targetIdx = currentIdx < displayItems.length - 1 ? currentIdx + 1 : 0;
         }
+        selectStock(displayItems[targetIdx]);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [displayItems, selectedStock, activeGroupChart, dockTab, handlePrevGroup, handleNextGroup, selectStock, handlePromoteToFocus, handlePromoteToActionable, handleToggleWatchlist]);
+  }, [
+    displayItems,
+    selectedStock,
+    activeGroupChart,
+    dockTab,
+    handlePrevGroup,
+    handleNextGroup,
+    selectStock,
+    handlePromoteToFocus,
+    handleToggleWatchlist,
+    handleRemoveSymbol,
+    handleRemoveBatch,
+    isSelectMode,
+    selectedSymbols,
+    selectedWatchlistId,
+    isDeletingItems,
+    showCreateModal,
+    showRenameModal,
+  ]);
 
   const activeWatchlist = watchlists.find((w) => w.id === selectedWatchlistId);
   const targetWatchlist = watchlists.find((w) => w.id === targetWatchlistId);
@@ -1653,8 +1692,9 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
             detail={stockDetail}
             peersData={peersData}
             loadingPrices={loadingPrices}
-            watchlists={watchlists}
+            watchlists={visibleWatchlists}
             targetWatchlistId={targetWatchlistId}
+            targetWatchlistSymbols={targetWatchlistSymbols}
             onTargetWatchlistChange={setTargetWatchlistId}
             onToggleWatchlist={handleToggleWatchlist}
             onSelectStock={selectStock}
@@ -1822,7 +1862,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                     maxWidth: '180px'
                   }}
                 >
-                  {watchlists.map((w) => (
+                  {visibleWatchlists.map((w) => (
                     <option key={w.id} value={w.id} style={{ background: '#1e293b', color: '#ffffff' }}>
                       {w.name} ({w.item_count || 0})
                     </option>
@@ -1856,26 +1896,26 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                 </button>
                 <button
                   type="button"
-                  onClick={() => handlePromoteToActionable(selectedStock)}
-                  disabled={!selectedStock?.symbol}
-                  title="Promote selected stock to Actionable / Tier 3 (Hotkey: A)"
+                  onClick={handleExportTradingView}
+                  disabled={items.length === 0}
+                  title="Copy symbols to clipboard for TradingView (comma-separated)"
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '2px',
+                    gap: '3px',
                     height: '22px',
                     padding: '0 6px',
                     borderRadius: '4px',
-                    background: 'rgba(236, 72, 153, 0.15)',
-                    border: '1px solid rgba(236, 72, 153, 0.35)',
-                    color: '#f472b6',
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    border: '1px solid rgba(56, 189, 248, 0.35)',
+                    color: '#38bdf8',
                     fontSize: '11px',
                     fontWeight: 700,
-                    cursor: selectedStock?.symbol ? 'pointer' : 'not-allowed',
-                    opacity: selectedStock?.symbol ? 1 : 0.4,
+                    cursor: items.length > 0 ? 'pointer' : 'not-allowed',
+                    opacity: items.length > 0 ? 1 : 0.4,
                   }}
                 >
-                  🎯 Actionable
+                  📋 Copy
                 </button>
                 <button
                   type="button"
@@ -1938,7 +1978,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
                       onClick={() => { setShowDropdownMenu(false); handleExportTradingView(); }}
                       style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: '6px 12px', fontSize: '11.5px', color: '#ffffff', cursor: 'pointer' }}
                     >
-                      ↗️ Export to TradingView (.txt)
+                      📋 Copy Symbols for TradingView
                     </button>
                     <div style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0' }} />
                     <button
@@ -2056,8 +2096,10 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
               }}
               selectedSymbols={selectedSymbols}
               onSelectionChange={setSelectedSymbols}
-              watchlists={watchlists}
+              watchlists={visibleWatchlists}
               targetWatchlistId={targetWatchlistId}
+              targetWatchlistSymbols={targetWatchlistSymbols}
+              onToggleTargetWatchlist={handleToggleWatchlist}
               onTargetWatchlistChange={setTargetWatchlistId}
               onBatchAddToWatchlist={handleAddBatchToTarget}
               isAddingBatchToTarget={isAddingBatchToTarget}
@@ -2070,6 +2112,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
               emptyMessage="No stocks found in this watchlist."
               enableKeyboardNav={false}
               autoScrollSelected={dockTab === 'watchlists'}
+              onSortedItemsChange={setWatchlistVisibleItems}
             />
           </div>
         )}

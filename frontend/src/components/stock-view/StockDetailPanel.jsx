@@ -71,6 +71,7 @@ export default function StockDetailPanel({
   const marketCap = meta.market_cap ?? stock?.market_cap ?? null;
   const vol50dMa = meta.avg_volume_50d ?? stock?.volume_sma_50 ?? stock?.vol_50d_avg ?? null;
   const tiVal = stockDetail?.ti_65 ?? stock?.ti_65 ?? null;
+  const erVal = stock?.er_20d ?? stockDetail?.er_20d ?? stockDetail?.metrics?.er_20d ?? null;
   const ret1m = stock?.ret_1m ?? stockDetail?.ret_1m ?? null;
   const ret3m = stock?.ret_3m ?? stockDetail?.ret_3m ?? null;
 
@@ -501,6 +502,19 @@ export default function StockDetailPanel({
                   }}
                 >
                   {tiVal !== null ? tiVal.toFixed(2) : '—'}
+                </div>
+              </div>
+              <div style={{ background: 'rgba(0,0,0,0.2)', padding: '5px 8px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                <div style={{ color: 'var(--text-muted, #94a3b8)', fontSize: '10px' }}>ER20 Linearity</div>
+                <div
+                  style={{
+                    fontWeight: 700,
+                    fontFamily: 'var(--font-mono)',
+                    color: erVal >= 0.35 ? '#34d399' : erVal <= -0.30 ? '#f87171' : '#ffffff',
+                  }}
+                  title="Kaufman 20-Day Fractal Efficiency Ratio (Stockbee Linearity: >= +0.35 linear uptrend, <= -0.30 linear downtrend)"
+                >
+                  {erVal !== null ? `${erVal > 0 ? '+' : ''}${Number(erVal).toFixed(2)}${erVal >= 0.35 ? ' ⚡' : ''}` : '—'}
                 </div>
               </div>
             </div>

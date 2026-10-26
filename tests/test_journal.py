@@ -469,6 +469,85 @@ class TestJournalService(unittest.TestCase):
         self.assertEqual(j["accounts"], ["U10", "U20"])
         self.assertEqual(len(j["trades"]), 2)
 
+    def test_account_balances_and_van_tharp_risk(self):
+        # 1. Initially balances are retrieved
+        bals = self.svc.get_account_balances()
+        self.assertIn("accounts", bals)
+
+        # 2. Update USD and CAD balances for an account
+        updated = self.svc.update_account_balance("U1", usd_balance=100000.0, cad_balance=25000.0)
+        self.assertEqual(updated["total_usd_balance"], 100000.0)
+        self.assertEqual(updated["total_cad_balance"], 25000.0)
+        self.assertEqual(updated["total_risk_1pct_usd"], 1000.0)  # 1% of USD equity
+
+        acct1 = next(a for a in updated["accounts"] if a["account_id"] == "U1")
+        self.assertEqual(acct1["usd_balance"], 100000.0)
+        self.assertEqual(acct1["cad_balance"], 25000.0)
+        self.assertEqual(acct1["risk_1pct_usd"], 1000.0)
+
+        # 3. Add second account
+        updated2 = self.svc.update_account_balance("U2", usd_balance=50000.0, cad_balance=10000.0)
+        self.assertEqual(updated2["total_usd_balance"], 150000.0)
+        self.assertEqual(updated2["total_cad_balance"], 35000.0)
+        self.assertEqual(updated2["total_risk_1pct_usd"], 1500.0)
+
+        # 4. Verify get_journal includes balances
+        j = self.svc.get_journal()
+        self.assertIn("balances", j)
+        self.assertEqual(j["balances"]["total_usd_balance"], 150000.0)
+        self.assertEqual(j["balances"]["total_risk_1pct_usd"], 1500.0)
+
+        # 5. Test Total Equity method with open trades (excluding ignored and non-USD trades)
+        open_trade_1 = {
+            "id": "U1:AAPL:1", "account_id": "U1", "symbol": "AAPL", "currency": "USD",
+            "status": "OPEN", "is_ignored": False, "open_qty": 100.0, "avg_entry": 150.0,
+            "current_price": 160.0, "direction": "LONG",
+        }
+        open_trade_ignored = {
+            "id": "U1:TSLA:2", "account_id": "U1", "symbol": "TSLA", "currency": "USD",
+            "status": "OPEN", "is_ignored": True, "open_qty": 50.0, "avg_entry": 200.0,
+            "current_price": 220.0, "direction": "LONG",
+        }
+        open_trade_cad = {
+            "id": "U1:SHOP:3", "account_id": "U1", "symbol": "SHOP", "currency": "CAD",
+            "status": "OPEN", "is_ignored": False, "open_qty": 20.0, "avg_entry": 80.0,
+            "current_price": 90.0, "direction": "LONG",
+        }
+        bals_with_trades = self.svc.get_account_balances(trades=[open_trade_1, open_trade_ignored, open_trade_cad])
+        acct1_tot = next(a for a in bals_with_trades["accounts"] if a["account_id"] == "U1")
+        # USD cash is 100,000; AAPL open position value is 100 * 160 = 16,000.
+        # TSLA is ignored -> excluded. SHOP is CAD -> excluded.
+        self.assertEqual(acct1_tot["open_positions_value"], 16000.0)
+        self.assertEqual(acct1_tot["total_usd_equity"], 116000.0)
+        self.assertEqual(acct1_tot["risk_1pct_usd"], 1160.0)  # 1% of 116,000 Total Equity
+
+    def test_parse_flex_cash_report(self):
+        xml = (
+            b'<FlexQueryResponse queryName="journal" type="AF"><FlexStatements>'
+            b'<FlexStatement accountId="U1">'
+            b'<CashReport>'
+            b'<CashReportCurrency accountId="U1" currency="USD" endingCash="125000.50" />'
+            b'<CashReportCurrency accountId="U1" currency="CAD" endingCash="45000.25" />'
+            b'</CashReport>'
+            b'<Trades></Trades>'
+            b'</FlexStatement>'
+            b'</FlexStatements></FlexQueryResponse>'
+        )
+        parsed = parse_flex_trades(xml)
+        self.assertEqual(len(parsed["cash_balances"]), 2)
+        usd_cb = next(c for c in parsed["cash_balances"] if c["currency"] == "USD")
+        cad_cb = next(c for c in parsed["cash_balances"] if c["currency"] == "CAD")
+        self.assertEqual(usd_cb["cash_balance"], 125000.50)
+        self.assertEqual(cad_cb["cash_balance"], 45000.25)
+
+        # Import and verify it updates account_balances
+        self.svc.import_statement(xml)
+        bals = self.svc.get_account_balances()
+        acct_u1 = next(a for a in bals["accounts"] if a["account_id"] == "U1")
+        self.assertEqual(acct_u1["usd_balance"], 125000.50)
+        self.assertEqual(acct_u1["cad_balance"], 45000.25)
+        self.assertEqual(acct_u1["risk_1pct_usd"], 1250.01)
+
 
 class TestIBKRFlexClient(unittest.TestCase):
     def test_get_retries_on_connection_error(self):

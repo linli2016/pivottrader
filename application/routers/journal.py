@@ -32,6 +32,31 @@ class JournalIgnoreSchema(BaseModel):
     reason: Optional[str] = ""
 
 
+class AccountBalanceUpdateSchema(BaseModel):
+    usd_balance: Optional[float] = None
+    cad_balance: Optional[float] = None
+
+
+@router.get("/api/journal/accounts")
+def get_journal_accounts():
+    """Get all accounts with their USD and CAD cash balances."""
+    return journal_service.get_account_balances()
+
+
+@router.put("/api/journal/accounts/{account_id}/balance")
+def update_journal_account_balance(account_id: str, payload: AccountBalanceUpdateSchema):
+    """Update USD and CAD cash balance for an account."""
+    try:
+        return journal_service.update_account_balance(
+            account_id=account_id,
+            usd_balance=payload.usd_balance,
+            cad_balance=payload.cad_balance,
+        )
+    except Exception as e:
+        logger.error(f"Error in update_journal_account_balance: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/api/journal/config")
 def get_journal_config():
     """Return Flex Query settings (token is masked)."""

@@ -630,7 +630,7 @@ class DatabaseService:
                                        MAX(rs_line) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_max_rs,
                                        MAX(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_max_close
                                 FROM stock_bars
-                                WHERE rn <= 3500
+                                WHERE rn <= 252
                             )
                             SELECT symbol,
                                    ROUND(GREATEST(-1.0, LEAST(1.0, ((rs_line - min_rs) / NULLIF(max_rs - min_rs, 0)) * 2.0 - 1.0)), 2) as normalized_rs,
@@ -1085,7 +1085,9 @@ class DatabaseService:
                     db.pp_runup_days,
                     db.stage2_days,
                     db.weinstein_stage,
-                    ROUND((db.close - pb.prev_close) / NULLIF(pb.prev_close, 0) * 100.0, 2) as chg_pct
+                    ROUND((db.close - pb.prev_close) / NULLIF(pb.prev_close, 0) * 100.0, 2) as chg_pct,
+                    db.er_20d,
+                    db.normalized_rs
                 FROM {from_table}
                 LEFT JOIN prev_bars pb ON db.symbol = pb.symbol
                 LEFT JOIN latest_fundamentals f ON db.symbol = f.symbol AND f.rn = 1
@@ -1212,7 +1214,9 @@ class DatabaseService:
                     "is_confirmed_staged": bool(row[64]) if len(row) > 64 and row[64] is not None else False,
                     "chg_pct": float(row[76]) if len(row) > 76 and row[76] is not None else None,
                     "today_pct": float(row[76]) if len(row) > 76 and row[76] is not None else None,
-                    "ext_atr_50": round((row[1] - row[17]) / (row[1] * (row[12] / 100.0)), 2) if (row[1] is not None and row[17] is not None and row[12] is not None and row[12] > 0 and row[1] > 0) else None
+                    "ext_atr_50": round((row[1] - row[17]) / (row[1] * (row[12] / 100.0)), 2) if (row[1] is not None and row[17] is not None and row[12] is not None and row[12] > 0 and row[1] > 0) else None,
+                    "er_20d": float(row[77]) if len(row) > 77 and row[77] is not None else None,
+                    "normalized_rs": float(row[78]) if len(row) > 78 and row[78] is not None else None
                 })
 
             if not candidates:
@@ -1811,7 +1815,7 @@ class DatabaseService:
                                        MAX(rs_line) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_max_rs,
                                        MAX(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_max_close
                                 FROM stock_bars
-                                WHERE rn <= 3500
+                                WHERE rn <= 252
                             )
                             SELECT symbol,
                                    ROUND(GREATEST(-1.0, LEAST(1.0, ((rs_line - min_rs) / NULLIF(max_rs - min_rs, 0)) * 2.0 - 1.0)), 2) as normalized_rs,
@@ -1953,7 +1957,7 @@ class DatabaseService:
             
             # Get latest RS, ATR, TI65, and Volume metrics (fast lookup with index)
             latest_bar = conn.execute("""
-                SELECT rs_score, rs_rank, atr_20d, ti_65, COALESCE(dollar_vol_50d_ma, close * vol_50d_ma) as dollar_vol_50d_ma, vol_50d_ma, adr_20d, ret_1m, ret_3m, ret_6m, is_52w_high, high_52w, low_52w, dist_from_52w_high
+                SELECT rs_score, rs_rank, atr_20d, ti_65, COALESCE(dollar_vol_50d_ma, close * vol_50d_ma) as dollar_vol_50d_ma, vol_50d_ma, adr_20d, ret_1m, ret_3m, ret_6m, is_52w_high, high_52w, low_52w, dist_from_52w_high, er_20d
                 FROM daily_bars
                 WHERE symbol = ?
                 ORDER BY date DESC
@@ -1974,6 +1978,21 @@ class DatabaseService:
             high_52w = float(latest_bar[11]) if latest_bar and len(latest_bar) > 11 and latest_bar[11] is not None else None
             low_52w = float(latest_bar[12]) if latest_bar and len(latest_bar) > 12 and latest_bar[12] is not None else None
             dist_from_52w_high = float(latest_bar[13]) if latest_bar and len(latest_bar) > 13 and latest_bar[13] is not None else None
+            er_20d = float(latest_bar[14]) if latest_bar and len(latest_bar) > 14 and latest_bar[14] is not None else None
+
+            if er_20d is None:
+                closes_rows = conn.execute("""
+                    SELECT close FROM daily_bars
+                    WHERE symbol = ?
+                    ORDER BY date DESC
+                    LIMIT 21
+                """, [symbol]).fetchall()
+                if len(closes_rows) == 21:
+                    c = [r[0] for r in closes_rows]
+                    net = c[0] - c[-1]
+                    path = sum(abs(c[i] - c[i+1]) for i in range(20))
+                    if path > 1e-8:
+                        er_20d = round(net / path, 3)
 
             return {
                 "metadata": meta_dict,
@@ -1984,6 +2003,7 @@ class DatabaseService:
                 "rs_rank": rs_rank,
                 "adr_20d": adr_20d if adr_20d is not None else atr_20d,
                 "atr_20d": atr_20d,
+                "er_20d": er_20d,
                 "ti_65": ti_65,
                 "ret_1m": ret_1m,
                 "ret_3m": ret_3m,
@@ -2004,6 +2024,7 @@ class DatabaseService:
                     "rs_rank": rs_rank,
                     "ti_65": ti_65,
                     "adr_20d": adr_20d if adr_20d is not None else atr_20d,
+                    "er_20d": er_20d,
                     "ret_1m": ret_1m,
                     "ret_3m": ret_3m,
                     "ret_6m": ret_6m
@@ -2223,7 +2244,7 @@ class DatabaseService:
             if limit and limit > 0:
                 lookback = limit + 260
                 rows = conn.execute("""
-                    SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65, vol_50d_ma, high_52w, low_52w, dist_from_52w_high, atr_20d, adr_20d
+                    SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65, vol_50d_ma, high_52w, low_52w, dist_from_52w_high, atr_20d, adr_20d, er_20d
                     FROM daily_bars
                     WHERE symbol = ?
                     ORDER BY date DESC
@@ -2231,7 +2252,7 @@ class DatabaseService:
                 """, [symbol, lookback]).fetchall()
             else:
                 rows = conn.execute("""
-                    SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65, vol_50d_ma, high_52w, low_52w, dist_from_52w_high, atr_20d, adr_20d
+                    SELECT date, open, high, low, close, volume, sma_50, sma_150, sma_200, rs_rank, ti_65, vol_50d_ma, high_52w, low_52w, dist_from_52w_high, atr_20d, adr_20d, er_20d
                     FROM daily_bars
                     WHERE symbol = ?
                     ORDER BY date ASC
@@ -2244,7 +2265,7 @@ class DatabaseService:
         rs_lines = []
         closes = []
         for r in rows:
-            d, o, h, l, cl, v, s50, s150, s200, rs_r, ti, v50m, h52, l52, d52h, atr, adr = r
+            d, o, h, l, cl, v, s50, s150, s200, rs_r, ti, v50m, h52, l52, d52h, atr, adr, er20 = r
             sc = self._spy_daily_cache.get(d)
             rsl = round((cl / sc * 100.0), 4) if sc else None
             prev_rsl_max = max(rs_lines[-252:]) if rs_lines else None
@@ -2254,6 +2275,15 @@ class DatabaseService:
             closes.append(cl)
 
             ext_atr_50 = round((cl - s50) / (cl * (atr / 100.0)), 2) if (cl and s50 and atr and atr > 0) else None
+
+            # ER20 Linearity
+            if er20 is not None:
+                er_val = round(float(er20), 3)
+            elif len(closes) >= 21:
+                path = sum(abs(closes[-k] - closes[-k-1]) for k in range(1, 21))
+                er_val = round((cl - closes[-21]) / path, 3) if path > 1e-8 else 0.0
+            else:
+                er_val = None
 
             bars_list.append({
                 "symbol": symbol,
@@ -2276,6 +2306,7 @@ class DatabaseService:
                 "is_rs_blue_dot": bd,
                 "atr_20d": float(atr) if atr is not None else None,
                 "adr_20d": float(adr) if adr is not None else None,
+                "er_20d": er_val,
                 "ext_atr_50": ext_atr_50
             })
 
@@ -3422,6 +3453,15 @@ class DatabaseService:
                 for row in rows
             ]
 
+    def get_all_watchlist_symbols(self) -> List[str]:
+        """Returns all distinct uppercase symbols present in any user watchlist."""
+        with self.get_read_only_conn() as conn:
+            tables = [t[0] for t in conn.execute("SHOW TABLES").fetchall()]
+            if "watchlist_items" not in tables:
+                return []
+            rows = conn.execute("SELECT DISTINCT UPPER(symbol) FROM watchlist_items WHERE symbol IS NOT NULL").fetchall()
+            return [r[0] for r in rows if r[0]]
+
     def create_watchlist(self, name: str) -> Dict[str, Any]:
         with self.get_write_conn() as conn:
             conn.execute("""
@@ -3505,6 +3545,7 @@ class DatabaseService:
                         db.ret_3m,
                         db.ret_6m,
                         db.atr_20d,
+                        db.er_20d,
                         COALESCE(db.is_52w_high, false) as is_rs_blue_dot,
                         LEAD(db.close, 1) OVER (PARTITION BY db.symbol ORDER BY db.date DESC) as prev_close,
                         ROW_NUMBER() OVER (PARTITION BY db.symbol ORDER BY db.date DESC) as rn
@@ -3541,6 +3582,7 @@ class DatabaseService:
                         db.ret_3m,
                         db.ret_6m,
                         db.atr_20d,
+                        db.er_20d,
                         COALESCE(db.is_52w_high, false) as is_rs_blue_dot,
                         LEAD(db.close, 1) OVER (PARTITION BY db.symbol ORDER BY db.date DESC) as prev_close,
                         ROW_NUMBER() OVER (PARTITION BY db.symbol ORDER BY db.date DESC) as rn
@@ -3599,7 +3641,7 @@ class DatabaseService:
                            MAX(rs_line) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_max_rs_252,
                            MAX(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_max_close_252
                     FROM target_stock_bars
-                    WHERE rn <= 3500
+                    WHERE rn <= 252
                 ),
                 target_rs_latest AS (
                     SELECT symbol,
@@ -3655,7 +3697,8 @@ class DatabaseService:
                     lb.sma_50,
                     lb.pivot_spread_pct,
                     ROUND((lb.close - lb.sma_50) / NULLIF(lb.close * (lb.atr_20d / 100.0), 0), 2) as ext_atr_50,
-                    ts.tags
+                    ts.tags,
+                    lb.er_20d
                 FROM target_symbols ts
                 JOIN symbols s ON ts.symbol = s.symbol
                 LEFT JOIN all_latest_bars lb ON s.symbol = lb.symbol
@@ -3709,7 +3752,8 @@ class DatabaseService:
                     "sma_50": row[38] if len(row) > 38 else None,
                     "pivot_spread_pct": row[39] if len(row) > 39 else None,
                     "ext_atr_50": row[40] if len(row) > 40 else None,
-                    "tags": [t.strip() for t in (row[41] or "").split(",") if t.strip()] if len(row) > 41 and row[41] else []
+                    "tags": [t.strip() for t in (row[41] or "").split(",") if t.strip()] if len(row) > 41 and row[41] else [],
+                    "er_20d": float(row[42]) if len(row) > 42 and row[42] is not None else None
                 }
                 for row in rows
             ]

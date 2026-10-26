@@ -35,7 +35,16 @@ export default function StockListTable({
   renderCell = null,
   renderRowActions = null,
   onRemoveSymbol = null,
+  targetWatchlistSymbols = null,
+  targetWatchlistId = null,
+  watchlists = [],
+  onToggleTargetWatchlist = null,
 }) {
+  const targetWatchlistName = React.useMemo(() => {
+    if (!targetWatchlistId || !watchlists || watchlists.length === 0) return '';
+    const found = watchlists.find((w) => w.id === targetWatchlistId);
+    return found?.name || '';
+  }, [targetWatchlistId, watchlists]);
   const handleSortClick = (colKey) => {
     const meta = COLUMN_DEFAULTS[colKey];
     if (!meta || !meta.sortable) return;
@@ -157,6 +166,9 @@ export default function StockListTable({
                   renderRowActions={renderRowActions}
                   onRemove={onRemoveSymbol}
                   rowRef={isSelected ? selectedRowRef : null}
+                  targetWatchlistSymbols={targetWatchlistSymbols}
+                  targetWatchlistName={targetWatchlistName}
+                  onToggleTargetWatchlist={onToggleTargetWatchlist}
                 />
               );
             })

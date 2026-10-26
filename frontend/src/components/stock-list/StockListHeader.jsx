@@ -19,6 +19,8 @@ export function StockListBatchBar({
   onClearAll = null,
   batchActionsExtra = null,
 }) {
+  const [copiedBatch, setCopiedBatch] = useState(false);
+
   if (!isSelectMode) return null;
 
   return (
@@ -94,6 +96,60 @@ export function StockListBatchBar({
             </button>
           </div>
         )}
+
+        {/* Copy Selected for TradingView */}
+        <button
+          type="button"
+          disabled={selectedSymbols.size === 0}
+          onClick={async () => {
+            if (selectedSymbols.size === 0) return;
+            const commaStr = Array.from(selectedSymbols).map((s) => String(s).toUpperCase()).join(', ');
+            try {
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(commaStr);
+                setCopiedBatch(true);
+                setTimeout(() => setCopiedBatch(false), 2000);
+                return;
+              }
+            } catch (_) {}
+            try {
+              const textarea = document.createElement('textarea');
+              textarea.value = commaStr;
+              textarea.style.position = 'fixed';
+              textarea.style.opacity = '0';
+              document.body.appendChild(textarea);
+              textarea.focus();
+              textarea.select();
+              const ok = document.execCommand('copy');
+              document.body.removeChild(textarea);
+              if (ok) {
+                setCopiedBatch(true);
+                setTimeout(() => setCopiedBatch(false), 2000);
+                return;
+              }
+            } catch (_) {}
+            prompt('Copy comma-separated symbols for TradingView:', commaStr);
+          }}
+          title="Copy selected symbols to clipboard (comma-separated for TradingView)"
+          style={{
+            background: copiedBatch ? 'rgba(16, 185, 129, 0.25)' : 'rgba(56, 189, 248, 0.15)',
+            border: copiedBatch ? '1px solid #10b981' : '1px solid rgba(56, 189, 248, 0.35)',
+            color: copiedBatch ? '#34d399' : '#38bdf8',
+            borderRadius: '4px',
+            padding: '3px 8px',
+            fontSize: '11px',
+            fontWeight: 700,
+            cursor: selectedSymbols.size > 0 ? 'pointer' : 'not-allowed',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            transition: 'all 0.15s ease',
+            opacity: selectedSymbols.size > 0 ? 1 : 0.4
+          }}
+        >
+          <span>{copiedBatch ? '✓' : '📋'}</span>
+          <span>{copiedBatch ? 'Copied!' : `Copy TV (${selectedSymbols.size})`}</span>
+        </button>
 
         {/* Remove Selected */}
         {onBatchRemove && (

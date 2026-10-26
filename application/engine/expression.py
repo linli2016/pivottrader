@@ -533,6 +533,20 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "trend",
         "description": "Raw Relative Strength Score"
     },
+    "RS_LINE": {
+        "sql": "b.normalized_rs",
+        "type": "numeric",
+        "label": "Normalized RS Line (-1.0 to +1.0)",
+        "category": "trend",
+        "description": "Normalized Relative Strength Line vs SPY over trailing 1-year cycle [-1.00 to +1.00]"
+    },
+    "NORMALIZED_RS": {
+        "sql": "b.normalized_rs",
+        "type": "numeric",
+        "label": "Normalized RS Line (-1.0 to +1.0)",
+        "category": "trend",
+        "description": "Normalized Relative Strength Line vs SPY over trailing 1-year cycle [-1.00 to +1.00]"
+    },
     "TI65": {
         "sql": "b.ti_65",
         "type": "numeric",
@@ -690,6 +704,34 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "label": "ATR (20d)",
         "category": "volatility",
         "description": "20-day Average True Range in dollars"
+    },
+    "ER20": {
+        "sql": "b.er_20d",
+        "type": "numeric",
+        "label": "Efficiency Ratio (20d)",
+        "category": "trend",
+        "description": "Stockbee / Kaufman 20-day price linearity efficiency ratio (-1.0 to +1.0, >= 0.35 = linear uptrend)"
+    },
+    "ER_20D": {
+        "sql": "b.er_20d",
+        "type": "numeric",
+        "label": "Efficiency Ratio (20d)",
+        "category": "trend",
+        "description": "Stockbee / Kaufman 20-day price linearity efficiency ratio"
+    },
+    "EFF_RATIO": {
+        "sql": "b.er_20d",
+        "type": "numeric",
+        "label": "Efficiency Ratio (20d)",
+        "category": "trend",
+        "description": "Stockbee / Kaufman 20-day price linearity efficiency ratio"
+    },
+    "LINEARITY": {
+        "sql": "b.er_20d",
+        "type": "numeric",
+        "label": "Price Linearity (ER20)",
+        "category": "trend",
+        "description": "Stockbee / Kaufman 20-day price linearity efficiency ratio"
     },
     "PIVOT_SPREAD": {
         "sql": "b.pivot_spread_pct",
@@ -989,7 +1031,7 @@ ALIAS_CATALOG: Dict[str, Dict[str, Any]] = {
             "AND C > SMA_50 AND SMA_50 > SMA_150 AND SMA_150 > SMA_200 "
             "AND (SMA_200_20D_AGO IS NULL OR SMA_200 > SMA_200_20D_AGO) "
             "AND (DIST_52W_HIGH IS NULL OR DIST_52W_HIGH <= 25.0) "
-            "AND (DIST_52W_LOW IS NULL OR DIST_52W_LOW >= 25.0)"
+            "AND (DIST_52W_LOW IS NULL OR DIST_52W_LOW >= 30.0)"
         ),
         "type": "boolean",
         "label": "Confirmed Stage 2 Uptrend",
@@ -1002,7 +1044,7 @@ ALIAS_CATALOG: Dict[str, Dict[str, Any]] = {
             "AND C > SMA_50 AND SMA_50 > SMA_150 AND SMA_150 > SMA_200 "
             "AND (SMA_200_20D_AGO IS NULL OR SMA_200 > SMA_200_20D_AGO) "
             "AND (DIST_52W_HIGH IS NULL OR DIST_52W_HIGH <= 25.0) "
-            "AND (DIST_52W_LOW IS NULL OR DIST_52W_LOW >= 25.0)"
+            "AND (DIST_52W_LOW IS NULL OR DIST_52W_LOW >= 30.0)"
         ),
         "type": "boolean",
         "label": "Confirmed Stage 2 Uptrend",
@@ -1226,9 +1268,71 @@ class ScanExpressionEngine:
     _alias_sql_cache: Dict[Tuple[str, str], str] = {}
 
     @classmethod
+    def clear_cache(cls):
+        """Clears the transpiled alias SQL cache."""
+        cls._alias_sql_cache.clear()
+
+    @classmethod
+    def get_screener_alias_expr(cls, token: str) -> Optional[str]:
+        """
+        Resolves a SCREENER_<ID> token to its underlying boolean expression from screeners.yaml.
+        Strips trailing ORDER BY and LIMIT clauses.
+        Supports case-insensitivity and minor singular/plural variations.
+        """
+        token_upper = token.upper()
+        if not token_upper.startswith("SCREENER_"):
+            return None
+        sc_id = token_upper[9:].lower()
+        try:
+            from application.services.setup_service import setup_service
+            sc = setup_service.get_setup_by_id(sc_id)
+            if not sc:
+                sc = setup_service.get_setup_by_id(sc_id + "s")
+            if not sc and sc_id.endswith("s"):
+                sc = setup_service.get_setup_by_id(sc_id[:-1])
+            if sc and sc.get("expression"):
+                raw_expr = sc["expression"]
+                clean_expr = re.sub(r'\s+ORDER\s+BY\s+.*$', '', raw_expr, flags=re.IGNORECASE).strip()
+                return clean_expr
+        except Exception as e:
+            logger.debug(f"Failed to resolve screener alias '{token}': {e}")
+        return None
+
+    @classmethod
+    def get_screener_aliases(cls) -> Dict[str, Dict[str, Any]]:
+        """
+        Dynamically discovers all screener expressions from screeners.yaml
+        and exposes them as SCREENER_<ID> aliases.
+        """
+        res = {}
+        try:
+            from application.services.setup_service import setup_service
+            config = setup_service.get_setups_config(visible_only=False)
+            for f in config.get("folders", []):
+                for sc in f.get("screeners", []):
+                    sc_id = sc.get("id")
+                    if sc_id and sc.get("expression"):
+                        alias_name = f"SCREENER_{sc_id.upper()}"
+                        clean_expr = re.sub(r'\s+ORDER\s+BY\s+.*$', '', sc["expression"], flags=re.IGNORECASE).strip()
+                        res[alias_name] = {
+                            "expr": clean_expr,
+                            "type": "boolean",
+                            "label": f"Screener: {sc.get('name', sc_id)}",
+                            "category": "screeners",
+                            "description": sc.get("description", f"Filter from '{sc.get('name')}' screener"),
+                            "is_alias": True,
+                            "is_screener": True,
+                        }
+        except Exception as e:
+            logger.debug(f"Failed loading screener aliases: {e}")
+        return res
+
+    @classmethod
     def get_alias_catalog(cls) -> Dict[str, Dict[str, Any]]:
-        """Returns dictionary of all supported composite expression aliases."""
-        return ALIAS_CATALOG
+        """Returns dictionary of all supported composite expression aliases, including screeners."""
+        combined = dict(ALIAS_CATALOG)
+        combined.update(cls.get_screener_aliases())
+        return combined
 
     @classmethod
     def get_alias_sql(cls, alias_name: str, table_alias: str = "b") -> str:
@@ -1241,11 +1345,17 @@ class ScanExpressionEngine:
         if cache_key in cls._alias_sql_cache:
             return cls._alias_sql_cache[cache_key]
 
-        if alias_key not in ALIAS_CATALOG:
-            raise ExpressionError(f"Unknown alias '{alias_name}'.")
+        if alias_key in ALIAS_CATALOG:
+            expr_to_transpile = ALIAS_CATALOG[alias_key]["expr"]
+        else:
+            screener_expr = cls.get_screener_alias_expr(alias_key)
+            if screener_expr:
+                expr_to_transpile = screener_expr
+            else:
+                raise ExpressionError(f"Unknown alias '{alias_name}'.")
 
         sql, _, _, _, _, _ = cls.transpile_to_sql(
-            ALIAS_CATALOG[alias_key]["expr"],
+            expr_to_transpile,
             table_alias=table_alias if table_alias else "b"
         )
         if not table_alias:
@@ -1274,6 +1384,13 @@ class ScanExpressionEngine:
                     used_aliases.add(token_upper)
                     expanded = True
                     return f"({ALIAS_CATALOG[token_upper]['expr']})"
+
+                screener_expr = cls.get_screener_alias_expr(token_upper)
+                if screener_expr:
+                    used_aliases.add(token_upper)
+                    expanded = True
+                    return f"({screener_expr})"
+
                 return token
 
             # Matches word tokens that are identifiers
@@ -1287,9 +1404,10 @@ class ScanExpressionEngine:
 
     @classmethod
     def get_catalog(cls) -> Dict[str, Dict[str, Any]]:
-        """Returns the full dictionary of supported variables and metadata, including aliases."""
+        """Returns the full dictionary of supported variables and metadata, including aliases and screeners."""
         combined = dict(VARIABLE_CATALOG)
-        for alias_name, meta in ALIAS_CATALOG.items():
+        alias_dict = cls.get_alias_catalog()
+        for alias_name, meta in alias_dict.items():
             if alias_name not in combined:
                 combined[alias_name] = {
                     "sql": cls.get_alias_sql(alias_name, table_alias="b"),
@@ -1312,7 +1430,8 @@ class ScanExpressionEngine:
             "trend": [],
             "volatility": [],
             "pattern": [],
-            "fundamental": []
+            "fundamental": [],
+            "screeners": []
         }
         seen_sql = set()
         catalog = cls.get_catalog()
@@ -1364,6 +1483,13 @@ class ScanExpressionEngine:
         s = re.sub(r'\bAND\b', 'and', s, flags=re.IGNORECASE)
         s = re.sub(r'\bOR\b', 'or', s, flags=re.IGNORECASE)
         s = re.sub(r'\bNOT\b', 'not', s, flags=re.IGNORECASE)
+
+        # Colloquial TC2000 & trader shorthand: '10 EMA', '20 EMA', '50 SMA' -> 'EMA_10', 'EMA_20', 'SMA_50'
+        s = re.sub(r'\b(\d+)\s*EMA\b', r'EMA_\1', s, flags=re.IGNORECASE)
+        s = re.sub(r'\b(\d+)\s*SMA\b', r'SMA_\1', s, flags=re.IGNORECASE)
+
+        # Financial shorthand: '50M USD' or '50M' -> 50000000 when following comparison or arithmetic operator
+        s = re.sub(r'(?<=[<>=!+\-*/\s])(\d+(?:\.\d+)?)\s*M(?:\s*USD)?\b', lambda m: str(int(float(m.group(1)) * 1_000_000)), s, flags=re.IGNORECASE)
 
         return s
 

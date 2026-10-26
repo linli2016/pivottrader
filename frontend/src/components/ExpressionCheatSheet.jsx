@@ -61,6 +61,7 @@ const CHEAT_SHEET_CATEGORIES = [
       },
       { sym: 'RS_RANK', label: 'RS Rank', desc: 'IBD-style RS percentile (0-99)' },
       { sym: 'TI65', label: 'TI65', desc: 'Stockbee Trend Intensity (C / 65 SMA)' },
+      { sym: 'ER20', label: 'ER (20d)', desc: 'Stockbee/Kaufman Price Linearity (-1.0 to +1.0, >= 0.35 = linear trend)' },
       { sym: 'IS_52W_HIGH', label: '52w High', desc: 'At or near 52-week high' },
       { sym: 'DIST_52W_HIGH', label: 'Dist 52wH %', desc: 'Distance below 52w high' },
       { sym: 'DIST_52W_LOW', label: 'Dist 52wL %', desc: 'Distance above 52w low' },
@@ -134,6 +135,19 @@ const CHEAT_SHEET_CATEGORIES = [
       { sym: 'EPS_GROWTH_QOQ', label: 'EPS QoQ %', desc: 'Quarterly EPS growth YoY %' },
       { sym: 'EPS_DILUTED', label: 'Diluted EPS', desc: 'Latest quarterly diluted EPS' },
       { sym: 'REVENUE', label: 'Revenue', desc: 'Latest quarterly total revenue' },
+    ]
+  },
+  {
+    id: 'screeners',
+    title: 'Screeners (Reusable as SCREENER_<ID>)',
+    color: '#f59e0b',
+    variables: [
+      { sym: 'SCREENER_LEADERS', label: 'Weekly Leaders', desc: 'Weekly Leaders momentum screener formula' },
+      { sym: 'SCREENER_IPO_BASE', label: 'IPO Base', desc: 'IPO Base early accumulation formula' },
+      { sym: 'SCREENER_STAGE2_BASES', label: 'Stage 2 Bases', desc: 'Stage 2 Bases consolidation formula' },
+      { sym: 'SCREENER_INSIDE_DAY', label: 'Inside Day', desc: 'Inside Day compression formula' },
+      { sym: 'SCREENER_LOW_CHEAT', label: 'Low Cheat', desc: 'Low Cheat early base reversal formula' },
+      { sym: 'SCREENER_CHEAT', label: 'Cheat / 3-C', desc: 'Minervini Cheat 3-C mid-base formula' },
     ]
   },
   {

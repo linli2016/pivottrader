@@ -15,6 +15,7 @@ export default function StockDetailDrawer({
   fetchWatchlists = null,
 }) {
   const [targetWatchlistId, setTargetWatchlistId] = useState(() => watchlists?.[0]?.id || null);
+  const [drawerTargetSymbols, setDrawerTargetSymbols] = useState(() => new Set());
 
   useEffect(() => {
     if (watchlists && watchlists.length > 0 && !targetWatchlistId) {
@@ -22,30 +23,55 @@ export default function StockDetailDrawer({
     }
   }, [watchlists, targetWatchlistId]);
 
+  useEffect(() => {
+    if (!targetWatchlistId) return;
+    fetch(`${API_BASE}/api/watchlists/${targetWatchlistId}/items`)
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        if (Array.isArray(data)) {
+          setDrawerTargetSymbols(new Set(data.map(i => (i.symbol || '').toUpperCase())));
+        }
+      })
+      .catch(() => {});
+  }, [targetWatchlistId]);
+
   const handleToggleWatchlist = useCallback(async (sym) => {
     if (!targetWatchlistId || !sym) return;
     const symUpper = sym.toUpperCase();
-    const targetWl = watchlists.find(w => w.id === targetWatchlistId);
-    const isSaved = targetWl?.symbols?.some(s => (s?.symbol || s).toUpperCase() === symUpper);
+    const isSaved = drawerTargetSymbols.has(symUpper);
 
     try {
       if (isSaved) {
-        const res = await fetch(`${API_BASE}/api/watchlists/${targetWatchlistId}/items/${sym}`, {
+        const res = await fetch(`${API_BASE}/api/watchlists/${targetWatchlistId}/items/${encodeURIComponent(symUpper)}`, {
           method: 'DELETE',
         });
-        if (res.ok && fetchWatchlists) fetchWatchlists();
+        if (res.ok) {
+          setDrawerTargetSymbols(prev => {
+            const next = new Set(prev);
+            next.delete(symUpper);
+            return next;
+          });
+          if (fetchWatchlists) fetchWatchlists();
+        }
       } else {
         const res = await fetch(`${API_BASE}/api/watchlists/${targetWatchlistId}/items`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbol: sym }),
+          body: JSON.stringify({ symbol: symUpper }),
         });
-        if (res.ok && fetchWatchlists) fetchWatchlists();
+        if (res.ok) {
+          setDrawerTargetSymbols(prev => {
+            const next = new Set(prev);
+            next.add(symUpper);
+            return next;
+          });
+          if (fetchWatchlists) fetchWatchlists();
+        }
       }
     } catch (e) {
       console.error('Error toggling watchlist:', e);
     }
-  }, [targetWatchlistId, watchlists, fetchWatchlists]);
+  }, [targetWatchlistId, drawerTargetSymbols, fetchWatchlists]);
 
   const currentIndex = useMemo(() => {
     if (!activeStockList || activeStockList.length === 0 || !selectedStock) return -1;
@@ -123,6 +149,7 @@ export default function StockDetailDrawer({
           marketRegime={selectedStock?.market_regime}
           watchlists={watchlists}
           targetWatchlistId={targetWatchlistId}
+          targetWatchlistSymbols={drawerTargetSymbols}
           onTargetWatchlistChange={setTargetWatchlistId}
           onToggleWatchlist={handleToggleWatchlist}
           onSelectStock={(stk) => {

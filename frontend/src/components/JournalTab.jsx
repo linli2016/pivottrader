@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { marked } from 'marked';
 import { PnlDistributionChart, EquityCurveChart, fmtMoney, fmtPct, pnlClass } from './JournalCharts';
 import { DailyChart } from './stock-view';
+import VanTharpCalculatorModal from './VanTharpCalculatorModal';
+import AccountBalanceModal from './AccountBalanceModal';
 import './JournalTab.css';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
@@ -108,10 +110,12 @@ function FlexSetupGuide() {
       </div>
       <h4>1 · Create an Activity Flex Query</h4>
       <ol>
-        <li>IBKR Portal → <b>Performance &amp; Reports → Flex Queries</b> → <b>Activity Flex Query</b> → <b>+</b> (Create).</li>
-        <li>Under <b>Sections</b>, tick <b>Trades</b>. In its <i>Options</i> select <b>Execution</b> (leave Orders / Closed Lots unticked is fine — they are ignored).</li>
-        <li>Select these fields (or simply "Select All"):
-          <code>Account ID, Currency, FX Rate To Base, Asset Class, Symbol, Description, Conid, Trade ID, Transaction ID, IB Execution ID, IB Order ID, Date/Time, Trade Date, Quantity, Trade Price, Proceeds, IB Commission, Net Cash, Realized P/L (FIFO), Buy/Sell, Open/Close Indicator, Level Of Detail</code>
+        <li>IBKR Portal → <b>Performance &amp; Reports → Flex Queries</b> → <b>Activity Flex Query</b> → <b>+</b> (Create / Edit).</li>
+        <li>Under <b>Sections</b>:
+          <ul>
+            <li>Tick <b>Trades</b>: in its <i>Options</i> select <b>Execution</b>. Fields: select all or <code>Account ID, Currency, FX Rate To Base, Asset Class, Symbol, Description, Conid, Trade ID, Transaction ID, IB Execution ID, IB Order ID, Date/Time, Trade Date, Quantity, Trade Price, Proceeds, IB Commission, Net Cash, Realized P/L (FIFO), Buy/Sell, Open/Close Indicator, Level Of Detail</code>.</li>
+            <li>Tick <b>Cash Report</b>: in its <i>Options</i> select fields <code>Account ID, Currency, Ending Cash, Ending Settled Cash</code> (or "Select All"). This allows PivotTrader to automatically fetch your live USD and CAD cash balances every time you sync!</li>
+          </ul>
         </li>
         <li><b>Delivery Configuration</b>: Format <b>XML</b>, Period <b>Last 365 Calendar Days</b>.</li>
         <li><b>General Configuration</b>: Under <b>Accounts</b>, select <b>All</b> (or check the accounts you wish to sync). Date Format <code>yyyyMMdd</code>, Time Format <code>HHmmss</code>, Date/Time Separator <code>;</code> (semi-colon). Include Canceled Trades: <b>No</b>.</li>
@@ -290,7 +294,7 @@ const COLUMNS = [
   { key: 'notes', label: 'Notes', get: (t) => (t.notes ? 1 : 0) + (t.tags?.length ? 1 : 0), num: true },
 ];
 
-function TradeTable({ trades, sort, onSortChange, onOpenTrade, onSelectStock, onToggleIgnore, accounts = [], onSelectAccount }) {
+function TradeTable({ trades, sort, onSortChange, onOpenTrade, onSelectStock, onToggleIgnore, accounts = [], onSelectAccount, onOpenCalculator }) {
   const [limit, setLimit] = useState(PAGE_SIZE);
 
   useEffect(() => { setLimit(PAGE_SIZE); }, [trades]);
@@ -376,7 +380,30 @@ function TradeTable({ trades, sort, onSortChange, onOpenTrade, onSelectStock, on
                   fmtNum(t.avg_exit)
                 )}
               </td>
-              <td className="jr-num">{t.initial_risk_pct !== null && t.initial_risk_pct !== undefined ? `${t.initial_risk_pct.toFixed(1)}%` : <span className="jr-muted">—</span>}</td>
+              <td className="jr-num">
+                {t.initial_risk_pct !== null && t.initial_risk_pct !== undefined ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    style={{ padding: '0 4px', fontSize: '11.5px', color: '#38bdf8' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenCalculator?.({
+                        symbol: t.symbol,
+                        entry: t.avg_entry,
+                        stop: t.initial_stop,
+                        direction: t.direction,
+                        account_id: t.account_id,
+                      });
+                    }}
+                    title="Open Van Tharp Sizing Calculator for this trade"
+                  >
+                    {t.initial_risk_pct.toFixed(1)}% 🧮
+                  </button>
+                ) : (
+                  <span className="jr-muted">—</span>
+                )}
+              </td>
               <td className={`jr-num ${pnlClass(t.pnl)}`}>
                 {t.pnl !== null && t.pnl !== undefined ? (
                   <span title={t.status === 'OPEN' && t.unrealized_pnl !== null && t.unrealized_pnl !== undefined ? `Unrealized: ${fmtMoney(t.unrealized_pnl)}${t.realized_pnl ? ` · Realized: ${fmtMoney(t.realized_pnl)}` : ''}` : undefined}>
@@ -415,7 +442,7 @@ function TradeTable({ trades, sort, onSortChange, onOpenTrade, onSelectStock, on
   );
 }
 
-function TradeDetail({ trade, onSaved, allTags, onToggleIgnore, onSelectStock }) {
+function TradeDetail({ trade, onSaved, allTags, onToggleIgnore, onSelectStock, onOpenCalculator }) {
   const [notes, setNotes] = useState(trade.notes || '');
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [tagsText, setTagsText] = useState((trade.tags || []).join(', '));
@@ -787,6 +814,26 @@ function TradeDetail({ trade, onSaved, allTags, onToggleIgnore, onSelectStock })
                   {rMultiple !== null ? `${rMultiple >= 0 ? '+' : ''}${rMultiple.toFixed(2)} R` : '—'}
                 </span>
               </div>
+
+              {onOpenCalculator && (
+                <div className="jr-stop-calc-stat" style={{ alignSelf: 'center' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: '11.5px', padding: '4px 8px', whiteSpace: 'nowrap' }}
+                    onClick={() => onOpenCalculator({
+                      symbol: trade.symbol,
+                      entry: trade.avg_entry,
+                      stop: validStop ? parsedStop : trade.initial_stop,
+                      direction: trade.direction,
+                      account_id: trade.account_id,
+                    })}
+                    title="Open Van Tharp Position Calculator with this trade's setup"
+                  >
+                    🧮 Sizing Calc
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1078,6 +1125,181 @@ function FlexSettings({ config, onSaved }) {
   );
 }
 
+function AccountBalancesSection({
+  balances,
+  selectedAccount,
+  onSelectAccount,
+  onOpenCalculator,
+  onEditBalance,
+}) {
+  const accounts = balances?.accounts || [];
+  if (!accounts.length) return null;
+
+  const totalUsdCash = balances?.total_usd_balance || 0;
+  const totalOpenVal = balances?.total_open_positions_value || 0;
+  const totalUsdEquity = balances?.total_usd_equity || (totalUsdCash + totalOpenVal);
+  const totalCad = balances?.total_cad_balance || 0;
+  const total1r = balances?.total_risk_1pct_usd || 0;
+  const hasMultiple = accounts.length > 1;
+
+  return (
+    <div className="jr-accounts-section">
+      <div className="jr-accounts-header">
+        <div className="jr-accounts-title">
+          <span>💼 Accounts &amp; Total Equity</span>
+          <span className="pill pill-secondary" style={{ textTransform: 'none', fontWeight: '500' }}>
+            Van Tharp Total Equity Method (USD Cash + Open Positions)
+          </span>
+        </div>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => onOpenCalculator?.(selectedAccount ? { account_id: selectedAccount } : null)}
+          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          <span>🧮</span> Position Calculator
+        </button>
+      </div>
+
+      <div className="jr-accounts-grid">
+        {accounts.map((acct) => {
+          const isFiltered = selectedAccount === acct.account_id;
+          return (
+            <div
+              key={acct.account_id}
+              className={`jr-account-card ${isFiltered ? 'jr-account-card-active' : ''}`}
+            >
+              <div className="jr-account-card-header">
+                <div className="jr-account-name-group">
+                  <span className="jr-account-badge-id">{acct.account_id}</span>
+                  <span className="jr-account-name">{acct.name || 'Account'}</span>
+                </div>
+                <div className="jr-account-actions">
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    style={{ padding: '3px 6px', fontSize: '12px' }}
+                    onClick={() => onEditBalance?.(acct)}
+                    title="Edit cash balance"
+                  >
+                    ✏️ Edit
+                  </button>
+                  {hasMultiple && (
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${isFiltered ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ padding: '3px 8px', fontSize: '11px' }}
+                      onClick={() => onSelectAccount?.(isFiltered ? '' : acct.account_id)}
+                      title={isFiltered ? 'Clear account filter' : `Filter trades to ${acct.account_id}`}
+                    >
+                      {isFiltered ? '✓ Filtered' : 'Filter'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="jr-account-balances-row">
+                <div className="jr-balance-primary">
+                  <div className="stat-label">Total USD Equity (1R Risk Base)</div>
+                  <div className="jr-balance-usd">
+                    {fmtMoney(acct.total_usd_equity ?? acct.usd_balance, { sign: false })}
+                  </div>
+                  <div className="jr-balance-breakdown">
+                    <span>Cash: <b>{fmtMoney(acct.usd_balance, { sign: false })}</b></span>
+                    <span>•</span>
+                    <span>
+                      Open ({acct.open_trades_count || 0}): <b>{fmtMoney(acct.open_positions_value || 0, { sign: true })}</b>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="jr-balance-secondary">
+                  <div className="stat-label">CAD Cash</div>
+                  <div className="jr-balance-cad">
+                    C{fmtMoney(acct.cad_balance, { sign: false })}
+                  </div>
+                  <span className="jr-muted" style={{ fontSize: '10.5px' }}>Excluded from risk</span>
+                </div>
+              </div>
+
+              <div className="jr-account-footer">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ color: '#38bdf8', fontSize: '11.5px', fontWeight: '600', padding: '0 4px' }}
+                  onClick={() => onOpenCalculator?.({ account_id: acct.account_id })}
+                >
+                  🧮 Calculate Size
+                </button>
+                <div
+                  className="jr-risk-budget-pill"
+                  title={`1% of Total USD Equity (${fmtMoney(acct.usd_balance, { sign: false })} cash + ${fmtMoney(acct.open_positions_value || 0, { sign: true })} open positions, excluding ignored)`}
+                >
+                  <span>🛡️ 1% Risk (1R):</span>
+                  <b>{fmtMoney(acct.risk_1pct_usd, { sign: false })} USD</b>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {hasMultiple && (
+          <div className="jr-account-card" style={{ background: 'linear-gradient(145deg, rgba(16, 185, 129, 0.04), var(--card-bg))' }}>
+            <div className="jr-account-card-header">
+              <div className="jr-account-name-group">
+                <span className="pill pill-success" style={{ fontWeight: '700' }}>PORTFOLIO TOTAL</span>
+                <span className="jr-account-name">{accounts.length} Accounts</span>
+              </div>
+            </div>
+
+            <div className="jr-account-balances-row">
+              <div className="jr-balance-primary">
+                <div className="stat-label">Total Portfolio USD Equity</div>
+                <div className="jr-balance-usd">
+                  {fmtMoney(totalUsdEquity, { sign: false })}
+                </div>
+                <div className="jr-balance-breakdown">
+                  <span>Cash: <b>{fmtMoney(totalUsdCash, { sign: false })}</b></span>
+                  <span>•</span>
+                  <span>
+                    Open: <b>{fmtMoney(totalOpenVal, { sign: true })}</b>
+                  </span>
+                </div>
+              </div>
+
+              <div className="jr-balance-secondary">
+                <div className="stat-label">Total CAD Cash</div>
+                <div className="jr-balance-cad">
+                  C{fmtMoney(totalCad, { sign: false })}
+                </div>
+                <span className="jr-muted" style={{ fontSize: '10.5px' }}>Excluded from risk</span>
+              </div>
+            </div>
+
+            <div className="jr-account-footer">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ color: '#38bdf8', fontSize: '11.5px', fontWeight: '600', padding: '0 4px' }}
+                onClick={() => onOpenCalculator?.({ account_id: 'all' })}
+              >
+                🧮 Calculate Size
+              </button>
+              <div
+                className="jr-risk-budget-pill"
+                title={`1% of Total Portfolio Equity (${fmtMoney(totalUsdCash, { sign: false })} cash + ${fmtMoney(totalOpenVal, { sign: true })} open positions)`}
+              >
+                <span>🛡️ Total 1% Risk (1R):</span>
+                <b>{fmtMoney(total1r, { sign: false })} USD</b>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function JournalTab({ onSelectStock }) {
   const [data, setData] = useState(null);
   const [config, setConfig] = useState(null);
@@ -1103,6 +1325,14 @@ export default function JournalTab({ onSelectStock }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeTradeId, setActiveTradeId] = useState(null);
   const [confirmTrade, setConfirmTrade] = useState(null);
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const [calculatorParams, setCalculatorParams] = useState(null);
+  const [editBalanceAccount, setEditBalanceAccount] = useState(null);
+
+  const handleOpenCalculator = useCallback((params = null) => {
+    setCalculatorParams(params || (account ? { account_id: account } : null));
+    setCalculatorOpen(true);
+  }, [account]);
 
   const handleAccountChange = useCallback((newAcc) => {
     setAccount(newAcc);
@@ -1320,6 +1550,13 @@ export default function JournalTab({ onSelectStock }) {
           </p>
         </div>
         <div className="header-actions">
+          <button
+            className="btn btn-secondary"
+            onClick={() => handleOpenCalculator()}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <span>🧮</span> Position Calculator
+          </button>
           <button className="btn btn-secondary" onClick={() => setSettingsOpen(true)}>⚙️ Flex Settings</button>
           <button className="btn btn-primary" onClick={runSync} disabled={syncing || !config?.has_token || !config?.query_id}
             title={!config?.has_token ? 'Configure Flex token first' : 'Fetch latest executions from IBKR'}>
@@ -1357,6 +1594,14 @@ export default function JournalTab({ onSelectStock }) {
             )}
             {loading && <span className="jr-muted"><span className="spin-icon">⟳</span> Loading…</span>}
           </div>
+
+          <AccountBalancesSection
+            balances={data?.balances}
+            selectedAccount={account}
+            onSelectAccount={handleAccountChange}
+            onOpenCalculator={handleOpenCalculator}
+            onEditBalance={(acct) => setEditBalanceAccount(acct)}
+          />
 
           <StatsGrid stats={data?.stats} />
 
@@ -1412,6 +1657,7 @@ export default function JournalTab({ onSelectStock }) {
             onToggleIgnore={handleToggleIgnore}
             accounts={data?.accounts || []}
             onSelectAccount={handleAccountChange}
+            onOpenCalculator={handleOpenCalculator}
           />
         </>
       )}
@@ -1461,6 +1707,7 @@ export default function JournalTab({ onSelectStock }) {
             allTags={allTags}
             onToggleIgnore={handleToggleIgnore}
             onSelectStock={onSelectStock}
+            onOpenCalculator={handleOpenCalculator}
           />
         )}
       </Modal>
@@ -1494,6 +1741,29 @@ export default function JournalTab({ onSelectStock }) {
           </div>
         )}
       </Modal>
+
+      <VanTharpCalculatorModal
+        isOpen={calculatorOpen}
+        onClose={() => setCalculatorOpen(false)}
+        accounts={data?.balances?.accounts || []}
+        totalUsdBalance={data?.balances?.total_usd_balance || 0}
+        totalUsdEquity={data?.balances?.total_usd_equity || 0}
+        defaultAccountId={calculatorParams?.account_id || account || ''}
+        initialSymbol={calculatorParams?.symbol || ''}
+        initialEntry={calculatorParams?.entry || null}
+        initialStop={calculatorParams?.stop || null}
+        initialDirection={calculatorParams?.direction || 'LONG'}
+        initialAtr={calculatorParams?.atr || null}
+      />
+
+      <AccountBalanceModal
+        isOpen={!!editBalanceAccount}
+        onClose={() => setEditBalanceAccount(null)}
+        account={editBalanceAccount}
+        onSaved={(_updated) => {
+          loadJournal();
+        }}
+      />
     </div>
   );
 }

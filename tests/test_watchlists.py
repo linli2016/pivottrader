@@ -140,6 +140,11 @@ class TestWatchlists(unittest.TestCase):
             items = db_service.get_watchlist_items(wl_id)
             aapl = next(i for i in items if i["symbol"] == "AAPL")
             self.assertEqual(set(aapl["tags"]), {"IPO", "SHORT"})
+
+            # 5. Test get_all_watchlist_symbols
+            all_syms = db_service.get_all_watchlist_symbols()
+            self.assertIn("NVDA", all_syms)
+            self.assertIn("AAPL", all_syms)
         finally:
             db_service.delete_watchlist(wl_id)
 

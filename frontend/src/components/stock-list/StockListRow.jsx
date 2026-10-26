@@ -23,7 +23,18 @@ export default function StockListRow({
   renderRowActions = null,
   onRemove = null,
   rowRef = null,
+  targetWatchlistSymbols = null,
+  targetWatchlistName = '',
+  onToggleTargetWatchlist = null,
 }) {
+  const isTargetSaved = React.useMemo(() => {
+    if (!targetWatchlistSymbols || !item.symbol) return false;
+    const cleanSym = item.symbol.toUpperCase();
+    return typeof targetWatchlistSymbols.has === 'function'
+      ? targetWatchlistSymbols.has(cleanSym)
+      : Array.isArray(targetWatchlistSymbols) && targetWatchlistSymbols.includes(cleanSym);
+  }, [targetWatchlistSymbols, item.symbol]);
+
   const chg = item.today_pct !== undefined ? item.today_pct : item.chg_pct;
   const isPositive = chg !== null && chg !== undefined ? chg >= 0 : false;
   const rsVal = item.rs_rank;
@@ -126,6 +137,27 @@ export default function StockListRow({
                     <span style={{ fontWeight: 800, color: '#ffffff', fontSize: '11.5px' }}>
                       {item.symbol}
                     </span>
+                    {isTargetSaved && (
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          cursor: onToggleTargetWatchlist ? 'pointer' : 'default',
+                          lineHeight: 1,
+                          filter: 'drop-shadow(0 0 3px rgba(245, 158, 11, 0.5))',
+                          display: 'inline-flex',
+                          alignItems: 'center'
+                        }}
+                        title={`Saved in "${targetWatchlistName || 'target watchlist'}"${onToggleTargetWatchlist ? ' (Click to toggle)' : ''}`}
+                        onClick={(e) => {
+                          if (onToggleTargetWatchlist) {
+                            e.stopPropagation();
+                            onToggleTargetWatchlist(item.symbol);
+                          }
+                        }}
+                      >
+                        ⭐️
+                      </span>
+                    )}
                     {item.badge && (
                       <span style={{ fontSize: '9px', padding: '1px 4px', borderRadius: '3px', background: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8', fontWeight: 700 }}>
                         {item.badge}
@@ -278,7 +310,7 @@ export default function StockListRow({
                   e.stopPropagation();
                   onRemove(item.symbol, e);
                 }}
-                title={`Remove ${item.symbol}`}
+                title={`Remove ${item.symbol} from watchlist (Delete / Backspace)`}
               >
                 ✕
               </button>

@@ -71,10 +71,14 @@ class DatabaseManager:
 
             res = conn.execute("SELECT COUNT(*) FROM watchlists").fetchone()
             if res and res[0] == 0:
-                conn.execute("INSERT INTO watchlists (name) VALUES ('Focus List'), ('Actionable'), ('Liquid Mega-Caps'), ('Default')")
+                conn.execute("INSERT INTO watchlists (name) VALUES ('Focus List'), ('Liquid Mega-Caps'), ('Default')")
             else:
                 try:
-                    conn.execute("INSERT OR IGNORE INTO watchlists (name) VALUES ('Focus List'), ('Actionable')")
+                    conn.execute("""
+                        INSERT INTO watchlists (name)
+                        SELECT 'Focus List'
+                        WHERE NOT EXISTS (SELECT 1 FROM watchlists WHERE name = 'Focus List')
+                    """)
                 except Exception:
                     pass
             
@@ -117,6 +121,7 @@ class DatabaseManager:
                     rs_score DOUBLE,
                     rs_rank INTEGER,
                     adr_20d DOUBLE,
+                    er_20d DOUBLE,
                     atr_20d DOUBLE,
                     pp_runup_pct DOUBLE,
                     pp_drawdown_pct DOUBLE,
@@ -175,6 +180,7 @@ class DatabaseManager:
                     low_cheat_base_depth DOUBLE,
                     stage2_days INTEGER,
                     weinstein_stage INTEGER,
+                    normalized_rs DOUBLE,
                     PRIMARY KEY (symbol, date)
                 );
             """)
@@ -182,6 +188,7 @@ class DatabaseManager:
             # Migration: add columns if daily_bars already exists
             new_cols = [
                 ("adr_20d", "DOUBLE"),
+                ("er_20d", "DOUBLE"),
                 ("atr_20d", "DOUBLE"),
                 ("pp_runup_pct", "DOUBLE"),
                 ("pp_drawdown_pct", "DOUBLE"),
@@ -238,6 +245,7 @@ class DatabaseManager:
                 ("low_cheat_base_depth", "DOUBLE"),
                 ("stage2_days", "INTEGER"),
                 ("weinstein_stage", "INTEGER"),
+                ("normalized_rs", "DOUBLE"),
                 ("vol_52w_high", "BIGINT"),
                 ("is_52w_high_vol", "BOOLEAN"),
             ]

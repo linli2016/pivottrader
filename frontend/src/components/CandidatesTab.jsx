@@ -12,6 +12,7 @@ const SETUP_COLORS = {
   weekly: '#a855f7',
   short: '#f43f5e',
   others: '#94a3b8',
+  archive: '#64748b',
   // Daily Setups
   five_ema_below_5pct: '#38bdf8',
   power_play: '#38bdf8',
@@ -34,11 +35,18 @@ const SETUP_COLORS = {
   // Weekly Setups
   momentum: '#a855f7',
   leaders: '#a855f7',
+  stage2_bases: '#10b981',
   gainers: '#ec4899',
   '1m': '#38bdf8',
   '3m': '#818cf8',
   '6m': '#06b6d4',
   ipo_base: '#06b6d4',
+  lead: '#10b981',
+  mediocre: '#f59e0b',
+  lag: '#f43f5e',
+  pullback_10ema: '#38bdf8',
+  reset_20ema: '#818cf8',
+  high_tight_breakout: '#f59e0b',
   trend_1m: '#34d399',
   trend_1_4m: '#10b981',
   trend_5m: '#059669',
@@ -171,7 +179,52 @@ export default function CandidatesTab({
   const [showExpressionSection, setShowExpressionSection] = React.useState(false);
   const [exprValidation, setExprValidation] = React.useState({ valid: true, error: null });
   const [selectedIndustry, setSelectedIndustry] = React.useState('ALL');
-  const [stage2OnlyFilter, setStage2OnlyFilter] = React.useState(false);
+  
+  // Exclude Biotech Filter: Defaults ON for Weekly screeners, OFF for other screeners
+  const isWeeklyScreener = React.useMemo(() => {
+    if (activeFolderId === 'weekly') return true;
+    const curFolder = (setupsConfig?.folders || []).find((f) => f.id === activeFolderId);
+    const curScreener = curFolder?.screeners?.find((s) => s.id === activeScreenerId);
+    if (curScreener?.folder === 'weekly' || curScreener?.group === 'weekly') return true;
+    const weeklyFolder = (setupsConfig?.folders || []).find((f) => f.id === 'weekly');
+    if (weeklyFolder?.screeners?.some((s) => s.id === activeScreenerId)) return true;
+    return false;
+  }, [activeFolderId, activeScreenerId, setupsConfig]);
+
+  const [excludeBiotech, setExcludeBiotech] = React.useState(() => isWeeklyScreener);
+
+  // Exclude In Watchlist Filter: Excludes candidates that are already in any user watchlist
+  const [excludeInWatchlist, setExcludeInWatchlist] = React.useState(false);
+  const [allWatchlistSymbols, setAllWatchlistSymbols] = React.useState(new Set());
+
+  const fetchAllWatchlistSymbols = React.useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/watchlists/symbols`);
+      if (res.ok) {
+        const data = await res.json();
+        setAllWatchlistSymbols(new Set(data.map((s) => String(s).toUpperCase())));
+      }
+    } catch (e) {
+      console.error('Error fetching all watchlist symbols:', e);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchAllWatchlistSymbols();
+  }, [fetchAllWatchlistSymbols, watchlists]);
+
+  // Sync default state when folder or screener changes
+  const prevScreenerRef = React.useRef({ folder: activeFolderId, screener: activeScreenerId });
+  React.useEffect(() => {
+    if (
+      prevScreenerRef.current.folder !== activeFolderId ||
+      prevScreenerRef.current.screener !== activeScreenerId
+    ) {
+      prevScreenerRef.current = { folder: activeFolderId, screener: activeScreenerId };
+      setExcludeBiotech(isWeeklyScreener);
+    }
+  }, [activeFolderId, activeScreenerId, isWeeklyScreener]);
+
   const [previewGroupModal, setPreviewGroupModal] = React.useState(null);
   const [sortBy, setSortBy] = React.useState('rs_rank');
 
@@ -285,28 +338,50 @@ export default function CandidatesTab({
     }, 10);
   };
 
+  // Helper to identify biotech and pharmaceutical stocks
+  const isBiotechCandidate = React.useCallback((stock) => {
+    if (!stock) return false;
+    const ind = (stock.industry || stock.group_name || '').toLowerCase();
+    const sec = (stock.sector || '').toLowerCase();
+    return (
+      ind.includes('biotech') ||
+      ind.includes('pharmaceutical') ||
+      ind.includes('pharma') ||
+      sec.includes('biotech')
+    );
+  }, []);
+
+  // Filter candidates before industry breakdown if excludeBiotech or excludeInWatchlist is active
+  const baseCandidates = React.useMemo(() => {
+    let list = filteredCandidates || [];
+    if (excludeBiotech) {
+      list = list.filter((c) => !isBiotechCandidate(c));
+    }
+    if (excludeInWatchlist) {
+      list = list.filter((c) => !allWatchlistSymbols.has(c.symbol?.toUpperCase()));
+    }
+    return list;
+  }, [filteredCandidates, excludeBiotech, isBiotechCandidate, excludeInWatchlist, allWatchlistSymbols]);
+
   // Industry/Group Breakdown and Filtering
   const industryCounts = React.useMemo(() => {
     const counts = {};
-    (filteredCandidates || []).forEach(c => {
+    baseCandidates.forEach((c) => {
       const ind = (c.industry || c.group_name || '').trim() || 'Unclassified';
       counts[ind] = (counts[ind] || 0) + 1;
     });
     return Object.entries(counts)
       .map(([industry, count]) => ({ industry, count }))
       .sort((a, b) => b.count - a.count || a.industry.localeCompare(b.industry));
-  }, [filteredCandidates]);
+  }, [baseCandidates]);
 
   const displayedCandidates = React.useMemo(() => {
-    let list = filteredCandidates || [];
+    let list = baseCandidates;
     if (selectedIndustry && selectedIndustry !== 'ALL') {
-      list = list.filter(c => {
+      list = list.filter((c) => {
         const ind = (c.industry || c.group_name || '').trim() || 'Unclassified';
         return ind === selectedIndustry;
       });
-    }
-    if (stage2OnlyFilter) {
-      list = list.filter(c => c.industry_stage_num === 2 || (typeof c.group_stage_badge === 'string' && c.group_stage_badge.includes('Stage 2')));
     }
     const copy = [...list];
     switch (sortBy) {
@@ -337,7 +412,7 @@ export default function CandidatesTab({
       default:
         return copy;
     }
-  }, [filteredCandidates, selectedIndustry, stage2OnlyFilter, sortBy]);
+  }, [baseCandidates, selectedIndustry, sortBy]);
 
   // Reset selected industry if no longer present in candidates list
   React.useEffect(() => {
@@ -635,6 +710,7 @@ export default function CandidatesTab({
             next.delete(symUpper);
             return next;
           });
+          fetchAllWatchlistSymbols();
           if (fetchWatchlists) fetchWatchlists();
           triggerToast(`Removed ${symUpper} from ${targetName}`);
         }
@@ -656,6 +732,11 @@ export default function CandidatesTab({
             next.add(symUpper);
             return next;
           });
+          setAllWatchlistSymbols((prev) => {
+            const next = new Set(prev);
+            next.add(symUpper);
+            return next;
+          });
           if (fetchWatchlists) fetchWatchlists();
           const tagDisplay = candidateTags.length > 0 ? ` [${candidateTags.join(', ')}]` : '';
           triggerToast(`⭐️ Added ${symUpper} to ${targetName}${tagDisplay}`);
@@ -664,7 +745,7 @@ export default function CandidatesTab({
     } catch (e) {
       console.error(`Error toggling watchlist item: ${e.message}`);
     }
-  }, [targetWatchlistId, watchlists, activeWatchlistSymbols, activeScreenerTag, displayedCandidates, currentCandidate, fetchWatchlists, triggerToast]);
+  }, [targetWatchlistId, watchlists, activeWatchlistSymbols, activeScreenerTag, displayedCandidates, currentCandidate, fetchWatchlists, fetchAllWatchlistSymbols, triggerToast]);
 
   const handleToggleWatchlistRef = React.useRef(handleToggleWatchlist);
   React.useEffect(() => {
@@ -764,6 +845,7 @@ export default function CandidatesTab({
           const nextSet = new Set(activeWatchlistSymbols);
           symbols.forEach(s => nextSet.delete(s.toUpperCase()));
           setActiveWatchlistSymbols(nextSet);
+          fetchAllWatchlistSymbols();
           if (fetchWatchlists) fetchWatchlists();
           setBatchFeedback(`✓ Removed`);
           setTimeout(() => setBatchFeedback(null), 2500);
@@ -777,6 +859,11 @@ export default function CandidatesTab({
         setIsProcessingAll(false);
       }
     } else {
+      const confirmAdd = window.confirm(
+        `Add all ${symbols.length} candidate stocks into '${wlName}'?`
+      );
+      if (!confirmAdd) return;
+
       setIsProcessingAll(true);
       try {
         const itemsToSave = displayedCandidates.map(c => {
@@ -798,6 +885,11 @@ export default function CandidatesTab({
           const nextSet = new Set(activeWatchlistSymbols);
           symbols.forEach(s => nextSet.add(s.toUpperCase()));
           setActiveWatchlistSymbols(nextSet);
+          setAllWatchlistSymbols(prev => {
+            const next = new Set(prev);
+            symbols.forEach(s => next.add(s.toUpperCase()));
+            return next;
+          });
           if (fetchWatchlists) fetchWatchlists();
           setBatchFeedback(`✓ Added${activeScreenerTag ? ` [${activeScreenerTag}]` : ''}`);
           setTimeout(() => setBatchFeedback(null), 2500);
@@ -813,25 +905,43 @@ export default function CandidatesTab({
     }
   };
 
-  const handleExportTradingView = () => {
-    if (displayedCandidates.length === 0) {
-      alert("No candidates to export!");
+  const handleExportTradingView = async () => {
+    const targetSymbols = (isSelectMode && selectedSymbols && selectedSymbols.size > 0)
+      ? Array.from(selectedSymbols).map((s) => String(s).toUpperCase())
+      : displayedCandidates.map((c) => (c.symbol || '').toUpperCase()).filter(Boolean);
+
+    if (targetSymbols.length === 0) {
+      triggerToast("No candidates to copy");
       return;
     }
-    const content = displayedCandidates.map(c => {
-      const exchange = c.exchange ? `${c.exchange}:` : '';
-      return `${exchange}${c.symbol}`;
-    }).join('\n');
 
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `PivotTrader_Watchlist_${getLocalDateStr()}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const commaSeparated = targetSymbols.join(', ');
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(commaSeparated);
+        triggerToast(`Copied ${targetSymbols.length} symbol${targetSymbols.length > 1 ? 's' : ''} for TradingView`);
+        return;
+      }
+    } catch (_) {}
+
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = commaSeparated;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const success = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      if (success) {
+        triggerToast(`Copied ${targetSymbols.length} symbol${targetSymbols.length > 1 ? 's' : ''} for TradingView`);
+        return;
+      }
+    } catch (_) {}
+
+    prompt("Copy comma-separated symbols for TradingView:", commaSeparated);
   };
 
   const renderDateAndSyncControls = (compact = false) => (
@@ -958,35 +1068,12 @@ export default function CandidatesTab({
             flexShrink: 0
           }}
         >
-          {/* Left: Expand Toggle & Active Setup Badge */}
+          {/* Left: Active Setup Badge */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={toggleSetupCollapse}
-              title="Expand setup selection (Alt + S)"
-              style={{
-                padding: '4px 10px',
-                fontSize: '12px',
-                fontWeight: '600',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                background: 'rgba(56, 189, 248, 0.12)',
-                borderColor: 'rgba(56, 189, 248, 0.35)',
-                color: '#38bdf8',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              <span>▼</span>
-              <span>Setups</span>
-            </button>
-
             {/* Active Setup Badge */}
             <div
               onClick={toggleSetupCollapse}
-              title={`${curFolder?.name || 'Folder'} › ${curScreener?.name || curScreener?.label || activeSetupName}\nFormula: ${activeExpression || 'Default'}\nClick to expand setup selection`}
+              title={`${curFolder?.name || 'Folder'} › ${curScreener?.name || curScreener?.label || activeSetupName}\nFormula: ${activeExpression || 'Default'}\nClick to expand setup selection (Alt + S)`}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -1016,14 +1103,37 @@ export default function CandidatesTab({
                 color: activeScreenerColor,
                 marginLeft: '4px'
               }}>
-                {displayedCandidates.length}{selectedIndustry !== 'ALL' ? ` / ${filteredCandidates.length}` : ''}
+                {displayedCandidates.length}{selectedIndustry !== 'ALL' || excludeBiotech ? ` / ${filteredCandidates.length}` : ''}
               </span>
             </div>
           </div>
 
-          {/* Right Action Controls: Date Picker & Live Sync */}
+          {/* Right Action Controls: Date Picker, Live Sync & Setup Expand Button */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
             {renderDateAndSyncControls(true)}
+
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={toggleSetupCollapse}
+              title="Expand setup selection to show folders and screeners (Alt + S)"
+              style={{
+                padding: '4px 10px',
+                fontSize: '12px',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: 'rgba(56, 189, 248, 0.12)',
+                borderColor: 'rgba(56, 189, 248, 0.35)',
+                color: '#38bdf8',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <span>▼</span>
+              <span>Setups</span>
+            </button>
           </div>
         </div>
       ) : (
@@ -1425,11 +1535,41 @@ export default function CandidatesTab({
         <div className="glass-card" style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-secondary)', marginTop: '20px' }}>
           {loadingCandidates ? 'Loading candidates...' : 'No candidate stocks match your current active filters.'}
         </div>
+      ) : baseCandidates.length === 0 ? (
+        <div className="glass-card" style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-secondary)', marginTop: '20px' }}>
+          {excludeInWatchlist && !excludeBiotech ? (
+            <>
+              <p>All {filteredCandidates.length} candidates in this scan are already saved in your watchlists.</p>
+              <button className="btn btn-secondary btn-sm" onClick={() => setExcludeInWatchlist(false)} style={{ marginTop: '10px' }}>
+                Include Watchlist Stocks ({filteredCandidates.length})
+              </button>
+            </>
+          ) : excludeInWatchlist && excludeBiotech ? (
+            <>
+              <p>All {filteredCandidates.length} candidates were excluded by active filters (Biotech or already in Watchlists).</p>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '10px' }}>
+                <button className="btn btn-secondary btn-sm" onClick={() => setExcludeInWatchlist(false)}>
+                  Include Watchlists
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={() => setExcludeBiotech(false)}>
+                  Include Biotech
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p>All {filteredCandidates.length} candidates in this scan were excluded as Biotech / Pharmaceuticals.</p>
+              <button className="btn btn-secondary btn-sm" onClick={() => setExcludeBiotech(false)} style={{ marginTop: '10px' }}>
+                Include Biotech ({filteredCandidates.length})
+              </button>
+            </>
+          )}
+        </div>
       ) : displayedCandidates.length === 0 ? (
         <div className="glass-card" style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-secondary)', marginTop: '20px' }}>
           <p>No candidates found in industry/group <strong>"{selectedIndustry}"</strong>.</p>
           <button className="btn btn-secondary btn-sm" onClick={() => setSelectedIndustry('ALL')} style={{ marginTop: '10px' }}>
-            Show All Industry Groups ({filteredCandidates.length})
+            Show All Industry Groups ({baseCandidates.length})
           </button>
         </div>
       ) : (
@@ -1477,6 +1617,7 @@ export default function CandidatesTab({
               asOfDate={currentCandidate?.screen_date || (selectedDate !== 'latest' ? selectedDate : null)}
               watchlists={watchlists}
               targetWatchlistId={targetWatchlistId}
+              targetWatchlistSymbols={activeWatchlistSymbols}
               onTargetWatchlistChange={setTargetWatchlistId}
               onToggleWatchlist={handleToggleWatchlist}
               onSelectGroup={(type, name) => setPreviewGroupModal({ groupType: type, groupName: name })}
@@ -1523,7 +1664,7 @@ export default function CandidatesTab({
               gap: '6px'
             }}>
               <h4 style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--accent-color)', textTransform: 'uppercase', margin: 0, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                Total ({displayedCandidates.length}{selectedIndustry !== 'ALL' ? ` / ${filteredCandidates.length}` : ''})
+                Total ({displayedCandidates.length}{selectedIndustry !== 'ALL' || excludeBiotech || excludeInWatchlist ? ` / ${filteredCandidates.length}` : ''})
               </h4>
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <button
@@ -1573,7 +1714,7 @@ export default function CandidatesTab({
                   className="btn btn-secondary btn-sm"
                   onClick={handleExportTradingView}
                   disabled={displayedCandidates.length === 0}
-                  title="Export to TradingView watchlist (.txt)"
+                  title="Copy comma-separated symbols for TradingView"
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -1587,10 +1728,9 @@ export default function CandidatesTab({
                     flexShrink: 0
                   }}
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                   </svg>
                 </button>
               </div>
@@ -1606,7 +1746,7 @@ export default function CandidatesTab({
                   if (idx !== -1) setBrowseIndex(idx);
                 }
               }}
-              columns={['symbol', 'today_pct', 'rs_rank', 'ext_atr_50', 'rs_line']}
+              columns={['symbol', 'rs_rank', 'ext_atr_50', 'rs_line']}
               sortBy={sortBy}
               onSortChange={(newSort) => {
                 setSortBy(newSort);
@@ -1621,41 +1761,85 @@ export default function CandidatesTab({
               industryCounts={industryCounts}
               hideHeaderSelectButton={true}
               filterExtra={({ isSelectMode, toggleSelectMode }) => (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'nowrap', width: '100%' }}>
                   <button
                     type="button"
                     onClick={() => {
-                      setStage2OnlyFilter((prev) => !prev);
+                      setExcludeBiotech((prev) => !prev);
                       setBrowseIndex(0);
                     }}
                     style={{
                       flex: 1,
-                      padding: '4px 9px',
-                      borderRadius: '6px',
-                      fontSize: '11px',
+                      minWidth: 0,
+                      padding: '3px 5px',
+                      borderRadius: '5px',
+                      fontSize: '10.5px',
                       fontWeight: 600,
-                      display: 'flex',
+                      display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '6px',
-                      background: stage2OnlyFilter ? 'rgba(16, 185, 129, 0.22)' : 'rgba(255, 255, 255, 0.04)',
-                      border: `1px solid ${stage2OnlyFilter ? '#10b981' : 'rgba(255, 255, 255, 0.12)'}`,
-                      color: stage2OnlyFilter ? '#34d399' : 'var(--text-secondary)',
+                      justifyContent: 'center',
+                      gap: '3px',
+                      background: excludeBiotech ? 'rgba(239, 68, 68, 0.18)' : 'rgba(255, 255, 255, 0.04)',
+                      border: `1px solid ${excludeBiotech ? 'rgba(239, 68, 68, 0.5)' : 'rgba(255, 255, 255, 0.12)'}`,
+                      color: excludeBiotech ? '#f87171' : 'var(--text-secondary)',
                       cursor: 'pointer',
-                      transition: 'all 0.15s ease'
+                      transition: 'all 0.15s ease',
+                      whiteSpace: 'nowrap',
+                      lineHeight: 1.2
                     }}
-                    title="Stan Weinstein Rule: Only show candidates whose industry is in Stage 2 (Advancing Markup)"
+                    title="Jeff Sun & Stockbee Rule: Exclude binary clinical biotech & pharmaceutical stocks from candidate scans"
                   >
-                    {stage2OnlyFilter ? (
-                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-                        <rect x="2" y="2" width="12" height="12" rx="3" fill="#10b981" stroke="#10b981" strokeWidth="1.5" />
+                    {excludeBiotech ? (
+                      <svg width="11" height="11" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+                        <rect x="2" y="2" width="12" height="12" rx="3" fill="#ef4444" stroke="#ef4444" strokeWidth="1.5" />
                         <path d="M4.8 8.2L7 10.4L11.5 5.5" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     ) : (
-                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+                      <svg width="11" height="11" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
                         <rect x="2" y="2" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="1.5" />
                       </svg>
                     )}
-                    <span>Stage 2 Groups Only</span>
+                    <span>No Biotech</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExcludeInWatchlist((prev) => !prev);
+                      setBrowseIndex(0);
+                    }}
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      padding: '3px 5px',
+                      borderRadius: '5px',
+                      fontSize: '10.5px',
+                      fontWeight: 600,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '3px',
+                      background: excludeInWatchlist ? 'rgba(56, 189, 248, 0.18)' : 'rgba(255, 255, 255, 0.04)',
+                      border: `1px solid ${excludeInWatchlist ? 'rgba(56, 189, 248, 0.5)' : 'rgba(255, 255, 255, 0.12)'}`,
+                      color: excludeInWatchlist ? '#38bdf8' : 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      whiteSpace: 'nowrap',
+                      lineHeight: 1.2
+                    }}
+                    title="Exclude candidates that are already saved in any of your watchlists"
+                  >
+                    {excludeInWatchlist ? (
+                      <svg width="11" height="11" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+                        <rect x="2" y="2" width="12" height="12" rx="3" fill="#38bdf8" stroke="#38bdf8" strokeWidth="1.5" />
+                        <path d="M4.8 8.2L7 10.4L11.5 5.5" stroke="#0f172a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    ) : (
+                      <svg width="11" height="11" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+                        <rect x="2" y="2" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="1.5" />
+                      </svg>
+                    )}
+                    <span>Not Watched</span>
                   </button>
 
                   <button
@@ -1665,16 +1849,17 @@ export default function CandidatesTab({
                       background: isSelectMode ? 'rgba(56, 189, 248, 0.22)' : 'rgba(255, 255, 255, 0.04)',
                       border: isSelectMode ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.12)',
                       color: isSelectMode ? '#38bdf8' : 'var(--text-secondary, #cbd5e1)',
-                      borderRadius: '6px',
-                      padding: '4px 10px',
-                      fontSize: '11px',
+                      borderRadius: '5px',
+                      padding: '3px 7px',
+                      fontSize: '10.5px',
                       cursor: 'pointer',
                       fontWeight: 700,
                       whiteSpace: 'nowrap',
                       flexShrink: 0,
-                      display: 'flex',
+                      display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '4px',
+                      gap: '3px',
+                      lineHeight: 1.2,
                       transition: 'all 0.15s ease'
                     }}
                     title={isSelectMode ? "Exit select mode" : "Select multiple candidates for batch watchlist actions"}
@@ -1709,6 +1894,7 @@ export default function CandidatesTab({
               enableSelectMode={true}
               watchlists={watchlists}
               targetWatchlistId={targetWatchlistId}
+              targetWatchlistSymbols={activeWatchlistSymbols}
               onTargetWatchlistChange={setTargetWatchlistId}
               onBatchAddToWatchlist={async (targetWId, symbolsArray) => {
                 if (!targetWId || !symbolsArray || symbolsArray.length === 0) return;
@@ -1732,6 +1918,11 @@ export default function CandidatesTab({
                     if (targetWId === targetWatchlistId) {
                       fetchTargetWatchlistItems(targetWId);
                     }
+                    setAllWatchlistSymbols(prev => {
+                      const next = new Set(prev);
+                      symbolsArray.forEach(s => next.add(String(s).toUpperCase()));
+                      return next;
+                    });
                     if (fetchWatchlists) fetchWatchlists();
                   }
                 } catch (e) {

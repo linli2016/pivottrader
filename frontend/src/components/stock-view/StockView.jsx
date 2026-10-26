@@ -24,8 +24,10 @@ const StockView = forwardRef(function StockView({
   // Watchlist props
   watchlists = [],
   targetWatchlistId: propTargetWatchlistId = null,
+  targetWatchlistSymbols: propTargetWatchlistSymbols = null,
   onTargetWatchlistChange = null,
   onToggleWatchlist = null,
+  isWatchlistSaved: propIsWatchlistSaved = null,
   // Setup & regime props
   asOfDate = null,
   setupName = null,
@@ -250,6 +252,8 @@ const StockView = forwardRef(function StockView({
 
   // Target watchlist state
   const [internalTargetWatchlistId, setInternalTargetWatchlistId] = useState(propTargetWatchlistId);
+  const [internalTargetSymbols, setInternalTargetSymbols] = useState(() => new Set());
+
   useEffect(() => {
     if (propTargetWatchlistId !== null) {
       setInternalTargetWatchlistId(propTargetWatchlistId);
@@ -257,6 +261,28 @@ const StockView = forwardRef(function StockView({
   }, [propTargetWatchlistId]);
 
   const targetWatchlistId = propTargetWatchlistId !== null ? propTargetWatchlistId : internalTargetWatchlistId;
+
+  // Auto-fetch symbols for target watchlist when not supplied via propTargetWatchlistSymbols
+  useEffect(() => {
+    if (propTargetWatchlistSymbols) return;
+    if (!targetWatchlistId) {
+      setInternalTargetSymbols(new Set());
+      return;
+    }
+    let cancelled = false;
+    const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
+    fetch(`${API_BASE}/api/watchlists/${targetWatchlistId}/items`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data)) {
+          setInternalTargetSymbols(new Set(data.map((i) => (i.symbol || '').toUpperCase())));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [targetWatchlistId, propTargetWatchlistSymbols]);
 
   const handleTargetWatchlistChange = useCallback(
     (newId) => {
@@ -267,11 +293,39 @@ const StockView = forwardRef(function StockView({
   );
 
   const isWatchlistSaved = useMemo(() => {
-    if (!symbol || !watchlists || !targetWatchlistId) return false;
-    const target = watchlists.find((w) => w.id === targetWatchlistId);
-    if (!target || !Array.isArray(target.symbols)) return false;
-    return target.symbols.some((s) => (s?.symbol || s).toUpperCase() === symbol.toUpperCase());
-  }, [symbol, watchlists, targetWatchlistId]);
+    if (!symbol || !targetWatchlistId) return false;
+    if (propIsWatchlistSaved !== null && propIsWatchlistSaved !== undefined) {
+      return Boolean(propIsWatchlistSaved);
+    }
+    const cleanSym = symbol.toUpperCase().trim();
+    const symSet = propTargetWatchlistSymbols || internalTargetSymbols;
+    if (symSet) {
+      if (typeof symSet.has === 'function') {
+        return symSet.has(cleanSym);
+      }
+      if (Array.isArray(symSet)) {
+        return symSet.some((s) => (s?.symbol || s).toUpperCase() === cleanSym);
+      }
+    }
+    return false;
+  }, [symbol, targetWatchlistId, propIsWatchlistSaved, propTargetWatchlistSymbols, internalTargetSymbols]);
+
+  const handleToggleWatchlistAction = useCallback(
+    (sym) => {
+      if (!sym) return;
+      const cleanSym = sym.toUpperCase().trim();
+      if (!propTargetWatchlistSymbols) {
+        setInternalTargetSymbols((prev) => {
+          const next = new Set(prev);
+          if (next.has(cleanSym)) next.delete(cleanSym);
+          else next.add(cleanSym);
+          return next;
+        });
+      }
+      onToggleWatchlist?.(sym);
+    },
+    [propTargetWatchlistSymbols, onToggleWatchlist]
+  );
 
   const handleInspectTicker = useCallback(
     (targetSymbol) => {
@@ -302,7 +356,7 @@ const StockView = forwardRef(function StockView({
         watchlists={watchlists}
         targetWatchlistId={targetWatchlistId}
         onTargetWatchlistChange={handleTargetWatchlistChange}
-        onToggleWatchlist={onToggleWatchlist}
+        onToggleWatchlist={handleToggleWatchlistAction}
         isWatchlistSaved={isWatchlistSaved}
         showMultiCharts={showMultiCharts}
         onToggleMultiCharts={handleToggleMultiCharts}

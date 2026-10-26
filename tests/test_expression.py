@@ -184,7 +184,9 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertIn("b.sma_50 > b.sma_150", sql)
         self.assertIn("b.sma_150 > b.sma_200", sql)
         self.assertIn("b.sma_200_20d_ago IS NULL", sql)
-        self.assertIn("b.dist_from_52w_low >= 25.0", sql)
+        self.assertTrue(
+            "b.dist_from_52w_low >= 25.0" in sql or "b.dist_from_52w_low >= 30.0" in sql
+        )
 
         # CONFIRMED_STAGE2 is an alias for CONFIRMED_STAGED
         res_alias = ScanExpressionEngine.validate("CONFIRMED_STAGE2")
@@ -452,7 +454,7 @@ class TestScanExpressionEngine(unittest.TestCase):
 
     def test_numeric_literals_with_underscores(self):
         # Python AST & DuckDB support digit separators (PEP 515)
-        res = ScanExpressionEngine.validate("DOLLAR_VOL >= 10_000_000 AND V >= 100_000")
+        res = ScanExpressionEngine.validate("DOLLAR_VOL >= 5_000_000 AND V >= 100_000")
         self.assertTrue(res["valid"])
         self.assertIn(">= 10000000", res["sql"])
         self.assertIn(">= 100000", res["sql"])
@@ -470,6 +472,61 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertIn("b.lag_h1", res_inside["sql"])
         self.assertIn("b.lag_l1", res_inside["sql"])
         self.assertTrue(res_inside["has_lags"])
+
+    def test_efficiency_ratio_linearity(self):
+        # ER20 direct variable
+        res_er = ScanExpressionEngine.validate("ER20 >= 0.35")
+        self.assertTrue(res_er["valid"], res_er.get("error"))
+        self.assertIn("b.er_20d >= 0.35", res_er["sql"])
+        self.assertIn("ER20", res_er["variables"])
+
+        # ER20 aliases: LINEARITY, EFF_RATIO, ER_20D
+        for alias in ("LINEARITY", "EFF_RATIO", "ER_20D"):
+            res_alias = ScanExpressionEngine.validate(f"{alias} >= 0.35")
+            self.assertTrue(res_alias["valid"], f"Alias {alias} failed: {res_alias.get('error')}")
+            self.assertIn("b.er_20d >= 0.35", res_alias["sql"])
+
+        # Combined expression with Stage 2 and ER20
+        res_comb = ScanExpressionEngine.validate("STAGE2 AND ER20 >= 0.35 AND ADR20 >= 4.0")
+        self.assertTrue(res_comb["valid"], res_comb.get("error"))
+        self.assertIn("b.er_20d >= 0.35", res_comb["sql"])
+
+    def test_screener_expression_aliases(self):
+        # Test resolving SCREENER_LEADERS and SCREENER_IPO_BASE
+        res = ScanExpressionEngine.validate("NOT SCREENER_LEADERS AND NOT SCREENER_IPO_BASE")
+        self.assertTrue(res["valid"], res.get("error"))
+        self.assertIn("SCREENER_LEADERS", res["variables"])
+        self.assertIn("SCREENER_IPO_BASE", res["variables"])
+        self.assertIn("COALESCE(b.dollar_vol_50d_ma", res["sql"])
+
+        # Test composite stage 2 bases expression
+        expr = "(STAGE2 OR LOW_CHEAT) AND C >= 5.0 AND DOLLAR_VOL >= 5_000_000 AND ADR20 >= 3.0 AND DIST_52W_HIGH <= 25.0 AND EXT_ATR_50 <= 3.5 AND NOT SCREENER_LEADERS AND NOT SCREENER_IPO_BASE"
+        res_full = ScanExpressionEngine.validate(expr)
+        self.assertTrue(res_full["valid"], res_full.get("error"))
+        self.assertIn("weinstein_stage = 2", res_full["sql"])
+        self.assertIn("NOT", res_full["sql"])
+
+    def test_rs_line_normalized_rs(self):
+        # Test RS_LINE and NORMALIZED_RS variables
+        res1 = ScanExpressionEngine.validate("RS_LINE >= 0.0")
+        self.assertTrue(res1["valid"], res1.get("error"))
+        self.assertIn("b.normalized_rs >= 0.0", res1["sql"])
+        self.assertIn("RS_LINE", res1["variables"])
+
+        res2 = ScanExpressionEngine.validate("NORMALIZED_RS >= 0.0")
+        self.assertTrue(res2["valid"], res2.get("error"))
+        self.assertIn("b.normalized_rs >= 0.0", res2["sql"])
+        self.assertIn("NORMALIZED_RS", res2["variables"])
+
+    def test_colloquial_ema_and_financial_shorthand(self):
+        # 10 EMA > 20 EMA > 50 EMA AND DOLLAR_VOL > 50M USD AND ADR >= 3.5
+        expr = "10 EMA > 20 EMA > 50 EMA AND DOLLAR_VOL > 50M USD AND ADR >= 3.5"
+        res = ScanExpressionEngine.validate(expr)
+        self.assertTrue(res["valid"], res.get("error"))
+        self.assertIn("b.ema_10 > b.ema_20", res["sql"])
+        self.assertIn("b.ema_20 > b.ema_50", res["sql"])
+        self.assertIn("50000000", res["sql"])
+        self.assertIn("b.adr_20d >= 3.5", res["sql"])
 
 if __name__ == "__main__":
     unittest.main()

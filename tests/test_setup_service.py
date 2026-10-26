@@ -160,6 +160,61 @@ class TestCompoundScreener(unittest.TestCase):
         self.assertEqual(db_service._combine_expressions("C >= 10", ""), "C >= 10")
 
 
+    def test_weekly_ema_screeners_config(self):
+        from application.services.setup_service import setup_service
+        from application.engine.expression import ScanExpressionEngine
+
+        # 1. Lead screener
+        lead_sc = setup_service.get_setup_by_id("lead")
+        self.assertIsNotNone(lead_sc)
+        self.assertEqual(lead_sc.get("name"), "Lead")
+        self.assertIn("EMA_10", lead_sc.get("expression", ""))
+        self.assertIn("EMA_20", lead_sc.get("expression", ""))
+        self.assertIn("EMA_50", lead_sc.get("expression", ""))
+        self.assertIn("DOLLAR_VOL", lead_sc.get("expression", ""))
+        self.assertIn("ADR", lead_sc.get("expression", ""))
+        sql_lead, _, _, _, _, _ = ScanExpressionEngine.transpile_to_sql(lead_sc["expression"])
+        self.assertIn("b.ema_10 > b.ema_20", sql_lead)
+        self.assertIn("b.ema_20 > b.ema_50", sql_lead)
+
+        # 2. Mediocre screener
+        med_sc = setup_service.get_setup_by_id("mediocre")
+        self.assertIsNotNone(med_sc)
+        self.assertEqual(med_sc.get("name"), "Mediocre")
+        sql_med, _, _, _, _, _ = ScanExpressionEngine.transpile_to_sql(med_sc["expression"])
+        self.assertIn("b.ema_20 < b.ema_50", sql_med)
+        self.assertIn("b.ema_20 > b.ema_50", sql_med)
+
+        # 3. Lag screener
+        lag_sc = setup_service.get_setup_by_id("lag")
+        self.assertIsNotNone(lag_sc)
+        self.assertEqual(lag_sc.get("name"), "Lag")
+        sql_lag, _, _, _, _, _ = ScanExpressionEngine.transpile_to_sql(lag_sc["expression"])
+        self.assertIn("b.ema_10 < b.ema_20", sql_lag)
+        self.assertIn("b.ema_20 < b.ema_50", sql_lag)
+
+        # 4. Actionable Martin Luk screeners: 10-EMA Pullback
+        pb_sc = setup_service.get_setup_by_id("pullback_10ema")
+        self.assertIsNotNone(pb_sc)
+        self.assertEqual(pb_sc.get("name"), "10-EMA Pullback")
+        sql_pb, _, _, _, _, _ = ScanExpressionEngine.transpile_to_sql(pb_sc["expression"])
+        self.assertIn("b.ema_10", sql_pb)
+
+        # 5. 20-EMA Reset
+        rst_sc = setup_service.get_setup_by_id("reset_20ema")
+        self.assertIsNotNone(rst_sc)
+        self.assertEqual(rst_sc.get("name"), "20-EMA Reset")
+        sql_rst, _, _, _, _, _ = ScanExpressionEngine.transpile_to_sql(rst_sc["expression"])
+        self.assertIn("b.ema_20", sql_rst)
+
+        # 6. High Tight Breakout
+        bo_sc = setup_service.get_setup_by_id("high_tight_breakout")
+        self.assertIsNotNone(bo_sc)
+        self.assertEqual(bo_sc.get("name"), "High Tight Breakout")
+        sql_bo, _, _, _, _, _ = ScanExpressionEngine.transpile_to_sql(bo_sc["expression"])
+        self.assertIn("dist_from_52w_high", sql_bo)
+
+
 if __name__ == "__main__":
     unittest.main()
 

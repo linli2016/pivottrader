@@ -481,6 +481,13 @@ class JournalService:
                     reason TEXT DEFAULT '',
                     ignored_at TEXT DEFAULT CURRENT_TIMESTAMP
                 );
+                CREATE TABLE IF NOT EXISTS account_balances (
+                    account_id TEXT NOT NULL,
+                    currency TEXT NOT NULL,
+                    cash_balance REAL NOT NULL DEFAULT 0.0,
+                    updated_at TEXT,
+                    PRIMARY KEY (account_id, currency)
+                );
                 CREATE TABLE IF NOT EXISTS journal_meta (key TEXT PRIMARY KEY, value TEXT);
             """)
             # Migration check: add initial_stop column if missing in older schema
@@ -592,6 +599,8 @@ class JournalService:
     def import_statement(self, content: bytes) -> Dict[str, Any]:
         parsed = parse_flex_trades(content)
         execs = parsed["executions"]
+        cash_bals = parsed.get("cash_balances") or []
+        now = datetime.now().isoformat(timespec="seconds")
         with self._write_lock, self._connect() as conn:
             before = conn.execute("SELECT COUNT(*) FROM executions").fetchone()[0]
             placeholders = ",".join("?" for _ in EXEC_COLUMNS)
@@ -600,6 +609,17 @@ class JournalService:
                 [[e.get(c) for c in EXEC_COLUMNS] for e in execs],
             )
             after = conn.execute("SELECT COUNT(*) FROM executions").fetchone()[0]
+
+            for cb in cash_bals:
+                conn.execute(
+                    """INSERT INTO account_balances (account_id, currency, cash_balance, updated_at)
+                       VALUES (?, ?, ?, ?)
+                       ON CONFLICT(account_id, currency) DO UPDATE SET
+                           cash_balance = excluded.cash_balance,
+                           updated_at = excluded.updated_at""",
+                    [cb["account_id"], cb["currency"], cb["cash_balance"], now],
+                )
+
             result = {
                 "status": "success",
                 "fetched": len(execs),
@@ -608,7 +628,7 @@ class JournalService:
                 "skipped_non_stock": parsed["skipped"],
                 "accounts": parsed["accounts"],
                 "has_fifo_pnl": parsed["has_fifo_pnl"],
-                "synced_at": datetime.now().isoformat(timespec="seconds"),
+                "synced_at": now,
             }
             conn.execute(
                 "INSERT OR REPLACE INTO journal_meta (key, value) VALUES ('last_sync', ?)",
@@ -648,6 +668,7 @@ class JournalService:
             raise FlexError("No IBKR Flex Queries configured. Please configure your token and Query ID first.")
 
         all_executions: List[Dict[str, Any]] = []
+        all_cash_balances: List[Dict[str, Any]] = []
         total_skipped = 0
         all_accounts = set()
         has_fifo_pnl = False
@@ -669,6 +690,7 @@ class JournalService:
                 parsed = parse_flex_trades(content)
                 execs = parsed["executions"]
                 all_executions.extend(execs)
+                all_cash_balances.extend(parsed.get("cash_balances", []))
                 total_skipped += parsed.get("skipped", 0)
                 if parsed.get("has_fifo_pnl"):
                     has_fifo_pnl = True
@@ -689,6 +711,7 @@ class JournalService:
         if not query_results or (errors and len(errors) == len(query_targets)):
             raise FlexError("Flex sync failed:\n" + "\n".join(errors))
 
+        now = datetime.now().isoformat(timespec="seconds")
         with self._write_lock, self._connect() as conn:
             before = conn.execute("SELECT COUNT(*) FROM executions").fetchone()[0]
             placeholders = ",".join("?" for _ in EXEC_COLUMNS)
@@ -697,6 +720,17 @@ class JournalService:
                 [[e.get(c) for c in EXEC_COLUMNS] for e in all_executions],
             )
             after = conn.execute("SELECT COUNT(*) FROM executions").fetchone()[0]
+
+            for cb in all_cash_balances:
+                conn.execute(
+                    """INSERT INTO account_balances (account_id, currency, cash_balance, updated_at)
+                       VALUES (?, ?, ?, ?)
+                       ON CONFLICT(account_id, currency) DO UPDATE SET
+                           cash_balance = excluded.cash_balance,
+                           updated_at = excluded.updated_at""",
+                    [cb["account_id"], cb["currency"], cb["cash_balance"], now],
+                )
+
             result = {
                 "status": "success" if not errors else "partial",
                 "fetched": len(all_executions),
@@ -705,7 +739,7 @@ class JournalService:
                 "skipped_non_stock": total_skipped,
                 "accounts": sorted(all_accounts),
                 "has_fifo_pnl": has_fifo_pnl,
-                "synced_at": datetime.now().isoformat(timespec="seconds"),
+                "synced_at": now,
                 "query_results": query_results,
                 "errors": errors if errors else None,
             }
@@ -965,6 +999,7 @@ class JournalService:
             sum(1 for tid in ignored_map if tid.startswith(f"{account}:"))
             if account else len(ignored_map)
         )
+        balances = self.get_account_balances(trades=active_trades)
         return {
             "trades": trades,
             "stats": compute_statistics(active_trades),
@@ -975,7 +1010,146 @@ class JournalService:
             "years": sorted({e["trade_date"][:4] for e in all_execs if e.get("trade_date")}, reverse=True),
             "ignored_count": ignored_count,
             "last_sync": self.get_last_sync(),
+            "balances": balances,
         }
+
+    def get_account_balances(self, trades: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+        """Return all known accounts with their USD and CAD cash balances, open positions value,
+        Total Equity (Cash + Open Trades in USD, excluding ignored trades), and 1% risk budget."""
+        with self._connect() as conn:
+            exec_accounts = {
+                r[0]
+                for r in conn.execute(
+                    "SELECT DISTINCT account_id FROM executions WHERE account_id IS NOT NULL AND account_id != ''"
+                ).fetchall()
+            }
+            balance_accounts = {
+                r[0]
+                for r in conn.execute(
+                    "SELECT DISTINCT account_id FROM account_balances WHERE account_id IS NOT NULL AND account_id != ''"
+                ).fetchall()
+            }
+            all_accounts = sorted(exec_accounts | balance_accounts)
+
+            rows = conn.execute(
+                "SELECT account_id, currency, cash_balance, updated_at FROM account_balances"
+            ).fetchall()
+            balance_map: Dict[Tuple[str, str], Tuple[float, str]] = {
+                (r["account_id"], str(r["currency"]).upper()): (float(r["cash_balance"] or 0.0), r["updated_at"])
+                for r in rows
+            }
+
+        cfg = self._load_flex_config()
+        queries = cfg.get("queries") or []
+        account_names: Dict[str, str] = {}
+        if len(queries) == 1 and len(all_accounts) == 1:
+            account_names[all_accounts[0]] = queries[0].get("name") or "Primary Account"
+        else:
+            last_sync = self.get_last_sync() or {}
+            for qr in last_sync.get("query_results") or []:
+                q_name = qr.get("name")
+                for acct in qr.get("accounts") or []:
+                    if q_name:
+                        account_names[acct] = q_name
+
+        # Calculate Open Positions Value per account (Total Equity method)
+        # Note: excludes ignored trades and counts USD only
+        if trades is None:
+            trades = self.get_trades(include_ignored=False)
+
+        open_positions_value_by_account: Dict[str, float] = {}
+        open_trades_count_by_account: Dict[str, int] = {}
+        for t in trades:
+            if t.get("status") == "OPEN" and not t.get("is_ignored"):
+                curr = (t.get("currency") or "USD").upper()
+                if curr != "USD":
+                    continue  # Only USD trades counted for equity
+                acct = t.get("account_id") or ""
+                qty = abs(t.get("open_qty") or 0.0)
+                price = t.get("current_price")
+                if price is None:
+                    price = t.get("avg_entry") or 0.0
+
+                direction = t.get("direction", "LONG")
+                val = qty * price if direction == "LONG" else -qty * price
+                open_positions_value_by_account[acct] = open_positions_value_by_account.get(acct, 0.0) + val
+                open_trades_count_by_account[acct] = open_trades_count_by_account.get(acct, 0) + 1
+
+        accounts_data = []
+        for acct in all_accounts:
+            usd_tuple = balance_map.get((acct, "USD"))
+            cad_tuple = balance_map.get((acct, "CAD"))
+
+            usd_bal = usd_tuple[0] if usd_tuple is not None else 0.0
+            cad_bal = cad_tuple[0] if cad_tuple is not None else 0.0
+            usd_updated = usd_tuple[1] if usd_tuple is not None else None
+            cad_updated = cad_tuple[1] if cad_tuple is not None else None
+            updated_at = usd_updated or cad_updated
+
+            name = account_names.get(acct) or ("TFSA" if "TFSA" in str(cfg) else f"Account {acct}")
+
+            usd_cash = round(usd_bal, 2)
+            open_pos_val = round(open_positions_value_by_account.get(acct, 0.0), 2)
+            open_count = open_trades_count_by_account.get(acct, 0)
+
+            # Total Equity Method: Cash + Open Trades Market Value (USD)
+            total_usd_equity = round(usd_cash + open_pos_val, 2)
+            risk_1pct_usd = round(total_usd_equity * 0.01, 2)
+
+            accounts_data.append({
+                "account_id": acct,
+                "name": name,
+                "usd_balance": usd_cash,
+                "cad_balance": round(cad_bal, 2),
+                "open_positions_value": open_pos_val,
+                "open_trades_count": open_count,
+                "total_usd_equity": total_usd_equity,
+                "risk_1pct_usd": risk_1pct_usd,
+                "updated_at": updated_at,
+            })
+
+        total_usd_cash = round(sum(a["usd_balance"] for a in accounts_data), 2)
+        total_cad_cash = round(sum(a["cad_balance"] for a in accounts_data), 2)
+        total_open_positions_val = round(sum(a["open_positions_value"] for a in accounts_data), 2)
+        total_usd_equity = round(total_usd_cash + total_open_positions_val, 2)
+        total_risk_1pct = round(total_usd_equity * 0.01, 2)
+
+        return {
+            "accounts": accounts_data,
+            "total_usd_balance": total_usd_cash,
+            "total_cad_balance": total_cad_cash,
+            "total_open_positions_value": total_open_positions_val,
+            "total_usd_equity": total_usd_equity,
+            "total_risk_1pct_usd": total_risk_1pct,
+        }
+
+    def update_account_balance(self, account_id: str, usd_balance: Optional[float] = None,
+                               cad_balance: Optional[float] = None) -> Dict[str, Any]:
+        """Update or insert USD and/or CAD cash balances for an account."""
+        account_id = str(account_id).strip()
+        if not account_id:
+            raise ValueError("Account ID is required")
+        now = datetime.now().isoformat(timespec="seconds")
+        with self._write_lock, self._connect() as conn:
+            if usd_balance is not None:
+                conn.execute(
+                    """INSERT INTO account_balances (account_id, currency, cash_balance, updated_at)
+                       VALUES (?, 'USD', ?, ?)
+                       ON CONFLICT(account_id, currency) DO UPDATE SET
+                           cash_balance = excluded.cash_balance,
+                           updated_at = excluded.updated_at""",
+                    [account_id, float(usd_balance), now],
+                )
+            if cad_balance is not None:
+                conn.execute(
+                    """INSERT INTO account_balances (account_id, currency, cash_balance, updated_at)
+                       VALUES (?, 'CAD', ?, ?)
+                       ON CONFLICT(account_id, currency) DO UPDATE SET
+                           cash_balance = excluded.cash_balance,
+                           updated_at = excluded.updated_at""",
+                    [account_id, float(cad_balance), now],
+                )
+        return self.get_account_balances()
 
     def update_notes(self, trade_id: str, notes: str, tags: Optional[List[str]] = None,
                      initial_stop: Optional[float] = None) -> Dict[str, Any]:

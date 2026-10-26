@@ -408,6 +408,34 @@
     "saved_at": "2026-10-13T10:05:50.307913"
   },
   {
+    "id": "084028fe-6ed0-4cad-8470-4ecab7f04356",
+    "symbol": "TTMI",
+    "setup_date": "2026-04-10",
+    "setup_type": "HTF",
+    "setup_name": "Power Play",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [
+      "HTF"
+    ],
+    "saved_at": "2026-09-12T22:22:45.874037",
+    "updated_at": "2026-10-25T22:14:01.103768"
+  },
+  {
+    "id": "b4550065-2505-43b7-af43-436a205d899e",
+    "symbol": "MKSI",
+    "setup_date": "2026-04-08",
+    "setup_type": "HTF",
+    "setup_name": "Power Play",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [
+      "HTF"
+    ],
+    "saved_at": "2026-09-12T22:21:55.716119",
+    "updated_at": "2026-10-25T21:57:39.605148"
+  },
+  {
     "id": "ddf1f18c-e64f-4e04-ba39-064d14a5dcc9",
     "symbol": "FORM",
     "setup_date": "2026-04-07",
@@ -512,19 +540,6 @@
     "saved_at": "2026-09-12T22:23:44.822806"
   },
   {
-    "id": "084028fe-6ed0-4cad-8470-4ecab7f04356",
-    "symbol": "TTMI",
-    "setup_date": "2026-03-12",
-    "setup_type": "HTF",
-    "setup_name": "Power Play",
-    "market_regime": "BEARISH",
-    "notes": "",
-    "tags": [
-      "HTF"
-    ],
-    "saved_at": "2026-09-12T22:22:45.874037"
-  },
-  {
     "id": "19235bf1-7e89-4848-bdd6-46870a285e04",
     "symbol": "LWLG",
     "setup_date": "2026-03-12",
@@ -552,19 +567,6 @@
     "updated_at": "2026-09-13T10:51:07.199560"
   },
   {
-    "id": "b4550065-2505-43b7-af43-436a205d899e",
-    "symbol": "MKSI",
-    "setup_date": "2026-03-09",
-    "setup_type": "HTF",
-    "setup_name": "Power Play",
-    "market_regime": "BEARISH",
-    "notes": "",
-    "tags": [
-      "HTF"
-    ],
-    "saved_at": "2026-09-12T22:21:55.716119"
-  },
-  {
     "id": "5a16854b-ea94-4bde-be9d-8b444561b8cd",
     "symbol": "DELL",
     "setup_date": "2026-02-27",
@@ -589,6 +591,20 @@
       "EP"
     ],
     "saved_at": "2026-10-13T10:02:46.067223"
+  },
+  {
+    "id": "84cab0c9-f12f-4a87-b0f3-35cfc1471739",
+    "symbol": "SYRE",
+    "setup_date": "2026-02-13",
+    "setup_type": "HTF",
+    "setup_name": "Power Play",
+    "market_regime": "BEARISH",
+    "notes": "",
+    "tags": [
+      "HTF"
+    ],
+    "saved_at": "2026-09-12T22:20:17.250038",
+    "updated_at": "2026-10-25T21:54:49.710845"
   },
   {
     "id": "a38bfdfa-389f-4f1c-a4dd-77d57d6c1d4b",
@@ -656,6 +672,20 @@
     "saved_at": "2026-10-17T14:45:51.162974"
   },
   {
+    "id": "c72300ad-3802-4c17-91fb-792957d2e4c8",
+    "symbol": "LITE",
+    "setup_date": "2026-01-30",
+    "setup_type": "HTF",
+    "setup_name": "Power Play",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [
+      "HTF"
+    ],
+    "saved_at": "2026-09-12T22:19:34.608320",
+    "updated_at": "2026-10-25T21:52:55.492257"
+  },
+  {
     "id": "5223e297-04c9-450a-aee3-0896f33d1675",
     "symbol": "MOD",
     "setup_date": "2026-01-29",
@@ -667,32 +697,6 @@
       "EP"
     ],
     "saved_at": "2026-10-13T09:59:40.251125"
-  },
-  {
-    "id": "84cab0c9-f12f-4a87-b0f3-35cfc1471739",
-    "symbol": "SYRE",
-    "setup_date": "2026-01-26",
-    "setup_type": "HTF",
-    "setup_name": "Power Play",
-    "market_regime": "BULLISH",
-    "notes": "",
-    "tags": [
-      "HTF"
-    ],
-    "saved_at": "2026-09-12T22:20:17.250038"
-  },
-  {
-    "id": "c72300ad-3802-4c17-91fb-792957d2e4c8",
-    "symbol": "LITE",
-    "setup_date": "2026-01-26",
-    "setup_type": "HTF",
-    "setup_name": "Power Play",
-    "market_regime": "BULLISH",
-    "notes": "",
-    "tags": [
-      "HTF"
-    ],
-    "saved_at": "2026-09-12T22:19:34.608320"
   },
   {
     "id": "2cf84459-dcf2-43d1-b7b8-028e930898ed",
@@ -890,20 +894,6 @@
     "saved_at": "2026-10-13T14:33:50.295485"
   },
   {
-    "id": "f853ebf6-d084-4c49-9989-4f4a07c94bec",
-    "symbol": "GH",
-    "setup_date": "2026-01-06",
-    "setup_type": "HTF",
-    "setup_name": "Power Play",
-    "market_regime": "BULLISH",
-    "notes": "",
-    "tags": [
-      "HTF"
-    ],
-    "saved_at": "2026-09-12T22:09:09.547109",
-    "updated_at": "2026-09-13T11:29:27.612408"
-  },
-  {
     "id": "3c3f2693-ec57-4f8c-acc8-10b768d313ba",
     "symbol": "NOC",
     "setup_date": "2026-01-05",
@@ -941,20 +931,6 @@
       "VCP"
     ],
     "saved_at": "2026-10-17T14:30:16.309879"
-  },
-  {
-    "id": "16086f68-b134-4236-906c-3a43789401f0",
-    "symbol": "BWXT",
-    "setup_date": "2026-01-02",
-    "setup_type": "VCP",
-    "setup_name": "Low Cheat",
-    "market_regime": "CAUTION",
-    "notes": "",
-    "tags": [
-      "VCP"
-    ],
-    "saved_at": "2026-10-17T14:30:00.224944",
-    "updated_at": "2026-10-17T21:55:43.880195"
   },
   {
     "id": "3f0362f6-a23c-4474-9b8a-f89071b6e03c",

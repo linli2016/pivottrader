@@ -198,9 +198,41 @@ def parse_flex_trades(content: bytes, asset_categories: Optional[set] = None) ->
     skipped = 0
     accounts = set()
     has_fifo = False
+    cash_balances: List[Dict[str, Any]] = []
 
     for stmt in root.iter("FlexStatement"):
         stmt_account = stmt.get("accountId") or ""
+
+        # Parse cash reports if available in statement
+        for cr in stmt.findall("CashReport"):
+            for crc in cr.findall("CashReportCurrency"):
+                curr = (crc.get("currency") or "").strip().upper()
+                acct = crc.get("accountId") or stmt_account
+                if curr in ("USD", "CAD") and acct:
+                    val = _to_float(crc.get("endingCash"))
+                    if val is None:
+                        val = _to_float(crc.get("endingSettledCash"))
+                    if val is None:
+                        val = _to_float(crc.get("cash"))
+                    if val is not None:
+                        cash_balances.append({
+                            "account_id": acct,
+                            "currency": curr,
+                            "cash_balance": val,
+                        })
+
+        for eq in stmt.findall("EquitySummaryInBase"):
+            acct = eq.get("accountId") or stmt_account
+            val = _to_float(eq.get("cash"))
+            curr = (eq.get("currency") or "USD").strip().upper()
+            if curr in ("USD", "CAD") and acct and val is not None:
+                if not any(cb["account_id"] == acct and cb["currency"] == curr for cb in cash_balances):
+                    cash_balances.append({
+                        "account_id": acct,
+                        "currency": curr,
+                        "cash_balance": val,
+                    })
+
         for trades_el in stmt.findall("Trades"):
             for el in trades_el.findall("Trade"):
                 a = el.attrib
@@ -273,5 +305,6 @@ def parse_flex_trades(content: bytes, asset_categories: Optional[set] = None) ->
         "skipped": skipped,
         "has_fifo_pnl": has_fifo,
         "accounts": sorted(a for a in accounts if a),
+        "cash_balances": cash_balances,
     }
 

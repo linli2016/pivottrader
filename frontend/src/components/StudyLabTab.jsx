@@ -40,6 +40,12 @@ const SETUP_COLORS = {
   '3m': '#818cf8',
   '6m': '#06b6d4',
   ipo_base: '#06b6d4',
+  lead: '#10b981',
+  mediocre: '#f59e0b',
+  lag: '#f43f5e',
+  pullback_10ema: '#38bdf8',
+  reset_20ema: '#818cf8',
+  high_tight_breakout: '#f59e0b',
   trend_1m: '#34d399',
   trend_1_4m: '#10b981',
   trend_5m: '#059669',
@@ -78,6 +84,12 @@ const SETUP_CANONICAL_NAMES = {
   '6m': '6M Gainers',
   all: 'All Gainers + Stage 2',
   ipo_base: 'IPO Base',
+  lead: 'Lead',
+  mediocre: 'Mediocre',
+  lag: 'Lag',
+  pullback_10ema: '10-EMA Pullback',
+  reset_20ema: '20-EMA Reset',
+  high_tight_breakout: 'High Tight Breakout',
   confirmed_staged: 'Confirmed Staged',
   stage1: 'Stage 1 Basing',
   stage2: 'Stage 2 Advancing',
@@ -635,7 +647,7 @@ export default function StudyLabTab({
   // Export CSV
   const handleExportCSV = () => {
     if (displayedCandidates.length === 0) return;
-    const headers = ['Symbol', 'Date', 'Name', 'Sector', 'Industry', 'Close', 'ADR20d', 'RS_Rank', 'TI65', 'Ret_1M', 'Ret_3M', 'Ret_6M', 'Inst_Holders'];
+    const headers = ['Symbol', 'Date', 'Name', 'Sector', 'Industry', 'Close', 'ADR20d', 'RS_Rank', 'TI65', 'ER20', 'Ret_1M', 'Ret_3M', 'Ret_6M', 'Inst_Holders'];
     const rows = displayedCandidates.map(c => [
       c.symbol,
       c.setup_date || c.date || '',
@@ -646,6 +658,7 @@ export default function StudyLabTab({
       c.adr_20d ?? '',
       c.rs_rank ?? '',
       c.ti_65 ?? '',
+      c.er_20d ?? '',
       c.ret_1m ?? '',
       c.ret_3m ?? '',
       c.ret_6m ?? '',
@@ -1011,6 +1024,7 @@ export default function StudyLabTab({
             showEarningsBadge={false}
             watchlists={watchlists}
             targetWatchlistId={targetWatchlistId}
+            targetWatchlistSymbols={activeWatchlistSymbols}
             onTargetWatchlistChange={setTargetWatchlistId}
             onToggleWatchlist={handleToggleWatchlist}
             onSelectGroup={(type, name) => setPreviewGroupModal({ groupType: type, groupName: name })}

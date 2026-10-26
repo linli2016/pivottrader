@@ -54,6 +54,16 @@ def get_watchlists():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/symbols")
+def get_all_watchlist_symbols():
+    """Retrieve all distinct symbols across all watchlists."""
+    try:
+        return db_service.get_all_watchlist_symbols()
+    except Exception as e:
+        logger.error(f"Error in get_all_watchlist_symbols: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("")
 def create_watchlist(payload: WatchlistCreateSchema):
     """Create a new watchlist."""

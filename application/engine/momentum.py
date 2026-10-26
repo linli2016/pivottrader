@@ -160,6 +160,7 @@ class MomentumEngine:
                         COALESCE(ABS(high - prev_close), 0),
                         COALESCE(ABS(low - prev_close), 0)
                     ) as tr,
+                    LAG(close, 20) OVER (PARTITION BY symbol ORDER BY date) as close_20d,
                     LAG(close, 21) OVER (PARTITION BY symbol ORDER BY date) as close_1m,
                     LAG(close, 63) OVER (PARTITION BY symbol ORDER BY date) as close_3m,
                     LAG(close, 126) OVER (PARTITION BY symbol ORDER BY date) as close_6m,
@@ -177,6 +178,7 @@ class MomentumEngine:
                     dollar_vol_50d_ma,
                     AVG((high / NULLIF(low, 0) - 1.0) * 100.0) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) as adr_20d,
                     AVG(tr) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) / NULLIF(close, 0) * 100 as atr_20d,
+                    ROUND((close - close_20d) / NULLIF(SUM(COALESCE(ABS(close - prev_close), 0)) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW), 0), 4) as er_20d,
                     sma_50,
                     sma_150,
                     sma_200,
@@ -259,6 +261,7 @@ class MomentumEngine:
                     vol_50d_ma,
                     dollar_vol_50d_ma,
                     adr_20d,
+                    er_20d,
                     atr_20d,
                     sma_50,
                     sma_150,
@@ -296,6 +299,7 @@ class MomentumEngine:
                     vol_50d_ma,
                     dollar_vol_50d_ma,
                     adr_20d,
+                    er_20d,
                     atr_20d,
                     sma_50,
                     sma_150,
@@ -351,6 +355,7 @@ class MomentumEngine:
                 vol_50d_ma = src.vol_50d_ma,
                 dollar_vol_50d_ma = src.dollar_vol_50d_ma,
                 adr_20d = src.adr_20d,
+                er_20d = src.er_20d,
                 atr_20d = src.atr_20d,
                 ret_1m = src.ret_1m,
                 ret_3m = src.ret_3m,
@@ -393,6 +398,7 @@ class MomentumEngine:
                     rs_score,
                     rs_rank,
                     adr_20d,
+                    er_20d,
                     atr_20d,
                     ret_1m,
                     ret_3m,
@@ -437,6 +443,7 @@ class MomentumEngine:
                     vol_50d_ma,
                     dollar_vol_50d_ma,
                     adr_20d,
+                    er_20d,
                     atr_20d,
                     ret_1m,
                     ret_3m,
@@ -626,6 +633,46 @@ class MomentumEngine:
                     WHERE daily_bars.symbol = src.symbol AND daily_bars.date = src.date
                 """)
                 conn.execute("DROP TABLE temp_updates")
+
+                # Update normalized_rs for latest date
+                try:
+                    conn.execute("""
+                        WITH latest_date_const AS (
+                            SELECT MAX(date) as val FROM daily_bars
+                        ),
+                        spy_bars AS (
+                            SELECT date, close as spy_close 
+                            FROM daily_bars 
+                            WHERE symbol = 'SPY'
+                        ),
+                        stock_bars AS (
+                            SELECT d.symbol, d.date, d.close, s.spy_close,
+                                   (d.close / NULLIF(s.spy_close, 0)) * 100.0 as rs_line,
+                                   ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date DESC) as rn
+                            FROM daily_bars d
+                            JOIN spy_bars s ON d.date = s.date
+                        ),
+                        rs_win AS (
+                            SELECT symbol, rs_line, rn,
+                                   MIN(rs_line) OVER (PARTITION BY symbol) as min_rs,
+                                   MAX(rs_line) OVER (PARTITION BY symbol) as max_rs
+                            FROM stock_bars
+                            WHERE rn <= 252
+                        ),
+                        latest_rs AS (
+                            SELECT symbol,
+                                   ROUND(GREATEST(-1.0, LEAST(1.0, ((rs_line - min_rs) / NULLIF(max_rs - min_rs, 0)) * 2.0 - 1.0)), 2) as normalized_rs
+                            FROM rs_win
+                            WHERE rn = 1
+                        )
+                        UPDATE daily_bars
+                        SET normalized_rs = src.normalized_rs
+                        FROM latest_rs src
+                        WHERE daily_bars.symbol = src.symbol
+                          AND daily_bars.date = (SELECT val FROM latest_date_const);
+                    """)
+                except Exception as e:
+                    logger.warning(f"Error computing normalized_rs in momentum engine: {e}")
 
     def get_momentum_candidates(self, min_price: float = 5.00, min_vol_sma: int = 100000, min_dollar_vol: float = 10000000.0, min_rank: int = 70) -> List[Dict[str, Any]]:
         """

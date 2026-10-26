@@ -953,5 +953,178 @@
   font-size: 10px;
 }
 
+/* ----------------- Account Cash Balances & Van Tharp ----------------- */
 
+.jr-accounts-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 
+.jr-accounts-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.jr-accounts-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.jr-accounts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.jr-account-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  transition: var(--transition-smooth);
+}
+.jr-account-card:hover {
+  border-color: rgba(16, 185, 129, 0.3);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.jr-account-card-active {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: linear-gradient(145deg, rgba(16, 185, 129, 0.05), var(--card-bg));
+}
+
+.jr-account-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.jr-account-name-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.jr-account-badge-id {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.jr-account-name {
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--text-primary);
+}
+
+.jr-account-balances-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 10px 12px;
+  border-radius: var(--border-radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.jr-balance-primary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.jr-balance-breakdown {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.jr-balance-breakdown b {
+  color: var(--text-secondary);
+}
+
+.jr-balance-primary .stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #34d399;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.jr-balance-usd {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #34d399;
+  font-family: var(--font-mono);
+}
+
+.jr-balance-secondary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.jr-balance-secondary .stat-label {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.jr-balance-cad {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.jr-account-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.jr-risk-budget-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: #34d399;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.jr-account-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}

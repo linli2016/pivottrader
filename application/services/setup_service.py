@@ -154,6 +154,11 @@ class SetupService:
             "tags": tags_dict
         }
         self._last_mtime = os.path.getmtime(resolved_setups_path) if os.path.exists(resolved_setups_path) else 0.0
+        try:
+            from application.engine.expression import ScanExpressionEngine
+            ScanExpressionEngine.clear_cache()
+        except Exception:
+            pass
         logger.info(f"Loaded {len(folders_list)} folders, {len(setups_list)} setups, and {len(tags_dict)} tags from {resolved_setups_path}")
         return self._cached_config
 

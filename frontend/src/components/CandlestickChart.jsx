@@ -1864,7 +1864,10 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedDrawingIdRef.current && handleDeleteSelectedDrawingRef.current) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
           handleDeleteSelectedDrawingRef.current();
+          return;
         }
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
@@ -1887,11 +1890,11 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    window.addEventListener('keyup', handleKeyUp, { capture: true });
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('keydown', handleKeyDown, { capture: true });
+      window.removeEventListener('keyup', handleKeyUp, { capture: true });
     };
   }, []);
 

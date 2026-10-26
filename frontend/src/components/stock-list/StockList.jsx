@@ -43,7 +43,9 @@ export default function StockList({
 
   watchlists = [],
   targetWatchlistId = null,
+  targetWatchlistSymbols = null,
   onTargetWatchlistChange = null,
+  onToggleTargetWatchlist = null,
   onBatchAddToWatchlist = null,
   isAddingBatchToTarget = false,
 
@@ -62,6 +64,7 @@ export default function StockList({
   loading = false,
   loadingMessage = 'Loading stocks...',
   emptyMessage = 'No stocks found.',
+  onSortedItemsChange = null,
 
   // Keyboard navigation & behavior
   enableKeyboardNav = true,
@@ -201,6 +204,10 @@ export default function StockList({
         return copy;
     }
   }, [filteredItems, sortBy]);
+
+  useEffect(() => {
+    onSortedItemsChange?.(sortedItems);
+  }, [sortedItems, onSortedItemsChange]);
 
   // Selection toggle handlers
   const handleToggleSelectSymbol = useCallback(
@@ -381,6 +388,10 @@ export default function StockList({
         renderCell={renderCell}
         renderRowActions={renderRowActions}
         onRemoveSymbol={onRemoveSymbol}
+        targetWatchlistSymbols={targetWatchlistSymbols}
+        targetWatchlistId={targetWatchlistId}
+        watchlists={watchlists}
+        onToggleTargetWatchlist={onToggleTargetWatchlist}
       />
     </div>
   );

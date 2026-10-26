@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import StockBrandIcon from '../StockBrandIcon';
-import ThreeStopCalculatorModal from '../ThreeStopCalculatorModal';
 
 export function cleanCompanyName(rawName, symbol) {
   if (!rawName) return symbol || '';
@@ -54,7 +53,7 @@ export default function StockInfo({
   // Telemetry metrics
   const rsRank = stock?.rs_rank ?? stockDetail?.rs_rank ?? null;
   const adrVal = stock?.adr_20d ?? stockDetail?.adr_20d ?? null;
-  const tiVal = stockDetail?.ti_65 ?? stock?.ti_65 ?? null;
+  const erVal = stock?.er_20d ?? stockDetail?.er_20d ?? stockDetail?.metrics?.er_20d ?? null;
 
   // Check if latest session completed a Pocket Pivot
   const latestIsPocketPivot = useMemo(() => {
@@ -114,43 +113,10 @@ export default function StockInfo({
   // Market Regime
   const effectiveRegime = marketRegime || stock?.market_regime || null;
 
-  // Earnings date badge
-  const earningsBadge = useMemo(() => {
-    const dt = stock?.next_earnings_date || stockDetail?.next_earnings_date || stockDetail?.metadata?.next_earnings_date;
-    if (!dt) return null;
-    try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const target = new Date(dt + 'T00:00:00');
-      const diffDays = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-      let badgeSub = '';
-      let isUrgent = false;
-
-      if (diffDays === 0) {
-        badgeSub = 'Today';
-        isUrgent = true;
-      } else if (diffDays === 1) {
-        badgeSub = 'Tomorrow';
-        isUrgent = true;
-      } else if (diffDays > 1) {
-        badgeSub = `in ${diffDays}d`;
-        if (diffDays <= 7) isUrgent = true;
-      } else {
-        badgeSub = `${Math.abs(diffDays)}d ago`;
-      }
-      return { dateStr: dt, badgeSub, isUrgent, displayText: `Earning: ${dt} (${badgeSub})` };
-    } catch {
-      return { dateStr: dt, displayText: `Earning: ${dt}`, isUrgent: false };
-    }
-  }, [stock?.next_earnings_date, stockDetail?.next_earnings_date, stockDetail?.metadata?.next_earnings_date]);
-
   const targetWatchlist = useMemo(() => {
     if (!targetWatchlistId || !watchlists) return null;
     return watchlists.find((w) => w.id === targetWatchlistId) || null;
   }, [watchlists, targetWatchlistId]);
-
-  // Three-Stop Risk Sizer state & derivations
-  const [showCalcModal, setShowCalcModal] = useState(false);
 
   const latestPrice = useMemo(() => {
     if (stockPrices && stockPrices.length > 0) {
@@ -166,17 +132,6 @@ export default function StockInfo({
 
   const isExtDanger = extAtrVal !== null && extAtrVal > 4.0;
   const isExtWarn = extAtrVal !== null && extAtrVal > 3.2 && extAtrVal <= 4.0;
-
-  const entryPriceVal = latestPrice?.close ?? stock?.close ?? stockDetail?.close ?? null;
-  const stopPriceVal = latestPrice?.low ?? stock?.low ?? null;
-  const dollarAtrVal = useMemo(() => {
-    const c = Number(entryPriceVal);
-    const atrPct = Number(latestPrice?.atr_20d ?? stock?.atr_20d ?? stockDetail?.atr_20d ?? adrVal ?? 3.0);
-    if (c > 0 && atrPct > 0) {
-      return c * (atrPct / 100.0);
-    }
-    return null;
-  }, [entryPriceVal, latestPrice, stock, stockDetail, adrVal]);
 
   return (
     <div
@@ -228,6 +183,31 @@ export default function StockInfo({
                 title="Loading latest candles..."
               >
                 ⟳
+              </span>
+            )}
+            {/* Target Watchlist Saved Indicator Badge */}
+            {isWatchlistSaved && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '3px',
+                  padding: '2px 7px',
+                  borderRadius: '4px',
+                  background: 'rgba(16, 185, 129, 0.2)',
+                  border: '1px solid rgba(16, 185, 129, 0.45)',
+                  color: '#34d399',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  whiteSpace: 'nowrap',
+                  cursor: onToggleWatchlist ? 'pointer' : 'default',
+                  flexShrink: 0,
+                  boxShadow: '0 0 8px rgba(16, 185, 129, 0.2)'
+                }}
+                title={`Already saved in "${targetWatchlist?.name || 'target watchlist'}" (Click or press W to toggle)`}
+                onClick={() => onToggleWatchlist?.(symbol)}
+              >
+                ★ In {targetWatchlist?.name || 'Target'}
               </span>
             )}
           </div>
@@ -355,9 +335,10 @@ export default function StockInfo({
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                width: '28px',
+                gap: '4px',
                 height: '28px',
-                padding: 0,
+                padding: isWatchlistSaved ? '0 8px' : '0',
+                width: isWatchlistSaved ? 'auto' : '28px',
                 borderRadius: '5px',
                 boxSizing: 'border-box',
                 transition: 'all 0.15s ease',
@@ -369,9 +350,12 @@ export default function StockInfo({
               }}
             >
               {isWatchlistSaved ? (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="#34d399" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                </svg>
+                <>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="#34d399" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                  </svg>
+                  <span style={{ fontSize: '11px', fontWeight: 700 }}>Saved</span>
+                </>
               ) : (
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -381,33 +365,6 @@ export default function StockInfo({
             </button>
           )}
 
-          {/* Stop Position Sizer Calculator Button */}
-          <button
-            type="button"
-            onClick={() => setShowCalcModal(true)}
-            title="Open 2-Stop / 3-Stop Position Sizer & LoD Risk Calculator"
-            aria-label="Stop Position Sizer"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              height: '28px',
-              padding: '0 8px',
-              borderRadius: '5px',
-              boxSizing: 'border-box',
-              background: 'rgba(56, 189, 248, 0.12)',
-              border: '1px solid rgba(56, 189, 248, 0.35)',
-              color: '#38bdf8',
-              cursor: 'pointer',
-              fontSize: '11px',
-              fontWeight: 700,
-              transition: 'all 0.15s ease',
-              flexShrink: 0,
-            }}
-          >
-            <span>🧮</span>
-            <span>Stop Sizer</span>
-          </button>
 
           {/* Multi-Chart View (Daily + Monthly + Weekly) Toggle Button */}
           {onToggleMultiCharts && (
@@ -577,20 +534,21 @@ export default function StockInfo({
           </span>
         )}
 
-        {/* TI65 (Trend Intensity) */}
-        {tiVal !== null && tiVal !== undefined && (
+        {/* ER20 (Kaufman / Stockbee Price Linearity) */}
+        {erVal !== null && erVal !== undefined && (
           <span
+            title="Kaufman 20-Day Fractal Efficiency Ratio (Stockbee Price Linearity). Range -1.0 to +1.0. >= +0.35 indicates low-friction institutional linear trend."
             style={{
               fontSize: '11px',
               padding: '2px 8px',
               borderRadius: '12px',
-              background: tiVal >= 1.05 ? 'rgba(16, 185, 129, 0.18)' : tiVal < 0.95 ? 'rgba(239, 68, 68, 0.18)' : 'rgba(255, 255, 255, 0.06)',
-              color: tiVal >= 1.05 ? '#34d399' : tiVal < 0.95 ? '#f87171' : 'var(--text-secondary, #94a3b8)',
-              border: `1px solid ${tiVal >= 1.05 ? 'rgba(16, 185, 129, 0.35)' : 'rgba(255, 255, 255, 0.1)'}`,
-              fontWeight: 600,
+              background: erVal >= 0.35 ? 'rgba(16, 185, 129, 0.2)' : erVal <= -0.30 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255, 255, 255, 0.06)',
+              color: erVal >= 0.35 ? '#34d399' : erVal <= -0.30 ? '#f87171' : 'var(--text-secondary, #94a3b8)',
+              border: `1px solid ${erVal >= 0.35 ? 'rgba(16, 185, 129, 0.4)' : erVal <= -0.30 ? 'rgba(239, 68, 68, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
+              fontWeight: erVal >= 0.35 || erVal <= -0.30 ? 700 : 600,
             }}
           >
-            TI65: {Number(tiVal).toFixed(2)}
+            ER20: {erVal > 0 ? '+' : ''}{Number(erVal).toFixed(2)}{erVal >= 0.35 ? ' ⚡ Linear' : erVal <= -0.30 ? ' 🔻' : ''}
           </span>
         )}
 
@@ -714,34 +672,7 @@ export default function StockInfo({
           </span>
         )}
 
-        {/* Next Earnings Date Badge */}
-        {showEarningsBadge && earningsBadge && (
-          <span
-            style={{
-              fontSize: '11px',
-              padding: '2px 8px',
-              borderRadius: '12px',
-              fontWeight: 700,
-              background: earningsBadge.isUrgent ? 'rgba(239, 68, 68, 0.2)' : 'rgba(168, 85, 247, 0.2)',
-              color: earningsBadge.isUrgent ? '#f87171' : '#c084fc',
-              border: `1px solid ${earningsBadge.isUrgent ? 'rgba(239, 68, 68, 0.4)' : 'rgba(168, 85, 247, 0.4)'}`,
-            }}
-            title={`Next Earnings Date: ${earningsBadge.dateStr}`}
-          >
-            {earningsBadge.displayText}
-          </span>
-        )}
       </div>
-
-      {/* Jeff Sun 3-Stop Risk & Position Sizing Calculator Modal */}
-      <ThreeStopCalculatorModal
-        isOpen={showCalcModal}
-        onClose={() => setShowCalcModal(false)}
-        symbol={symbol}
-        initialEntryPrice={entryPriceVal}
-        initialStopPrice={stopPriceVal}
-        initialAtr={dollarAtrVal}
-      />
     </div>
   );
 }
