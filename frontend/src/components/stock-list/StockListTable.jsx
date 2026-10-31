@@ -2,9 +2,13 @@ import React from 'react';
 import StockListRow from './StockListRow';
 
 const COLUMN_DEFAULTS = {
+  flag: { label: '⚑', align: 'center', sortable: true, sortAsc: 'flag_asc', sortDesc: 'flag_desc', width: '32px', tooltip: 'Flag color. Click to sort by priority (Green → Orange → Blue → Purple → Red).' },
   symbol: { label: 'Symbol', align: 'left', sortable: true, sortAsc: 'symbol', sortDesc: 'symbol_desc' },
   today_pct: { label: 'Today', align: 'right', sortable: true, sortAsc: 'chg_pct_asc', sortDesc: 'chg_pct_desc' },
   rs_rank: { label: 'RS', align: 'center', sortable: true, sortAsc: 'rs_rank_asc', sortDesc: 'rs_rank', tooltip: 'IBD Relative Strength Rank (1–99). Click to sort.' },
+  proj_rvol: { label: 'RVOL', align: 'right', sortable: true, sortAsc: 'proj_rvol_asc', sortDesc: 'proj_rvol', tooltip: 'Projected end-of-day Relative Volume (U-shaped intraday curve). Click to sort.' },
+  eps_growth: { label: 'EPS%', align: 'right', sortable: true, sortAsc: 'eps_growth_asc', sortDesc: 'eps_growth', tooltip: 'Latest Quarter Diluted EPS YoY Growth % (Zanger Rule >= 40%). Click to sort.' },
+  sales_growth: { label: 'Sales%', align: 'right', sortable: true, sortAsc: 'sales_growth_asc', sortDesc: 'sales_growth', tooltip: 'Latest Quarter Revenue/Sales YoY Growth % (Zanger Rule >= 40%). Click to sort.' },
   ext_atr_50: { label: '50-ATR', align: 'center', sortable: true, sortAsc: 'ext_atr_50_asc', sortDesc: 'ext_atr_50_desc', tooltip: 'Extension from 50 SMA in multiples of 20-day ATR (Jeff Sun Guardrail <= 4x). Click to sort.' },
   rs_line: { label: 'RS Line', align: 'right', sortable: true, sortAsc: 'rs_line_asc', sortDesc: 'rs_line', tooltip: 'Normalized Relative Strength Line vs SPY [-1.00 to +1.00]. Click to sort.' },
   date: { label: 'Date', align: 'right', sortable: true, sortAsc: 'date_asc', sortDesc: 'date_desc' },
@@ -36,15 +40,9 @@ export default function StockListTable({
   renderRowActions = null,
   onRemoveSymbol = null,
   targetWatchlistSymbols = null,
-  targetWatchlistId = null,
-  watchlists = [],
   onToggleTargetWatchlist = null,
+  onUpdateFlag = null,
 }) {
-  const targetWatchlistName = React.useMemo(() => {
-    if (!targetWatchlistId || !watchlists || watchlists.length === 0) return '';
-    const found = watchlists.find((w) => w.id === targetWatchlistId);
-    return found?.name || '';
-  }, [targetWatchlistId, watchlists]);
   const handleSortClick = (colKey) => {
     const meta = COLUMN_DEFAULTS[colKey];
     if (!meta || !meta.sortable) return;
@@ -143,9 +141,17 @@ export default function StockListTable({
               const isSelected = checkIsSelected
                 ? checkIsSelected(item, idx)
                 : selectedStock
-                ? (item === selectedStock || (selectedStock.id !== undefined && item.id !== undefined && item.id === selectedStock.id))
+                ? (
+                    item === selectedStock ||
+                    (selectedStock.id !== undefined && item.id !== undefined && item.id === selectedStock.id) ||
+                    ((selectedStock.symbol || selectedStock) && (selectedStock.symbol || selectedStock).toUpperCase() === sym)
+                  )
                 : selectedItem
-                ? (item === selectedItem || (selectedItem.id !== undefined && item.id !== undefined && item.id === selectedItem.id))
+                ? (
+                    item === selectedItem ||
+                    (selectedItem.id !== undefined && item.id !== undefined && item.id === selectedItem.id) ||
+                    ((selectedItem.symbol || selectedItem) && (selectedItem.symbol || selectedItem).toUpperCase() === sym)
+                  )
                 : activeSym
                 ? activeSym === sym
                 : false;
@@ -167,8 +173,8 @@ export default function StockListTable({
                   onRemove={onRemoveSymbol}
                   rowRef={isSelected ? selectedRowRef : null}
                   targetWatchlistSymbols={targetWatchlistSymbols}
-                  targetWatchlistName={targetWatchlistName}
                   onToggleTargetWatchlist={onToggleTargetWatchlist}
+                  onUpdateFlag={onUpdateFlag}
                 />
               );
             })

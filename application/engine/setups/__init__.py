@@ -4,7 +4,6 @@ PivotTrader Setup Screeners Package
 Contains specialized technical screener detectors for chart patterns:
 - Volatility Contraction Pattern (VCP)
 - Episodic Pivots (EP)
-- Parabolic Extension (Short & Long Climax)
 - Power Play
 - Breakout
 - Low Cheat
@@ -13,7 +12,6 @@ Contains specialized technical screener detectors for chart patterns:
 from application.engine.setups.base import BaseSetupDetector, SetupRegistry
 from application.engine.setups.vcp import detect_vcp
 from application.engine.setups.episodic_pivot import detect_episodic_pivot
-from application.engine.setups.parabolic_extension import detect_parabolic_extension
 from application.engine.setups.power_play import detect_power_play
 from application.engine.setups.breakout import detect_breakout
 from application.engine.setups.low_cheat import detect_low_cheat, detect_cheat
@@ -28,11 +26,6 @@ class VCPDetector(BaseSetupDetector):
 class EpisodicPivotDetector(BaseSetupDetector):
     def detect(self, **kwargs):
         return detect_episodic_pivot(**kwargs)
-
-@SetupRegistry.register("parabolic_extension")
-class ParabolicExtensionDetector(BaseSetupDetector):
-    def detect(self, **kwargs):
-        return detect_parabolic_extension(**kwargs)
 
 @SetupRegistry.register("power_play")
 class PowerPlayDetector(BaseSetupDetector):
@@ -54,7 +47,6 @@ __all__ = [
     "SetupRegistry",
     "detect_vcp",
     "detect_episodic_pivot",
-    "detect_parabolic_extension",
     "detect_power_play",
     "detect_breakout",
     "detect_low_cheat",

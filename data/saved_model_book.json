@@ -1,5 +1,31 @@
 [
   {
+    "id": "aeca7731-3958-48b6-b385-eea2e9a7d39c",
+    "symbol": "HNGE",
+    "setup_date": "2026-08-24",
+    "setup_type": "BO",
+    "setup_name": "Breakout",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [
+      "BO"
+    ],
+    "saved_at": "2026-10-29T21:53:57.741447"
+  },
+  {
+    "id": "94eb4664-ef06-403f-b975-d0103368de27",
+    "symbol": "CVI",
+    "setup_date": "2026-08-21",
+    "setup_type": "BO",
+    "setup_name": "Breakout",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [
+      "BO"
+    ],
+    "saved_at": "2026-10-29T21:52:23.307120"
+  },
+  {
     "id": "4d88d989-a22a-4a79-9d9a-231263318319",
     "symbol": "RSKD",
     "setup_date": "2026-08-12",
@@ -66,6 +92,32 @@
     "saved_at": "2026-10-13T09:42:07.613419"
   },
   {
+    "id": "94bca04a-bd8f-42c2-953b-c449e01f9448",
+    "symbol": "ZETA",
+    "setup_date": "2026-08-05",
+    "setup_type": "BO",
+    "setup_name": "Breakout",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [
+      "BO"
+    ],
+    "saved_at": "2026-10-29T21:51:31.793222"
+  },
+  {
+    "id": "3761bec1-65a0-4c56-b1c5-b7b856f1bcc6",
+    "symbol": "AYA",
+    "setup_date": "2026-08-05",
+    "setup_type": "BO",
+    "setup_name": "Breakout",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [
+      "BO"
+    ],
+    "saved_at": "2026-10-29T21:50:50.468374"
+  },
+  {
     "id": "84eaa025-ecf7-443a-9295-dbe6dd128d5f",
     "symbol": "ZBRA",
     "setup_date": "2026-08-04",
@@ -77,6 +129,19 @@
       "EP"
     ],
     "saved_at": "2026-10-13T09:41:44.327112"
+  },
+  {
+    "id": "3297ff70-bae1-4012-8073-9993650a7022",
+    "symbol": "HNGE",
+    "setup_date": "2026-08-04",
+    "setup_type": "BO",
+    "setup_name": "Breakout",
+    "market_regime": "CAUTION",
+    "notes": "",
+    "tags": [
+      "BO"
+    ],
+    "saved_at": "2026-10-29T21:49:27.346637"
   },
   {
     "id": "a983c7ac-7904-4e48-8a7c-eb9877a2144e",
@@ -118,6 +183,19 @@
     "saved_at": "2026-10-13T10:19:28.092030"
   },
   {
+    "id": "ddab4826-af67-4734-bff5-ee159d8220b6",
+    "symbol": "PARR",
+    "setup_date": "2026-07-08",
+    "setup_type": "BO",
+    "setup_name": "Breakout",
+    "market_regime": "BEARISH",
+    "notes": "",
+    "tags": [
+      "BO"
+    ],
+    "saved_at": "2026-10-29T21:44:24.699632"
+  },
+  {
     "id": "589f3382-3b41-4aef-9feb-0502b1ee9bd8",
     "symbol": "SNOW",
     "setup_date": "2026-06-26",
@@ -149,12 +227,12 @@
     "id": "0d546e76-e9d6-4945-a5e1-bc47343ad8c5",
     "symbol": "ETON",
     "setup_date": "2026-06-23",
-    "setup_type": "HTF",
+    "setup_type": "BO",
     "setup_name": "Power Play",
     "market_regime": "CAUTION",
     "notes": "",
     "tags": [
-      "HTF"
+      "BO"
     ],
     "saved_at": "2026-09-13T09:34:41.191461"
   },
@@ -162,12 +240,12 @@
     "id": "e2404b4f-7e21-4607-94c7-fafea12e98ef",
     "symbol": "ICHR",
     "setup_date": "2026-06-08",
-    "setup_type": "HTF",
+    "setup_type": "BO",
     "setup_name": "Power Play",
     "market_regime": "CAUTION",
     "notes": "",
     "tags": [
-      "HTF"
+      "BO"
     ],
     "saved_at": "2026-09-12T22:31:12.737061",
     "updated_at": "2026-09-12T22:33:41.253476"
@@ -176,12 +254,12 @@
     "id": "3fd53fab-91a4-4648-93e3-6a183ee25f6a",
     "symbol": "SYRE",
     "setup_date": "2026-06-02",
-    "setup_type": "HTF",
+    "setup_type": "BO",
     "setup_name": "Power Play",
     "market_regime": "BULLISH",
     "notes": "",
     "tags": [
-      "HTF"
+      "BO"
     ],
     "saved_at": "2026-09-12T22:29:56.698602"
   },
@@ -411,12 +489,12 @@
     "id": "084028fe-6ed0-4cad-8470-4ecab7f04356",
     "symbol": "TTMI",
     "setup_date": "2026-04-10",
-    "setup_type": "HTF",
+    "setup_type": "BO",
     "setup_name": "Power Play",
     "market_regime": "CAUTION",
     "notes": "",
     "tags": [
-      "HTF"
+      "BO"
     ],
     "saved_at": "2026-09-12T22:22:45.874037",
     "updated_at": "2026-10-25T22:14:01.103768"
@@ -425,12 +503,12 @@
     "id": "b4550065-2505-43b7-af43-436a205d899e",
     "symbol": "MKSI",
     "setup_date": "2026-04-08",
-    "setup_type": "HTF",
+    "setup_type": "BO",
     "setup_name": "Power Play",
     "market_regime": "CAUTION",
     "notes": "",
     "tags": [
-      "HTF"
+      "BO"
     ],
     "saved_at": "2026-09-12T22:21:55.716119",
     "updated_at": "2026-10-25T21:57:39.605148"
@@ -439,12 +517,12 @@
     "id": "ddf1f18c-e64f-4e04-ba39-064d14a5dcc9",
     "symbol": "FORM",
     "setup_date": "2026-04-07",
-    "setup_type": "HTF",
+    "setup_type": "BO",
     "setup_name": "Power Play",
     "market_regime": "BEARISH",
     "notes": "",
     "tags": [
-      "HTF"
+      "BO"
     ],
     "saved_at": "2026-09-12T22:27:06.988168"
   },
@@ -452,12 +530,12 @@
     "id": "b884b94c-1cd5-4f86-882a-507a2fb68e99",
     "symbol": "ESOA",
     "setup_date": "2026-04-06",
-    "setup_type": "HTF",
+    "setup_type": "BO",
     "setup_name": "Power Play",
     "market_regime": "BEARISH",
     "notes": "",
     "tags": [
-      "HTF"
+      "BO"
     ],
     "saved_at": "2026-09-12T22:26:46.423267"
   },
@@ -478,12 +556,12 @@
     "id": "f7a9856b-ce9f-4308-a90a-3ec727d449a7",
     "symbol": "MOD",
     "setup_date": "2026-03-30",
-    "setup_type": "HTF",
+    "setup_type": "BO",
     "setup_name": "Power Play",
     "market_regime": "BEARISH",
     "notes": "",
     "tags": [
-      "HTF"
+      "BO"
     ],
     "saved_at": "2026-09-12T22:25:58.296871"
   },
@@ -504,12 +582,12 @@
     "id": "b7dfe80c-ec14-46c8-ab73-37e51828bd7a",
     "symbol": "CENX",
     "setup_date": "2026-03-24",
-    "setup_type": "HTF",
+    "setup_type": "BO",
     "setup_name": "Power Play",
     "market_regime": "BEARISH",
     "notes": "",
     "tags": [
-      "HTF"
+      "BO"
     ],
     "saved_at": "2026-09-12T22:25:08.881262"
   },
@@ -517,12 +595,12 @@
     "id": "8fe6e734-18d9-4713-88c7-78c5801d975b",
     "symbol": "ENTG",
     "setup_date": "2026-03-13",
-    "setup_type": "HTF",
+    "setup_type": "BO",
     "setup_name": "Power Play",
     "market_regime": "BEARISH",
     "notes": "",
     "tags": [
-      "HTF"
+      "BO"
     ],
     "saved_at": "2026-09-12T22:25:00.343078"
   },
@@ -530,12 +608,12 @@
     "id": "022b8755-8598-48e8-ba05-7e01faef1c54",
     "symbol": "WDC",
     "setup_date": "2026-03-12",
-    "setup_type": "HTF",
+    "setup_type": "BO",
     "setup_name": "Power Play",
     "market_regime": "BEARISH",
     "notes": "",
     "tags": [
-      "HTF"
+      "BO"
     ],
     "saved_at": "2026-09-12T22:23:44.822806"
   },
@@ -596,12 +674,12 @@
     "id": "84cab0c9-f12f-4a87-b0f3-35cfc1471739",
     "symbol": "SYRE",
     "setup_date": "2026-02-13",
-    "setup_type": "HTF",
+    "setup_type": "BO",
     "setup_name": "Power Play",
     "market_regime": "BEARISH",
     "notes": "",
     "tags": [
-      "HTF"
+      "BO"
     ],
     "saved_at": "2026-09-12T22:20:17.250038",
     "updated_at": "2026-10-25T21:54:49.710845"
@@ -675,12 +753,12 @@
     "id": "c72300ad-3802-4c17-91fb-792957d2e4c8",
     "symbol": "LITE",
     "setup_date": "2026-01-30",
-    "setup_type": "HTF",
+    "setup_type": "BO",
     "setup_name": "Power Play",
     "market_regime": "CAUTION",
     "notes": "",
     "tags": [
-      "HTF"
+      "BO"
     ],
     "saved_at": "2026-09-12T22:19:34.608320",
     "updated_at": "2026-10-25T21:52:55.492257"

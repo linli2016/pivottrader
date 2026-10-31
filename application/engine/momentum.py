@@ -1,9 +1,8 @@
 import duckdb
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from application.engine.setups import (
     detect_vcp,
     detect_episodic_pivot,
-    detect_parabolic_extension,
     detect_power_play,
     detect_breakout,
     detect_low_cheat,
@@ -32,9 +31,6 @@ class MomentumEngine:
 
     def detect_episodic_pivot(self, opens: List[float], highs: List[float], lows: List[float], closes: List[float], volumes: List[float], dates: List[Any]) -> dict:
         return detect_episodic_pivot(opens, highs, lows, closes, volumes, dates)
-
-    def detect_parabolic_extension(self, highs: List[float], lows: List[float], closes: List[float], dates: List[Any], ema_10_val: float) -> dict:
-        return detect_parabolic_extension(highs, lows, closes, dates, ema_10_val)
 
     def detect_power_play(self, highs: List[float], lows: List[float], closes: List[float], dates: List[Any], min_runup_pct: float = 100.0, max_drawdown_pct: float = 25.0) -> dict:
         return detect_power_play(highs, lows, closes, dates, min_runup_pct=min_runup_pct, max_drawdown_pct=max_drawdown_pct)
@@ -153,6 +149,7 @@ class MomentumEngine:
                     MIN(low) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) as lowest_low_3d,
                     MAX(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) as peak_close_3d,
                     MIN(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) as lowest_close_3d,
+                    AVG(volume) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) as vol_20d_ma,
                     AVG(volume) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 49 PRECEDING AND CURRENT ROW) as vol_50d_ma,
                     AVG(close * volume) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 49 PRECEDING AND CURRENT ROW) as dollar_vol_50d_ma,
                     GREATEST(
@@ -174,6 +171,7 @@ class MomentumEngine:
                     symbol,
                     date,
                     close,
+                    vol_20d_ma,
                     vol_50d_ma,
                     dollar_vol_50d_ma,
                     AVG((high / NULLIF(low, 0) - 1.0) * 100.0) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) as adr_20d,
@@ -258,6 +256,7 @@ class MomentumEngine:
                 SELECT
                     r_id,
                     date,
+                    vol_20d_ma,
                     vol_50d_ma,
                     dollar_vol_50d_ma,
                     adr_20d,
@@ -296,6 +295,7 @@ class MomentumEngine:
             percentile_ranks AS (
                 SELECT
                     r_id,
+                    vol_20d_ma,
                     vol_50d_ma,
                     dollar_vol_50d_ma,
                     adr_20d,
@@ -352,6 +352,7 @@ class MomentumEngine:
                 pivot_spread_pct = src.pivot_spread_pct,
                 pivot_close_clustering_pct = src.pivot_close_clustering_pct,
                 pivot_vol_ratio = src.pivot_vol_ratio,
+                vol_20d_ma = src.vol_20d_ma,
                 vol_50d_ma = src.vol_50d_ma,
                 dollar_vol_50d_ma = src.dollar_vol_50d_ma,
                 adr_20d = src.adr_20d,
@@ -474,6 +475,7 @@ class MomentumEngine:
         """
         
         with self.get_connection() as conn:
+            conn.execute("ALTER TABLE daily_bars ADD COLUMN IF NOT EXISTS vol_20d_ma DOUBLE;")
             # 1. Run historical metric update for all dates
             print("Calculating and updating historical SMAs and RS metrics...")
             conn.execute(query_update_historical)
@@ -511,7 +513,6 @@ class MomentumEngine:
                     history = symbol_history.get(symbol, [])
                     v_res = {"vcp_is_setup": False, "vcp_troughs": None, "vcp_depths": None}
                     ep_res = {"ep_is_setup": False, "ep_gap_pct": None, "ep_rel_vol": None}
-                    para_res = {"parabolic_short_is_setup": False, "parabolic_long_is_setup": False, "parabolic_runup_pct": None, "dist_ema10_pct": None, "parabolic_up_days": None}
                     lc_res = {"low_cheat_is_setup": False, "low_cheat_pivot_price": None, "low_cheat_stop_loss": None, "low_cheat_risk_pct": None, "low_cheat_base_depth": None}
                     
                     ema_10_val = None
@@ -551,9 +552,6 @@ class MomentumEngine:
                         ep_detected = self.detect_episodic_pivot(opens, highs, lows, closes, volumes, dates)
                         if ep_detected:
                             ep_res = ep_detected
-                        para_detected = self.detect_parabolic_extension(highs, lows, closes, dates, ema_10_val)
-                        if para_detected:
-                            para_res = para_detected
                         pp_detected = self.detect_power_play(highs, lows, closes, dates)
                         breakout_detected = self.detect_breakout(highs, lows, closes, dates, ema_10_val=ema_10_val, ema_20_val=ema_20_val)
                         lc_detected = self.detect_low_cheat(
@@ -578,7 +576,6 @@ class MomentumEngine:
                         v_res["vcp_is_setup"], v_res["vcp_troughs"], v_res["vcp_depths"],
                         ema_10_val, ema_20_val, ema_50_val, dist_ema10_pct, dist_ema20_pct, dist_ema50_pct,
                         ep_res["ep_is_setup"], ep_res["ep_gap_pct"], ep_res["ep_rel_vol"],
-                        para_res["parabolic_short_is_setup"], para_res["parabolic_long_is_setup"], para_res["parabolic_runup_pct"], para_res.get("parabolic_up_days"),
                         lc_res["low_cheat_is_setup"], lc_res["low_cheat_pivot_price"], lc_res["low_cheat_stop_loss"], lc_res["low_cheat_risk_pct"], lc_res["low_cheat_base_depth"]
                     ])
 
@@ -591,7 +588,6 @@ class MomentumEngine:
                     "vcp_is_setup", "vcp_troughs", "vcp_depths",
                     "ema_10", "ema_20", "ema_50", "dist_ema10_pct", "dist_ema20_pct", "dist_ema50_pct",
                     "ep_is_setup", "ep_gap_pct", "ep_rel_vol",
-                    "parabolic_short_is_setup", "parabolic_long_is_setup", "parabolic_runup_pct", "parabolic_up_days",
                     "low_cheat_is_setup", "low_cheat_pivot_price", "low_cheat_stop_loss", "low_cheat_risk_pct", "low_cheat_base_depth"
                 ])
                 conn.execute("CREATE OR REPLACE TEMP TABLE temp_updates AS SELECT * FROM temp_df")
@@ -620,10 +616,6 @@ class MomentumEngine:
                         ep_is_setup = src.ep_is_setup,
                         ep_gap_pct = src.ep_gap_pct,
                         ep_rel_vol = src.ep_rel_vol,
-                        parabolic_short_is_setup = src.parabolic_short_is_setup,
-                        parabolic_long_is_setup = src.parabolic_long_is_setup,
-                        parabolic_runup_pct = src.parabolic_runup_pct,
-                        parabolic_up_days = src.parabolic_up_days,
                         low_cheat_is_setup = src.low_cheat_is_setup,
                         low_cheat_pivot_price = src.low_cheat_pivot_price,
                         low_cheat_stop_loss = src.low_cheat_stop_loss,
@@ -730,15 +722,29 @@ class MomentumEngine:
                 })
         return candidates
 
-    def update_intraday_metrics(self, target_date: str = None) -> int:
+    def update_intraday_metrics(
+        self,
+        target_date: str = None,
+        symbols: Optional[List[str]] = None,
+        conn=None
+    ) -> int:
         """
         Ultra-fast (<0.05s) intraday momentum and Episodic Pivot calculation targeting
-        strictly the latest session date. Reuses previous day's rolling indicators
-        (vol_50d_ma, sma_50, sma_200, high_52w, rs_rank) and computes live gap_pct,
-        rel_vol_50d, and ep_is_setup.
+        strictly the latest session date (and optionally a subset of symbols such as watchlist stocks).
+        Reuses previous day's rolling indicators and computes live gap_pct, rel_vol_50d,
+        EMAs, 52w high/low distances, returns, and ep_is_setup.
         Returns the count of candidates with ep_is_setup = true.
         """
-        update_query = """
+        sym_filter_b = ""
+        sym_filter_curr = ""
+        if symbols:
+            clean_syms = [s.strip().upper().replace("'", "''") for s in symbols if s and s.strip()]
+            if clean_syms:
+                syms_sql = ", ".join(f"'{s}'" for s in clean_syms)
+                sym_filter_b = f" AND b.symbol IN ({syms_sql})"
+                sym_filter_curr = f" AND curr.symbol IN ({syms_sql})"
+
+        update_query = f"""
             WITH target AS (
                 SELECT COALESCE(CAST(? AS DATE), MAX(date)) AS t_date FROM daily_bars
             ),
@@ -746,11 +752,19 @@ class MomentumEngine:
                 SELECT
                     b.symbol,
                     b.close AS prev_close,
+                    b.volume AS bar_vol,
                     b.vol_50d_ma,
                     b.dollar_vol_50d_ma,
                     b.sma_50,
                     b.sma_150,
                     b.sma_200,
+                    b.sma_200_20d_ago,
+                    b.sma_200_80d_ago,
+                    b.sma_200_100d_ago,
+                    b.stage2_days,
+                    b.weinstein_stage,
+                    b.ti_65,
+                    b.er_20d,
                     b.atr_20d,
                     b.adr_20d,
                     b.high_52w,
@@ -759,22 +773,61 @@ class MomentumEngine:
                     b.low_52w,
                     b.rs_rank,
                     b.rs_score,
+                    b.normalized_rs,
+                    b.ret_1m,
+                    b.ret_3m,
+                    b.ret_6m,
+                    b.ema_10,
+                    b.ema_20,
+                    b.ema_50,
+                    b.pp_runup_pct,
+                    b.pp_drawdown_pct,
+                    b.pp_days_since_peak,
+                    b.pp_runup_days,
+                    b.vcp_is_setup,
+                    b.vcp_troughs,
+                    b.vcp_depths,
+                    b.low_cheat_is_setup,
+                    b.low_cheat_pivot_price,
+                    b.low_cheat_stop_loss,
+                    b.low_cheat_risk_pct,
+                    b.low_cheat_base_depth,
+                    b.ipo_days_count,
+                    b.ipo_all_time_high,
+                    b.ipo_drawdown_from_high,
+                    b.ipo_base_depth,
+                    b.pivot_spread_pct,
+                    b.pivot_close_clustering_pct,
                     ROW_NUMBER() OVER (PARTITION BY b.symbol ORDER BY b.date DESC) AS rn
                 FROM daily_bars b, target t
-                WHERE b.date < t.t_date
+                WHERE b.date < t.t_date{sym_filter_b}
             ),
             latest_prior AS (
                 SELECT * FROM prior_bars WHERE rn = 1
+            ),
+            prior_vol_20d AS (
+                SELECT symbol, AVG(bar_vol) AS vol_20d_ma
+                FROM prior_bars
+                WHERE rn <= 20
+                GROUP BY symbol
             ),
             calculated AS (
                 SELECT
                     curr.rowid AS r_id,
                     p.prev_close,
+                    pv20.vol_20d_ma,
                     p.vol_50d_ma,
                     COALESCE(p.dollar_vol_50d_ma, curr.close * p.vol_50d_ma) AS dollar_vol_50d_ma,
                     p.sma_50,
                     p.sma_150,
                     p.sma_200,
+                    p.sma_200_20d_ago,
+                    p.sma_200_80d_ago,
+                    p.sma_200_100d_ago,
+                    p.stage2_days,
+                    p.weinstein_stage,
+                    p.ti_65,
+                    p.er_20d,
                     p.atr_20d,
                     p.adr_20d,
                     GREATEST(COALESCE(p.high_52w, curr.high), curr.high) AS high_52w,
@@ -786,11 +839,38 @@ class MomentumEngine:
                     GREATEST(COALESCE(p.vol_52w_high, curr.volume), curr.volume) AS vol_52w_high,
                     (curr.volume >= COALESCE(p.vol_52w_high, curr.volume)) AS is_52w_high_vol,
                     LEAST(COALESCE(p.low_52w, curr.low), curr.low) AS low_52w,
-                    ROUND(((curr.close - GREATEST(COALESCE(p.high_52w, curr.high), curr.high)) / GREATEST(COALESCE(p.high_52w, curr.high), curr.high)) * 100, 2) AS dist_from_52w_high,
+                    ROUND(((GREATEST(COALESCE(p.high_52w, curr.high), curr.high) - curr.close) / NULLIF(GREATEST(COALESCE(p.high_52w, curr.high), curr.high), 0)) * 100.0, 2) AS dist_from_52w_high,
+                    ROUND(((curr.close - LEAST(COALESCE(p.low_52w, curr.low), curr.low)) / NULLIF(LEAST(COALESCE(p.low_52w, curr.low), curr.low), 0)) * 100.0, 2) AS dist_from_52w_low,
                     ROUND(((curr.open - p.prev_close) / NULLIF(p.prev_close, 0)) * 100, 2) AS gap_pct,
                     ROUND(curr.volume / NULLIF(p.vol_50d_ma, 0), 2) AS rel_vol_50d,
                     p.rs_rank,
                     p.rs_score,
+                    p.normalized_rs,
+                    CASE WHEN p.ret_1m IS NOT NULL AND p.prev_close > 0 THEN ROUND(((1.0 + p.ret_1m / 100.0) * (curr.close / p.prev_close) - 1.0) * 100.0, 2) ELSE p.ret_1m END AS ret_1m,
+                    CASE WHEN p.ret_3m IS NOT NULL AND p.prev_close > 0 THEN ROUND(((1.0 + p.ret_3m / 100.0) * (curr.close / p.prev_close) - 1.0) * 100.0, 2) ELSE p.ret_3m END AS ret_3m,
+                    CASE WHEN p.ret_6m IS NOT NULL AND p.prev_close > 0 THEN ROUND(((1.0 + p.ret_6m / 100.0) * (curr.close / p.prev_close) - 1.0) * 100.0, 2) ELSE p.ret_6m END AS ret_6m,
+                    CASE WHEN p.ema_10 IS NOT NULL THEN ROUND(curr.close * (2.0 / 11.0) + p.ema_10 * (9.0 / 11.0), 2) ELSE curr.close END AS ema_10,
+                    CASE WHEN p.ema_20 IS NOT NULL THEN ROUND(curr.close * (2.0 / 21.0) + p.ema_20 * (19.0 / 21.0), 2) ELSE curr.close END AS ema_20,
+                    CASE WHEN p.ema_50 IS NOT NULL THEN ROUND(curr.close * (2.0 / 51.0) + p.ema_50 * (49.0 / 51.0), 2) ELSE p.sma_50 END AS ema_50,
+                    p.pp_runup_pct,
+                    p.pp_drawdown_pct,
+                    p.pp_days_since_peak,
+                    p.pp_runup_days,
+                    p.vcp_is_setup,
+                    p.vcp_troughs,
+                    p.vcp_depths,
+                    p.low_cheat_is_setup,
+                    p.low_cheat_pivot_price,
+                    p.low_cheat_stop_loss,
+                    p.low_cheat_risk_pct,
+                    p.low_cheat_base_depth,
+                    p.ipo_days_count,
+                    p.ipo_all_time_high,
+                    p.ipo_drawdown_from_high,
+                    p.ipo_base_depth,
+                    p.pivot_spread_pct,
+                    p.pivot_close_clustering_pct,
+                    ROUND(curr.volume / NULLIF(p.vol_50d_ma, 0), 2) AS pivot_vol_ratio,
                     CASE 
                         WHEN ((curr.open - p.prev_close) / NULLIF(p.prev_close, 0)) * 100 >= 8.0 
                         THEN true 
@@ -801,14 +881,24 @@ class MomentumEngine:
                 FROM daily_bars curr
                 JOIN target t ON curr.date = t.t_date
                 LEFT JOIN latest_prior p ON curr.symbol = p.symbol
+                LEFT JOIN prior_vol_20d pv20 ON curr.symbol = pv20.symbol
+                WHERE 1=1{sym_filter_curr}
             )
             UPDATE daily_bars
             SET
+                vol_20d_ma = c.vol_20d_ma,
                 vol_50d_ma = c.vol_50d_ma,
                 dollar_vol_50d_ma = c.dollar_vol_50d_ma,
                 sma_50 = c.sma_50,
                 sma_150 = c.sma_150,
                 sma_200 = c.sma_200,
+                sma_200_20d_ago = c.sma_200_20d_ago,
+                sma_200_80d_ago = c.sma_200_80d_ago,
+                sma_200_100d_ago = c.sma_200_100d_ago,
+                stage2_days = c.stage2_days,
+                weinstein_stage = c.weinstein_stage,
+                ti_65 = c.ti_65,
+                er_20d = c.er_20d,
                 atr_20d = c.atr_20d,
                 adr_20d = c.adr_20d,
                 high_52w = c.high_52w,
@@ -818,10 +908,41 @@ class MomentumEngine:
                 is_52w_high_vol = c.is_52w_high_vol,
                 low_52w = c.low_52w,
                 dist_from_52w_high = c.dist_from_52w_high,
+                dist_from_52w_low = c.dist_from_52w_low,
+                surge_off_low_pct = c.dist_from_52w_low,
                 gap_pct = c.gap_pct,
                 rel_vol_50d = c.rel_vol_50d,
                 rs_rank = c.rs_rank,
                 rs_score = c.rs_score,
+                normalized_rs = c.normalized_rs,
+                ret_1m = c.ret_1m,
+                ret_3m = c.ret_3m,
+                ret_6m = c.ret_6m,
+                ema_10 = c.ema_10,
+                ema_20 = c.ema_20,
+                ema_50 = c.ema_50,
+                dist_ema10_pct = CASE WHEN c.ema_10 > 0 THEN ROUND(((daily_bars.close - c.ema_10) / c.ema_10) * 100.0, 2) ELSE NULL END,
+                dist_ema20_pct = CASE WHEN c.ema_20 > 0 THEN ROUND(((daily_bars.close - c.ema_20) / c.ema_20) * 100.0, 2) ELSE NULL END,
+                dist_ema50_pct = CASE WHEN c.ema_50 > 0 THEN ROUND(((daily_bars.close - c.ema_50) / c.ema_50) * 100.0, 2) ELSE NULL END,
+                pp_runup_pct = c.pp_runup_pct,
+                pp_drawdown_pct = c.pp_drawdown_pct,
+                pp_days_since_peak = c.pp_days_since_peak,
+                pp_runup_days = c.pp_runup_days,
+                vcp_is_setup = c.vcp_is_setup,
+                vcp_troughs = c.vcp_troughs,
+                vcp_depths = c.vcp_depths,
+                low_cheat_is_setup = c.low_cheat_is_setup,
+                low_cheat_pivot_price = c.low_cheat_pivot_price,
+                low_cheat_stop_loss = c.low_cheat_stop_loss,
+                low_cheat_risk_pct = c.low_cheat_risk_pct,
+                low_cheat_base_depth = c.low_cheat_base_depth,
+                ipo_days_count = c.ipo_days_count,
+                ipo_all_time_high = c.ipo_all_time_high,
+                ipo_drawdown_from_high = c.ipo_drawdown_from_high,
+                ipo_base_depth = c.ipo_base_depth,
+                pivot_spread_pct = c.pivot_spread_pct,
+                pivot_close_clustering_pct = c.pivot_close_clustering_pct,
+                pivot_vol_ratio = c.pivot_vol_ratio,
                 ep_is_setup = c.ep_is_setup,
                 ep_gap_pct = c.ep_gap_pct,
                 ep_rel_vol = c.ep_rel_vol
@@ -834,8 +955,14 @@ class MomentumEngine:
             WHERE date = (SELECT COALESCE(CAST(? AS DATE), MAX(date)) FROM daily_bars)
               AND ep_is_setup = true;
         """
-        with self.get_connection() as conn:
+        if conn is not None:
+            conn.execute("ALTER TABLE daily_bars ADD COLUMN IF NOT EXISTS vol_20d_ma DOUBLE;")
             conn.execute(update_query, [target_date])
             res = conn.execute(count_query, [target_date]).fetchone()
+            return res[0] if res else 0
+        with self.get_connection() as db_conn:
+            db_conn.execute("ALTER TABLE daily_bars ADD COLUMN IF NOT EXISTS vol_20d_ma DOUBLE;")
+            db_conn.execute(update_query, [target_date])
+            res = db_conn.execute(count_query, [target_date]).fetchone()
             return res[0] if res else 0
 

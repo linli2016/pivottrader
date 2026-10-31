@@ -9,9 +9,6 @@ export function StockListBatchBar({
   totalItemsCount = 0,
   selectedSymbols = new Set(),
   onSelectAll = null,
-  watchlists = [],
-  targetWatchlistId = null,
-  onTargetWatchlistChange = null,
   onBatchAddToWatchlist = null,
   isAddingBatchToTarget = false,
   onBatchRemove = null,
@@ -45,56 +42,31 @@ export function StockListBatchBar({
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-        {/* Add Selected to Target Watchlist */}
-        {onBatchAddToWatchlist && watchlists && watchlists.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-            <select
-              value={targetWatchlistId || ''}
-              onChange={(e) => onTargetWatchlistChange && onTargetWatchlistChange(Number(e.target.value))}
-              title="Choose Target Watchlist to add selected stocks into"
-              style={{
-                background: 'rgba(15, 23, 42, 0.9)',
-                color: '#38bdf8',
-                border: '1px solid rgba(56, 189, 248, 0.4)',
-                borderRadius: '4px',
-                padding: '2px 5px',
-                fontSize: '10.5px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                maxWidth: '120px',
-              }}
-            >
-              {watchlists.map((w) => (
-                <option key={w.id} value={w.id} style={{ background: '#1e293b', color: '#ffffff' }}>
-                  → {w.name}
-                </option>
-              ))}
-            </select>
-
-            <button
-              type="button"
-              disabled={selectedSymbols.size === 0 || isAddingBatchToTarget}
-              onClick={() => onBatchAddToWatchlist(targetWatchlistId, Array.from(selectedSymbols))}
-              title={`Add selected ${selectedSymbols.size} stocks into target watchlist`}
-              style={{
-                background: selectedSymbols.size > 0 ? '#10b981' : 'rgba(255, 255, 255, 0.05)',
-                border: selectedSymbols.size > 0 ? '1px solid #059669' : '1px solid var(--border-color, rgba(255, 255, 255, 0.1))',
-                color: selectedSymbols.size > 0 ? '#ffffff' : 'var(--text-muted, #94a3b8)',
-                borderRadius: '4px',
-                padding: '3px 8px',
-                fontSize: '11px',
-                fontWeight: 700,
-                cursor: selectedSymbols.size > 0 && !isAddingBatchToTarget ? 'pointer' : 'not-allowed',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <span>➕</span>
-              <span>Add Selected {selectedSymbols.size > 0 ? `(${selectedSymbols.size})` : ''}</span>
-            </button>
-          </div>
+        {/* Add Selected to Watchlist */}
+        {onBatchAddToWatchlist && (
+          <button
+            type="button"
+            disabled={selectedSymbols.size === 0 || isAddingBatchToTarget}
+            onClick={() => onBatchAddToWatchlist(Array.from(selectedSymbols))}
+            title={`Add selected ${selectedSymbols.size} stocks to watchlist`}
+            style={{
+              background: selectedSymbols.size > 0 ? '#10b981' : 'rgba(255, 255, 255, 0.05)',
+              border: selectedSymbols.size > 0 ? '1px solid #059669' : '1px solid var(--border-color, rgba(255, 255, 255, 0.1))',
+              color: selectedSymbols.size > 0 ? '#ffffff' : 'var(--text-muted, #94a3b8)',
+              borderRadius: '4px',
+              padding: '3px 8px',
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: selectedSymbols.size > 0 && !isAddingBatchToTarget ? 'pointer' : 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <span>➕</span>
+            <span>Add Selected {selectedSymbols.size > 0 ? `(${selectedSymbols.size})` : ''}</span>
+          </button>
         )}
 
         {/* Copy Selected for TradingView */}

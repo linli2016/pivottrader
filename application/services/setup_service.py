@@ -60,6 +60,17 @@ class SetupService:
                 return val.strip().lower() not in ("false", "0", "no", "off")
             return bool(val)
 
+        def _parse_bool(val: Any, default: bool = False) -> bool:
+            if val is None:
+                return default
+            if isinstance(val, bool):
+                return val
+            if isinstance(val, (int, float)):
+                return val != 0
+            if isinstance(val, str):
+                return val.strip().lower() in ("true", "1", "yes", "on")
+            return bool(val)
+
         setups_dict = raw_setups_data.get("setups", {}) if isinstance(raw_setups_data, dict) else {}
 
         # Convert setups dict to an ordered list based on display_order
@@ -109,6 +120,7 @@ class SetupService:
                     f_val.setdefault("id", f_key)
                     f_val.setdefault("display_order", 99)
                     f_val["visible"] = _parse_visible(f_val.get("visible", True))
+                    f_val["default"] = _parse_bool(f_val.get("default", False))
                     screeners_raw = f_val.get("screeners", [])
                     norm_screeners = []
                     if isinstance(screeners_raw, list):
@@ -129,6 +141,7 @@ class SetupService:
                 if isinstance(f_val, dict):
                     f_val.setdefault("display_order", 99)
                     f_val["visible"] = _parse_visible(f_val.get("visible", True))
+                    f_val["default"] = _parse_bool(f_val.get("default", False))
                     screeners_raw = f_val.get("screeners", [])
                     if isinstance(screeners_raw, list):
                         for sc in screeners_raw:

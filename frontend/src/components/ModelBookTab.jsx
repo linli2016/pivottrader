@@ -43,22 +43,14 @@ export default function ModelBookTab({
   const [previewGroupModal, setPreviewGroupModal] = useState(null);
 
   // Watchlist integration
-  const [targetWatchlistId, setTargetWatchlistId] = useState(null);
   const [activeWatchlistSymbols, setActiveWatchlistSymbols] = useState(new Set());
 
-  useEffect(() => {
-    if (watchlists && watchlists.length > 0 && !targetWatchlistId) {
-      setTargetWatchlistId(watchlists[0].id);
-    }
-  }, [watchlists, targetWatchlistId]);
-
-  const fetchTargetWatchlistItems = useCallback(async (watchlistId) => {
-    if (!watchlistId) return;
+  const fetchWatchlistItems = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/watchlists/${watchlistId}/items`);
+      const res = await fetch(`${API_BASE}/api/watchlists/items`);
       if (res.ok) {
         const data = await res.json();
-        const symSet = new Set(data.map(item => item.symbol.toUpperCase()));
+        const symSet = new Set(data.map(item => (item.symbol || '').toUpperCase()));
         setActiveWatchlistSymbols(symSet);
       }
     } catch (e) {
@@ -67,19 +59,17 @@ export default function ModelBookTab({
   }, []);
 
   useEffect(() => {
-    if (targetWatchlistId) {
-      fetchTargetWatchlistItems(targetWatchlistId);
-    }
-  }, [targetWatchlistId, fetchTargetWatchlistItems]);
+    fetchWatchlistItems();
+  }, [fetchWatchlistItems]);
 
   const handleToggleWatchlist = async (symbol) => {
-    if (!targetWatchlistId || !symbol) return;
+    if (!symbol) return;
     const symUpper = symbol.toUpperCase();
     const isSaved = activeWatchlistSymbols.has(symUpper);
 
     try {
       if (isSaved) {
-        const res = await fetch(`${API_BASE}/api/watchlists/${targetWatchlistId}/items/${symbol}`, {
+        const res = await fetch(`${API_BASE}/api/watchlists/items/${encodeURIComponent(symUpper)}`, {
           method: 'DELETE',
         });
         if (res.ok) {
@@ -89,10 +79,10 @@ export default function ModelBookTab({
           if (fetchWatchlists) fetchWatchlists();
         }
       } else {
-        const res = await fetch(`${API_BASE}/api/watchlists/${targetWatchlistId}/items`, {
+        const res = await fetch(`${API_BASE}/api/watchlists/items`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbol }),
+          body: JSON.stringify({ symbol: symUpper }),
         });
         if (res.ok) {
           const nextSet = new Set(activeWatchlistSymbols);
@@ -127,7 +117,7 @@ export default function ModelBookTab({
 
     const reqPromise = (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=750`);
+        const res = await fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=3500`);
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data) && data.length > 0) {
@@ -210,6 +200,12 @@ export default function ModelBookTab({
 
   const currentTrade = filteredSavedTrades[selectedIndex] || null;
 
+  // Sync updated drawings to saved trades in state (e.g. for JSON export)
+  const handleDrawingsChange = useCallback((newDrawings) => {
+    if (!currentTrade?.symbol) return;
+    const sym = currentTrade.symbol.toUpperCase();
+    setSavedTrades(prev => prev.map(t => (t.symbol && t.symbol.toUpperCase() === sym ? { ...t, drawings: newDrawings } : t)));
+  }, [currentTrade?.symbol]);
 
   // Reset edit mode when switching trade selection
   useEffect(() => {
@@ -409,9 +405,8 @@ export default function ModelBookTab({
                 asOfDate={isEditingTrade ? (editTriggerDate || currentTrade.setup_date) : currentTrade.setup_date}
                 marketRegime={currentTrade.market_regime}
                 showEarningsBadge={false}
-                watchlists={watchlists}
-                targetWatchlistId={targetWatchlistId}
-                onTargetWatchlistChange={setTargetWatchlistId}
+                onDrawingsChange={handleDrawingsChange}
+                watchlistSymbols={activeWatchlistSymbols}
                 onToggleWatchlist={handleToggleWatchlist}
                 onSelectGroup={(type, name) => setPreviewGroupModal({ groupType: type, groupName: name })}
                 onSelectStock={(stk) => {

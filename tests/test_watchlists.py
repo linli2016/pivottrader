@@ -7,9 +7,9 @@ class TestWatchlists(unittest.TestCase):
         watchlists = db_service.get_watchlists()
         self.assertIsInstance(watchlists, list)
         self.assertGreater(len(watchlists), 0)
-        # Verify Mag 7 is present or can be fetched
+        # Verify Watchlist is present or can be fetched
         w_names = [w["name"] for w in watchlists]
-        self.assertTrue("Default" in w_names or "Mag 7" in w_names)
+        self.assertTrue("Watchlist" in w_names or "Default" in w_names or "Mag 7" in w_names)
 
     def test_get_watchlist_items_enhanced_metrics(self):
         watchlists = db_service.get_watchlists()
@@ -112,24 +112,24 @@ class TestWatchlists(unittest.TestCase):
         wl = db_service.create_watchlist("Test_Tags_WL")
         wl_id = wl["id"]
         try:
-            # 1. Add single item with tag HTF
-            db_service.add_watchlist_item(wl_id, "NVDA", tag="HTF")
+            # 1. Add single item with tag BO
+            db_service.add_watchlist_item(wl_id, "NVDA", tag="BO")
             items = db_service.get_watchlist_items(wl_id)
             nvda = next(i for i in items if i["symbol"] == "NVDA")
-            self.assertIn("HTF", nvda["tags"])
+            self.assertIn("BO", nvda["tags"])
 
             # 2. Add same symbol with another tag VCP -> should merge tags
             db_service.add_watchlist_item(wl_id, "NVDA", tag="VCP")
             items = db_service.get_watchlist_items(wl_id)
             nvda = next(i for i in items if i["symbol"] == "NVDA")
-            self.assertIn("HTF", nvda["tags"])
+            self.assertIn("BO", nvda["tags"])
             self.assertIn("VCP", nvda["tags"])
 
             # 3. Add batch items with tag EP
             db_service.add_watchlist_items_batch(wl_id, ["NVDA", "AAPL"], tag="EP")
             items = db_service.get_watchlist_items(wl_id)
             nvda = next(i for i in items if i["symbol"] == "NVDA")
-            self.assertIn("HTF", nvda["tags"])
+            self.assertIn("BO", nvda["tags"])
             self.assertIn("VCP", nvda["tags"])
             self.assertIn("EP", nvda["tags"])
             aapl = next(i for i in items if i["symbol"] == "AAPL")
@@ -145,6 +145,44 @@ class TestWatchlists(unittest.TestCase):
             all_syms = db_service.get_all_watchlist_symbols()
             self.assertIn("NVDA", all_syms)
             self.assertIn("AAPL", all_syms)
+        finally:
+            db_service.delete_watchlist(wl_id)
+
+    def test_watchlist_color_flags(self):
+        wl = db_service.create_watchlist("Test_Flag_WL")
+        wl_id = wl["id"]
+        try:
+            # 1. Add item with flag_color 'green'
+            db_service.add_watchlist_item(wl_id, "MSFT", flag_color="green")
+            items = db_service.get_watchlist_items(wl_id)
+            msft = next(i for i in items if i["symbol"] == "MSFT")
+            self.assertEqual(msft["flag_color"], "green")
+
+            # 2. Update flag_color to 'red'
+            db_service.update_watchlist_item_flag("MSFT", "red", watchlist_id=wl_id)
+            items = db_service.get_watchlist_items(wl_id)
+            msft = next(i for i in items if i["symbol"] == "MSFT")
+            self.assertEqual(msft["flag_color"], "red")
+
+            # 3. Unflag
+            db_service.update_watchlist_item_flag("MSFT", None, watchlist_id=wl_id)
+            items = db_service.get_watchlist_items(wl_id)
+            msft = next(i for i in items if i["symbol"] == "MSFT")
+            self.assertIsNone(msft["flag_color"])
+
+            # 4. Batch add with flags
+            db_service.add_watchlist_items_batch(
+                wl_id,
+                items=[
+                    {"symbol": "NVDA", "flag_color": "green"},
+                    {"symbol": "TSLA", "flag_color": "orange"}
+                ]
+            )
+            items = db_service.get_watchlist_items(wl_id)
+            nvda = next(i for i in items if i["symbol"] == "NVDA")
+            tsla = next(i for i in items if i["symbol"] == "TSLA")
+            self.assertEqual(nvda["flag_color"], "green")
+            self.assertEqual(tsla["flag_color"], "orange")
         finally:
             db_service.delete_watchlist(wl_id)
 

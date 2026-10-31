@@ -15,6 +15,7 @@ from application.config import Config
 from application.database import DatabaseManager
 from application.providers.yfinance_prov import YFinanceProvider
 from application.providers.ibkr_prov import IBKRProvider
+from application.providers.tradingview_prov import TradingViewScannerProvider
 from application.engine.momentum import MomentumEngine
 
 
@@ -139,6 +140,7 @@ def main():
     parser.add_argument("--history-years", type=int, help="Number of historical years of daily price bars to fetch (e.g., 2, 5, 10)")
     parser.add_argument("--skip-prices", action="store_true", help="Skip historical daily bars price synchronization")
     parser.add_argument("--skip-fundamentals", action="store_true", help="Skip quarterly fundamental statements synchronization")
+    parser.add_argument("--fundamental-source", choices=["tradingview", "yfinance", "all"], default="tradingview", help="Data source for quarterly EPS & Sales growth (default: tradingview bulk scanner)")
     parser.add_argument("--sync-sponsorship", action="store_true", help="Synchronize quarterly institutional sponsorship fund counts & streaks")
     parser.add_argument("--sponsorship-source", choices=["yfinance", "sec_13f", "all"], default="yfinance", help="Data source for institutional sponsorship (default: yfinance)")
     parser.add_argument("--sponsorship-universe", choices=["all", "candidates"], default="all", help="Target universe for institutional sponsorship (default: all)")
@@ -201,11 +203,16 @@ def main():
 
     try:
         # 4. Synchronize Symbol Directory
-        if args.include_premarket:
+        if args.include_premarket or (args.skip_prices and not args.force_full and not args.fix_splits):
             existing_active = db.get_active_symbols()
             if existing_active and not getattr(args, "symbols", None):
-                print("\n[Step 1/5] Using existing active stock universe from database for fast pre-market sync...")
+                mode_label = "pre-market" if args.include_premarket else "fundamentals/sponsorship"
+                print(f"\n[Step 1/5] Using existing active stock universe ({len(existing_active)} symbols) from database for fast {mode_label} sync...")
                 active_symbols = existing_active
+            elif existing_active and getattr(args, "symbols", None):
+                custom_syms = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
+                active_symbols = custom_syms
+                print(f"\n[Step 1/5] Targeting custom symbols for fast sync: {active_symbols}")
             else:
                 print("\n[Step 1/5] Fetching NYSE/NASDAQ active stock universe...")
                 universe = price_provider.fetch_universe()
@@ -474,46 +481,74 @@ def main():
 
         if args.include_premarket:
             print("\n[Step 3/5] Computing fast intraday momentum & Episodic Pivot metrics...")
-            ep_count = mom_engine.update_intraday_metrics(target_date=target_date)
+            ep_count = mom_engine.update_intraday_metrics(target_date=target_date, symbols=active_symbols)
             print(f"⚡ Live metrics and Episodic Pivots updated ({ep_count} candidates gapping >= 8.0%).")
-            # Also compute full momentum and setup metrics so breakouts, VCP, and power play are indexed
-            mom_engine.calculate_and_store_momentum_metrics()
             print("\n[Sync Process] Live quotes, setups, and momentum datasets successfully synchronized and updated.")
             return
 
-        print("\n[Step 3/5] Computing momentum scores & percentile ranks...")
-        mom_engine.calculate_and_store_momentum_metrics()
-        momentum_candidates = mom_engine.get_momentum_candidates(
-            min_price=config.min_price,
-            min_vol_sma=config.min_volume_sma_50,
-            min_dollar_vol=config.min_dollar_volume_50d,
-            min_rank=config.min_rs_percentile
-        )
-        
-        print(f"Identified {len(momentum_candidates)} tickers satisfying Minervini's base Relative Strength Template.")
-        
-        if not momentum_candidates:
-            if not getattr(args, "sync_sponsorship", False):
-                print("No candidates passed the relative strength momentum scans. Terminating run.")
-                return
-            momentum_candidates = []
+        if args.skip_prices:
+            print("\n[Step 3/5] Skipping momentum metric recalculation (--skip-prices active).")
+            momentum_candidates = mom_engine.get_momentum_candidates(
+                min_price=config.min_price,
+                min_vol_sma=config.min_volume_sma_50,
+                min_dollar_vol=config.min_dollar_volume_50d,
+                min_rank=config.min_rs_percentile
+            )
+        else:
+            print("\n[Step 3/5] Computing momentum scores & percentile ranks...")
+            mom_engine.calculate_and_store_momentum_metrics()
+            momentum_candidates = mom_engine.get_momentum_candidates(
+                min_price=config.min_price,
+                min_vol_sma=config.min_volume_sma_50,
+                min_dollar_vol=config.min_dollar_volume_50d,
+                min_rank=config.min_rs_percentile
+            )
+            print(f"Identified {len(momentum_candidates)} tickers satisfying Minervini's base Relative Strength Template.")
 
-        # 7. Targeted Fundamental Acceleration Screening
+        # 7. Fundamental EPS & Sales Acceleration Screening (Bulk TradingView + Optional YFinance)
         if args.skip_fundamentals or args.include_premarket:
             print("\n[Step 4/5] Skipping quarterly fundamental statements synchronization as requested (--skip-fundamentals / pre-market mode).")
-        elif momentum_candidates:
-            print("\n[Step 4/5] Fetching and evaluating quarterly fundamental statement changes...")
-            cand_symbols = [c["symbol"] for c in momentum_candidates]
-            
-            # Dynamic optimization: Fetch statements specifically for top RS candidates
-            print(f"Fetching quarterly statements for top {len(cand_symbols)} momentum leaders...")
-            fundamentals_df = fundamental_provider.fetch_quarterly_fundamentals(cand_symbols)
-            
-            if not fundamentals_df.empty:
-                print(f"Upserting quarterly fundamentals for candidates...")
-                db.upsert_quarterly_fundamentals(fundamentals_df)
-            else:
-                print("Warning: No fundamental statements could be retrieved.")
+        else:
+            fund_source = getattr(args, "fundamental_source", "tradingview") or "tradingview"
+            print(f"\n[Step 4/5] Synchronizing quarterly EPS & Sales growth fundamentals (source: {fund_source})...")
+
+            if fund_source in ("tradingview", "all"):
+                target_fund_syms = (
+                    [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
+                    if getattr(args, "symbols", None)
+                    else db.get_active_symbols(exclude_etfs=True)
+                )
+                print(f"[TradingView Bulk Scanner] Fetching EPS YoY %, Sales YoY %, QoQ %, and Float Shares for {len(target_fund_syms)} US equities...")
+                tv_prov = TradingViewScannerProvider()
+                tv_fund_df, tv_meta = tv_prov.fetch_bulk_fundamentals(target_symbols=target_fund_syms)
+                if tv_meta:
+                    db.update_symbol_fundamentals_meta(tv_meta)
+                    print(f"[TradingView Bulk Scanner] Updated Float Shares, Market Cap & Next Earnings Date for {len(tv_meta)} symbols (50.0%).")
+                if not tv_fund_df.empty:
+                    db.upsert_quarterly_fundamentals(tv_fund_df)
+                    monster_count = int(
+                        (
+                            (tv_fund_df["eps_diluted"].fillna(0) > 0)
+                            & (tv_fund_df["eps_qoq_growth"].fillna(0) >= 40.0)
+                            & (tv_fund_df["sales_yoy_growth"].fillna(0) >= 40.0)
+                        ).sum()
+                    )
+                    print(
+                        f"[TradingView Bulk Scanner] Upserted {len(tv_fund_df)} quarterly EPS & Sales records "
+                        f"({monster_count} stocks passing Zanger 40%/40%+ Monster Growth) (100.0%)."
+                    )
+                else:
+                    print("[TradingView Bulk Scanner] Warning: No bulk fundamental records returned.")
+
+            if fund_source in ("yfinance", "all") and momentum_candidates:
+                cand_symbols = [c["symbol"] for c in momentum_candidates]
+                print(f"Fetching multi-quarter historical statements via {selected_provider} for top {len(cand_symbols)} momentum leaders...")
+                fundamentals_df = fundamental_provider.fetch_quarterly_fundamentals(cand_symbols)
+                if not fundamentals_df.empty:
+                    print("Upserting historical quarterly fundamentals for candidates...")
+                    db.upsert_quarterly_fundamentals(fundamentals_df)
+                else:
+                    print("Warning: No historical fundamental statements could be retrieved.")
 
         # 8. Institutional Sponsorship Synchronization
         if getattr(args, "sync_sponsorship", False):

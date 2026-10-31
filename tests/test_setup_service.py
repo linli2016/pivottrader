@@ -133,31 +133,18 @@ class TestSetupServiceVisibility(unittest.TestCase):
         self.assertEqual(hidden_setup.get("id"), "hidden_setup")
 
 
-class TestCompoundScreener(unittest.TestCase):
-    def test_five_ema_screener_config(self):
+class TestBuyableScreener(unittest.TestCase):
+    def test_buyable_screener_config(self):
         from application.services.setup_service import setup_service
-        sc = setup_service.get_setup_by_id("five_ema_below_5pct")
+        sc = setup_service.get_setup_by_id("buyable")
         self.assertIsNotNone(sc)
-        self.assertEqual(sc.get("id"), "five_ema_below_5pct")
-        self.assertEqual(sc.get("target_folder"), "weekly")
+        self.assertEqual(sc.get("id"), "buyable")
+        self.assertEqual(sc.get("name"), "Buyable")
+        self.assertIn("SCREENER_GAINERS", sc.get("expression", ""))
         self.assertIn("EMA_5", sc.get("expression", ""))
-        self.assertIn("SMA_10", sc.get("expression", ""))
-        self.assertIn("RET_1W", sc.get("expression", ""))
-        self.assertIn("ADR20", sc.get("expression", ""))
-
-    def test_combine_expressions(self):
-        from application.services.database import db_service
-        # Standard combined
-        c1 = db_service._combine_expressions("C >= 10", "RS_RANK >= 90")
-        self.assertEqual(c1, "(C >= 10) AND (RS_RANK >= 90)")
-
-        # Trailing ORDER BY ... LIMIT
-        c2 = db_service._combine_expressions("C >= 10", "RET_1M >= 30.0 ORDER BY RET_1M DESC LIMIT 50")
-        self.assertEqual(c2, "(C >= 10) AND (RET_1M >= 30.0) ORDER BY RET_1M DESC LIMIT 50")
-
-        # Empty daily or weekly
-        self.assertEqual(db_service._combine_expressions("", "C >= 10"), "C >= 10")
-        self.assertEqual(db_service._combine_expressions("C >= 10", ""), "C >= 10")
+        self.assertIn("PIVOT_SPREAD", sc.get("expression", ""))
+        self.assertIn("PIVOT_CLUSTERING", sc.get("expression", ""))
+        self.assertIn("EXT_ATR_50", sc.get("expression", ""))
 
 
     def test_weekly_ema_screeners_config(self):
@@ -213,6 +200,14 @@ class TestCompoundScreener(unittest.TestCase):
         self.assertEqual(bo_sc.get("name"), "High Tight Breakout")
         sql_bo, _, _, _, _, _ = ScanExpressionEngine.transpile_to_sql(bo_sc["expression"])
         self.assertIn("dist_from_52w_high", sql_bo)
+
+    def test_folder_default_option(self):
+        from application.services.setup_service import setup_service
+        cfg = setup_service.get_setups_config(visible_only=True)
+        folders = cfg.get("folders", [])
+        action_folder = next((f for f in folders if f.get("id") == "action"), None)
+        self.assertIsNotNone(action_folder)
+        self.assertTrue(action_folder.get("default"))
 
 
 if __name__ == "__main__":

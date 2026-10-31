@@ -200,27 +200,18 @@ export default function LeaderboardTab({
   const [expandedSectors, setExpandedSectors] = useState({});
 
   // Watchlist integration
-  const [targetWatchlistId, setTargetWatchlistId] = useState(null);
   const [activeWatchlistSymbols, setActiveWatchlistSymbols] = useState(new Set());
 
   // Refs for table row keyboard navigation
   const tableBodyRef = useRef(null);
 
-  // Initialize target watchlist
-  useEffect(() => {
-    if (watchlists && watchlists.length > 0 && !targetWatchlistId) {
-      setTargetWatchlistId(watchlists[0].id);
-    }
-  }, [watchlists, targetWatchlistId]);
-
-  // Fetch items of the selected watchlist
-  const fetchWatchlistItems = async (wlId) => {
-    if (!wlId) return;
+  // Fetch items of the master watchlist
+  const fetchWatchlistItems = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/watchlists/${wlId}/items`);
+      const res = await fetch(`${API_BASE}/api/watchlists/items`);
       if (res.ok) {
         const items = await res.json();
-        setActiveWatchlistSymbols(new Set(items.map(item => item.symbol.toUpperCase())));
+        setActiveWatchlistSymbols(new Set(items.map(item => (item.symbol || '').toUpperCase())));
       }
     } catch (e) {
       console.error('Failed to fetch watchlist items:', e);
@@ -228,21 +219,19 @@ export default function LeaderboardTab({
   };
 
   useEffect(() => {
-    if (targetWatchlistId) {
-      fetchWatchlistItems(targetWatchlistId);
-    }
-  }, [targetWatchlistId]);
+    fetchWatchlistItems();
+  }, []);
 
   // Toggle stock in watchlist
   const handleToggleWatchlist = async (symbol, e) => {
     if (e) e.stopPropagation();
-    if (!targetWatchlistId || !symbol) return;
+    if (!symbol) return;
     const symUpper = symbol.toUpperCase();
     const isSaved = activeWatchlistSymbols.has(symUpper);
 
     try {
       if (isSaved) {
-        const res = await fetch(`${API_BASE}/api/watchlists/${targetWatchlistId}/items/${symbol}`, {
+        const res = await fetch(`${API_BASE}/api/watchlists/items/${encodeURIComponent(symUpper)}`, {
           method: 'DELETE',
         });
         if (res.ok) {
@@ -252,10 +241,10 @@ export default function LeaderboardTab({
           if (fetchWatchlists) fetchWatchlists();
         }
       } else {
-        const res = await fetch(`${API_BASE}/api/watchlists/${targetWatchlistId}/items`, {
+        const res = await fetch(`${API_BASE}/api/watchlists/items`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbol }),
+          body: JSON.stringify({ symbol: symUpper }),
         });
         if (res.ok) {
           const nextSet = new Set(activeWatchlistSymbols);
@@ -556,23 +545,6 @@ export default function LeaderboardTab({
               </svg>
             </button>
           </div>
-
-          {/* Watchlist Target Selector */}
-          {watchlists && watchlists.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>⭐️ To:</span>
-              <select
-                value={targetWatchlistId || ''}
-                onChange={(e) => setTargetWatchlistId(Number(e.target.value))}
-                className="select-input"
-                style={{ padding: '4px 6px', fontSize: '11px', background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '6px' }}
-              >
-                {watchlists.map(w => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
 
           {/* Reload Button */}
           <button

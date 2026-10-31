@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo, useImperativeHandle, forwardRef } from 'react';
 import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers, CrosshairMode, PriceScaleMode, LineStyle } from 'lightweight-charts';
 import { getLocalDateStr } from '../utils/dateUtils';
 import MansfieldYearlyThumbnail, { aggregateBarsToYearly, MANSFIELD_THUMBNAIL_HEIGHT } from './MansfieldYearlyThumbnail';
@@ -46,6 +46,50 @@ function calculateEMA(data, period) {
   return emaData;
 }
 
+// Helper to calculate Anchored Volume Weighted Average Price (AVWAP) from an anchor date
+export function computeAVWAP(bars, anchorTime) {
+  if (!bars || bars.length === 0 || !anchorTime) return [];
+  const anchorKey = typeof anchorTime === 'string'
+    ? anchorTime
+    : (anchorTime?.year ? `${anchorTime.year}-${String(anchorTime.month).padStart(2, '0')}-${String(anchorTime.day).padStart(2, '0')}` : String(anchorTime));
+
+  let startIdx = bars.findIndex((b) => {
+    const bKey = typeof b.time === 'string'
+      ? b.time
+      : (b.time?.year ? `${b.time.year}-${String(b.time.month).padStart(2, '0')}-${String(b.time.day).padStart(2, '0')}` : String(b.time));
+    return bKey >= anchorKey;
+  });
+
+  if (startIdx === -1) {
+    startIdx = 0;
+  }
+
+  let cumVol = 0;
+  let cumTypicalVol = 0;
+  const result = [];
+
+  for (let i = startIdx; i < bars.length; i++) {
+    const bar = bars[i];
+    const vol = Number(bar.volume ?? bar.vol ?? bar.value ?? 0);
+    const high = Number(bar.high ?? bar.close);
+    const low = Number(bar.low ?? bar.close);
+    const close = Number(bar.close);
+    const typical = (high + low + close) / 3;
+
+    cumVol += vol;
+    cumTypicalVol += typical * vol;
+
+    const vwap = cumVol > 0 ? cumTypicalVol / cumVol : typical;
+    result.push({
+      time: bar.time,
+      price: vwap,
+      logical: i,
+    });
+  }
+
+  return result;
+}
+
 /**
  * Computes volume bar styling with TradingView "Simple Volume with Pocket Pivots" rules.
  *
@@ -62,8 +106,8 @@ function calculateEMA(data, period) {
  *    Volume <= 50-period SMA volume, non-actionable churning.
  *
  * Classic Mode (when isSmart is false):
- * - Up-day: Emerald green rgba(16, 185, 129, 0.4)
- * - Down-day: Rose red rgba(239, 68, 68, 0.4)
+ * - Up-day: TradingView green rgba(8, 153, 129, 0.45)
+ * - Down-day: TradingView red rgba(242, 54, 69, 0.45)
  */
 export function computeVolumeBars(chartData, timeframe = 'daily', isSmart = true) {
   if (!chartData || chartData.length === 0) return [];
@@ -223,18 +267,18 @@ export function computeVolumeBars(chartData, timeframe = 'daily', isSmart = true
         // Volume Dry-Up (VDU): Amber / Warm Orange
         barColor = 'rgba(245, 158, 11, 0.90)';
       } else if (isAboveAvg && isUp) {
-        // Above-average demand: Emerald Green
-        barColor = 'rgba(16, 185, 129, 0.85)';
+        // Above-average demand: TradingView Green
+        barColor = 'rgba(8, 153, 129, 0.85)';
       } else if (isAboveAvg && isDown) {
-        // Above-average distribution: Rose Red
-        barColor = 'rgba(239, 68, 68, 0.85)';
+        // Above-average distribution: TradingView Red
+        barColor = 'rgba(242, 54, 69, 0.85)';
       } else {
         // Routine below-average volume: Gray (#797b86)
         barColor = '#797b86';
       }
     } else {
       // Classic Mode: binary green/red
-      barColor = (d.close >= d.open) ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)';
+      barColor = (d.close >= d.open) ? 'rgba(8, 153, 129, 0.45)' : 'rgba(242, 54, 69, 0.45)';
     }
 
     result[i] = {
@@ -461,21 +505,32 @@ export function aggregateDailyBarsToMonthly(dailyBars) {
   return monthlyBars;
 }
 
-export function getCombinedTradeMarkers(chartData, showRsLine, tradeExecutions) {
-  const markers = [];
-  if (showRsLine && Array.isArray(chartData)) {
-    chartData.forEach((d) => {
-      if (d.is_rs_blue_dot) {
-        markers.push({
-          time: d.time,
-          position: 'aboveBar',
-          color: '#38bdf8',
-          shape: 'circle',
-          size: 0.6,
-        });
-      }
-    });
+// Helper to calculate ATR% multiple from 50-SMA (TradingView jfsrev / Fred6724 Parity)
+// A = ATR% = atr_20d (which is daily ATR / close * 100)
+// B = % Gain from 50-MA = (close - sma_50) / sma_50 * 100
+// Multiple = B / A
+export function calculateAtrMultiple50(bar) {
+  if (!bar) return null;
+  const close = Number(bar.close);
+  const sma50 = Number(bar.sma_50);
+  const atr20 = Number(bar.atr_20d);
+
+  if (close && sma50 && sma50 > 0 && atr20 && atr20 > 0) {
+    const pctGain = ((close - sma50) / sma50) * 100;
+    return Number((pctGain / atr20).toFixed(2));
   }
+
+  if (bar.ext_atr_50 !== undefined && bar.ext_atr_50 !== null) {
+    return Number(bar.ext_atr_50);
+  }
+
+  return null;
+}
+
+export function getCombinedTradeMarkers(chartData, showRsLine, tradeExecutions, showAtrDots = true) {
+  const markers = [];
+
+  // Trade Executions (Buys/Sells from Journal)
   if (Array.isArray(tradeExecutions) && tradeExecutions.length > 0 && Array.isArray(chartData) && chartData.length > 0) {
     const barTimes = chartData.map((d) => (typeof d.time === 'string' ? d.time : (d.time?.year ? `${d.time.year}-${String(d.time.month).padStart(2, '0')}-${String(d.time.day).padStart(2, '0')}` : String(d.time))));
     tradeExecutions.forEach((e) => {
@@ -502,6 +557,7 @@ export function getCombinedTradeMarkers(chartData, showRsLine, tradeExecutions) 
       });
     });
   }
+
   markers.sort((a, b) => {
     const ta = typeof a.time === 'string' ? a.time : `${a.time.year}-${String(a.time.month).padStart(2, '0')}-${String(a.time.day).padStart(2, '0')}`;
     const tb = typeof b.time === 'string' ? b.time : `${b.time.year}-${String(b.time.month).padStart(2, '0')}-${String(b.time.day).padStart(2, '0')}`;
@@ -635,6 +691,9 @@ function getResponsiveVisibleBars(containerWidth, timeframe = 'daily', totalBars
 
 // Module-level in-memory cache for stock earnings to avoid repeated network queries
 const earningsCache = new Map();
+
+// Module-level in-memory cache for user chart drawings (lines, text) to avoid repeated network queries
+const chartDrawingsCache = new Map();
 
 // Custom Primitive to draw a vertical dashed line for As-of Date
 class VerticalLinePrimitive {
@@ -822,6 +881,140 @@ class VolumeProfilePrimitive {
         const barW = Math.max(2 * hRatio, (bins[i] / maxVol) * maxBarWidth);
         ctx.fillStyle = 'rgba(56, 189, 248, 0.20)';  // uniform light sky-blue for all bars
         ctx.fillRect(rightX - barW, barY, barW, barH);
+      }
+      ctx.restore();
+    });
+  }
+}
+
+// Custom Primitive to draw delicate TradingView-style pinhead dots for 50-SMA ATR Climax Extension and RS Blue Dots
+class ClimaxDotsPrimitive {
+  constructor() {
+    this._data = [];
+    this._showRsLine = false;
+    this._showAtrDots = true;
+    this._isDaily = true;
+    this._chart = null;
+    this._series = null;
+    this._requestUpdate = () => {};
+    this._paneView = {
+      renderer: () => ({
+        draw: (target) => this._draw(target),
+        drawBackground: () => {},
+      }),
+      zOrder: () => 'top',
+    };
+  }
+
+  attached({ chart, series, requestUpdate }) {
+    this._chart = chart;
+    this._series = series;
+    this._requestUpdate = requestUpdate;
+  }
+
+  detached() {
+    this._chart = null;
+    this._series = null;
+    this._requestUpdate = () => {};
+  }
+
+  update(chartData, showRsLine, showAtrDots, isDaily = true) {
+    this._data = chartData || [];
+    this._showRsLine = Boolean(showRsLine);
+    this._showAtrDots = Boolean(showAtrDots);
+    this._isDaily = Boolean(isDaily);
+    if (this._requestUpdate) {
+      this._requestUpdate();
+    }
+  }
+
+  paneViews() {
+    return [this._paneView];
+  }
+
+  _draw(target) {
+    if (!this._chart || !this._series || !this._data || this._data.length === 0) return;
+    if (!this._showRsLine && !this._showAtrDots) return;
+
+    let from = 0;
+    let to = this._data.length - 1;
+    try {
+      const range = this._chart.timeScale().getVisibleLogicalRange();
+      if (range) {
+        from = Math.max(0, Math.floor(range.from) - 2);
+        to = Math.min(this._data.length - 1, Math.ceil(range.to) + 2);
+      }
+    } catch (_) {}
+
+    if (from > to) return;
+
+    const timeScale = this._chart.timeScale();
+
+    target.useBitmapCoordinateSpace(({ context: ctx, horizontalPixelRatio, verticalPixelRatio, bitmapSize }) => {
+      const hRatio = horizontalPixelRatio || 1;
+      const vRatio = verticalPixelRatio || horizontalPixelRatio || 1;
+
+      ctx.save();
+      for (let i = from; i <= to; i++) {
+        const d = this._data[i];
+        if (!d) continue;
+
+        const hasRsDot = Boolean(this._showRsLine && d.is_rs_blue_dot);
+        const mult = (this._showAtrDots && this._isDaily) ? calculateAtrMultiple50(d) : null;
+        const hasAtrDot = mult !== null && mult >= 7.0;
+
+        if (!hasRsDot && !hasAtrDot) continue;
+
+        let xCoord = timeScale.logicalToCoordinate(i);
+        if (xCoord === null || isNaN(xCoord)) {
+          xCoord = timeScale.timeToCoordinate(d.time);
+        }
+        if (xCoord === null || isNaN(xCoord)) continue;
+
+        const pixelX = Math.round(xCoord * hRatio);
+        if (pixelX < 0 || pixelX > bitmapSize.width) continue;
+
+        const highPrice = Number(d.high) || Number(d.close) || 0;
+        if (highPrice <= 0) continue;
+        const highYCoord = this._series.priceToCoordinate(highPrice);
+        if (highYCoord === null || isNaN(highYCoord)) continue;
+
+        // Base floating clearance above high wick in CSS pixels (~28px matching TradingView)
+        const baseClearance = 28;
+
+        // 1. RS Blue Dot (clean visible pinhead, radius ~2.7px)
+        if (hasRsDot) {
+          const rsCssY = hasAtrDot ? (highYCoord - baseClearance * 0.75) : (highYCoord - baseClearance);
+          const pixelY = Math.round(rsCssY * vRatio);
+          if (pixelY >= 0 && pixelY <= bitmapSize.height) {
+            ctx.beginPath();
+            ctx.arc(pixelX, pixelY, 2.7 * hRatio, 0, 2 * Math.PI, false);
+            ctx.fillStyle = '#38bdf8';
+            ctx.fill();
+          }
+        }
+
+        // 2. 50-SMA ATR Climax Extension Dot (balanced pinhead matching TradingView)
+        if (hasAtrDot) {
+          let color = '#fbbf24'; // Yellow (7.0x - 8.5x)
+          let radiusCss = 2.7;   // Balanced pinhead radius (~5.4px diameter)
+          if (mult >= 10.0) {
+            color = '#ef4444';   // Red (>= 10.0x)
+            radiusCss = 3.5;
+          } else if (mult >= 8.5) {
+            color = '#f97316';   // Orange (8.5x - 10.0x)
+            radiusCss = 3.1;
+          }
+
+          const atrCssY = hasRsDot ? (highYCoord - baseClearance * 1.35) : (highYCoord - baseClearance);
+          const pixelY = Math.round(atrCssY * vRatio);
+          if (pixelY >= 0 && pixelY <= bitmapSize.height) {
+            ctx.beginPath();
+            ctx.arc(pixelX, pixelY, radiusCss * hRatio, 0, 2 * Math.PI, false);
+            ctx.fillStyle = color;
+            ctx.fill();
+          }
+        }
       }
       ctx.restore();
     });
@@ -1018,6 +1211,69 @@ function compositeChartScreenshot(rawChartCanvas, {
           ctx.fillText(item.text, badgeX + pX, badgeY + pY + fontSize - 1);
           ctx.restore();
         }
+      } else if (item.type === 'avwap' && item.anchorTime) {
+        const curData = dataLookup?.data || [];
+        const avwapPoints = computeAVWAP(curData, item.anchorTime);
+        if (avwapPoints.length >= 2) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.strokeStyle = item.color || '#f59e0b';
+          ctx.lineWidth = Math.max(1.5, (item.width || 2) * scale);
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+
+          let started = false;
+          let lastX = 0;
+          let lastY = 0;
+          let lastPrice = 0;
+
+          for (const pt of avwapPoints) {
+            let log = pt.logical;
+            let x = typeof log === 'number' ? timeScale.logicalToCoordinate(log) : null;
+            if ((x === null || isNaN(x)) && pt.time) x = timeScale.timeToCoordinate(pt.time);
+            const y = series.priceToCoordinate(pt.price);
+
+            if (x !== null && y !== null && !isNaN(x) && !isNaN(y)) {
+              const px = Math.round(x * scaleX) + 0.5;
+              const py = Math.round(y * scaleY) + 0.5;
+              if (!started) {
+                ctx.moveTo(px, py);
+                started = true;
+              } else {
+                ctx.lineTo(px, py);
+              }
+              lastX = px;
+              lastY = py;
+              lastPrice = pt.price;
+            }
+          }
+          if (started) {
+            ctx.stroke();
+
+            // Draw AVWAP tag at end of curve
+            if (lastX > 0 && lastY > 0 && lastPrice > 0) {
+              const tagText = `VWAP $${lastPrice.toFixed(2)}`;
+              const tagFont = Math.max(9, Math.round(10 * scale));
+              ctx.font = `700 ${tagFont}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+              const tagMetrics = ctx.measureText(tagText);
+              const tagW = tagMetrics.width + 8 * scale;
+              const tagH = tagFont + 6 * scale;
+              const tagX = Math.min(outWidth - tagW - 4, lastX + 6);
+              const tagY = Math.max(4, lastY - tagH / 2);
+
+              drawCanvasRoundRect(ctx, tagX, tagY, tagW, tagH, 3 * scale);
+              ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+              ctx.fill();
+              ctx.strokeStyle = item.color || '#f59e0b';
+              ctx.lineWidth = 1;
+              ctx.stroke();
+
+              ctx.fillStyle = item.color || '#f59e0b';
+              ctx.fillText(tagText, tagX + 4 * scale, tagY + tagFont + 1);
+            }
+          }
+          ctx.restore();
+        }
       }
     }
   }
@@ -1089,8 +1345,8 @@ function compositeChartScreenshot(rawChartCanvas, {
   const isUp = change >= 0;
   const isCandleGreen = close >= open;
 
-  const ohlcColor = isCandleGreen ? '#34d399' : '#f87171';
-  const changeColor = isUp ? '#34d399' : '#f87171';
+  const ohlcColor = isCandleGreen ? '#089981' : '#f23645';
+  const changeColor = isUp ? '#089981' : '#f23645';
   const changeSign = isUp ? '+' : '';
   const volFormatted = formatVolume(volume);
   const isW = dataLookup?.timeframe === 'weekly';
@@ -1098,6 +1354,18 @@ function compositeChartScreenshot(rawChartCanvas, {
 
   const fontSize = Math.max(11 * scale, 12);
   ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+
+  const extAtr = (!isM && !isW && bar) ? calculateAtrMultiple50(bar) : null;
+  let extColor = '#94a3b8';
+  let extBadge = '';
+  if (extAtr !== null) {
+    if (extAtr >= 10.0) { extColor = '#ef4444'; extBadge = ' 🔥'; }
+    else if (extAtr >= 8.5) { extColor = '#f97316'; extBadge = ' ⚠️'; }
+    else if (extAtr >= 7.0) { extColor = '#fbbf24'; extBadge = ' ⚠️'; }
+    else if (extAtr > 4.0) { extColor = '#eab308'; }
+    else if (extAtr >= 0) { extColor = '#10b981'; }
+    else { extColor = '#38bdf8'; }
+  }
 
   const bannerTextParts = [
     ...((!isM && !isW) && symbol ? [{ text: `${symbol}`, color: '#f8fafc', bold: true }] : []),
@@ -1114,6 +1382,10 @@ function compositeChartScreenshot(rawChartCanvas, {
     { text: `${changeSign}${change.toFixed(2)} (${changeSign}${changePct.toFixed(2)}%)`, color: changeColor, bold: true },
     { text: 'Vol', color: '#94a3b8' },
     { text: volFormatted, color: '#38bdf8', bold: true },
+    ...(extAtr !== null ? [
+      { text: '50-ATR', color: '#94a3b8' },
+      { text: `${extAtr > 0 ? '+' : ''}${extAtr.toFixed(1)}x${extBadge}`, color: extColor, bold: true },
+    ] : []),
   ].filter(p => p.text);
 
   let bannerWidth = 16 * scale;
@@ -1226,7 +1498,7 @@ function compositeChartScreenshot(rawChartCanvas, {
       const yC = getYCoord(b.close);
 
       const isUpYear = b.close >= b.open;
-      const bColor = isUpYear ? '#22c55e' : '#ef4444';
+      const bColor = isUpYear ? '#089981' : '#f23645';
       ctx.strokeStyle = bColor;
       ctx.lineWidth = 1 * scale;
 
@@ -1302,8 +1574,11 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   showSmartVolume: showSmartVolumeProp = null, // boolean | null (controls TradingView 5-color volume & Pocket Pivots)
   showYearlyThumbnail: showYearlyThumbnailProp = null, // boolean | null (controls Mansfield Yearly Thumbnail)
   showRsLine: showRsLineProp = null, // boolean | null (controls Relative Strength line)
+  showAtrDots: showAtrDotsProp = null, // boolean | null (controls 50-SMA ATR climax extension dots)
   showEarnings: showEarningsProp = null, // boolean | null (controls Earnings icons)
   showSymbol: showSymbolProp = null, // boolean | null (controls symbol visibility in legend)
+  drawings: externalDrawings = null, // Optional external drawings array
+  onDrawingsChange = null, // Optional callback when drawings are created/modified/deleted
 }, ref) {
   const rootContainerRef = useRef(null);
   const chartContainerRef = useRef();
@@ -1313,6 +1588,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   const volumeMarkersPluginRef = useRef(null);
   const verticalLineRef = useRef(null);
   const volumeProfilePrimitiveRef = useRef(null);
+  const climaxDotsPrimitiveRef = useRef(null);
   const legendRef = useRef(null);
   const showSymbolRef = useRef(showSymbolProp);
   showSymbolRef.current = showSymbolProp;
@@ -1530,6 +1806,33 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     }
   };
 
+  // 50-SMA ATR Climax Extension Dots Toggle State (TradingView jfsrev/Fred6724 Parity)
+  const [internalShowAtrDots, setInternalShowAtrDots] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pt_chart_show_atr_dots');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const showAtrDots = typeof showAtrDotsProp === 'boolean'
+    ? showAtrDotsProp
+    : internalShowAtrDots;
+
+  const showAtrDotsRef = useRef(showAtrDots);
+  showAtrDotsRef.current = showAtrDots;
+
+  const toggleAtrDots = () => {
+    setInternalShowAtrDots((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('pt_chart_show_atr_dots', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
 
   // Fetch earnings data for symbol if not explicitly provided
   useEffect(() => {
@@ -1575,7 +1878,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   const [lineDraft, setLineDraft] = useState(null); // { start: pt, current: pt, isDragging: boolean }
   const [textInputState, setTextInputState] = useState(null); // { x, y, logical, price, time, offsetFromBar, value, isEditingId }
   const [selectedDrawingId, setSelectedDrawingId] = useState(null);
-  const [dragState, setDragState] = useState(null); // { drawingId, handle, startPt, original }
+  const [dragState, setDragState] = useState(null); // { drawingId, handle, startPt, original, isModified }
 
   const drawingsBySymbolRef = useRef(drawingsBySymbol);
   drawingsBySymbolRef.current = drawingsBySymbol;
@@ -1597,31 +1900,139 @@ const CandlestickChart = forwardRef(function CandlestickChart({
 
   const handleDragMoveRef = useRef(null);
 
-  const curSymbolKey = symbol || 'DEFAULT';
+  const curSymbolKey = symbol ? symbol.toUpperCase().trim() : 'DEFAULT';
   const currentDrawings = drawingsBySymbol[curSymbolKey] || [];
+
+  // Debounced Universal Drawing Persistence
+  const pendingSaveRef = useRef({ symbol: null, drawings: null });
+  const saveTimerRef = useRef(null);
+
+  const flushSaveDrawings = useCallback(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const { symbol: symToSave, drawings: drawingsToSave } = pendingSaveRef.current;
+    if (symToSave && symToSave !== 'DEFAULT' && Array.isArray(drawingsToSave)) {
+      pendingSaveRef.current = { symbol: null, drawings: null };
+      fetch(`${API_BASE}/api/stocks/${encodeURIComponent(symToSave)}/drawings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ drawings: drawingsToSave }),
+      }).catch((err) => {
+        console.warn(`Failed to persist drawings for ${symToSave}:`, err);
+      });
+    }
+  }, []);
+
+  const scheduleSaveDrawings = useCallback((sym, drawingsList) => {
+    if (!sym || sym === 'DEFAULT') return;
+    const cleanSym = sym.toUpperCase().trim();
+    chartDrawingsCache.set(cleanSym, drawingsList);
+    pendingSaveRef.current = { symbol: cleanSym, drawings: drawingsList };
+    if (onDrawingsChange) {
+      try {
+        onDrawingsChange(drawingsList);
+      } catch (e) {
+        console.error('Error in onDrawingsChange callback:', e);
+      }
+    }
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = setTimeout(() => {
+      flushSaveDrawings();
+    }, 400);
+  }, [flushSaveDrawings, onDrawingsChange]);
+
+  // Flush pending save on unmount or before symbol changes
+  useEffect(() => {
+    return () => {
+      flushSaveDrawings();
+    };
+  }, [flushSaveDrawings, curSymbolKey]);
+
+  // Window beforeunload listener ensures pending save is flushed on page reload / navigation
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      flushSaveDrawings();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [flushSaveDrawings]);
+
+  // Universal load drawings from memory cache or backend API when symbol changes
+  useEffect(() => {
+    if (!symbol) return;
+    const sym = symbol.toUpperCase().trim();
+
+    if (externalDrawings !== null) {
+      setDrawingsBySymbol((prev) => ({
+        ...prev,
+        [sym]: externalDrawings,
+      }));
+      chartDrawingsCache.set(sym, externalDrawings);
+      return;
+    }
+
+    if (chartDrawingsCache.has(sym)) {
+      const cached = chartDrawingsCache.get(sym);
+      setDrawingsBySymbol((prev) => ({
+        ...prev,
+        [sym]: cached,
+      }));
+      return;
+    }
+
+    let cancelled = false;
+    fetch(`${API_BASE}/api/stocks/${encodeURIComponent(sym)}/drawings`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data)) {
+          chartDrawingsCache.set(sym, data);
+          setDrawingsBySymbol((prev) => ({
+            ...prev,
+            [sym]: data,
+          }));
+        }
+      })
+      .catch((err) => {
+        console.warn(`Failed to fetch drawings for ${sym}:`, err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol, externalDrawings]);
 
   const handleDeleteSelectedDrawing = () => {
     const idToDelete = selectedDrawingIdRef.current;
     if (!idToDelete) return;
-    const curKey = symbol || 'DEFAULT';
+    const curKey = symbol ? symbol.toUpperCase().trim() : 'DEFAULT';
     setDrawingsBySymbol((prev) => {
       const list = prev[curKey] || [];
+      const nextList = list.filter((d) => d.id !== idToDelete);
+      scheduleSaveDrawings(curKey, nextList);
       return {
         ...prev,
-        [curKey]: list.filter((d) => d.id !== idToDelete),
+        [curKey]: nextList,
       };
     });
     setSelectedDrawingId(null);
   };
 
   const handleUndo = () => {
-    const curKey = symbol || 'DEFAULT';
+    const curKey = symbol ? symbol.toUpperCase().trim() : 'DEFAULT';
     setDrawingsBySymbol((prev) => {
       const list = prev[curKey] || [];
       if (list.length === 0) return prev;
+      const nextList = list.slice(0, -1);
+      scheduleSaveDrawings(curKey, nextList);
       return {
         ...prev,
-        [curKey]: list.slice(0, -1),
+        [curKey]: nextList,
       };
     });
     setSelectedDrawingId(null);
@@ -1634,7 +2045,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   handleUndoRef.current = handleUndo;
 
   const handleClearAllDrawings = () => {
-    const curKey = symbol || 'DEFAULT';
+    const curKey = symbol ? symbol.toUpperCase().trim() : 'DEFAULT';
+    scheduleSaveDrawings(curKey, []);
     setDrawingsBySymbol((prev) => ({
       ...prev,
       [curKey]: [],
@@ -1765,7 +2177,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   };
 
   const commitLine = (p1, p2) => {
-    const curKey = symbol || 'DEFAULT';
+    const curKey = symbol ? symbol.toUpperCase().trim() : 'DEFAULT';
     const newLine = {
       id: `line_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       type: 'line',
@@ -1786,7 +2198,9 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     };
     setDrawingsBySymbol((prev) => {
       const list = prev[curKey] || [];
-      return { ...prev, [curKey]: [...list, newLine] };
+      const nextList = [...list, newLine];
+      scheduleSaveDrawings(curKey, nextList);
+      return { ...prev, [curKey]: nextList };
     });
     setSelectedDrawingId(newLine.id);
   };
@@ -1794,24 +2208,28 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   const handleCommitText = () => {
     const currentState = textInputStateRef.current;
     if (!currentState) return;
-    const curKey = symbol || 'DEFAULT';
+    const curKey = symbol ? symbol.toUpperCase().trim() : 'DEFAULT';
     const val = (currentState.value || '').trim();
 
     if (currentState.isEditingId) {
       if (val) {
         setDrawingsBySymbol((prev) => {
           const list = prev[curKey] || [];
+          const nextList = list.map((d) => (d.id === currentState.isEditingId ? { ...d, text: val } : d));
+          scheduleSaveDrawings(curKey, nextList);
           return {
             ...prev,
-            [curKey]: list.map((d) => d.id === currentState.isEditingId ? { ...d, text: val } : d),
+            [curKey]: nextList,
           };
         });
       } else {
         setDrawingsBySymbol((prev) => {
           const list = prev[curKey] || [];
+          const nextList = list.filter((d) => d.id !== currentState.isEditingId);
+          scheduleSaveDrawings(curKey, nextList);
           return {
             ...prev,
-            [curKey]: list.filter((d) => d.id !== currentState.isEditingId),
+            [curKey]: nextList,
           };
         });
       }
@@ -1831,7 +2249,9 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       };
       setDrawingsBySymbol((prev) => {
         const list = prev[curKey] || [];
-        return { ...prev, [curKey]: [...list, newText] };
+        const nextList = [...list, newText];
+        scheduleSaveDrawings(curKey, nextList);
+        return { ...prev, [curKey]: nextList };
       });
       setSelectedDrawingId(newText.id);
     }
@@ -1907,6 +2327,11 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     };
 
     const onWindowMouseUp = () => {
+      if (dragStateRef.current?.isModified) {
+        const curKey = symbol ? symbol.toUpperCase().trim() : 'DEFAULT';
+        const curDrawings = drawingsBySymbolRef.current[curKey] || [];
+        scheduleSaveDrawings(curKey, curDrawings);
+      }
       setDragState(null);
     };
 
@@ -1917,7 +2342,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       window.removeEventListener('mousemove', onWindowMouseMove);
       window.removeEventListener('mouseup', onWindowMouseUp);
     };
-  }, [dragState]);
+  }, [dragState, scheduleSaveDrawings, symbol]);
 
   // Suppress browser context menu unconditionally when cancelling drawing/measurement via right-click
   useEffect(() => {
@@ -1973,8 +2398,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     const isUp = change >= 0;
     const isCandleGreen = close >= open;
 
-    const ohlcColor = isCandleGreen ? '#34d399' : '#f87171';
-    const changeColor = isUp ? '#34d399' : '#f87171';
+    const ohlcColor = isCandleGreen ? '#089981' : '#f23645';
+    const changeColor = isUp ? '#089981' : '#f23645';
     const changeSign = isUp ? '+' : '';
     const volFormatted = formatVolume(volume);
     const hasNormRs = bar.normalized_rs !== undefined && bar.normalized_rs !== null;
@@ -1984,6 +2409,28 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     const shouldShowSymbol = showSymbolRef.current !== null
       ? Boolean(showSymbolRef.current)
       : (!isM && !isW);
+
+    const extAtr = (!isM && !isW) ? calculateAtrMultiple50(bar) : null;
+    let extColor = '#94a3b8';
+    let extBadge = '';
+    if (extAtr !== null) {
+      if (extAtr >= 10.0) {
+        extColor = '#ef4444';
+        extBadge = ' 🔥';
+      } else if (extAtr >= 8.5) {
+        extColor = '#f97316';
+        extBadge = ' ⚠️';
+      } else if (extAtr >= 7.0) {
+        extColor = '#fbbf24';
+        extBadge = ' ⚠️';
+      } else if (extAtr > 4.0) {
+        extColor = '#eab308';
+      } else if (extAtr >= 0) {
+        extColor = '#10b981';
+      } else {
+        extColor = '#38bdf8';
+      }
+    }
 
     legendRef.current.innerHTML = `
       <div style="display: flex; align-items: center; gap: ${isM || isW ? '6px 8px' : '8px 10px'}; flex-wrap: ${isM || isW ? 'nowrap' : 'wrap'}; white-space: nowrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: ${isM || isW ? '11px' : '12px'}; font-variant-numeric: tabular-nums; line-height: 1.2;">
@@ -2000,6 +2447,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         <span style="color: ${changeColor}; font-weight: 700;">${changeSign}${change.toFixed(2)} (${changeSign}${changePct.toFixed(2)}%)</span>
         <span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">Vol</span><span style="color: #38bdf8; font-weight: 700;">${volFormatted}</span></span>
         ${hasRs && showRsLineRef.current ? `<span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">RS</span><span style="color: #38bdf8; font-weight: 700;">${hasNormRs ? (bar.normalized_rs >= 0 ? '+' : '') + bar.normalized_rs.toFixed(2) : Number(bar.rs_line).toFixed(2)}</span></span>` : ''}
+        ${extAtr !== null ? `<span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">50-ATR</span><span style="color: ${extColor}; font-weight: 700;">${extAtr > 0 ? '+' : ''}${extAtr.toFixed(1)}x${extBadge}</span></span>` : ''}
       </div>
     `;
   };
@@ -2024,7 +2472,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       const targetDate = overrideParams.asOfDate || asOfDate || defaultBar?.time || (chartData && chartData.length > 0 ? chartData[chartData.length - 1].time : null) || getLocalDateStr();
       const dateStr = typeof targetDate === 'string' ? targetDate : (targetDate?.year ? `${targetDate.year}-${String(targetDate.month).padStart(2, '0')}-${String(targetDate.day).padStart(2, '0')}` : String(targetDate));
 
-      const curKey = symbol || 'DEFAULT';
+      const curKey = symbol ? symbol.toUpperCase().trim() : 'DEFAULT';
       const curDrawings = drawingsBySymbolRef.current[curKey] || [];
 
       // 2. Composite header, indicator overlay, drawings, and earnings onto export canvas
@@ -2097,7 +2545,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   useImperativeHandle(ref, () => ({
     saveScreenshot: handleSaveScreenshot,
     getChart: () => chartRef.current,
-    getDrawings: () => drawingsBySymbolRef.current[symbol || 'DEFAULT'] || [],
+    getDrawings: () => drawingsBySymbolRef.current[symbol ? symbol.toUpperCase().trim() : 'DEFAULT'] || [],
+    flushDrawings: flushSaveDrawings,
     toggleScaleMode,
     isLogScale: () => isLogScale,
   }));
@@ -2112,7 +2561,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
 
       const chart = createChart(chartContainerRef.current, {
         layout: {
-          background: { color: '#161e2f' },
+          background: { color: '#131722' },
           textColor: '#9ca3af',
         },
         grid: {
@@ -2157,11 +2606,13 @@ const CandlestickChart = forwardRef(function CandlestickChart({
 
       const isWkOrMo = chartTimeframe === 'weekly' || chartTimeframe === 'monthly';
       const candlestickSeries = chart.addSeries(CandlestickSeries, {
-        upColor: '#10b981',
-        downColor: '#ef4444',
-        borderVisible: false,
-        wickUpColor: '#10b981',
-        wickDownColor: '#ef4444',
+        upColor: '#089981',
+        downColor: '#f23645',
+        borderVisible: true,
+        borderUpColor: '#089981',
+        borderDownColor: '#f23645',
+        wickUpColor: '#089981',
+        wickDownColor: '#f23645',
         priceLineVisible: showPriceLine,
         lastValueVisible: showPriceLine && !isWkOrMo,
         priceFormat: {
@@ -2302,6 +2753,10 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       candlestickSeries.attachPrimitive(vpPrimitive);
       volumeProfilePrimitiveRef.current = vpPrimitive;
 
+      const dotsPrimitive = new ClimaxDotsPrimitive();
+      candlestickSeries.attachPrimitive(dotsPrimitive);
+      climaxDotsPrimitiveRef.current = dotsPrimitive;
+
       chartRef.current = chart;
       seriesRef.current = {
         candlestickSeries,
@@ -2342,6 +2797,9 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           low: candle.low,
           close: candle.close,
           volume: volume,
+          sma_50: idx !== undefined ? currentData[idx]?.sma_50 : undefined,
+          atr_20d: idx !== undefined ? currentData[idx]?.atr_20d : undefined,
+          ext_atr_50: idx !== undefined ? currentData[idx]?.ext_atr_50 : undefined,
           rs_line: idx !== undefined ? currentData[idx]?.rs_line : undefined,
           normalized_rs: idx !== undefined ? currentData[idx]?.normalized_rs : undefined,
           is_rs_blue_dot: idx !== undefined ? currentData[idx]?.is_rs_blue_dot : false,
@@ -2545,8 +3003,12 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       if (userPanCheckTimeoutRef.current) clearTimeout(userPanCheckTimeoutRef.current);
 
       if (markersPluginRef.current) {
-        const markers = getCombinedTradeMarkers(chartData, showRsLine, tradeExecutions);
+        const markers = getCombinedTradeMarkers(chartData, showRsLine, tradeExecutions, showAtrDots);
         markersPluginRef.current.setMarkers(markers);
+      }
+
+      if (climaxDotsPrimitiveRef.current) {
+        climaxDotsPrimitiveRef.current.update(chartData, showRsLine, showAtrDots, !isWeekly && !isMonthly);
       }
 
       if (resolvedTime && verticalLineRef.current) {
@@ -2669,8 +3131,12 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       seriesRef.current.rsLineSeries.setData(rsData);
 
       if (markersPluginRef.current) {
-        const markers = getCombinedTradeMarkers(currentData, true, tradeExecutions);
+        const markers = getCombinedTradeMarkers(currentData, true, tradeExecutions, showAtrDots);
         markersPluginRef.current.setMarkers(markers);
+      }
+      if (climaxDotsPrimitiveRef.current) {
+        const isDaily = chartTimeframeRef.current !== 'weekly' && chartTimeframeRef.current !== 'monthly';
+        climaxDotsPrimitiveRef.current.update(currentData, true, showAtrDots, isDaily);
       }
     } else {
       if (seriesRef.current.rsLineSeries.options().visible !== false) {
@@ -2679,11 +3145,29 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       seriesRef.current.rsLineSeries.setData([]);
 
       if (markersPluginRef.current) {
-        const markers = getCombinedTradeMarkers(currentData, false, tradeExecutions);
+        const markers = getCombinedTradeMarkers(currentData, false, tradeExecutions, showAtrDots);
         markersPluginRef.current.setMarkers(markers);
       }
+      if (climaxDotsPrimitiveRef.current) {
+        const isDaily = chartTimeframeRef.current !== 'weekly' && chartTimeframeRef.current !== 'monthly';
+        climaxDotsPrimitiveRef.current.update(currentData, false, showAtrDots, isDaily);
+      }
     }
-  }, [showRsLine, tradeExecutions]);
+  }, [showRsLine, tradeExecutions, showAtrDots]);
+
+  // Handle immediate toggle of 50-SMA ATR Climax Extension Dots
+  useEffect(() => {
+    if (!dataLookupRef.current?.data) return;
+    const currentData = dataLookupRef.current.data;
+    const isDaily = chartTimeframeRef.current !== 'weekly' && chartTimeframeRef.current !== 'monthly';
+    if (climaxDotsPrimitiveRef.current) {
+      climaxDotsPrimitiveRef.current.update(currentData, showRsLine, showAtrDots, isDaily);
+    }
+    if (markersPluginRef.current) {
+      const markers = getCombinedTradeMarkers(currentData, showRsLine, tradeExecutions, showAtrDots);
+      markersPluginRef.current.setMarkers(markers);
+    }
+  }, [showAtrDots, showRsLine, tradeExecutions]);
 
   // Handle trade price lines (Entry, Stop, Exit)
   useEffect(() => {
@@ -2793,6 +3277,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         markersPluginRef.current = null;
         volumeMarkersPluginRef.current = null;
         verticalLineRef.current = null;
+        volumeProfilePrimitiveRef.current = null;
+        climaxDotsPrimitiveRef.current = null;
       }
     };
   }, [height]);
@@ -2918,6 +3404,40 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       return;
     }
 
+    // 2.5 AVWAP Tool placement: single click on any candle to anchor VWAP
+    if (activeTool === 'avwap') {
+      e.preventDefault();
+      e.stopPropagation();
+      const pt = getPointFromEvent(e);
+      if (!pt || !pt.time) return;
+
+      const tKey = typeof pt.time === 'string'
+        ? pt.time
+        : (pt.time?.year ? `${pt.time.year}-${String(pt.time.month).padStart(2, '0')}-${String(pt.time.day).padStart(2, '0')}` : String(pt.time));
+
+      const newDrawing = {
+        id: `avwap_${Date.now()}`,
+        type: 'avwap',
+        anchorTime: tKey,
+        color: '#f59e0b',
+        width: 2,
+      };
+
+      const curKey = symbol ? symbol.toUpperCase().trim() : 'DEFAULT';
+      const prevDrawings = drawingsBySymbolRef.current[curKey] || [];
+      const nextDrawings = [...prevDrawings, newDrawing];
+
+      setDrawingsBySymbol((prev) => ({
+        ...prev,
+        [curKey]: nextDrawings,
+      }));
+
+      scheduleSaveDrawings(curKey, nextDrawings);
+      onDrawingsChange?.(nextDrawings);
+      setActiveTool('none');
+      return;
+    }
+
     // 3. If currently measuring, second click locks and pins
     if (measureState?.isMeasuring) {
       e.preventDefault();
@@ -2982,8 +3502,9 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     if (!dragStateRef.current) return;
     const pt = getPointFromEvent(e);
     if (!pt) return;
+    dragStateRef.current.isModified = true;
     const { drawingId, handle, startPt, original } = dragStateRef.current;
-    const curKey = symbol || 'DEFAULT';
+    const curKey = symbol ? symbol.toUpperCase().trim() : 'DEFAULT';
     setDrawingsBySymbol((prev) => {
       const list = prev[curKey] || [];
       return {
@@ -3019,6 +3540,16 @@ const CandlestickChart = forwardRef(function CandlestickChart({
               ...d,
               p: shiftPoint(original.p, dLog, dPrice),
             };
+          } else if (d.type === 'avwap') {
+            if (pt.time) {
+              const tKey = typeof pt.time === 'string'
+                ? pt.time
+                : (pt.time?.year ? `${pt.time.year}-${String(pt.time.month).padStart(2, '0')}-${String(pt.time.day).padStart(2, '0')}` : String(pt.time));
+              return {
+                ...d,
+                anchorTime: tKey,
+              };
+            }
           }
           return d;
         }),
@@ -3052,6 +3583,11 @@ const CandlestickChart = forwardRef(function CandlestickChart({
 
   const handleMouseUp = (e) => {
     if (dragState) {
+      if (dragStateRef.current?.isModified) {
+        const curKey = symbol ? symbol.toUpperCase().trim() : 'DEFAULT';
+        const curDrawings = drawingsBySymbolRef.current[curKey] || [];
+        scheduleSaveDrawings(curKey, curDrawings);
+      }
       setDragState(null);
       return;
     }
@@ -3111,6 +3647,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         handle,
         startPt: pt,
         original: JSON.parse(JSON.stringify(drawing)),
+        isModified: false,
       });
     }
   };
@@ -3327,6 +3864,42 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           </svg>
         </button>
 
+        {/* Anchored VWAP (AVWAP) Tool Button */}
+        <button
+          type="button"
+          onClick={() => {
+            const next = activeTool === 'avwap' ? 'none' : 'avwap';
+            setActiveTool(next);
+            setLineDraft(null);
+            setTextInputState(null);
+            if (next === 'avwap') {
+              setMeasureState(null);
+              setIsMeasureModeActive(false);
+            }
+          }}
+          title={activeTool === 'avwap' ? "Anchored VWAP Active (Click on any candle to anchor VWAP, or press Esc)" : "Anchored VWAP (AVWAP) - Click candle to anchor institutional VWAP"}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '26px',
+            height: '26px',
+            padding: 0,
+            background: activeTool === 'avwap' ? 'rgba(245, 158, 11, 0.35)' : 'rgba(255, 255, 255, 0.05)',
+            border: activeTool === 'avwap' ? '1px solid #f59e0b' : '1px solid rgba(255, 255, 255, 0.15)',
+            color: activeTool === 'avwap' ? '#f59e0b' : '#e2e8f0',
+            borderRadius: '5px',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="5" r="3" />
+            <line x1="12" y1="22" x2="12" y2="8" />
+            <path d="M5 12H2a10 10 0 0 0 20 0h-3" />
+          </svg>
+        </button>
+
         {/* TradingView Measure Tool Toggle Button — secondary (collapsible) */}
         {showToolbarMore && (
           <button
@@ -3414,6 +3987,36 @@ const CandlestickChart = forwardRef(function CandlestickChart({
             }}
           >
             RS
+          </button>
+        )}
+
+        {showToolbarMore && (
+          /* 50-SMA ATR Climax Extension Dots Toggle Button (TradingView jfsrev/Fred6724 Parity) */
+          <button
+            type="button"
+            onClick={toggleAtrDots}
+            title={showAtrDots
+              ? 'Hide 50-SMA ATR Climax Extension Dots (🟡 7x, 🟠 8.5x, 🔴 10x)'
+              : 'Show 50-SMA ATR Climax Extension Dots (🟡 7x, 🟠 8.5x, 🔴 10x — Jeff Sun Scale-Out Guardrail)'
+            }
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0 6px',
+              height: '26px',
+              background: showAtrDots ? 'rgba(245, 158, 11, 0.22)' : 'rgba(255, 255, 255, 0.05)',
+              border: showAtrDots ? '1px solid rgba(245, 158, 11, 0.8)' : '1px solid rgba(255, 255, 255, 0.15)',
+              color: showAtrDots ? '#fbbf24' : 'var(--text-secondary)',
+              borderRadius: '5px',
+              fontSize: '10px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              letterSpacing: '0.5px',
+            }}
+          >
+            50A
           </button>
         )}
 
@@ -3591,7 +4194,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         <button
           type="button"
           onClick={() => setShowToolbarMore((v) => !v)}
-          title={showToolbarMore ? 'Collapse toolbar' : 'Expand toolbar (Measure, Earnings, RS, VP, SV, Yearly, Scale)'}
+          title={showToolbarMore ? 'Collapse toolbar' : 'Expand toolbar (Measure, Earnings, RS, 50-ATR, VP, SV, Yearly, Scale)'}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -3601,17 +4204,17 @@ const CandlestickChart = forwardRef(function CandlestickChart({
             padding: 0,
             background: showToolbarMore
               ? 'rgba(255,255,255,0.10)'
-              : (isMeasureModeActive || !effectiveShowEarnings || !showRsLine || showVolumeProfile || !isLogScale || !showMansfieldYearly)
+              : (isMeasureModeActive || !effectiveShowEarnings || !showRsLine || !showAtrDots || showVolumeProfile || !isLogScale || !showMansfieldYearly)
                 ? 'rgba(56, 189, 248, 0.12)'
                 : 'rgba(255, 255, 255, 0.05)',
             border: showToolbarMore
               ? '1px solid rgba(255,255,255,0.3)'
-              : (isMeasureModeActive || !effectiveShowEarnings || !showRsLine || showVolumeProfile || !isLogScale || !showMansfieldYearly)
+              : (isMeasureModeActive || !effectiveShowEarnings || !showRsLine || !showAtrDots || showVolumeProfile || !isLogScale || !showMansfieldYearly)
                 ? '1px solid rgba(56,189,248,0.4)'
                 : '1px solid rgba(255, 255, 255, 0.15)',
             color: showToolbarMore
               ? '#e2e8f0'
-              : (isMeasureModeActive || !effectiveShowEarnings || !showRsLine || showVolumeProfile || !isLogScale || !showMansfieldYearly)
+              : (isMeasureModeActive || !effectiveShowEarnings || !showRsLine || !showAtrDots || showVolumeProfile || !isLogScale || !showMansfieldYearly)
                 ? '#38bdf8'
                 : '#94a3b8',
             borderRadius: '5px',
@@ -3712,12 +4315,13 @@ const CandlestickChart = forwardRef(function CandlestickChart({
             measureState?.isPinned ||
             activeTool === 'line' ||
             activeTool === 'text' ||
+            activeTool === 'avwap' ||
             lineDraft ||
             dragState ||
             textInputState
           ) ? 'auto' : 'none',
           cursor: (
-            activeTool === 'line' || lineDraft || isShiftDown || isMeasureModeActive || measureState?.isMeasuring
+            activeTool === 'line' || activeTool === 'avwap' || lineDraft || isShiftDown || isMeasureModeActive || measureState?.isMeasuring
               ? 'crosshair'
               : activeTool === 'text'
                 ? 'text'
@@ -3897,6 +4501,85 @@ const CandlestickChart = forwardRef(function CandlestickChart({
               );
             }
 
+            if (drawing.type === 'avwap' && drawing.anchorTime) {
+              const curData = dataLookupRef.current?.data || [];
+              const avwapPoints = computeAVWAP(curData, drawing.anchorTime);
+              if (avwapPoints.length < 2) return null;
+
+              const projected = avwapPoints
+                .map((pt) => projectDrawingPoint(pt))
+                .filter((pt) => pt && !isNaN(pt.x) && !isNaN(pt.y));
+
+              if (projected.length < 2) return null;
+
+              const pathD = projected.reduce(
+                (acc, pt, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`,
+                ''
+              );
+              const startPt = projected[0];
+              const endPt = projected[projected.length - 1];
+              const lastPrice = avwapPoints[avwapPoints.length - 1].price;
+              const avwapColor = drawing.color || '#f59e0b';
+
+              return (
+                <g key={drawing.id} style={{ pointerEvents: 'auto' }}>
+                  {/* Invisible hit path for easy clicking and selecting */}
+                  <path
+                    d={pathD}
+                    fill="none"
+                    stroke="transparent"
+                    strokeWidth="14"
+                    style={{ cursor: isSelected ? 'move' : 'pointer' }}
+                    onMouseDown={(e) => handleDrawingMouseDown(e, drawing, 'body')}
+                  />
+                  {/* Visible AVWAP path */}
+                  <path
+                    d={pathD}
+                    fill="none"
+                    stroke={avwapColor}
+                    strokeWidth={drawing.width || 2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                  {/* Anchor Point Circle & Pulse */}
+                  <circle
+                    cx={startPt.x}
+                    cy={startPt.y}
+                    r={isSelected ? 6 : 4.5}
+                    fill={avwapColor}
+                    stroke="#0f172a"
+                    strokeWidth="1.5"
+                    style={{ cursor: 'pointer' }}
+                    onMouseDown={(e) => handleDrawingMouseDown(e, drawing, 'body')}
+                  />
+                  {/* Ending VWAP Price Tag */}
+                  <g transform={`translate(${endPt.x + 6}, ${endPt.y - 9})`} style={{ pointerEvents: 'none' }}>
+                    <rect
+                      x="0"
+                      y="0"
+                      width="76"
+                      height="18"
+                      rx="4"
+                      fill="rgba(15, 23, 42, 0.9)"
+                      stroke={avwapColor}
+                      strokeWidth="1"
+                    />
+                    <text
+                      x="5"
+                      y="13"
+                      fill={avwapColor}
+                      fontSize="10"
+                      fontWeight="700"
+                      fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+                    >
+                      VWAP ${lastPrice.toFixed(2)}
+                    </text>
+                  </g>
+                </g>
+              );
+            }
+
             return null;
           })}
 
@@ -3932,8 +4615,8 @@ const CandlestickChart = forwardRef(function CandlestickChart({
                 y={measureRender.boxY}
                 width={measureRender.boxW}
                 height={measureRender.boxH}
-                fill={measureRender.isUp ? 'rgba(16, 185, 129, 0.16)' : 'rgba(239, 68, 68, 0.16)'}
-                stroke={measureRender.isUp ? 'rgba(16, 185, 129, 0.75)' : 'rgba(239, 68, 68, 0.75)'}
+                fill={measureRender.isUp ? 'rgba(8, 153, 129, 0.16)' : 'rgba(242, 54, 69, 0.16)'}
+                stroke={measureRender.isUp ? 'rgba(8, 153, 129, 0.75)' : 'rgba(242, 54, 69, 0.75)'}
                 strokeWidth="1.5"
                 strokeDasharray="4 3"
                 rx="4"
@@ -3944,7 +4627,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
                 y1={measureRender.y1}
                 x2={measureRender.x2}
                 y2={measureRender.y2}
-                stroke={measureRender.isUp ? '#10b981' : '#ef4444'}
+                stroke={measureRender.isUp ? '#089981' : '#f23645'}
                 strokeWidth="1.5"
               />
               {/* Start Point Circle */}
@@ -3952,7 +4635,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
                 cx={measureRender.x1}
                 cy={measureRender.y1}
                 r="3.5"
-                fill={measureRender.isUp ? '#10b981' : '#ef4444'}
+                fill={measureRender.isUp ? '#089981' : '#f23645'}
                 stroke="#0f172a"
                 strokeWidth="1"
               />
@@ -3961,7 +4644,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
                 cx={measureRender.x2}
                 cy={measureRender.y2}
                 r="3.5"
-                fill={measureRender.isUp ? '#10b981' : '#ef4444'}
+                fill={measureRender.isUp ? '#089981' : '#f23645'}
                 stroke="#0f172a"
                 strokeWidth="1"
               />
@@ -3987,11 +4670,18 @@ const CandlestickChart = forwardRef(function CandlestickChart({
             if (!pt) return null;
             posX = pt.x + 10;
             posY = pt.y - 32;
+          } else if (selDrawing.type === 'avwap') {
+            const curData = dataLookupRef.current?.data || [];
+            const pts = computeAVWAP(curData, selDrawing.anchorTime);
+            const anchorPt = pts.length > 0 ? projectDrawingPoint(pts[0]) : null;
+            if (!anchorPt) return null;
+            posX = anchorPt.x + 8;
+            posY = anchorPt.y - 32;
           }
 
           const containerW = chartContainerRef.current?.clientWidth || 600;
           const containerH = chartContainerRef.current?.clientHeight || 300;
-          posX = Math.max(10, Math.min(posX - 24, containerW - 70));
+          posX = Math.max(10, Math.min(posX - 24, containerW - 140));
           posY = Math.max(10, Math.min(posY, containerH - 35));
 
           return (
@@ -4007,13 +4697,47 @@ const CandlestickChart = forwardRef(function CandlestickChart({
                 background: 'rgba(15, 23, 42, 0.95)',
                 border: '1px solid rgba(255, 255, 255, 0.2)',
                 borderRadius: '6px',
-                padding: '2px 4px',
+                padding: '2px 6px',
                 boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
                 pointerEvents: 'auto',
               }}
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
             >
+              {selDrawing.type === 'avwap' && (
+                <>
+                  <span style={{ fontSize: '10.5px', color: selDrawing.color || '#f59e0b', fontWeight: 700, padding: '0 4px' }}>
+                    ⚓ {selDrawing.anchorTime}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const colors = ['#f59e0b', '#38bdf8', '#c084fc', '#10b981', '#f43f5e'];
+                      const curIdx = colors.indexOf(selDrawing.color || '#f59e0b');
+                      const nextColor = colors[(curIdx + 1) % colors.length];
+                      const curKey = symbol ? symbol.toUpperCase().trim() : 'DEFAULT';
+                      const list = drawingsBySymbolRef.current[curKey] || [];
+                      const updated = list.map((d) => (d.id === selDrawing.id ? { ...d, color: nextColor } : d));
+                      setDrawingsBySymbol((prev) => ({ ...prev, [curKey]: updated }));
+                      scheduleSaveDrawings(curKey, updated);
+                      onDrawingsChange?.(updated);
+                    }}
+                    title="Change AVWAP color"
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: selDrawing.color || '#f59e0b',
+                      cursor: 'pointer',
+                      padding: '2px 4px',
+                      fontSize: '11px',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    🎨
+                  </button>
+                </>
+              )}
               {selDrawing.type === 'text' && (
                 <button
                   type="button"
@@ -4152,7 +4876,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
               top: `${measureRender.isUp ? Math.max(10, measureRender.boxY - 32) : Math.min((chartContainerRef.current?.clientHeight || 280) - 38, measureRender.boxY + measureRender.boxH + 8)}px`,
               zIndex: 8,
               background: measureRender.isUp ? 'rgba(6, 78, 59, 0.94)' : 'rgba(127, 29, 29, 0.94)',
-              border: `1px solid ${measureRender.isUp ? '#10b981' : '#ef4444'}`,
+              border: `1px solid ${measureRender.isUp ? '#089981' : '#f23645'}`,
               backdropFilter: 'blur(8px)',
               WebkitBackdropFilter: 'blur(8px)',
               borderRadius: '6px',

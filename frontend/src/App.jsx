@@ -129,15 +129,16 @@ function App() {
 
   // Centralized setups configuration and filter states
   const [setupsConfig, setSetupsConfig] = useState({ folders: [], setups: [], filters: {} });
-  const [activeFolderId, setActiveFolderId] = useState('daily');
-  const [activeScreenerId, setActiveScreenerId] = useState('five_ema_below_5pct');
-  const [folderMemory, setFolderMemory] = useState({ daily: 'five_ema_below_5pct', weekly: 'leaders', others: 'confirmed_staged' });
-  const [activeSetupKey, setActiveSetupKey] = useState('five_ema_below_5pct');
+  const [activeFolderId, setActiveFolderId] = useState('action');
+  const [activeScreenerId, setActiveScreenerId] = useState('');
+  const [folderMemory, setFolderMemory] = useState({});
+  const [activeSetupKey, setActiveSetupKey] = useState('');
   const [activeExpression, setActiveExpression] = useState('');
 
   // References
   const syncIntervalRef = useRef(null);
   const activeExpressionRef = useRef('');
+  const prevTabRef = useRef(activeTab);
 
   // Fetch summary counts
   const fetchSummary = async () => {
@@ -150,6 +151,43 @@ function App() {
     }
   };
 
+  const handleSelectFolder = (folderId, configOverride = null) => {
+    setActiveFolderId(folderId);
+    const cfg = configOverride || setupsConfig;
+    const folder = (cfg?.folders || []).find(f => f.id === folderId);
+    if (!folder || !folder.screeners || folder.screeners.length === 0) return;
+
+    const visibleScreeners = folder.screeners.filter(s => s.visible !== false);
+    const candidateList = visibleScreeners.length > 0 ? visibleScreeners : folder.screeners;
+    const rememberedId = folderMemory[folderId];
+    const screener = candidateList.find(s => s.id === folder.default_screener_id) ||
+                     (rememberedId && candidateList.find(s => s.id === rememberedId)) ||
+                     candidateList[0];
+    if (screener) {
+      setActiveScreenerId(screener.id);
+      setActiveSetupKey(screener.id);
+      setActiveExpression(screener.expression || '');
+    }
+  };
+
+  const selectDefaultFolder = (configOverride = null) => {
+    const cfg = configOverride || setupsConfig;
+    if (!cfg?.folders || cfg.folders.length === 0) return;
+    const visibleFolders = cfg.folders.filter(f => f.visible !== false);
+    const defaultFolder = visibleFolders.find(f => f.default === true) || visibleFolders.find(f => f.id === 'action') || visibleFolders[0] || cfg.folders[0];
+    if (defaultFolder) {
+      handleSelectFolder(defaultFolder.id, cfg);
+    }
+  };
+
+  // When navigating to the screener page (candidates tab), select the default folder
+  useEffect(() => {
+    if (activeTab === 'candidates' && prevTabRef.current !== 'candidates') {
+      selectDefaultFolder();
+    }
+    prevTabRef.current = activeTab;
+  }, [activeTab, setupsConfig]);
+
   // Fetch setups and filter definitions from centralized config
   const fetchSetups = async () => {
     try {
@@ -158,19 +196,7 @@ function App() {
         const data = await res.json();
         setSetupsConfig(data);
         if (data.folders && data.folders.length > 0) {
-          const visibleFolders = data.folders.filter(f => f.visible !== false);
-          const defaultFolder = visibleFolders.find(f => f.id === 'daily') || visibleFolders[0] || data.folders[0];
-          const visibleScreeners = (defaultFolder.screeners || []).filter(s => s.visible !== false);
-          const candidateScreeners = visibleScreeners.length > 0 ? visibleScreeners : (defaultFolder.screeners || []);
-          const defScreenerId = (candidateScreeners.some(s => s.id === defaultFolder.default_screener_id) ? defaultFolder.default_screener_id : null) || candidateScreeners[0]?.id;
-          const defaultScreener = candidateScreeners.find(s => s.id === defScreenerId) || candidateScreeners[0];
-          
-          setActiveFolderId(defaultFolder.id);
-          if (defaultScreener) {
-            setActiveScreenerId(defaultScreener.id);
-            setActiveSetupKey(defaultScreener.id);
-            setActiveExpression(defaultScreener.expression || '');
-          }
+          selectDefaultFolder(data);
         } else {
           const visibleSetups = (data.setups || []).filter(s => s.visible !== false);
           const candidateSetups = visibleSetups.length > 0 ? visibleSetups : (data.setups || []);
@@ -192,24 +218,6 @@ function App() {
       console.error("Error fetching setups configuration:", e);
     }
     return null;
-  };
-
-  const handleSelectFolder = (folderId) => {
-    setActiveFolderId(folderId);
-    const folder = (setupsConfig?.folders || []).find(f => f.id === folderId);
-    if (!folder || !folder.screeners || folder.screeners.length === 0) return;
-
-    const visibleScreeners = folder.screeners.filter(s => s.visible !== false);
-    const candidateList = visibleScreeners.length > 0 ? visibleScreeners : folder.screeners;
-    const rememberedId = folderMemory[folderId];
-    const screener = candidateList.find(s => s.id === rememberedId) ||
-                     candidateList.find(s => s.id === folder.default_screener_id) ||
-                     candidateList[0];
-    if (screener) {
-      setActiveScreenerId(screener.id);
-      setActiveSetupKey(screener.id);
-      setActiveExpression(screener.expression || '');
-    }
   };
 
   const handleSelectScreener = (screenerId, expressionOverride = null) => {
@@ -416,23 +424,30 @@ function App() {
     }
   };
 
-  // Trigger ultra-fast live / pre-market quotes sync
+  // Trigger ultra-fast live / pre-market quotes sync for watchlist symbols (<0.5s)
   const handleTriggerLiveQuotesSync = async () => {
     try {
-      await fetch(`${API_BASE}/api/sync/run`, {
+      setLoadingCandidates(true);
+      const res = await fetch(`${API_BASE}/api/sync/live-watchlist`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          skip_prices: false,
-          skip_fundamentals: true,
-          include_premarket: true,
-          include_extended: true
-        })
+        headers: { 'Content-Type': 'application/json' }
       });
-      fetchSyncStatus();
+      if (res.ok) {
+        const data = await res.json();
+        const dates = await fetchTradingDates();
+        const latestDt = (dates && dates.length > 0) ? dates[0] : (data?.target_date || selectedDate);
+        if (dates && dates.length > 0) {
+          setSelectedDate(dates[0]);
+        }
+        await fetchCandidates(latestDt);
+        return data;
+      }
     } catch (e) {
       console.error("Error triggering live quotes sync: ", e);
+    } finally {
+      setLoadingCandidates(false);
     }
+    return null;
   };
 
   // Prefetch adjacent stocks in list for instant 0ms drawer navigation
@@ -449,7 +464,7 @@ function App() {
         try {
           const [dRes, pRes] = await Promise.all([
             fetch(`${API_BASE}/api/stocks/${sym}`),
-            fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=750`)
+            fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=3500`)
           ]);
           if (dRes.ok && pRes.ok) {
             const [dData, pData] = await Promise.all([dRes.json(), pRes.json()]);
@@ -481,7 +496,7 @@ function App() {
     }
 
     try {
-      const prPromise = fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=750`)
+      const prPromise = fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=3500`)
         .then((res) => (res.ok ? res.json() : []))
         .then((prData) => {
           setStockPrices(prData);
@@ -645,7 +660,10 @@ function App() {
               {/* 3. Screener */}
               <li
                 className={`nav-item ${activeTab === 'candidates' ? 'active' : ''}`}
-                onClick={() => setActiveTab('candidates')}
+                onClick={() => {
+                  setActiveTab('candidates');
+                  selectDefaultFolder();
+                }}
                 title="3. Screener & Setup Scanner"
               >
                 <div className="nav-item-content">
@@ -658,15 +676,15 @@ function App() {
                 </span>
               </li>
 
-              {/* 4. Watchlists */}
+              {/* 4. Watchlist */}
               <li
                 className={`nav-item ${activeTab === 'watchlists' ? 'active' : ''}`}
                 onClick={() => setActiveTab('watchlists')}
-                title="4. Watchlists"
+                title="4. Watchlist"
               >
                 <div className="nav-item-content">
                   <span className="nav-icon">📊</span>
-                  <span className="nav-label">4. Watchlists</span>
+                  <span className="nav-label">4. Watchlist</span>
                 </div>
                 <span className="nav-badge emerald">{watchlists.reduce((sum, w) => sum + (w.item_count || 0), 0)}</span>
               </li>

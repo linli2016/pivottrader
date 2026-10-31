@@ -24,6 +24,7 @@ class JournalFlexConfigSchema(BaseModel):
 
 class JournalNotesSchema(BaseModel):
     notes: str = ""
+    mistakes: str = ""
     tags: Optional[List[str]] = None
     initial_stop: Optional[float] = None
 
@@ -128,10 +129,10 @@ def get_positions(account: Optional[str] = None, status: Optional[str] = "all"):
 
 @router.put("/api/journal/trades/{trade_id}/notes")
 def update_journal_notes(trade_id: str, payload: JournalNotesSchema):
-    """Save notes, tags, and initial stop price for a round-trip trade."""
+    """Save notes, mistakes, tags, and initial stop price for a round-trip trade."""
     try:
         return journal_service.update_notes(
-            trade_id, payload.notes, payload.tags, initial_stop=payload.initial_stop
+            trade_id, payload.notes, payload.tags, initial_stop=payload.initial_stop, mistakes=payload.mistakes
         )
     except Exception as e:
         logger.error(f"Error in update_journal_notes: {e}", exc_info=True)

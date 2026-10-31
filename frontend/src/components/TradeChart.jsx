@@ -139,11 +139,13 @@ export default function TradeChart({
 
     // Candlestick series
     const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#10b981',
-      downColor: '#f43f5e',
-      borderVisible: false,
-      wickUpColor: '#10b981',
-      wickDownColor: '#f43f5e',
+      upColor: '#089981',
+      downColor: '#f23645',
+      borderVisible: true,
+      borderUpColor: '#089981',
+      borderDownColor: '#f23645',
+      wickUpColor: '#089981',
+      wickDownColor: '#f23645',
     });
 
     const candleData = bars.map((b) => ({

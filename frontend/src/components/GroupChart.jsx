@@ -134,7 +134,7 @@ export default function GroupChart({
       width: container.clientWidth || 600,
       height: chartHeight,
       layout: {
-        background: { color: '#0d131f' },
+        background: { color: '#131722' },
         textColor: '#94a3b8',
         fontSize: 11,
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
@@ -178,11 +178,13 @@ export default function GroupChart({
 
     // 1. Candlestick Series (Synthetic Group Price)
     const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#10b981',
-      downColor: '#ef4444',
-      borderVisible: false,
-      wickUpColor: '#10b981',
-      wickDownColor: '#ef4444',
+      upColor: '#089981',
+      downColor: '#f23645',
+      borderVisible: true,
+      borderUpColor: '#089981',
+      borderDownColor: '#f23645',
+      wickUpColor: '#089981',
+      wickDownColor: '#f23645',
       priceFormat: {
         type: 'custom',
         formatter: (p) => Number(p).toFixed(2)
@@ -279,7 +281,7 @@ export default function GroupChart({
       volData.push({
         time: timeVal,
         value: b.volume || 0,
-        color: isUp ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)'
+        color: isUp ? 'rgba(8, 153, 129, 0.35)' : 'rgba(242, 54, 69, 0.35)'
       });
 
       if (b[maKey] !== null && b[maKey] !== undefined) {
@@ -363,7 +365,7 @@ export default function GroupChart({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        background: '#0d131f',
+        background: '#131722',
         borderRadius: '10px',
         border: '1px solid rgba(255, 255, 255, 0.08)',
         overflow: 'hidden',

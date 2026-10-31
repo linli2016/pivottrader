@@ -17,6 +17,8 @@ const CHEAT_SHEET_CATEGORIES = [
       { sym: 'DOLLAR_VOL', label: '50d $ Vol', desc: '50-day average dollar volume' },
       { sym: 'HIGHEST_VOL_1Y', label: 'Highest Vol 1Y', desc: 'Highest single-day volume in trailing 52 weeks (HVE)' },
       { sym: 'CLOSE_RANGE', label: 'Close Range Pos', desc: 'Intraday close in candle range (0.0 to 1.0, e.g. >= 0.75)' },
+      { sym: 'RVOL', label: 'RVOL', desc: 'Relative volume multiple vs 50d average (e.g. >= 2.0)' },
+      { sym: 'PROJ_RVOL', label: 'Projected RVOL', desc: 'Projected intraday volume pace vs 20d MA (e.g. >= 2.0)' },
     ]
   },
   {
@@ -97,10 +99,9 @@ const CHEAT_SHEET_CATEGORIES = [
         label: 'EP',
         desc: 'Catalyst gap & go setup',
         is_alias: true,
-        expr: 'COALESCE(GAP_PCT, 0) >= 10.0 AND COALESCE(REL_VOL, 0) >= 2.5'
+        expr: 'COALESCE(GAP_PCT, 0) >= 10.0 AND COALESCE(RVOL, 0) >= 2.5'
       },
       { sym: 'GAP_PCT', label: 'Gap %', desc: 'Morning/overnight gap %' },
-      { sym: 'REL_VOL', label: 'Rel Vol', desc: 'Relative volume multiple (2.5x)' },
       {
         sym: 'LOW_CHEAT',
         label: 'Low Cheat',
@@ -110,9 +111,9 @@ const CHEAT_SHEET_CATEGORIES = [
       },
       { sym: 'CHEAT', label: 'Cheat (3-C)', desc: 'Cup Completion Cheat in mid-upper base' },
       { sym: 'BASE_DEPTH', label: 'Base Depth %', desc: 'Base correction depth' },
-      { sym: 'PARABOLIC_SHORT', label: 'Parabolic', desc: 'Overextended upward exhaustion' },
-      { sym: 'DIST_EMA10', label: 'Dist 10 EMA %', desc: 'Stretch above 10 EMA' },
-      { sym: 'UP_DAYS', label: 'Up Days', desc: 'Consecutive green days' },
+      { sym: 'PARABOLIC_SHORT', label: 'Parabolic Short', desc: 'Overextended upward climax exhaustion', is_alias: true },
+      { sym: 'PARABOLIC_LONG', label: 'Parabolic Long', desc: 'Overextended downward capitulation bounce', is_alias: true },
+      { sym: 'DIST_EMA10', label: 'Dist 10 EMA %', desc: 'Stretch above/below 10 EMA' },
       { sym: 'VCP', label: 'VCP', desc: 'Volatility Contraction Pattern' },
       {
         sym: 'IPO_BASE',
@@ -125,16 +126,23 @@ const CHEAT_SHEET_CATEGORIES = [
   },
   {
     id: 'fundamentals',
-    title: 'Fundamentals & Sponsorship (CAN SLIM)',
+    title: 'Fundamentals & Sponsorship (Zanger / CAN SLIM)',
     color: '#38bdf8',
     variables: [
+      { sym: 'EPS_GROWTH', label: 'EPS YoY %', desc: 'Latest quarter diluted EPS YoY growth % (e.g. >= 40)' },
+      { sym: 'SALES_GROWTH', label: 'Sales YoY %', desc: 'Latest quarter Revenue/Sales YoY growth % (e.g. >= 40)' },
+      { sym: 'EPS_QOQ', label: 'EPS Seq QoQ %', desc: 'Sequential quarter-over-quarter EPS growth %' },
+      { sym: 'SALES_QOQ', label: 'Sales Seq QoQ %', desc: 'Sequential quarter-over-quarter Sales growth %' },
+      { sym: 'EPS_TTM_GROWTH', label: 'EPS TTM YoY %', desc: 'Trailing 12-month EPS YoY growth %' },
+      { sym: 'SALES_TTM_GROWTH', label: 'Sales TTM YoY %', desc: 'Trailing 12-month Sales YoY growth %' },
+      { sym: 'EPS_DILUTED', label: 'Diluted EPS', desc: 'Latest quarterly diluted EPS ($)' },
+      { sym: 'REVENUE', label: 'Revenue', desc: 'Latest quarterly total revenue ($)' },
+      { sym: 'FLOAT_SHARES', label: 'Float Shares', desc: 'Publicly traded float share count (e.g. FLOAT_SHARES <= 50M)' },
+      { sym: 'MARKET_CAP', label: 'Market Cap', desc: 'Market capitalization in USD (e.g. MARKET_CAP >= 1B)' },
       { sym: 'INST_STREAK', label: 'Inst Streak', desc: 'Consecutive quarters of increasing funds (e.g. >= 2)' },
       { sym: 'INST_HOLDERS', label: 'Inst Funds', desc: 'Total institutional holder fund count' },
       { sym: 'INST_QOQ_CHANGE', label: 'Inst Net QoQ', desc: 'Net new institutional funds added this quarter' },
       { sym: 'INST_OWN_PCT', label: 'Inst Float %', desc: 'Institutional float ownership %' },
-      { sym: 'EPS_GROWTH_QOQ', label: 'EPS QoQ %', desc: 'Quarterly EPS growth YoY %' },
-      { sym: 'EPS_DILUTED', label: 'Diluted EPS', desc: 'Latest quarterly diluted EPS' },
-      { sym: 'REVENUE', label: 'Revenue', desc: 'Latest quarterly total revenue' },
     ]
   },
   {
@@ -142,12 +150,12 @@ const CHEAT_SHEET_CATEGORIES = [
     title: 'Screeners (Reusable as SCREENER_<ID>)',
     color: '#f59e0b',
     variables: [
-      { sym: 'SCREENER_LEADERS', label: 'Weekly Leaders', desc: 'Weekly Leaders momentum screener formula' },
+      { sym: 'SCREENER_ZANGER_MONSTER_GROWTH', label: 'Zanger 40/40+ Universe', desc: 'Liquid US stocks passing Dan Zanger Monster EPS & Sales (40%+) rule' },
+      { sym: 'SCREENER_ZANGER_HYPER_GROWTH', label: 'Zanger Hyper Growth', desc: 'EPS YoY >= 100%, Sales YoY >= 50%, positive QoQ acceleration' },
+      { sym: 'SCREENER_GAINERS', label: 'Top Gainers', desc: 'Multi-timeframe 1M/3M/6M momentum gainers' },
+      { sym: 'SCREENER_POWER_PLAY', label: 'Power Play', desc: '100%+ move in 8 weeks with tight <= 25% flag consolidation' },
       { sym: 'SCREENER_IPO_BASE', label: 'IPO Base', desc: 'IPO Base early accumulation formula' },
-      { sym: 'SCREENER_STAGE2_BASES', label: 'Stage 2 Bases', desc: 'Stage 2 Bases consolidation formula' },
-      { sym: 'SCREENER_INSIDE_DAY', label: 'Inside Day', desc: 'Inside Day compression formula' },
       { sym: 'SCREENER_LOW_CHEAT', label: 'Low Cheat', desc: 'Low Cheat early base reversal formula' },
-      { sym: 'SCREENER_CHEAT', label: 'Cheat / 3-C', desc: 'Minervini Cheat 3-C mid-base formula' },
     ]
   },
   {

@@ -24,6 +24,21 @@ function fixLightweightChartsNullPlugin() {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [fixLightweightChartsNullPlugin(), react()],
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/lightweight-charts')) {
+            return 'vendor-charts';
+          }
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom') || id.includes('node_modules/scheduler')) {
+            return 'vendor-react';
+          }
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/api': {

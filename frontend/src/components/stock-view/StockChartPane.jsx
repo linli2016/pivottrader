@@ -14,9 +14,6 @@ const StockChartPane = forwardRef(function StockChartPane({
   setupName = null,
   marketRegime = null,
   // Watchlist props
-  watchlists = [],
-  targetWatchlistId = null,
-  onTargetWatchlistChange = null,
   onToggleWatchlist = null,
   isWatchlistSaved = false,
   // Multi-chart toggle & split state
@@ -42,6 +39,8 @@ const StockChartPane = forwardRef(function StockChartPane({
   showRsLine = null,
   showEarnings = null,
   showSymbol = null,
+  drawings = null,
+  onDrawingsChange = null,
 }, ref) {
   const symbol = stock?.symbol || stock?.ticker || (typeof stock === 'string' ? stock : '');
   const companyName = stock?.name || stockDetail?.metadata?.name || symbol;
@@ -54,9 +53,6 @@ const StockChartPane = forwardRef(function StockChartPane({
         stockDetail={stockDetail}
         stockPrices={stockPrices}
         loadingPrices={loadingPrices}
-        watchlists={watchlists}
-        targetWatchlistId={targetWatchlistId}
-        onTargetWatchlistChange={onTargetWatchlistChange}
         onToggleWatchlist={onToggleWatchlist}
         isWatchlistSaved={isWatchlistSaved}
         showMultiCharts={showMultiCharts}
@@ -92,6 +88,8 @@ const StockChartPane = forwardRef(function StockChartPane({
         showRsLine={showRsLine}
         showEarnings={showEarnings}
         showSymbol={showSymbol}
+        drawings={drawings}
+        onDrawingsChange={onDrawingsChange}
       />
     </div>
   );

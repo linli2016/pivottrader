@@ -1,6 +1,79 @@
 import ast
+import datetime
 import re
 from typing import Dict, Any, List, Set, Tuple, Optional
+from zoneinfo import ZoneInfo
+
+
+def get_current_et_date_str(as_of: Optional[datetime.datetime] = None) -> str:
+    """Returns the current date in America/New_York as YYYY-MM-DD."""
+    if as_of is not None:
+        now_et = as_of if as_of.tzinfo else as_of.replace(tzinfo=ZoneInfo("America/New_York"))
+        now_et = now_et.astimezone(ZoneInfo("America/New_York"))
+    else:
+        now_et = datetime.datetime.now(ZoneInfo("America/New_York"))
+    return now_et.date().strftime("%Y-%m-%d")
+
+
+def get_intraday_elapsed_minutes(
+    as_of: Optional[datetime.datetime] = None,
+    target_date: Optional[str] = None
+) -> Optional[float]:
+    """
+    Returns elapsed minutes in [0.0, 390.0) during regular US market hours (09:30–16:00 ET)
+    when target_date matches today's active US trading session; otherwise returns None.
+    """
+    if as_of is not None:
+        now_et = as_of if as_of.tzinfo else as_of.replace(tzinfo=ZoneInfo("America/New_York"))
+        now_et = now_et.astimezone(ZoneInfo("America/New_York"))
+    else:
+        now_et = datetime.datetime.now(ZoneInfo("America/New_York"))
+
+    today_dt = now_et.date()
+    today_str = today_dt.strftime("%Y-%m-%d")
+
+    if target_date is not None and str(target_date)[:10] != today_str:
+        return None
+
+    if today_dt.weekday() in (5, 6):
+        return None
+
+    try:
+        from application.providers.yfinance_prov import is_us_market_holiday
+        if is_us_market_holiday(today_dt):
+            return None
+    except Exception:
+        pass
+
+    cur_time = now_et.time()
+    if cur_time < datetime.time(9, 30) or cur_time >= datetime.time(16, 0):
+        return None
+
+    elapsed_min = (now_et.hour - 9) * 60 + (now_et.minute - 30) + (now_et.second / 60.0)
+    return max(0.0, min(390.0, elapsed_min))
+
+
+def get_intraday_volume_fraction(
+    as_of: Optional[datetime.datetime] = None,
+    target_date: Optional[str] = None
+) -> float:
+    """
+    Computes the expected cumulative fraction of daily volume elapsed during regular
+    US market hours (09:30 to 16:00 ET = 390 minutes) using a realistic U-shaped
+    intraday volume curve:
+      intensity w(x) = 1 + a * (2x - 1)^2  with a = 1.5 (open/close rate = 2.5x midday rate)
+      cumulative F(x) = (x + 0.25 * ((2x - 1)^3 + 1)) / 1.5
+    Outside regular trading hours, on weekends/holidays, or when target_date is a
+    completed historical date, returns 1.0.
+    """
+    elapsed_min = get_intraday_elapsed_minutes(as_of=as_of, target_date=target_date)
+    if elapsed_min is None:
+        return 1.0
+
+    x = max(0.0, min(1.0, elapsed_min / 390.0))
+    frac = (x + 0.25 * ((2.0 * x - 1.0) ** 3 + 1.0)) / 1.5
+    return round(max(0.03, min(1.0, frac)), 4)
+
 
 class ExpressionError(Exception):
     """Raised when scan expression syntax or variable validation fails."""
@@ -426,6 +499,27 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "averages",
         "description": "50-day exponential moving average"
     },
+    "AVGV20": {
+        "sql": "COALESCE(b.vol_20d_ma, b.vol_50d_ma)",
+        "type": "numeric",
+        "label": "20d Vol MA (Prior)",
+        "category": "volume",
+        "description": "Prior 20-day simple moving average of completed daily volume (Dan Zanger baseline)"
+    },
+    "VOL_20D_MA": {
+        "sql": "COALESCE(b.vol_20d_ma, b.vol_50d_ma)",
+        "type": "numeric",
+        "label": "20d Vol MA (Prior)",
+        "category": "volume",
+        "description": "Prior 20-day simple moving average of completed daily volume"
+    },
+    "VOL_MA20": {
+        "sql": "COALESCE(b.vol_20d_ma, b.vol_50d_ma)",
+        "type": "numeric",
+        "label": "20d Vol MA (Prior)",
+        "category": "volume",
+        "description": "Prior 20-day simple moving average of completed daily volume"
+    },
     "AVGV50": {
         "sql": "b.vol_50d_ma",
         "type": "numeric",
@@ -834,12 +928,33 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "pattern",
         "description": "Overnight/morning gap percentage"
     },
-    "REL_VOL": {
+    "RVOL": {
         "sql": "b.rel_vol_50d",
         "type": "numeric",
         "label": "Relative Volume",
-        "category": "pattern",
+        "category": "volume",
         "description": "Volume multiple relative to 50d average volume"
+    },
+    "PROJ_RVOL": {
+        "sql": "ROUND(b.volume / NULLIF(COALESCE(b.vol_20d_ma, b.vol_50d_ma), 0), 2)",
+        "type": "numeric",
+        "label": "Projected RVOL",
+        "category": "volume",
+        "description": "Projected end-of-day Relative Volume vs 20-day average volume using U-shaped intraday volume curve during regular market hours (09:30-16:00 ET)"
+    },
+    "IN_WATCHLIST": {
+        "sql": "(b.symbol IN (SELECT DISTINCT UPPER(symbol) FROM watchlist_items WHERE symbol IS NOT NULL))",
+        "type": "boolean",
+        "label": "In Watchlist",
+        "category": "pattern",
+        "description": "True if the stock is saved in any user watchlist"
+    },
+    "WATCHLIST": {
+        "sql": "(b.symbol IN (SELECT DISTINCT UPPER(symbol) FROM watchlist_items WHERE symbol IS NOT NULL))",
+        "type": "boolean",
+        "label": "In Watchlist",
+        "category": "pattern",
+        "description": "True if the stock is saved in any user watchlist"
     },
     "LOW_CHEAT_SETUP": {
         "sql": "COALESCE(b.low_cheat_is_setup, false)",
@@ -869,13 +984,6 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "category": "pattern",
         "description": "Pivot position within base"
     },
-    "PARABOLIC_SHORT": {
-        "sql": "COALESCE(b.parabolic_short_is_setup, false)",
-        "type": "boolean",
-        "label": "Parabolic Climax",
-        "category": "pattern",
-        "description": "Overextended parabolic upward climax for shorting"
-    },
     "DIST_EMA10": {
         "sql": "b.dist_ema10_pct",
         "type": "numeric",
@@ -898,14 +1006,14 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "description": "Percentage stretch above 50 EMA"
     },
     "EXT_ATR_50": {
-        "sql": "((b.close - b.sma_50) / NULLIF(b.close * (b.atr_20d / 100.0), 0))",
+        "sql": "(((b.close - b.sma_50) / NULLIF(b.sma_50, 0)) / NULLIF(b.atr_20d / 100.0, 0))",
         "type": "numeric",
         "label": "50 SMA ATR Extension",
         "category": "trend",
         "description": "Price extension above or below 50 SMA in multiples of 20-day ATR (Jeff Sun Guardrail <= 4x)"
     },
     "DIST_ATR_50": {
-        "sql": "((b.close - b.sma_50) / NULLIF(b.close * (b.atr_20d / 100.0), 0))",
+        "sql": "(((b.close - b.sma_50) / NULLIF(b.sma_50, 0)) / NULLIF(b.atr_20d / 100.0, 0))",
         "type": "numeric",
         "label": "50 SMA ATR Extension",
         "category": "trend",
@@ -924,20 +1032,6 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "label": "20 EMA ATR Extension",
         "category": "pattern",
         "description": "Price stretch above 20 EMA in multiples of 20-day ATR"
-    },
-    "UP_DAYS": {
-        "sql": "b.parabolic_up_days",
-        "type": "numeric",
-        "label": "Consecutive Up Days",
-        "category": "pattern",
-        "description": "Number of consecutive green/up days"
-    },
-    "PARABOLIC_RUNUP": {
-        "sql": "b.parabolic_runup_pct",
-        "type": "numeric",
-        "label": "Parabolic Runup %",
-        "category": "pattern",
-        "description": "Fast runup percentage over recent climax window"
     },
     "VCP": {
         "sql": "COALESCE(b.vcp_is_setup, false)",
@@ -972,9 +1066,121 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
     "EPS_GROWTH": {
         "sql": "f.eps_qoq_growth",
         "type": "numeric",
-        "label": "EPS Growth QoQ %",
+        "label": "EPS Growth YoY %",
         "category": "fundamental",
-        "description": "Quarterly EPS Year-over-Year growth percentage"
+        "description": "Latest quarter diluted EPS Year-over-Year growth percentage (Dan Zanger >= 40%)"
+    },
+    "EPS_YOY": {
+        "sql": "f.eps_qoq_growth",
+        "type": "numeric",
+        "label": "EPS Growth YoY %",
+        "category": "fundamental",
+        "description": "Latest quarter diluted EPS Year-over-Year growth percentage"
+    },
+    "EPS_GROWTH_YOY": {
+        "sql": "f.eps_qoq_growth",
+        "type": "numeric",
+        "label": "EPS Growth YoY %",
+        "category": "fundamental",
+        "description": "Latest quarter diluted EPS Year-over-Year growth percentage"
+    },
+    "EPS_GROWTH_QOQ": {
+        "sql": "f.eps_qoq_growth",
+        "type": "numeric",
+        "label": "EPS Growth YoY %",
+        "category": "fundamental",
+        "description": "Latest quarter diluted EPS Year-over-Year growth percentage"
+    },
+    "SALES_GROWTH": {
+        "sql": "f.sales_yoy_growth",
+        "type": "numeric",
+        "label": "Sales Growth YoY %",
+        "category": "fundamental",
+        "description": "Latest quarter Revenue/Sales Year-over-Year growth percentage (Dan Zanger >= 40%)"
+    },
+    "SALES_YOY": {
+        "sql": "f.sales_yoy_growth",
+        "type": "numeric",
+        "label": "Sales Growth YoY %",
+        "category": "fundamental",
+        "description": "Latest quarter Revenue/Sales Year-over-Year growth percentage"
+    },
+    "REV_GROWTH": {
+        "sql": "f.sales_yoy_growth",
+        "type": "numeric",
+        "label": "Revenue Growth YoY %",
+        "category": "fundamental",
+        "description": "Latest quarter Revenue/Sales Year-over-Year growth percentage"
+    },
+    "REV_YOY": {
+        "sql": "f.sales_yoy_growth",
+        "type": "numeric",
+        "label": "Revenue Growth YoY %",
+        "category": "fundamental",
+        "description": "Latest quarter Revenue/Sales Year-over-Year growth percentage"
+    },
+    "EPS_QOQ": {
+        "sql": "f.eps_seq_qoq_growth",
+        "type": "numeric",
+        "label": "EPS Sequential QoQ %",
+        "category": "fundamental",
+        "description": "Sequential quarter-over-quarter diluted EPS growth vs immediately prior quarter"
+    },
+    "EPS_SEQ_QOQ": {
+        "sql": "f.eps_seq_qoq_growth",
+        "type": "numeric",
+        "label": "EPS Sequential QoQ %",
+        "category": "fundamental",
+        "description": "Sequential quarter-over-quarter diluted EPS growth vs immediately prior quarter"
+    },
+    "SALES_QOQ": {
+        "sql": "f.sales_seq_qoq_growth",
+        "type": "numeric",
+        "label": "Sales Sequential QoQ %",
+        "category": "fundamental",
+        "description": "Sequential quarter-over-quarter Revenue/Sales growth vs immediately prior quarter"
+    },
+    "REV_QOQ": {
+        "sql": "f.sales_seq_qoq_growth",
+        "type": "numeric",
+        "label": "Revenue Sequential QoQ %",
+        "category": "fundamental",
+        "description": "Sequential quarter-over-quarter Revenue/Sales growth vs immediately prior quarter"
+    },
+    "SALES_SEQ_QOQ": {
+        "sql": "f.sales_seq_qoq_growth",
+        "type": "numeric",
+        "label": "Sales Sequential QoQ %",
+        "category": "fundamental",
+        "description": "Sequential quarter-over-quarter Revenue/Sales growth vs immediately prior quarter"
+    },
+    "EPS_TTM_GROWTH": {
+        "sql": "f.eps_ttm_yoy_growth",
+        "type": "numeric",
+        "label": "EPS TTM YoY %",
+        "category": "fundamental",
+        "description": "Trailing 12-month diluted EPS Year-over-Year growth percentage"
+    },
+    "EPS_YOY_TTM": {
+        "sql": "f.eps_ttm_yoy_growth",
+        "type": "numeric",
+        "label": "EPS TTM YoY %",
+        "category": "fundamental",
+        "description": "Trailing 12-month diluted EPS Year-over-Year growth percentage"
+    },
+    "SALES_TTM_GROWTH": {
+        "sql": "f.sales_ttm_yoy_growth",
+        "type": "numeric",
+        "label": "Sales TTM YoY %",
+        "category": "fundamental",
+        "description": "Trailing 12-month Revenue/Sales Year-over-Year growth percentage"
+    },
+    "SALES_YOY_TTM": {
+        "sql": "f.sales_ttm_yoy_growth",
+        "type": "numeric",
+        "label": "Sales TTM YoY %",
+        "category": "fundamental",
+        "description": "Trailing 12-month Revenue/Sales Year-over-Year growth percentage"
     },
     "EPS_DILUTED": {
         "sql": "f.eps_diluted",
@@ -988,7 +1194,28 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "type": "numeric",
         "label": "Total Revenue",
         "category": "fundamental",
-        "description": "Quarterly total revenue"
+        "description": "Quarterly total revenue in USD"
+    },
+    "SALES": {
+        "sql": "f.total_revenue",
+        "type": "numeric",
+        "label": "Quarterly Sales",
+        "category": "fundamental",
+        "description": "Quarterly total sales/revenue in USD"
+    },
+    "FLOAT_SHARES": {
+        "sql": "s.float_shares",
+        "type": "numeric",
+        "label": "Float Shares",
+        "category": "fundamental",
+        "description": "Publicly traded float share count (e.g. FLOAT_SHARES <= 100M)"
+    },
+    "FLOAT": {
+        "sql": "s.float_shares",
+        "type": "numeric",
+        "label": "Float Shares",
+        "category": "fundamental",
+        "description": "Publicly traded float share count shorthand (e.g. FLOAT <= 100M)"
     },
     # ---------------- Institutional Sponsorship (CAN SLIM "I") ----------------
     "INST_HOLDERS": {
@@ -1018,6 +1245,20 @@ VARIABLE_CATALOG: Dict[str, Dict[str, Any]] = {
         "label": "Institutional Ownership %",
         "category": "fundamental",
         "description": "Percentage of float held by institutions"
+    },
+    "MARKET_CAP": {
+        "sql": "s.market_cap",
+        "type": "numeric",
+        "label": "Market Capitalization",
+        "category": "fundamental",
+        "description": "Total company market capitalization in USD"
+    },
+    "MCAP": {
+        "sql": "s.market_cap",
+        "type": "numeric",
+        "label": "Market Capitalization",
+        "category": "fundamental",
+        "description": "Total company market capitalization in USD (shorthand)"
     }
 }
 
@@ -1151,7 +1392,7 @@ ALIAS_CATALOG: Dict[str, Dict[str, Any]] = {
     },
     "DOWNSIDE_GAP": {
         "expr": (
-            "GAP_PCT <= -7.0 AND REL_VOL >= 2.0 AND C < SMA_50 AND CLOSE_RANGE <= 0.35"
+            "GAP_PCT <= -7.0 AND RVOL >= 2.0 AND C < SMA_50 AND CLOSE_RANGE <= 0.35"
         ),
         "type": "boolean",
         "label": "Downside Gap Breakdown",
@@ -1172,28 +1413,28 @@ ALIAS_CATALOG: Dict[str, Dict[str, Any]] = {
         "description": "Stage 2 Trend Template without C > 50 SMA (Low Cheat early base setup)"
     },
     "EPISODIC_PIVOT": {
-        "expr": "COALESCE(GAP_PCT, 0) >= 10.0 AND COALESCE(REL_VOL, 0) >= 2.5",
+        "expr": "COALESCE(GAP_PCT, 0) >= 10.0 AND COALESCE(RVOL, 0) >= 2.5",
         "type": "boolean",
         "label": "Episodic Pivot",
         "category": "pattern",
         "description": "Massive gap (>=10%) and heavy relative volume (>=2.5x)"
     },
     "EP9_MILLION": {
-        "expr": "C >= 3.0 AND V >= 9000000 AND REL_VOL >= 3.0 AND C >= C1 * 1.04 AND C >= O",
+        "expr": "C >= 3.0 AND V >= 9000000 AND RVOL >= 3.0 AND C >= C1 * 1.04 AND C >= O",
         "type": "boolean",
         "label": "EP9 Million",
         "category": "pattern",
         "description": "Stockbee EP9 Million: Volume >= 9M & >= 3x ADV, daily gain >= 4%, green candle"
     },
     "EP_9_MILLION": {
-        "expr": "C >= 3.0 AND V >= 9000000 AND REL_VOL >= 3.0 AND C >= C1 * 1.04 AND C >= O",
+        "expr": "C >= 3.0 AND V >= 9000000 AND RVOL >= 3.0 AND C >= C1 * 1.04 AND C >= O",
         "type": "boolean",
         "label": "EP9 Million",
         "category": "pattern",
         "description": "Stockbee EP9 Million: Volume >= 9M & >= 3x ADV, daily gain >= 4%, green candle"
     },
     "EP9M": {
-        "expr": "C >= 3.0 AND V >= 9000000 AND REL_VOL >= 3.0 AND C >= C1 * 1.04 AND C >= O",
+        "expr": "C >= 3.0 AND V >= 9000000 AND RVOL >= 3.0 AND C >= C1 * 1.04 AND C >= O",
         "type": "boolean",
         "label": "EP9 Million",
         "category": "pattern",
@@ -1254,6 +1495,36 @@ ALIAS_CATALOG: Dict[str, Dict[str, Any]] = {
         "label": "Inside Day",
         "category": "pattern",
         "description": "Inside Day consolidation (High <= Prior High and Low >= Prior Low)"
+    },
+    "PARABOLIC_SHORT": {
+        "expr": (
+            "ADR20 >= 5.0 AND DIST_EMA10 >= 20.0 "
+            "AND C > C1 AND C1 > C2 AND C2 > C3 "
+            "AND ("
+            "(MARKET_CAP >= 2000000000 AND (RET_1M >= 50.0 OR RET_1W >= 40.0)) "
+            "OR "
+            "(COALESCE(MARKET_CAP, 0) < 2000000000 AND (RET_1M >= 150.0 OR RET_3M >= 250.0 OR DIST_EMA10 >= 40.0))"
+            ")"
+        ),
+        "type": "boolean",
+        "label": "Parabolic Climax Short",
+        "category": "pattern",
+        "description": "Kristjan Qullamaggie Parabolic Short: 3-5+ green days, extended >= 20% above 10 EMA, ADR >= 5% with +50-100%+ move (large cap) or +150-300%+ move (small cap)"
+    },
+    "PARABOLIC_LONG": {
+        "expr": (
+            "ADR20 >= 5.0 AND DIST_EMA10 <= -20.0 "
+            "AND C < C1 AND C1 < C2 AND C2 < C3 "
+            "AND ("
+            "(MARKET_CAP >= 2000000000 AND (RET_1M <= -30.0 OR RET_1W <= -20.0)) "
+            "OR "
+            "(COALESCE(MARKET_CAP, 0) < 2000000000 AND (RET_1M <= -50.0 OR RET_3M <= -60.0 OR DIST_EMA10 <= -35.0))"
+            ")"
+        ),
+        "type": "boolean",
+        "label": "Parabolic Climax Long",
+        "category": "pattern",
+        "description": "Kristjan Qullamaggie Parabolic Long: 3-5+ red days, extended <= -20% below 10 EMA, ADR >= 5% on capitulation drop (large cap -30-50%+ or small cap -50-70%+)"
     }
 }
 
@@ -1488,7 +1759,8 @@ class ScanExpressionEngine:
         s = re.sub(r'\b(\d+)\s*EMA\b', r'EMA_\1', s, flags=re.IGNORECASE)
         s = re.sub(r'\b(\d+)\s*SMA\b', r'SMA_\1', s, flags=re.IGNORECASE)
 
-        # Financial shorthand: '50M USD' or '50M' -> 50000000 when following comparison or arithmetic operator
+        # Financial shorthand: '50M USD' or '50M' -> 50000000, '2B' -> 2000000000 when following comparison or arithmetic operator
+        s = re.sub(r'(?<=[<>=!+\-*/\s])(\d+(?:\.\d+)?)\s*B(?:\s*USD)?\b', lambda m: str(int(float(m.group(1)) * 1_000_000_000)), s, flags=re.IGNORECASE)
         s = re.sub(r'(?<=[<>=!+\-*/\s])(\d+(?:\.\d+)?)\s*M(?:\s*USD)?\b', lambda m: str(int(float(m.group(1)) * 1_000_000)), s, flags=re.IGNORECASE)
 
         return s
@@ -1573,10 +1845,48 @@ class ScanExpressionEngine:
         return tree, used_variables, has_lags
 
     @classmethod
+    def get_proj_rvol_sql(cls, table_alias: str = "b", as_of: Optional[datetime.datetime] = None) -> str:
+        """
+        Returns the SQL expression for Projected RVOL using the U-shaped intraday
+        volume curve during regular market hours on today's session date, and 1.0
+        for historical dates or outside regular market hours.
+        Uses 20-day MA baseline (falling back to 50d MA if 20d MA is null).
+        """
+        frac = get_intraday_volume_fraction(as_of=as_of)
+        base_vol_sql = f"COALESCE({table_alias}.vol_20d_ma, {table_alias}.vol_50d_ma)"
+        if frac < 1.0:
+            today_et = get_current_et_date_str(as_of=as_of)
+            return (
+                f"ROUND({table_alias}.volume / NULLIF({base_vol_sql} * "
+                f"(CASE WHEN {table_alias}.date = CAST('{today_et}' AS DATE) THEN {frac} ELSE 1.0 END), 0), 2)"
+            )
+        return f"ROUND({table_alias}.volume / NULLIF({base_vol_sql}, 0), 2)"
+
+    @classmethod
+    def get_variable_sql(
+        cls,
+        var_name: str,
+        table_alias: str = "b",
+        as_of: Optional[datetime.datetime] = None,
+        profile_alias: Optional[str] = None
+    ) -> str:
+        """Resolves a variable name from VARIABLE_CATALOG to its DuckDB SQL expression."""
+        var_upper = var_name.upper()
+        if var_upper == "PROJ_RVOL":
+            return cls.get_proj_rvol_sql(table_alias=table_alias, as_of=as_of)
+        meta = VARIABLE_CATALOG[var_upper]
+        sql_expr = meta["sql"]
+        if table_alias != "b":
+            sql_expr = re.sub(r'\bb\.', f"{table_alias}.", sql_expr)
+        return sql_expr
+
+    @classmethod
     def transpile_to_sql(
         cls,
         expr: str,
-        table_alias: str = "b"
+        table_alias: str = "b",
+        as_of: Optional[datetime.datetime] = None,
+        profile_alias: Optional[str] = None
     ) -> Tuple[str, Set[str], bool, Optional[str], Optional[int], Optional[str]]:
         """
         Translates a scan expression into valid DuckDB SQL query components.
@@ -1603,9 +1913,9 @@ class ScanExpressionEngine:
                 order_var = order_match.group(1).upper()
                 order_dir = order_match.group(2).upper() if order_match.group(2) else "DESC"
                 if order_var in VARIABLE_CATALOG:
-                    col_sql = VARIABLE_CATALOG[order_var]["sql"]
-                    if table_alias != "b":
-                        col_sql = re.sub(r'\bb\.', f"{table_alias}.", col_sql)
+                    col_sql = cls.get_variable_sql(
+                        order_var, table_alias=table_alias, as_of=as_of, profile_alias=profile_alias
+                    )
                     order_by_sql = f"{col_sql} {order_dir}"
                     order_by_vars.add(order_var)
                 elif order_var in ALIAS_CATALOG:
@@ -1699,11 +2009,9 @@ class ScanExpressionEngine:
 
                 meta = VARIABLE_CATALOG.get(var_upper)
                 if meta:
-                    sql_expr = meta["sql"]
-                    if table_alias != "b":
-                        sql_expr = re.sub(r'\bb\.', f"{table_alias}.", sql_expr)
-                    # If this is a standalone boolean variable in a logical condition, return it directly
-                    return sql_expr
+                    return cls.get_variable_sql(
+                        var_upper, table_alias=table_alias, as_of=as_of, profile_alias=profile_alias
+                    )
 
                 if var_upper in ALIAS_CATALOG:
                     return cls.get_alias_sql(var_upper, table_alias=table_alias)
@@ -1727,9 +2035,9 @@ class ScanExpressionEngine:
                     if v_name not in VARIABLE_CATALOG:
                         raise ExpressionError(f"Unknown variable in TOP(): '{node.args[0].id}'")
                     used_variables.add(v_name)
-                    v_sql = VARIABLE_CATALOG[v_name]["sql"]
-                    if table_alias != "b":
-                        v_sql = re.sub(r'\bb\.', f"{table_alias}.", v_sql)
+                    v_sql = cls.get_variable_sql(
+                        v_name, table_alias=table_alias, as_of=as_of, profile_alias=profile_alias
+                    )
                     n_val = int(node.args[1].value)
                     direction = "DESC"
                     if len(node.args) >= 3 and isinstance(node.args[2], ast.Constant) and str(node.args[2].value).upper() == "ASC":
@@ -1743,9 +2051,9 @@ class ScanExpressionEngine:
                     if v_name not in VARIABLE_CATALOG:
                         raise ExpressionError(f"Unknown variable in RANK(): '{node.args[0].id}'")
                     used_variables.add(v_name)
-                    v_sql = VARIABLE_CATALOG[v_name]["sql"]
-                    if table_alias != "b":
-                        v_sql = re.sub(r'\bb\.', f"{table_alias}.", v_sql)
+                    v_sql = cls.get_variable_sql(
+                        v_name, table_alias=table_alias, as_of=as_of, profile_alias=profile_alias
+                    )
                     direction = "DESC"
                     if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant) and str(node.args[1].value).upper() == "ASC":
                         direction = "ASC"

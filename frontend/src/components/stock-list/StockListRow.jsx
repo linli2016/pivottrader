@@ -1,8 +1,9 @@
 import React from 'react';
 import StockBrandIcon from '../StockBrandIcon';
+import { FLAG_COLORS } from '../../utils/flagConstants';
 
 export const SETUP_TAG_META = {
-  HTF: { id: 'HTF', label: 'HTF', name: 'High Tight Flag', icon: '⚡', color: '#f59e0b' },
+  BO: { id: 'BO', label: 'BO', name: 'Breakout', icon: '⚡', color: '#f59e0b' },
   VCP: { id: 'VCP', label: 'VCP', name: 'VCP Base', icon: '📐', color: '#10b981' },
   IPO: { id: 'IPO', label: 'IPO', name: 'IPO Base', icon: '🐣', color: '#06b6d4' },
   EP: { id: 'EP', label: 'EP', name: 'Post EP', icon: '💥', color: '#ec4899' },
@@ -24,9 +25,10 @@ export default function StockListRow({
   onRemove = null,
   rowRef = null,
   targetWatchlistSymbols = null,
-  targetWatchlistName = '',
   onToggleTargetWatchlist = null,
+  onUpdateFlag = null,
 }) {
+  const [showFlagPicker, setShowFlagPicker] = React.useState(false);
   const isTargetSaved = React.useMemo(() => {
     if (!targetWatchlistSymbols || !item.symbol) return false;
     const cleanSym = item.symbol.toUpperCase();
@@ -76,6 +78,124 @@ export default function StockListRow({
         let cellStyle = { padding: '6px 6px' };
 
         switch (colKey) {
+          case 'flag': {
+            const currentFlag = item.flag_color ? FLAG_COLORS[item.flag_color] : null;
+            cellStyle = { width: '32px', textAlign: 'center', padding: '4px 2px', position: 'relative' };
+            cellContent = (
+              <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowFlagPicker((prev) => !prev);
+                  }}
+                  title={currentFlag ? `${currentFlag.label} (Click to change/clear flag)` : 'Flag stock (Click to set color)'}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: onUpdateFlag ? 'pointer' : 'default',
+                    padding: '2px 4px',
+                    borderRadius: '4px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '13px',
+                    color: currentFlag ? currentFlag.color : 'var(--text-muted, #64748b)',
+                    opacity: currentFlag ? 1 : 0.3,
+                    transition: 'opacity 0.15s, transform 0.15s',
+                  }}
+                  onMouseEnter={(e) => { if (!currentFlag) e.currentTarget.style.opacity = '0.85'; }}
+                  onMouseLeave={(e) => { if (!currentFlag) e.currentTarget.style.opacity = '0.3'; }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill={currentFlag ? currentFlag.color : 'none'} stroke={currentFlag ? currentFlag.color : 'currentColor'} strokeWidth="2">
+                    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                    <line x1="4" y1="22" x2="4" y2="15" />
+                  </svg>
+                </button>
+
+                {showFlagPicker && onUpdateFlag && (
+                  <>
+                    <div
+                      style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowFlagPicker(false);
+                      }}
+                    />
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: '26px',
+                        top: '-8px',
+                        zIndex: 9999,
+                        background: '#0f172a',
+                        border: '1px solid #334155',
+                        borderRadius: '6px',
+                        padding: '6px 8px',
+                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.85)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        pointerEvents: 'auto',
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {Object.values(FLAG_COLORS).map((f) => {
+                        const isThisFlag = item.flag_color === f.id;
+                        return (
+                          <button
+                            key={f.id}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onUpdateFlag(item.symbol, f.id);
+                              setShowFlagPicker(false);
+                            }}
+                            title={`${f.label} (${f.shortLabel})`}
+                            style={{
+                              width: '16px',
+                              height: '16px',
+                              borderRadius: '50%',
+                              background: f.color,
+                              border: isThisFlag ? '2px solid #ffffff' : '1px solid rgba(255,255,255,0.2)',
+                              cursor: 'pointer',
+                              transform: isThisFlag ? 'scale(1.15)' : 'scale(1)',
+                              boxShadow: isThisFlag ? `0 0 6px ${f.color}` : 'none',
+                              padding: 0,
+                            }}
+                          />
+                        );
+                      })}
+                      {item.flag_color && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onUpdateFlag(item.symbol, null);
+                            setShowFlagPicker(false);
+                          }}
+                          title="Clear Flag"
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#94a3b8',
+                            cursor: 'pointer',
+                            fontSize: '11px',
+                            padding: '1px 3px',
+                            marginLeft: '2px',
+                          }}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+            break;
+          }
+
           case 'symbol':
             cellStyle = { padding: '6px 8px', position: 'relative' };
             cellContent = (
@@ -141,19 +261,14 @@ export default function StockListRow({
                       <span
                         style={{
                           fontSize: '11px',
-                          cursor: onToggleTargetWatchlist ? 'pointer' : 'default',
                           lineHeight: 1,
                           filter: 'drop-shadow(0 0 3px rgba(245, 158, 11, 0.5))',
                           display: 'inline-flex',
-                          alignItems: 'center'
+                          alignItems: 'center',
+                          pointerEvents: 'none',
+                          userSelect: 'none',
                         }}
-                        title={`Saved in "${targetWatchlistName || 'target watchlist'}"${onToggleTargetWatchlist ? ' (Click to toggle)' : ''}`}
-                        onClick={(e) => {
-                          if (onToggleTargetWatchlist) {
-                            e.stopPropagation();
-                            onToggleTargetWatchlist(item.symbol);
-                          }
-                        }}
+                        title="Saved in Watchlist"
                       >
                         ⭐️
                       </span>
@@ -252,6 +367,73 @@ export default function StockListRow({
               '—'
             );
             break;
+
+          case 'proj_rvol':
+            const pRvol = item.proj_rvol !== undefined && item.proj_rvol !== null
+              ? Number(item.proj_rvol)
+              : (item.rel_vol_50d !== undefined && item.rel_vol_50d !== null ? Number(item.rel_vol_50d) : null);
+            const isHighRvol = pRvol !== null && pRvol >= 1.5;
+            cellStyle = {
+              textAlign: 'right',
+              padding: '6px 6px',
+              fontFamily: 'var(--font-mono, monospace)',
+              fontWeight: 700,
+              color: pRvol === null ? 'var(--text-muted, #94a3b8)' : isHighRvol ? '#34d399' : 'var(--text-secondary, #cbd5e1)',
+            };
+            cellContent = pRvol !== null ? `${pRvol.toFixed(1)}x` : '—';
+            break;
+
+          case 'eps_growth': {
+            const epsYoY = item.eps_qoq_growth !== undefined && item.eps_qoq_growth !== null ? Number(item.eps_qoq_growth) : null;
+            const epsColor = epsYoY === null
+              ? 'var(--text-muted, #94a3b8)'
+              : epsYoY >= 100
+              ? '#fbbf24'
+              : epsYoY >= 40
+              ? '#34d399'
+              : epsYoY >= 0
+              ? '#cbd5e1'
+              : '#fb7185';
+            cellStyle = {
+              textAlign: 'right',
+              padding: '6px 5px',
+              fontFamily: 'var(--font-mono, monospace)',
+              fontSize: '10.5px',
+              fontWeight: 700,
+              color: epsColor,
+              whiteSpace: 'nowrap',
+            };
+            cellContent = epsYoY !== null
+              ? `${epsYoY >= 0 ? '+' : ''}${Math.abs(epsYoY) >= 999 ? `${Math.round(epsYoY)}%` : `${epsYoY.toFixed(0)}%`}`
+              : '—';
+            break;
+          }
+
+          case 'sales_growth': {
+            const salesYoY = item.sales_yoy_growth !== undefined && item.sales_yoy_growth !== null ? Number(item.sales_yoy_growth) : null;
+            const salesColor = salesYoY === null
+              ? 'var(--text-muted, #94a3b8)'
+              : salesYoY >= 100
+              ? '#fbbf24'
+              : salesYoY >= 40
+              ? '#34d399'
+              : salesYoY >= 0
+              ? '#cbd5e1'
+              : '#fb7185';
+            cellStyle = {
+              textAlign: 'right',
+              padding: '6px 5px',
+              fontFamily: 'var(--font-mono, monospace)',
+              fontSize: '10.5px',
+              fontWeight: 700,
+              color: salesColor,
+              whiteSpace: 'nowrap',
+            };
+            cellContent = salesYoY !== null
+              ? `${salesYoY >= 0 ? '+' : ''}${Math.abs(salesYoY) >= 999 ? `${Math.round(salesYoY)}%` : `${salesYoY.toFixed(0)}%`}`
+              : '—';
+            break;
+          }
 
           case 'date':
             cellStyle = { textAlign: 'right', padding: '6px 6px', fontSize: '11px', color: 'var(--text-muted, #94a3b8)', fontWeight: 500, whiteSpace: 'nowrap' };

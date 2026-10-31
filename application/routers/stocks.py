@@ -1,14 +1,30 @@
 """Stocks REST API router."""
 import logging
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from application.services.database import db_service
 from application.services.options_service import options_service
 from application.services.theme_service import ThemeService
+from application.services.chart_drawings_service import chart_drawings_service
 
 logger = logging.getLogger("pivottrader.api.stocks")
 router = APIRouter(prefix="/api/stocks", tags=["stocks"])
 theme_service = ThemeService()
+
+
+class StockDrawingsUpdateSchema(BaseModel):
+    drawings: List[Dict[str, Any]]
+
+
+@router.get("/drawings/all")
+def get_all_stock_drawings():
+    """Retrieve all user drawings across all symbols."""
+    try:
+        return chart_drawings_service.get_all_drawings()
+    except Exception as e:
+        logger.error(f"Error in get_all_stock_drawings: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{symbol}")
@@ -85,4 +101,37 @@ def get_stock_options_profile(symbol: str, expiration: Optional[str] = "near_ter
         return options_service.get_options_profile(symbol, expiration)
     except Exception as e:
         logger.error(f"Error in get_stock_options_profile({symbol}): {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{symbol}/drawings")
+def get_stock_drawings(symbol: str):
+    """Retrieve user drawings (lines, text annotations) for a symbol."""
+    try:
+        return chart_drawings_service.get_drawings(symbol)
+    except Exception as e:
+        logger.error(f"Error in get_stock_drawings({symbol}): {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/{symbol}/drawings")
+def update_stock_drawings(symbol: str, payload: StockDrawingsUpdateSchema):
+    """Save user drawings (lines, text annotations) for a symbol."""
+    try:
+        return chart_drawings_service.save_drawings(symbol, payload.drawings)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error in update_stock_drawings({symbol}): {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{symbol}/drawings")
+def delete_stock_drawings(symbol: str):
+    """Delete all user drawings for a symbol."""
+    try:
+        deleted = chart_drawings_service.delete_drawings(symbol)
+        return {"status": "success", "symbol": symbol.upper().strip(), "deleted": deleted}
+    except Exception as e:
+        logger.error(f"Error in delete_stock_drawings({symbol}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

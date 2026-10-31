@@ -332,13 +332,15 @@ class YFinanceProvider(AbstractDataProvider):
                 params = {"symbols": ",".join(batch), "formatted": "false"}
                 for attempt in range(3):
                     try:
-                        if data_mgr:
-                            endpoint = "https://query1.finance.yahoo.com/v7/finance/quote" if attempt % 2 == 0 else "https://query2.finance.yahoo.com/v7/finance/quote"
-                            q_data = data_mgr.get_raw_json(endpoint, params=params)
-                            if q_data and "quoteResponse" in q_data:
-                                quotes_map = {q["symbol"]: q for q in q_data["quoteResponse"].get("result", []) if "symbol" in q}
-                                if quotes_map:
-                                    break
+                        if not data_mgr or attempt > 0:
+                            from yfinance.data import YfData
+                            data_mgr = YfData()
+                        endpoint = "https://query1.finance.yahoo.com/v7/finance/quote" if attempt % 2 == 0 else "https://query2.finance.yahoo.com/v7/finance/quote"
+                        q_data = data_mgr.get_raw_json(endpoint, params=params)
+                        if q_data and "quoteResponse" in q_data:
+                            quotes_map = {q["symbol"]: q for q in q_data["quoteResponse"].get("result", []) if "symbol" in q}
+                            if quotes_map:
+                                break
                     except Exception:
                         pass
                     
@@ -577,9 +579,10 @@ class YFinanceProvider(AbstractDataProvider):
 
                 if records:
                     df = pd.DataFrame(records)
+                    df["sales_yoy_growth"] = None
                     df = df.sort_values(by="fiscal_quarter")
                     
-                    # Compute QoQ EPS acceleration against same quarter prior year (Q-4)
+                    # Compute YoY EPS and Revenue growth against same quarter prior year (Q-4)
                     for idz, row in df.iterrows():
                         fq = row["fiscal_quarter"]
                         try:
@@ -593,6 +596,14 @@ class YFinanceProvider(AbstractDataProvider):
                                     denominator = max(0.01, abs(prior_eps))
                                     growth = ((curr_eps - prior_eps) / denominator) * 100
                                     df.at[idz, "eps_qoq_growth"] = float(growth)
+                                prior_rev = prior_rows.iloc[0]["total_revenue"]
+                                curr_rev = row["total_revenue"]
+                                if (
+                                    prior_rev is not None and not pd.isna(prior_rev) and prior_rev > 0
+                                    and curr_rev is not None and not pd.isna(curr_rev)
+                                ):
+                                    rev_growth = ((curr_rev - prior_rev) / prior_rev) * 100
+                                    df.at[idz, "sales_yoy_growth"] = float(rev_growth)
                         except Exception:
                             pass
                     return df
@@ -1065,3 +1076,154 @@ class YFinanceProvider(AbstractDataProvider):
             df = pd.DataFrame(all_records)
             return df
         return pd.DataFrame()
+
+    @staticmethod
+    def compute_5m_volume_curve_from_series(
+        vol_series: pd.Series,
+        cutoff_date: str = None,
+        lookback_days: int = 20,
+        min_days: int = 5
+    ) -> Dict[str, Any]:
+        """
+        Builds a 78-slot cumulative regular-session (09:30–16:00 ET) volume curve
+        from a 5-minute Volume Series indexed by timestamp.
+        Strictly filters to completed sessions < cutoff_date (zero lookahead / zero self-dilution)
+        and excludes half-day holiday sessions lacking afternoon trading (>= 15:00 ET).
+        """
+        from zoneinfo import ZoneInfo
+        import numpy as np
+
+        if vol_series is None or vol_series.empty:
+            return {}
+
+        et_tz = ZoneInfo("America/New_York")
+        if cutoff_date:
+            cutoff_dt = datetime.date.fromisoformat(str(cutoff_date)[:10])
+        else:
+            cutoff_dt = datetime.datetime.now(et_tz).date()
+
+        s = vol_series.dropna()
+        if s.empty:
+            return {}
+
+        idx = pd.DatetimeIndex(s.index)
+        if idx.tz is None:
+            idx = idx.tz_localize("UTC").tz_convert(et_tz)
+        else:
+            idx = idx.tz_convert(et_tz)
+
+        # Group volumes by (date, 5-min slot 0..77)
+        day_slots: Dict[datetime.date, np.ndarray] = {}
+        vals = s.to_numpy(dtype=float)
+
+        for ts, vol in zip(idx, vals):
+            if vol < 0 or np.isnan(vol):
+                continue
+            d = ts.date()
+            if d >= cutoff_dt or d.weekday() in (5, 6):
+                continue
+            mins_from_open = (ts.hour - 9) * 60 + (ts.minute - 30)
+            if mins_from_open < 0 or mins_from_open >= 390:
+                continue
+            slot = int(mins_from_open // 5)
+            if 0 <= slot < 78:
+                arr = day_slots.get(d)
+                if arr is None:
+                    arr = np.zeros(78, dtype=float)
+                    day_slots[d] = arr
+                arr[slot] += float(vol)
+
+        # Keep full regular sessions (total volume > 0 and afternoon activity >= 15:00 ET, slot >= 66)
+        valid_days = [
+            d for d in sorted(day_slots.keys())
+            if day_slots[d].sum() > 0 and day_slots[d][66:].sum() > 0
+        ]
+        if len(valid_days) < min_days:
+            return {}
+
+        recent_days = valid_days[-lookback_days:]
+        slot_totals = np.zeros(78, dtype=float)
+        for d in recent_days:
+            slot_totals += day_slots[d]
+
+        grand_total = float(slot_totals.sum())
+        if grand_total <= 0:
+            return {}
+
+        cum_fracs = np.cumsum(slot_totals) / grand_total
+        cum_fracs = np.clip(cum_fracs, 0.0, 1.0)
+        cum_fracs[-1] = 1.0
+
+        return {
+            "as_of_date": cutoff_dt.strftime("%Y-%m-%d"),
+            "sample_days": len(recent_days),
+            "avg_daily_vol": round(grand_total / len(recent_days), 2),
+            "curve_5m": [round(float(x), 4) for x in cum_fracs],
+        }
+
+    def fetch_intraday_5m_volume_profiles(
+        self,
+        symbols: List[str],
+        cutoff_date: str = None,
+        lookback_days: int = 20
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetches 1 month (~21 trading days) of regular-hours 5-minute bars from Yahoo Finance
+        for the given symbols (e.g. Watchlists) and returns 78-slot cumulative volume curves.
+        """
+        from zoneinfo import ZoneInfo
+
+        clean_syms = list(dict.fromkeys([
+            s.strip().upper() for s in (symbols or [])
+            if s and s.strip() and not s.strip().startswith("^")
+        ]))
+        if not clean_syms:
+            return []
+
+        if not cutoff_date:
+            cutoff_date = datetime.datetime.now(ZoneInfo("America/New_York")).date().strftime("%Y-%m-%d")
+
+        profiles: List[Dict[str, Any]] = []
+        batch_size = 50
+        for i in range(0, len(clean_syms), batch_size):
+            batch = clean_syms[i:i + batch_size]
+            try:
+                df = yf.download(
+                    tickers=batch,
+                    period="1mo",
+                    interval="5m",
+                    prepost=False,
+                    group_by="ticker",
+                    threads=True,
+                    progress=False,
+                )
+                if df is None or df.empty:
+                    continue
+
+                if isinstance(df.columns, pd.MultiIndex):
+                    lvl0 = set(df.columns.get_level_values(0))
+                    for sym in batch:
+                        vol_s = None
+                        if sym in lvl0 and "Volume" in df[sym].columns:
+                            vol_s = df[sym]["Volume"]
+                        elif "Volume" in lvl0 and sym in df["Volume"].columns:
+                            vol_s = df["Volume"][sym]
+                        if vol_s is not None:
+                            res = self.compute_5m_volume_curve_from_series(
+                                vol_s, cutoff_date=cutoff_date, lookback_days=lookback_days
+                            )
+                            if res:
+                                res["symbol"] = sym
+                                profiles.append(res)
+                else:
+                    if len(batch) == 1 and "Volume" in df.columns:
+                        res = self.compute_5m_volume_curve_from_series(
+                            df["Volume"], cutoff_date=cutoff_date, lookback_days=lookback_days
+                        )
+                        if res:
+                            res["symbol"] = batch[0]
+                            profiles.append(res)
+            except Exception as e:
+                print(f"[YFINANCE] Warning fetching 5m volume profiles for batch starting {batch[0]}: {e}")
+
+        return profiles

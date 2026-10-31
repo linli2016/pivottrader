@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import StockListHeader, { StockListBatchBar } from './StockListHeader';
 import StockListFilter from './StockListFilter';
 import StockListTable from './StockListTable';
+import { FLAG_ORDER } from '../../utils/flagConstants';
 import './StockList.css';
 
 export default function StockList({
@@ -41,10 +42,7 @@ export default function StockList({
   selectedSymbols: controlledSelectedSymbols = null,
   onSelectionChange = null,
 
-  watchlists = [],
-  targetWatchlistId = null,
   targetWatchlistSymbols = null,
-  onTargetWatchlistChange = null,
   onToggleTargetWatchlist = null,
   onBatchAddToWatchlist = null,
   isAddingBatchToTarget = false,
@@ -59,6 +57,7 @@ export default function StockList({
   renderCell = null,
   renderRowActions = null,
   onRemoveSymbol = null,
+  onUpdateFlag = null,
 
   // State & Messages
   loading = false,
@@ -147,6 +146,20 @@ export default function StockList({
   const sortedItems = useMemo(() => {
     const copy = [...filteredItems];
     switch (sortBy) {
+      case 'flag_asc':
+        return copy.sort((a, b) => {
+          const orderA = FLAG_ORDER[a.flag_color] ?? 99;
+          const orderB = FLAG_ORDER[b.flag_color] ?? 99;
+          if (orderA !== orderB) return orderA - orderB;
+          return (a.symbol || '').localeCompare(b.symbol || '');
+        });
+      case 'flag_desc':
+        return copy.sort((a, b) => {
+          const orderA = FLAG_ORDER[a.flag_color] ?? 99;
+          const orderB = FLAG_ORDER[b.flag_color] ?? 99;
+          if (orderA !== orderB) return orderB - orderA;
+          return (a.symbol || '').localeCompare(b.symbol || '');
+        });
       case 'symbol':
         return copy.sort((a, b) => (a.symbol || '').localeCompare(b.symbol || ''));
       case 'symbol_desc':
@@ -159,6 +172,10 @@ export default function StockList({
         return copy.sort((a, b) => (b.rs_rank ?? -999) - (a.rs_rank ?? -999));
       case 'rs_rank_asc':
         return copy.sort((a, b) => (a.rs_rank ?? 999) - (b.rs_rank ?? 999));
+      case 'proj_rvol':
+        return copy.sort((a, b) => ((b.proj_rvol ?? b.rel_vol_50d) ?? -999) - ((a.proj_rvol ?? a.rel_vol_50d) ?? -999));
+      case 'proj_rvol_asc':
+        return copy.sort((a, b) => ((a.proj_rvol ?? a.rel_vol_50d) ?? 999) - ((b.proj_rvol ?? b.rel_vol_50d) ?? 999));
       case 'ext_atr_50_desc':
         return copy.sort((a, b) => (Number(b.ext_atr_50) || -999) - (Number(a.ext_atr_50) || -999));
       case 'ext_atr_50_asc':
@@ -356,9 +373,6 @@ export default function StockList({
         totalItemsCount={sortedItems.length}
         selectedSymbols={selectedSymbols}
         onSelectAll={handleSelectAllToggle}
-        watchlists={watchlists}
-        targetWatchlistId={targetWatchlistId}
-        onTargetWatchlistChange={onTargetWatchlistChange}
         onBatchAddToWatchlist={onBatchAddToWatchlist}
         isAddingBatchToTarget={isAddingBatchToTarget}
         onBatchRemove={onBatchRemove}
@@ -389,9 +403,8 @@ export default function StockList({
         renderRowActions={renderRowActions}
         onRemoveSymbol={onRemoveSymbol}
         targetWatchlistSymbols={targetWatchlistSymbols}
-        targetWatchlistId={targetWatchlistId}
-        watchlists={watchlists}
         onToggleTargetWatchlist={onToggleTargetWatchlist}
+        onUpdateFlag={onUpdateFlag}
       />
     </div>
   );

@@ -60,7 +60,7 @@ export default function SyncDataTab({
               </button>
             )}
           </div>
-          <p style={{ margin: '4px 0 0 0' }}>Ingest daily prices, live market quotes, fundamentals (EPS), and 13F institutional sponsorship into DuckDB</p>
+          <p style={{ margin: '4px 0 0 0' }}>Ingest daily prices, live market quotes, bulk EPS & Sales growth fundamentals, and 13F institutional sponsorship into DuckDB</p>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
@@ -108,7 +108,7 @@ export default function SyncDataTab({
                 disabled={syncStatus.status === 'running' || syncPremarket}
                 style={{ cursor: syncPremarket ? 'not-allowed' : 'pointer', accentColor: 'var(--accent-color)' }}
               />
-              Sync Fundamentals (EPS)
+              Sync Fundamentals (EPS, Sales YoY% & Float)
             </label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: syncPremarket ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '500', color: syncPremarket ? 'var(--text-muted)' : '#60a5fa', opacity: syncPremarket ? 0.5 : 1 }} title="Sync institutional sponsorship fund counts and consecutive growth streaks (Free: Yahoo / SEC 13F)">

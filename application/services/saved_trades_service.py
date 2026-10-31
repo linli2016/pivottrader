@@ -81,7 +81,7 @@ class SavedTradesService:
 
     def resolve_setup_tag(self, s_type: str, s_name: Optional[str] = None) -> tuple[str, str]:
         """
-        Resolves setup_type to a canonical setup tag (e.g. 'IPO', 'HTF', 'VCP', 'EP', 'SHORT', 'Others').
+        Resolves setup_type to a canonical setup tag (e.g. 'IPO', 'BO', 'VCP', 'EP', 'SHORT', 'Others').
         If s_type is a screener ID (e.g. 'ipo_base', 'episodic_pivot'), maps it to the screener's tag.
         """
         try:
@@ -89,7 +89,7 @@ class SavedTradesService:
             tags = setup_service.get_tags()
             cleaned = str(s_type).strip() if s_type else ""
 
-            # 1. Match tag keys case-insensitively (e.g. 'IPO', 'ipo', 'HTF', 'htf')
+            # 1. Match tag keys case-insensitively (e.g. 'IPO', 'ipo', 'BO', 'bo')
             for t_key, t_def in tags.items():
                 if cleaned.upper() == t_key.upper():
                     name = s_name or t_def.get("name") or t_def.get("label") or t_key
@@ -301,6 +301,16 @@ class SavedTradesService:
                         item.update(b_info)
         except Exception as e:
             logger.warning(f"Failed to enrich saved trades from DuckDB: {e}")
+
+        # Enrich with user chart drawings
+        try:
+            from application.services.chart_drawings_service import chart_drawings_service
+            all_drawings = chart_drawings_service.get_all_drawings()
+            for item in enriched:
+                sym = str(item.get("symbol", "")).upper().strip()
+                item["drawings"] = all_drawings.get(sym, [])
+        except Exception as de:
+            logger.warning(f"Failed to enrich saved trades with drawings: {de}")
 
         return enriched
 

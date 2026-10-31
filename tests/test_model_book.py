@@ -57,8 +57,9 @@ class TestModelBookService(unittest.TestCase):
         t_type_ep, t_name_ep = saved_trades_service.resolve_setup_tag("episodic_pivot")
         self.assertEqual(t_type_ep, "EP")
 
-        t_type_htf, t_name_htf = saved_trades_service.resolve_setup_tag("power_play")
-        self.assertEqual(t_type_htf, "HTF")
+        t_type_bo, t_name_bo = saved_trades_service.resolve_setup_tag("power_play")
+        self.assertEqual(t_type_bo, "BO")
+        self.assertEqual(t_name_bo, "Breakout")
 
         # Test saving trade with screener id or tag
         saved = saved_trades_service.save_trade({

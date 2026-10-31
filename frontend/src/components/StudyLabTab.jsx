@@ -10,10 +10,23 @@ const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:80
 
 const SETUP_COLORS = {
   // Folders
+  action: '#f59e0b',
   daily: '#38bdf8',
   weekly: '#a855f7',
+  study: '#38bdf8',
   short: '#f43f5e',
   others: '#94a3b8',
+  // Action Setups
+  vdu_coils: '#10b981',
+  zanger_breakout: '#ec4899',
+  // Study Setups
+  high_rvol: '#38bdf8',
+  confirmed_staged: '#10b981',
+  stage1: '#38bdf8',
+  stage2: '#10b981',
+  stage3: '#f59e0b',
+  stage4: '#f43f5e',
+  all: '#a855f7',
   // Daily Setups
   power_play: '#38bdf8',
   breakout: '#f59e0b',
@@ -24,6 +37,7 @@ const SETUP_COLORS = {
   ep_9_million: '#f43f5e',
   parabolic: '#ef4444',
   parabolic_short: '#ef4444',
+  parabolic_long: '#10b981',
   cup_and_handle: '#10b981',
   cheat: '#eab308',
   low_cheat: '#f97316',
@@ -69,6 +83,7 @@ const SETUP_CANONICAL_NAMES = {
   ep_9_million: 'EP9 Million',
   parabolic: 'Parabolic Short',
   parabolic_short: 'Parabolic Short',
+  parabolic_long: 'Parabolic Long',
   weinstein_breakdown: 'Stage 4 Breakdown',
   weinstein_pullback: 'Pullback to 30W MA',
   stage4_continuation: 'Stage 4 Continuation',
@@ -108,10 +123,10 @@ export default function StudyLabTab({
   setupsConfig = { folders: [], setups: [], filters: {} }
 }) {
   // Navigation & Screener State
-  const [activeFolderId, setActiveFolderId] = useState('daily');
-  const [activeScreenerId, setActiveScreenerId] = useState('power_play');
-  const [folderMemory, setFolderMemory] = useState({ daily: 'power_play', weekly: 'leaders', others: 'confirmed_staged' });
-  const [setupType, setSetupType] = useState('power_play');
+  const [activeFolderId, setActiveFolderId] = useState('study');
+  const [activeScreenerId, setActiveScreenerId] = useState('high_rvol');
+  const [folderMemory, setFolderMemory] = useState({});
+  const [setupType, setSetupType] = useState('high_rvol');
 
   // Chart & Row References
   const chartRef = useRef(null);
@@ -171,7 +186,6 @@ export default function StudyLabTab({
   const [previewGroupModal, setPreviewGroupModal] = useState(null);
 
   // Watchlist integration
-  const [targetWatchlistId, setTargetWatchlistId] = useState(null);
   const [activeWatchlistSymbols, setActiveWatchlistSymbols] = useState(new Set());
 
   // Model Book Saved State (for quick 1-click toggle)
@@ -250,19 +264,12 @@ export default function StudyLabTab({
   }, [curScreener, activeFolderId]);
 
   // Watchlist Sync
-  useEffect(() => {
-    if (watchlists && watchlists.length > 0 && !targetWatchlistId) {
-      setTargetWatchlistId(watchlists[0].id);
-    }
-  }, [watchlists, targetWatchlistId]);
-
-  const fetchTargetWatchlistItems = useCallback(async (watchlistId) => {
-    if (!watchlistId) return;
+  const fetchWatchlistItems = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/watchlists/${watchlistId}/items`);
+      const res = await fetch(`${API_BASE}/api/watchlists/items`);
       if (res.ok) {
         const data = await res.json();
-        const symSet = new Set(data.map(item => item.symbol.toUpperCase()));
+        const symSet = new Set(data.map(item => (item.symbol || '').toUpperCase()));
         setActiveWatchlistSymbols(symSet);
       }
     } catch (e) {
@@ -271,19 +278,17 @@ export default function StudyLabTab({
   }, []);
 
   useEffect(() => {
-    if (targetWatchlistId) {
-      fetchTargetWatchlistItems(targetWatchlistId);
-    }
-  }, [targetWatchlistId, fetchTargetWatchlistItems]);
+    fetchWatchlistItems();
+  }, [fetchWatchlistItems]);
 
   const handleToggleWatchlist = async (symbol) => {
-    if (!targetWatchlistId || !symbol) return;
+    if (!symbol) return;
     const symUpper = symbol.toUpperCase();
     const isSaved = activeWatchlistSymbols.has(symUpper);
 
     try {
       if (isSaved) {
-        const res = await fetch(`${API_BASE}/api/watchlists/${targetWatchlistId}/items/${symbol}`, {
+        const res = await fetch(`${API_BASE}/api/watchlists/items/${encodeURIComponent(symUpper)}`, {
           method: 'DELETE',
         });
         if (res.ok) {
@@ -293,10 +298,10 @@ export default function StudyLabTab({
           if (fetchWatchlists) fetchWatchlists();
         }
       } else {
-        const res = await fetch(`${API_BASE}/api/watchlists/${targetWatchlistId}/items`, {
+        const res = await fetch(`${API_BASE}/api/watchlists/items`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbol }),
+          body: JSON.stringify({ symbol: symUpper }),
         });
         if (res.ok) {
           const nextSet = new Set(activeWatchlistSymbols);
@@ -323,7 +328,7 @@ export default function StudyLabTab({
 
     const reqPromise = (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=750`);
+        const res = await fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=3500`);
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data) && data.length > 0) {
@@ -487,11 +492,37 @@ export default function StudyLabTab({
     }
   }, [activeScreenerId, setupType, startDate, endDate, prefetchSymbols]);
 
-  // Initial Scan on Mount
+  // Initial Scan on Mount (defaults to Study folder & its screener)
+  const initializedRef = useRef(false);
   useEffect(() => {
-    handleRunScan('power_play', { start: startDate, end: endDate });
+    if (initializedRef.current) return;
+
+    const folders = setupsConfig?.folders || [];
+    const visibleFolders = folders.filter(f => f.visible !== false);
+    const studyFolder = visibleFolders.find(f => f.id === 'study' || f.name?.toLowerCase() === 'study') ||
+                        visibleFolders.find(f => f.id === 'others') ||
+                        (visibleFolders.length > 0 ? visibleFolders[0] : null);
+
+    let targetScreenerId = 'high_rvol';
+    let targetFolderId = 'study';
+
+    if (studyFolder) {
+      targetFolderId = studyFolder.id;
+      const visibleScreeners = (studyFolder.screeners || []).filter(s => s.visible !== false);
+      const candidateList = visibleScreeners.length > 0 ? visibleScreeners : (studyFolder.screeners || []);
+      targetScreenerId = (candidateList.some(s => s.id === studyFolder.default_screener_id)
+        ? studyFolder.default_screener_id
+        : null) || candidateList[0]?.id || 'high_rvol';
+
+      setActiveFolderId(targetFolderId);
+      setActiveScreenerId(targetScreenerId);
+      setSetupType(targetScreenerId);
+    }
+
+    initializedRef.current = true;
+    handleRunScan(targetScreenerId, { start: startDate, end: endDate });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [setupsConfig]);
 
   // Filter candidates by Industry & Stage 2
   const industryCounts = useMemo(() => {
@@ -605,8 +636,8 @@ export default function StudyLabTab({
     const visibleScreeners = folder.screeners.filter(s => s.visible !== false);
     const candidateList = visibleScreeners.length > 0 ? visibleScreeners : folder.screeners;
     const rememberedId = folderMemory[folderId];
-    const screener = candidateList.find(s => s.id === rememberedId) ||
-                     candidateList.find(s => s.id === folder.default_screener_id) ||
+    const screener = candidateList.find(s => s.id === folder.default_screener_id) ||
+                     (rememberedId && candidateList.find(s => s.id === rememberedId)) ||
                      candidateList[0];
     if (screener) {
       setActiveScreenerId(screener.id);
@@ -942,33 +973,23 @@ export default function StudyLabTab({
           </div>
 
           {/* Row 2: Screener Subview Bar for Active Folder */}
-          {curFolder?.screeners && curFolder.screeners.length > 0 && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              flexWrap: 'wrap',
-              padding: '7px 12px',
-              background: activeFolderId === 'daily' 
-                ? 'rgba(56, 189, 248, 0.08)' 
-                : activeFolderId === 'weekly' 
-                  ? 'rgba(168, 85, 247, 0.08)' 
-                  : activeFolderId === 'short'
-                    ? 'rgba(244, 63, 94, 0.08)'
-                    : 'rgba(148, 163, 184, 0.08)',
-              border: activeFolderId === 'daily' 
-                ? '1px solid rgba(56, 189, 248, 0.25)' 
-                : activeFolderId === 'weekly' 
-                  ? '1px solid rgba(168, 85, 247, 0.25)' 
-                  : activeFolderId === 'short'
-                    ? '1px solid rgba(244, 63, 94, 0.25)'
-                    : '1px solid rgba(148, 163, 184, 0.25)',
-              borderRadius: '8px',
-              marginTop: '2px'
-            }}>
-              {(curFolder.screeners || []).filter(s => s.visible !== false).map((screener) => {
-                const isSelected = activeScreenerId === screener.id;
-                const screenerColor = SETUP_COLORS[screener.id] || (activeFolderId === 'daily' ? '#38bdf8' : (activeFolderId === 'weekly' ? '#a855f7' : (activeFolderId === 'short' ? '#f43f5e' : '#94a3b8')));
+          {curFolder?.screeners && curFolder.screeners.length > 0 && (() => {
+            const folderColor = SETUP_COLORS[activeFolderId] || '#38bdf8';
+            return (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                flexWrap: 'wrap',
+                padding: '7px 12px',
+                background: `${folderColor}14`,
+                border: `1px solid ${folderColor}40`,
+                borderRadius: '8px',
+                marginTop: '2px'
+              }}>
+                {(curFolder.screeners || []).filter(s => s.visible !== false).map((screener) => {
+                  const isSelected = activeScreenerId === screener.id;
+                  const screenerColor = SETUP_COLORS[screener.id] || folderColor;
 
                 return (
                   <button
@@ -994,7 +1015,8 @@ export default function StudyLabTab({
                 );
               })}
             </div>
-          )}
+            );
+          })()}
         </div>
       )}
 
@@ -1022,10 +1044,7 @@ export default function StudyLabTab({
             asOfDate={currentCandidate?.setup_date || currentCandidate?.date || null}
             marketRegime={currentCandidate?.market_regime}
             showEarningsBadge={false}
-            watchlists={watchlists}
-            targetWatchlistId={targetWatchlistId}
-            targetWatchlistSymbols={activeWatchlistSymbols}
-            onTargetWatchlistChange={setTargetWatchlistId}
+            watchlistSymbols={activeWatchlistSymbols}
             onToggleWatchlist={handleToggleWatchlist}
             onSelectGroup={(type, name) => setPreviewGroupModal({ groupType: type, groupName: name })}
             onSelectStock={(stk) => {

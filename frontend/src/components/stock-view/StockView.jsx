@@ -22,10 +22,8 @@ const StockView = forwardRef(function StockView({
   onSelectStock = null,
   onSelectGroup = null,
   // Watchlist props
-  watchlists = [],
-  targetWatchlistId: propTargetWatchlistId = null,
   targetWatchlistSymbols: propTargetWatchlistSymbols = null,
-  onTargetWatchlistChange = null,
+  watchlistSymbols: propWatchlistSymbols = null,
   onToggleWatchlist = null,
   isWatchlistSaved: propIsWatchlistSaved = null,
   // Setup & regime props
@@ -45,6 +43,8 @@ const StockView = forwardRef(function StockView({
   showRsLine = null,
   showEarnings = null,
   showSymbol = null,
+  drawings = null,
+  onDrawingsChange = null,
   className = '',
   style = {},
 }, ref) {
@@ -250,28 +250,16 @@ const StockView = forwardRef(function StockView({
     };
   }, [isResizingDetail, detailWidth]);
 
-  // Target watchlist state
-  const [internalTargetWatchlistId, setInternalTargetWatchlistId] = useState(propTargetWatchlistId);
+  // Watchlist state
+  const activeWatchlistSymbols = propTargetWatchlistSymbols || propWatchlistSymbols;
   const [internalTargetSymbols, setInternalTargetSymbols] = useState(() => new Set());
 
+  // Auto-fetch symbols for watchlist when not supplied via prop
   useEffect(() => {
-    if (propTargetWatchlistId !== null) {
-      setInternalTargetWatchlistId(propTargetWatchlistId);
-    }
-  }, [propTargetWatchlistId]);
-
-  const targetWatchlistId = propTargetWatchlistId !== null ? propTargetWatchlistId : internalTargetWatchlistId;
-
-  // Auto-fetch symbols for target watchlist when not supplied via propTargetWatchlistSymbols
-  useEffect(() => {
-    if (propTargetWatchlistSymbols) return;
-    if (!targetWatchlistId) {
-      setInternalTargetSymbols(new Set());
-      return;
-    }
+    if (activeWatchlistSymbols) return;
     let cancelled = false;
     const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
-    fetch(`${API_BASE}/api/watchlists/${targetWatchlistId}/items`)
+    fetch(`${API_BASE}/api/watchlists/items`)
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
         if (!cancelled && Array.isArray(data)) {
@@ -282,23 +270,15 @@ const StockView = forwardRef(function StockView({
     return () => {
       cancelled = true;
     };
-  }, [targetWatchlistId, propTargetWatchlistSymbols]);
-
-  const handleTargetWatchlistChange = useCallback(
-    (newId) => {
-      setInternalTargetWatchlistId(newId);
-      onTargetWatchlistChange?.(newId);
-    },
-    [onTargetWatchlistChange]
-  );
+  }, [activeWatchlistSymbols]);
 
   const isWatchlistSaved = useMemo(() => {
-    if (!symbol || !targetWatchlistId) return false;
+    if (!symbol) return false;
     if (propIsWatchlistSaved !== null && propIsWatchlistSaved !== undefined) {
       return Boolean(propIsWatchlistSaved);
     }
     const cleanSym = symbol.toUpperCase().trim();
-    const symSet = propTargetWatchlistSymbols || internalTargetSymbols;
+    const symSet = activeWatchlistSymbols || internalTargetSymbols;
     if (symSet) {
       if (typeof symSet.has === 'function') {
         return symSet.has(cleanSym);
@@ -308,7 +288,7 @@ const StockView = forwardRef(function StockView({
       }
     }
     return false;
-  }, [symbol, targetWatchlistId, propIsWatchlistSaved, propTargetWatchlistSymbols, internalTargetSymbols]);
+  }, [symbol, propIsWatchlistSaved, activeWatchlistSymbols, internalTargetSymbols]);
 
   const handleToggleWatchlistAction = useCallback(
     (sym) => {
@@ -353,9 +333,6 @@ const StockView = forwardRef(function StockView({
         asOfDate={asOfDate}
         setupName={setupName}
         marketRegime={marketRegime}
-        watchlists={watchlists}
-        targetWatchlistId={targetWatchlistId}
-        onTargetWatchlistChange={handleTargetWatchlistChange}
         onToggleWatchlist={handleToggleWatchlistAction}
         isWatchlistSaved={isWatchlistSaved}
         showMultiCharts={showMultiCharts}
@@ -376,6 +353,8 @@ const StockView = forwardRef(function StockView({
         showRsLine={showRsLine}
         showEarnings={showEarnings}
         showSymbol={showSymbol}
+        drawings={drawings}
+        onDrawingsChange={onDrawingsChange}
       />
 
       {/* Vertical Splitter */}

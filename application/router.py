@@ -260,6 +260,15 @@ def trigger_sync_run(background_tasks: BackgroundTasks, payload: SyncTriggerSche
         fix_splits=payload.fix_splits
     )
 
+@router.post("/api/sync/live-watchlist")
+def trigger_live_watchlist_sync():
+    """Ultra-fast (<0.5s) synchronous live quotes sync for all symbols in user watchlists."""
+    try:
+        return db_service.sync_watchlist_live_quotes()
+    except Exception as e:
+        logger.error(f"Error in trigger_live_watchlist_sync: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/api/sync/repair-splits")
 def trigger_repair_splits(background_tasks: BackgroundTasks):
     """Triggers a targeted stock split scan and repair across all symbols in the database."""

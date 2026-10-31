@@ -334,6 +334,7 @@ def calculate_breadth_moving_averages(conn, as_of_date: Optional[str] = None, lo
                 ROUND(COUNT(CASE WHEN close > sma_200 THEN 1 END) * 100.0 / COUNT(*), 1) as pct_above_200
             FROM raw_bars
             GROUP BY date
+            HAVING COUNT(*) >= CASE WHEN (SELECT COUNT(*) FROM symbols WHERE active = true) > 500 THEN 500 ELSE 1 END
             ORDER BY date DESC
             LIMIT {lookback_sessions + 20}
         )
@@ -437,6 +438,7 @@ def calculate_market_pulse_history(
                     ROUND(COUNT(CASE WHEN close > sma_200 THEN 1 END) * 100.0 / COUNT(*), 1) as pct_above_200
                 FROM raw_bars
                 GROUP BY date
+                HAVING COUNT(*) >= CASE WHEN (SELECT COUNT(*) FROM symbols WHERE active = true) > 500 THEN 500 ELSE 1 END
                 ORDER BY date DESC
                 LIMIT {lookback_sessions}
             )
@@ -553,7 +555,7 @@ def calculate_situational_awareness(conn, as_of_date: Optional[str] = None) -> D
                 close,
                 sma_50,
                 atr_20d,
-                ROUND(((close - sma_50) / NULLIF(close * (atr_20d / 100.0), 0)), 2) as ext_atr_50,
+                ROUND(((close - sma_50) / NULLIF(sma_50 * (atr_20d / 100.0), 0)), 2) as ext_atr_50,
                 ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
             FROM daily_bars
             WHERE symbol IN ('SPY', 'QQQ') {date_filter}

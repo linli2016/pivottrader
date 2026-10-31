@@ -1,5 +1,6 @@
 import React from 'react';
 import StockView from './stock-view';
+import { globalStockDataCache } from './stock-view/stockCache';
 import StockList, { StockListSplitter, useStockListResize } from './stock-list';
 import GroupStageChart from './GroupStageChart';
 import ExpressionCheatSheet from './ExpressionCheatSheet';
@@ -8,13 +9,25 @@ import { getLocalDateStr } from '../utils/dateUtils';
 
 const SETUP_COLORS = {
   // Folders
+  action: '#f59e0b',
   daily: '#38bdf8',
   weekly: '#a855f7',
+  dan_zanger: '#f59e0b',
   short: '#f43f5e',
   others: '#94a3b8',
   archive: '#64748b',
+  // Action Setups
+  vdu_coils: '#10b981',
+  zanger_breakout: '#ec4899',
+  // Dan Zanger Setups
+  zanger_monster_growth: '#f59e0b',
+  zanger_hyper_growth: '#fbbf24',
+  zanger_zvr_breakout: '#ec4899',
+  zanger_bull_flag: '#38bdf8',
+  zanger_stage2_base: '#10b981',
   // Daily Setups
-  five_ema_below_5pct: '#38bdf8',
+  buyable: '#38bdf8',
+  watchlist_rvol: '#10b981',
   power_play: '#38bdf8',
   breakout: '#f59e0b',
   breakouts: '#f59e0b',
@@ -24,6 +37,7 @@ const SETUP_COLORS = {
   ep_9_million: '#f43f5e',
   parabolic: '#ef4444',
   parabolic_short: '#ef4444',
+  parabolic_long: '#10b981',
   cup_and_handle: '#10b981',
   cheat: '#eab308',
   low_cheat: '#f97316',
@@ -67,7 +81,7 @@ export default function CandidatesTab({
   selectedDate = 'latest',
   setSelectedDate = () => { },
   setupsConfig = { folders: [], setups: [], filters: {} },
-  activeFolderId = 'daily',
+  activeFolderId = 'action',
   onSelectFolder = () => { },
   activeScreenerId = 'power_play',
   onSelectScreener = () => { },
@@ -173,29 +187,33 @@ export default function CandidatesTab({
   // Stock Browse Mode (Chart Flip) states
   const [browseIndex, setBrowseIndex] = React.useState(0);
   const [browsePrices, setBrowsePrices] = React.useState([]);
-  const [targetWatchlistId, setTargetWatchlistId] = React.useState(null);
   const [loadingBrowsePrices, setLoadingBrowsePrices] = React.useState(false);
   const [showCheatSheet, setShowCheatSheet] = React.useState(false);
   const [showExpressionSection, setShowExpressionSection] = React.useState(false);
   const [exprValidation, setExprValidation] = React.useState({ valid: true, error: null });
   const [selectedIndustry, setSelectedIndustry] = React.useState('ALL');
   
-  // Exclude Biotech Filter: Defaults ON for Weekly screeners, OFF for other screeners
-  const isWeeklyScreener = React.useMemo(() => {
-    if (activeFolderId === 'weekly') return true;
-    const curFolder = (setupsConfig?.folders || []).find((f) => f.id === activeFolderId);
-    const curScreener = curFolder?.screeners?.find((s) => s.id === activeScreenerId);
-    if (curScreener?.folder === 'weekly' || curScreener?.group === 'weekly') return true;
-    const weeklyFolder = (setupsConfig?.folders || []).find((f) => f.id === 'weekly');
-    if (weeklyFolder?.screeners?.some((s) => s.id === activeScreenerId)) return true;
-    return false;
-  }, [activeFolderId, activeScreenerId, setupsConfig]);
+  // Exclude Biotech Filter: Defaults ON for all screeners, persisted in localStorage
+  const [excludeBiotech, setExcludeBiotech] = React.useState(() => {
+    try {
+      const saved = localStorage.getItem('pt_exclude_biotech');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
 
-  const [excludeBiotech, setExcludeBiotech] = React.useState(() => isWeeklyScreener);
+  React.useEffect(() => {
+    try {
+      localStorage.setItem('pt_exclude_biotech', String(excludeBiotech));
+    } catch {}
+  }, [excludeBiotech]);
 
   // Exclude In Watchlist Filter: Excludes candidates that are already in any user watchlist
   const [excludeInWatchlist, setExcludeInWatchlist] = React.useState(false);
   const [allWatchlistSymbols, setAllWatchlistSymbols] = React.useState(new Set());
+
+  const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
   const fetchAllWatchlistSymbols = React.useCallback(async () => {
     try {
@@ -207,11 +225,15 @@ export default function CandidatesTab({
     } catch (e) {
       console.error('Error fetching all watchlist symbols:', e);
     }
-  }, []);
+  }, [API_BASE]);
 
   React.useEffect(() => {
     fetchAllWatchlistSymbols();
   }, [fetchAllWatchlistSymbols, watchlists]);
+
+  const [previewGroupModal, setPreviewGroupModal] = React.useState(null);
+  const [sortBy, setSortBy] = React.useState(() => activeScreenerId === 'watchlist_rvol' ? 'proj_rvol' : 'rs_rank');
+  const [isLiveSyncing, setIsLiveSyncing] = React.useState(false);
 
   // Sync default state when folder or screener changes
   const prevScreenerRef = React.useRef({ folder: activeFolderId, screener: activeScreenerId });
@@ -221,12 +243,23 @@ export default function CandidatesTab({
       prevScreenerRef.current.screener !== activeScreenerId
     ) {
       prevScreenerRef.current = { folder: activeFolderId, screener: activeScreenerId };
-      setExcludeBiotech(isWeeklyScreener);
+      if (activeScreenerId === 'watchlist_rvol' || activeScreenerId === 'zanger_zvr_breakout') {
+        if (activeScreenerId === 'watchlist_rvol') setExcludeInWatchlist(false);
+        setSortBy('proj_rvol');
+      } else if (activeScreenerId === 'zanger_monster_growth' || activeScreenerId === 'zanger_hyper_growth') {
+        setSortBy('eps_growth');
+      } else if (
+        sortBy === 'proj_rvol' ||
+        sortBy === 'proj_rvol_asc' ||
+        sortBy === 'eps_growth' ||
+        sortBy === 'eps_growth_asc' ||
+        sortBy === 'sales_growth' ||
+        sortBy === 'sales_growth_asc'
+      ) {
+        setSortBy('rs_rank');
+      }
     }
-  }, [activeFolderId, activeScreenerId, isWeeklyScreener]);
-
-  const [previewGroupModal, setPreviewGroupModal] = React.useState(null);
-  const [sortBy, setSortBy] = React.useState('rs_rank');
+  }, [activeFolderId, activeScreenerId, sortBy]);
 
   // Top setup selection section collapse state with localStorage persistence
   const [isSetupSectionCollapsed, setIsSetupSectionCollapsed] = React.useState(() => {
@@ -280,8 +313,6 @@ export default function CandidatesTab({
     defaultWidth: 380,
     minWidth: 260,
   });
-
-  const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
   React.useEffect(() => {
     if (!activeExpression || !activeExpression.trim()) {
@@ -352,16 +383,44 @@ export default function CandidatesTab({
   }, []);
 
   // Filter candidates before industry breakdown if excludeBiotech or excludeInWatchlist is active
+  const isWatchlistQuery = React.useMemo(() => {
+    return activeScreenerId === 'watchlist_rvol' || /\b(IN_WATCHLIST|WATCHLIST)\b/i.test(activeExpression || '');
+  }, [activeScreenerId, activeExpression]);
+
+  const isProjRvolActive = React.useMemo(() => {
+    return activeScreenerId === 'watchlist_rvol' || /\bPROJ_RVOL\b/i.test(activeExpression || '');
+  }, [activeScreenerId, activeExpression]);
+
+  const isFundamentalGrowthActive = React.useMemo(() => {
+    return (
+      activeFolderId === 'dan_zanger' ||
+      /\b(EPS_GROWTH|EPS_YOY|EPS_GROWTH_YOY|EPS_GROWTH_QOQ|SALES_GROWTH|SALES_YOY|REV_GROWTH|REV_YOY|SCREENER_ZANGER_)\b/i.test(activeExpression || '')
+    );
+  }, [activeFolderId, activeExpression]);
+
+  const candidateTableColumns = React.useMemo(() => {
+    if (isFundamentalGrowthActive && isProjRvolActive) {
+      return ['symbol', 'proj_rvol', 'eps_growth', 'sales_growth', 'rs_rank'];
+    }
+    if (isFundamentalGrowthActive) {
+      return ['symbol', 'eps_growth', 'sales_growth', 'rs_rank', 'ext_atr_50'];
+    }
+    if (isProjRvolActive) {
+      return ['symbol', 'proj_rvol', 'rs_rank', 'ext_atr_50', 'rs_line'];
+    }
+    return ['symbol', 'rs_rank', 'ext_atr_50', 'rs_line'];
+  }, [isFundamentalGrowthActive, isProjRvolActive]);
+
   const baseCandidates = React.useMemo(() => {
     let list = filteredCandidates || [];
     if (excludeBiotech) {
       list = list.filter((c) => !isBiotechCandidate(c));
     }
-    if (excludeInWatchlist) {
+    if (excludeInWatchlist && !isWatchlistQuery) {
       list = list.filter((c) => !allWatchlistSymbols.has(c.symbol?.toUpperCase()));
     }
     return list;
-  }, [filteredCandidates, excludeBiotech, isBiotechCandidate, excludeInWatchlist, allWatchlistSymbols]);
+  }, [filteredCandidates, excludeBiotech, isBiotechCandidate, excludeInWatchlist, isWatchlistQuery, allWatchlistSymbols]);
 
   // Industry/Group Breakdown and Filtering
   const industryCounts = React.useMemo(() => {
@@ -405,6 +464,22 @@ export default function CandidatesTab({
         return copy.sort((a, b) => (b.rs_rank ?? -999) - (a.rs_rank ?? -999));
       case 'rs_rank_asc':
         return copy.sort((a, b) => (a.rs_rank ?? 999) - (b.rs_rank ?? 999));
+      case 'proj_rvol':
+        return copy.sort((a, b) => ((b.proj_rvol ?? b.rel_vol_50d) ?? -999) - ((a.proj_rvol ?? a.rel_vol_50d) ?? -999));
+      case 'proj_rvol_asc':
+        return copy.sort((a, b) => ((a.proj_rvol ?? a.rel_vol_50d) ?? 999) - ((b.proj_rvol ?? b.rel_vol_50d) ?? 999));
+      case 'eps_growth':
+        return copy.sort((a, b) => (b.eps_qoq_growth ?? -999999) - (a.eps_qoq_growth ?? -999999));
+      case 'eps_growth_asc':
+        return copy.sort((a, b) => (a.eps_qoq_growth ?? 999999) - (b.eps_qoq_growth ?? 999999));
+      case 'sales_growth':
+        return copy.sort((a, b) => (b.sales_yoy_growth ?? -999999) - (a.sales_yoy_growth ?? -999999));
+      case 'sales_growth_asc':
+        return copy.sort((a, b) => (a.sales_yoy_growth ?? 999999) - (b.sales_yoy_growth ?? 999999));
+      case 'ext_atr_50_desc':
+        return copy.sort((a, b) => (Number(b.ext_atr_50) || -999) - (Number(a.ext_atr_50) || -999));
+      case 'ext_atr_50_asc':
+        return copy.sort((a, b) => (Number(a.ext_atr_50) || 999) - (Number(b.ext_atr_50) || 999));
       case 'chg_pct_desc':
         return copy.sort((a, b) => ((b.today_pct ?? b.chg_pct) ?? -999) - ((a.today_pct ?? a.chg_pct) ?? -999));
       case 'chg_pct_asc':
@@ -486,6 +561,7 @@ export default function CandidatesTab({
     if (currentCandidate?.breakout_is_setup) return 'QM Breakout';
     if (currentCandidate?.ep_is_setup) return 'Episodic Pivot';
     if (currentCandidate?.parabolic_short_is_setup) return 'Parabolic Short';
+    if (currentCandidate?.parabolic_long_is_setup) return 'Parabolic Long';
     if (currentCandidate?.vcp_is_setup) return 'Cup and Handle';
     if (currentCandidate?.cheat_is_setup) return 'Cheat';
     if (currentCandidate?.low_cheat_is_setup) return 'Low Cheat';
@@ -559,17 +635,20 @@ export default function CandidatesTab({
     }
   }, [browseIndex, displayedCandidates.length]);
 
-  React.useEffect(() => {
-    if (watchlists && watchlists.length > 0 && !targetWatchlistId) {
-      setTargetWatchlistId(watchlists[0].id);
-    }
-  }, [watchlists]);
-
   const fetchBrowsePrices = React.useCallback(async (symbol) => {
     if (!symbol) return;
     const sym = symbol.toUpperCase();
 
-    // 1. Check in-memory cache for instant 0ms load
+    // 1. Check in-memory caches for instant 0ms load
+    if (globalStockDataCache.has(sym)) {
+      const cached = globalStockDataCache.get(sym);
+      if (Array.isArray(cached?.prices) && cached.prices.length > 0) {
+        priceCacheRef.current.set(sym, cached.prices);
+        setBrowsePrices(cached.prices);
+        setLoadingBrowsePrices(false);
+        return;
+      }
+    }
     if (priceCacheRef.current.has(sym)) {
       setBrowsePrices(priceCacheRef.current.get(sym));
       setLoadingBrowsePrices(false);
@@ -590,7 +669,7 @@ export default function CandidatesTab({
         promise = pendingRequestsRef.current.get(sym);
       } else {
         promise = (async () => {
-          const res = await fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=750`, {
+          const res = await fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=3500`, {
             signal: controller.signal
           });
           if (res.ok) {
@@ -604,6 +683,12 @@ export default function CandidatesTab({
       const data = await promise;
       if (Array.isArray(data) && data.length > 0) {
         priceCacheRef.current.set(sym, data);
+        if (globalStockDataCache.has(sym)) {
+          const existing = globalStockDataCache.get(sym);
+          globalStockDataCache.set(sym, { ...existing, prices: data });
+        } else {
+          globalStockDataCache.set(sym, { prices: data, detail: null, peersData: null });
+        }
         setBrowsePrices(data);
       }
     } catch (e) {
@@ -621,14 +706,20 @@ export default function CandidatesTab({
     symbols.forEach(s => {
       if (!s) return;
       const sym = s.toUpperCase();
-      if (!priceCacheRef.current.has(sym) && !pendingRequestsRef.current.has(sym)) {
+      if (!priceCacheRef.current.has(sym) && !globalStockDataCache.has(sym) && !pendingRequestsRef.current.has(sym)) {
         const reqPromise = (async () => {
           try {
-            const res = await fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=750`);
+            const res = await fetch(`${API_BASE}/api/stocks/${sym}/prices?limit=3500`);
             if (res.ok) {
               const data = await res.json();
               if (Array.isArray(data) && data.length > 0) {
                 priceCacheRef.current.set(sym, data);
+                if (globalStockDataCache.has(sym)) {
+                  const existing = globalStockDataCache.get(sym);
+                  globalStockDataCache.set(sym, { ...existing, prices: data });
+                } else {
+                  globalStockDataCache.set(sym, { prices: data, detail: null, peersData: null });
+                }
                 return data;
               }
             }
@@ -671,37 +762,32 @@ export default function CandidatesTab({
     setTimeout(() => setWatchlistToast(null), 2200);
   }, []);
 
-  const fetchTargetWatchlistItems = async (watchlistId) => {
-    if (!watchlistId) return;
+  const fetchWatchlistItems = React.useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/watchlists/${watchlistId}/items`);
+      const res = await fetch(`${API_BASE}/api/watchlists/items`);
       if (res.ok) {
         const data = await res.json();
-        const symSet = new Set(data.map(item => item.symbol.toUpperCase()));
+        const symSet = new Set(data.map(item => (item.symbol || '').toUpperCase()));
         setActiveWatchlistSymbols(symSet);
+        setAllWatchlistSymbols(symSet);
       }
     } catch (e) {
-      console.error("Error fetching target watchlist items:", e);
+      console.error("Error fetching watchlist items:", e);
     }
-  };
+  }, [API_BASE]);
 
   React.useEffect(() => {
-    if (targetWatchlistId) {
-      fetchTargetWatchlistItems(targetWatchlistId);
-    }
-  }, [targetWatchlistId, watchlists]);
+    fetchWatchlistItems();
+  }, [fetchWatchlistItems]);
 
   const handleToggleWatchlist = React.useCallback(async (symbol) => {
-    const targetWId = targetWatchlistId || (watchlists && watchlists.length > 0 ? watchlists[0].id : null);
-    if (!targetWId || !symbol) return;
+    if (!symbol) return;
     const symUpper = symbol.toUpperCase();
     const isSaved = activeWatchlistSymbols.has(symUpper);
-    const targetWl = watchlists?.find(w => w.id === targetWId);
-    const targetName = targetWl?.name || 'Watchlist';
 
     try {
       if (isSaved) {
-        const res = await fetch(`${API_BASE}/api/watchlists/${targetWId}/items/${symbol}`, {
+        const res = await fetch(`${API_BASE}/api/watchlists/items/${encodeURIComponent(symUpper)}`, {
           method: 'DELETE',
         });
         if (res.ok) {
@@ -710,21 +796,19 @@ export default function CandidatesTab({
             next.delete(symUpper);
             return next;
           });
-          fetchAllWatchlistSymbols();
+          setAllWatchlistSymbols((prev) => {
+            const next = new Set(prev);
+            next.delete(symUpper);
+            return next;
+          });
           if (fetchWatchlists) fetchWatchlists();
-          triggerToast(`Removed ${symUpper} from ${targetName}`);
+          triggerToast(`Removed ${symUpper} from Watchlist`);
         }
       } else {
-        const candidateObj = displayedCandidates?.find(c => c.symbol?.toUpperCase() === symUpper) || currentCandidate;
-        const candidateTags = candidateObj?.tags && candidateObj.tags.length > 0
-          ? candidateObj.tags
-          : (candidateObj?.setup_tag ? [candidateObj.setup_tag] : (activeScreenerTag ? [activeScreenerTag] : []));
-        const primaryTag = candidateTags.length > 0 ? candidateTags[0] : activeScreenerTag;
-
-        const res = await fetch(`${API_BASE}/api/watchlists/${targetWId}/items`, {
+        const res = await fetch(`${API_BASE}/api/watchlists/items`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbol: symUpper, tag: primaryTag, tags: candidateTags }),
+          body: JSON.stringify({ symbol: symUpper }),
         });
         if (res.ok) {
           setActiveWatchlistSymbols((prev) => {
@@ -738,14 +822,13 @@ export default function CandidatesTab({
             return next;
           });
           if (fetchWatchlists) fetchWatchlists();
-          const tagDisplay = candidateTags.length > 0 ? ` [${candidateTags.join(', ')}]` : '';
-          triggerToast(`⭐️ Added ${symUpper} to ${targetName}${tagDisplay}`);
+          triggerToast(`⭐️ Added ${symUpper} to Watchlist`);
         }
       }
     } catch (e) {
       console.error(`Error toggling watchlist item: ${e.message}`);
     }
-  }, [targetWatchlistId, watchlists, activeWatchlistSymbols, activeScreenerTag, displayedCandidates, currentCandidate, fetchWatchlists, fetchAllWatchlistSymbols, triggerToast]);
+  }, [API_BASE, activeWatchlistSymbols, fetchWatchlists, triggerToast]);
 
   const handleToggleWatchlistRef = React.useRef(handleToggleWatchlist);
   React.useEffect(() => {
@@ -796,47 +879,15 @@ export default function CandidatesTab({
     const symbols = displayedCandidates.map(c => c.symbol).filter(Boolean);
     if (symbols.length === 0) return;
 
-    let wlId = targetWatchlistId;
-    if (!wlId) {
-      if (watchlists && watchlists.length > 0) {
-        wlId = watchlists[0].id;
-        setTargetWatchlistId(wlId);
-      } else {
-        try {
-          const createRes = await fetch(`${API_BASE}/api/watchlists`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: 'Screen Candidates' })
-          });
-          if (createRes.ok) {
-            const created = await createRes.json();
-            wlId = created.id;
-            setTargetWatchlistId(wlId);
-            if (fetchWatchlists) fetchWatchlists();
-          } else {
-            alert("Please create a watchlist first.");
-            return;
-          }
-        } catch (e) {
-          console.error("Error creating watchlist:", e);
-          alert("Please create a watchlist first.");
-          return;
-        }
-      }
-    }
-
-    const wlObj = (watchlists || []).find(w => w.id === wlId);
-    const wlName = wlObj ? wlObj.name : 'Watchlist';
-
     if (allDisplayedAreAdded) {
       const confirmRemove = window.confirm(
-        `Remove all ${symbols.length} candidate stocks from '${wlName}'?`
+        `Remove all ${symbols.length} candidate stocks from Watchlist?`
       );
       if (!confirmRemove) return;
 
       setIsProcessingAll(true);
       try {
-        const res = await fetch(`${API_BASE}/api/watchlists/${wlId}/items/remove-batch`, {
+        const res = await fetch(`${API_BASE}/api/watchlists/items/remove-batch`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ symbols }),
@@ -845,7 +896,7 @@ export default function CandidatesTab({
           const nextSet = new Set(activeWatchlistSymbols);
           symbols.forEach(s => nextSet.delete(s.toUpperCase()));
           setActiveWatchlistSymbols(nextSet);
-          fetchAllWatchlistSymbols();
+          setAllWatchlistSymbols(nextSet);
           if (fetchWatchlists) fetchWatchlists();
           setBatchFeedback(`✓ Removed`);
           setTimeout(() => setBatchFeedback(null), 2500);
@@ -860,38 +911,24 @@ export default function CandidatesTab({
       }
     } else {
       const confirmAdd = window.confirm(
-        `Add all ${symbols.length} candidate stocks into '${wlName}'?`
+        `Add all ${symbols.length} candidate stocks into Watchlist?`
       );
       if (!confirmAdd) return;
 
       setIsProcessingAll(true);
       try {
-        const itemsToSave = displayedCandidates.map(c => {
-          const cTags = c.tags && c.tags.length > 0
-            ? c.tags
-            : (c.setup_tag ? [c.setup_tag] : (activeScreenerTag ? [activeScreenerTag] : []));
-          return {
-            symbol: c.symbol.toUpperCase(),
-            tag: cTags[0] || null,
-            tags: cTags
-          };
-        });
-        const res = await fetch(`${API_BASE}/api/watchlists/${wlId}/items/batch`, {
+        const res = await fetch(`${API_BASE}/api/watchlists/items/batch`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items: itemsToSave }),
+          body: JSON.stringify({ symbols }),
         });
         if (res.ok) {
           const nextSet = new Set(activeWatchlistSymbols);
           symbols.forEach(s => nextSet.add(s.toUpperCase()));
           setActiveWatchlistSymbols(nextSet);
-          setAllWatchlistSymbols(prev => {
-            const next = new Set(prev);
-            symbols.forEach(s => next.add(s.toUpperCase()));
-            return next;
-          });
+          setAllWatchlistSymbols(nextSet);
           if (fetchWatchlists) fetchWatchlists();
-          setBatchFeedback(`✓ Added${activeScreenerTag ? ` [${activeScreenerTag}]` : ''}`);
+          setBatchFeedback(`✓ Added ${symbols.length}`);
           setTimeout(() => setBatchFeedback(null), 2500);
         } else {
           alert("Failed to batch add candidates to watchlist.");
@@ -1029,9 +1066,28 @@ export default function CandidatesTab({
 
       <button
         className="btn btn-secondary btn-sm"
-        onClick={handleTriggerLiveQuotesSync}
-        disabled={syncStatus?.status === 'running' || loadingCandidates}
-        title={syncStatus?.status === 'running' ? "Refreshing Live Quotes..." : "Sync Live Market Quotes (<3s)"}
+        onClick={async () => {
+          if (isLiveSyncing || syncStatus?.status === 'running') return;
+          setIsLiveSyncing(true);
+          try {
+            const res = await handleTriggerLiveQuotesSync();
+            priceCacheRef.current.clear();
+            if (currentCandidateRef.current?.symbol) {
+              fetchBrowsePrices(currentCandidateRef.current.symbol);
+            }
+            if (res) {
+              if (res.status === 'skipped') {
+                triggerToast(`⚡ ${res.reason || 'Market closed'}`);
+              } else if (res.updated_count !== undefined) {
+                triggerToast(`⚡ Synced ${res.updated_count} watchlist stock${res.updated_count === 1 ? '' : 's'}`);
+              }
+            }
+          } finally {
+            setIsLiveSyncing(false);
+          }
+        }}
+        disabled={isLiveSyncing || syncStatus?.status === 'running' || loadingCandidates}
+        title={(isLiveSyncing || syncStatus?.status === 'running') ? "Refreshing Watchlist Live Quotes..." : "Fast Sync Watchlist Live Quotes (<0.5s)"}
         style={{
           padding: compact ? '4px 8px' : '5px 10px',
           height: compact ? '26px' : '28px',
@@ -1040,14 +1096,14 @@ export default function CandidatesTab({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: syncStatus?.status === 'running' ? 'rgba(56, 189, 248, 0.25)' : 'rgba(15, 23, 42, 0.5)',
-          border: syncStatus?.status === 'running' ? '1px solid #38bdf8' : '1px solid rgba(56, 189, 248, 0.4)',
+          background: (isLiveSyncing || syncStatus?.status === 'running') ? 'rgba(56, 189, 248, 0.25)' : 'rgba(15, 23, 42, 0.5)',
+          border: (isLiveSyncing || syncStatus?.status === 'running') ? '1px solid #38bdf8' : '1px solid rgba(56, 189, 248, 0.4)',
           color: '#38bdf8',
-          cursor: syncStatus?.status === 'running' ? 'not-allowed' : 'pointer',
+          cursor: (isLiveSyncing || syncStatus?.status === 'running') ? 'not-allowed' : 'pointer',
           lineHeight: 1
         }}
       >
-        <span className={syncStatus?.status === 'running' ? "spin-icon" : ""}>⚡</span>
+        <span className={(isLiveSyncing || syncStatus?.status === 'running') ? "spin-icon" : ""}>⚡</span>
       </button>
     </>
   );
@@ -1157,26 +1213,33 @@ export default function CandidatesTab({
                     onClick={() => onSelectFolder(folder.id)}
                     title={folder.description || ''}
                     style={{
-                      padding: '5px 12px',
+                      padding: '0 12px',
+                      height: '28px',
+                      boxSizing: 'border-box',
                       fontSize: '12px',
                       fontWeight: isSelected ? '700' : '600',
+                      lineHeight: 1,
                       borderRadius: '6px',
                       cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                      border: isSelected ? `1.5px solid ${color}` : '1px solid rgba(255, 255, 255, 0.12)',
+                      transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease',
+                      border: `1px solid ${isSelected ? color : 'rgba(255, 255, 255, 0.12)'}`,
                       background: isSelected ? `${color}25` : 'rgba(15, 23, 42, 0.55)',
                       color: isSelected ? color : 'var(--text-secondary)',
                       boxShadow: isSelected ? `0 2px 8px ${color}35` : 'none',
-                      display: 'flex',
+                      display: 'inline-flex',
                       alignItems: 'center',
                       gap: '6px'
                     }}
                   >
-                    <span>{folder.icon ? `${folder.icon} ` : ''}{folder.name}</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', lineHeight: 1 }}>
+                      {folder.icon ? <span style={{ fontSize: '12px', lineHeight: 1 }}>{folder.icon}</span> : null}
+                      <span>{folder.name}</span>
+                    </span>
                     <span style={{
                       fontSize: '10px',
                       fontWeight: '700',
-                      padding: '1px 5px',
+                      lineHeight: 1,
+                      padding: '2px 5px',
                       borderRadius: '10px',
                       background: isSelected ? `${color}35` : 'rgba(255, 255, 255, 0.08)',
                       color: isSelected ? color : 'var(--text-muted)',
@@ -1232,7 +1295,10 @@ export default function CandidatesTab({
               className="btn btn-secondary btn-sm"
               onClick={() => setShowExpressionSection(!showExpressionSection)}
               style={{
-                padding: '5px 12px',
+                padding: '0 12px',
+                height: '28px',
+                boxSizing: 'border-box',
+                lineHeight: 1,
                 fontSize: '12px',
                 fontWeight: 600,
                 display: 'flex',
@@ -1253,7 +1319,10 @@ export default function CandidatesTab({
               onClick={toggleSetupCollapse}
               title="Collapse setup selection to maximize chart space (Alt + S)"
               style={{
-                padding: '5px 10px',
+                padding: '0 10px',
+                height: '28px',
+                boxSizing: 'border-box',
+                lineHeight: 1,
                 fontSize: '12px',
                 fontWeight: 600,
                 display: 'flex',
@@ -1279,48 +1348,60 @@ export default function CandidatesTab({
             gap: '12px',
             flexWrap: 'wrap',
             padding: '7px 12px',
-            background: activeFolderId === 'daily' 
-              ? 'rgba(56, 189, 248, 0.08)' 
-              : activeFolderId === 'weekly' 
-                ? 'rgba(168, 85, 247, 0.08)' 
-                : activeFolderId === 'short'
-                  ? 'rgba(244, 63, 94, 0.08)'
-                  : 'rgba(148, 163, 184, 0.08)',
-            border: activeFolderId === 'daily' 
-              ? '1px solid rgba(56, 189, 248, 0.25)' 
-              : activeFolderId === 'weekly' 
-                ? '1px solid rgba(168, 85, 247, 0.25)' 
-                : activeFolderId === 'short'
-                  ? '1px solid rgba(244, 63, 94, 0.25)'
-                  : '1px solid rgba(148, 163, 184, 0.25)',
+            background: activeFolderId === 'action'
+              ? 'rgba(245, 158, 11, 0.08)'
+              : activeFolderId === 'daily' 
+                ? 'rgba(56, 189, 248, 0.08)' 
+                : activeFolderId === 'weekly' 
+                  ? 'rgba(168, 85, 247, 0.08)' 
+                  : activeFolderId === 'short'
+                    ? 'rgba(244, 63, 94, 0.08)'
+                    : 'rgba(148, 163, 184, 0.08)',
+            border: activeFolderId === 'action'
+              ? '1px solid rgba(245, 158, 11, 0.25)'
+              : activeFolderId === 'daily' 
+                ? '1px solid rgba(56, 189, 248, 0.25)' 
+                : activeFolderId === 'weekly' 
+                  ? '1px solid rgba(168, 85, 247, 0.25)' 
+                  : activeFolderId === 'short'
+                    ? '1px solid rgba(244, 63, 94, 0.25)'
+                    : '1px solid rgba(148, 163, 184, 0.25)',
             borderRadius: '8px',
             marginTop: '2px'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
               {(curFolder.screeners || []).filter(s => s.visible !== false).map((screener) => {
                 const isActive = activeScreenerId === screener.id || (activeExpression && screener.expression?.trim() === activeExpression?.trim());
-                const screenerColor = SETUP_COLORS[screener.id] || (activeFolderId === 'daily' ? '#38bdf8' : (activeFolderId === 'weekly' ? '#a855f7' : (activeFolderId === 'short' ? '#f43f5e' : '#94a3b8')));
+                const screenerColor = SETUP_COLORS[screener.id] || (activeFolderId === 'action' ? '#f59e0b' : (activeFolderId === 'daily' ? '#38bdf8' : (activeFolderId === 'weekly' ? '#a855f7' : (activeFolderId === 'short' ? '#f43f5e' : '#94a3b8'))));
 
                 return (
                   <button
                     key={screener.id}
-                      onClick={() => onSelectScreener(screener.id, screener.expression)}
-                      title={screener.description || screener.expression || ''}
-                      style={{
-                        padding: '4px 10px',
-                        fontSize: '11.5px',
-                        fontWeight: isActive ? '700' : '500',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                        border: isActive ? `1px solid ${screenerColor}` : '1px solid rgba(255, 255, 255, 0.1)',
-                        background: isActive ? `${screenerColor}33` : 'rgba(15, 23, 42, 0.45)',
-                        color: isActive ? '#ffffff' : 'var(--text-secondary)',
-                        boxShadow: isActive ? `0 2px 6px ${screenerColor}30` : 'none'
-                      }}
-                    >
-                      {screener.icon ? `${screener.icon} ` : ''}{screener.name || screener.label}
-                    </button>
+                    type="button"
+                    onClick={() => onSelectScreener(screener.id, screener.expression)}
+                    title={screener.description || screener.expression || ''}
+                    style={{
+                      padding: '0 10px',
+                      height: '26px',
+                      boxSizing: 'border-box',
+                      fontSize: '11.5px',
+                      fontWeight: isActive ? '700' : '500',
+                      lineHeight: 1,
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease',
+                      border: isActive ? `1px solid ${screenerColor}` : '1px solid rgba(255, 255, 255, 0.1)',
+                      background: isActive ? `${screenerColor}33` : 'rgba(15, 23, 42, 0.45)',
+                      color: isActive ? '#ffffff' : 'var(--text-secondary)',
+                      boxShadow: isActive ? `0 2px 6px ${screenerColor}30` : 'none',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    {screener.icon ? <span style={{ fontSize: '11.5px', lineHeight: 1 }}>{screener.icon}</span> : null}
+                    <span>{screener.name || screener.label}</span>
+                  </button>
                 );
               })}
             </div>
@@ -1546,10 +1627,10 @@ export default function CandidatesTab({
             </>
           ) : excludeInWatchlist && excludeBiotech ? (
             <>
-              <p>All {filteredCandidates.length} candidates were excluded by active filters (Biotech or already in Watchlists).</p>
+              <p>All {filteredCandidates.length} candidates were excluded by active filters (Biotech or already in Watchlist).</p>
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '10px' }}>
                 <button className="btn btn-secondary btn-sm" onClick={() => setExcludeInWatchlist(false)}>
-                  Include Watchlists
+                  Include Watchlist
                 </button>
                 <button className="btn btn-secondary btn-sm" onClick={() => setExcludeBiotech(false)}>
                   Include Biotech
@@ -1615,10 +1696,7 @@ export default function CandidatesTab({
               loadingPrices={loadingBrowsePrices}
               setupName={activeSetupName}
               asOfDate={currentCandidate?.screen_date || (selectedDate !== 'latest' ? selectedDate : null)}
-              watchlists={watchlists}
-              targetWatchlistId={targetWatchlistId}
               targetWatchlistSymbols={activeWatchlistSymbols}
-              onTargetWatchlistChange={setTargetWatchlistId}
               onToggleWatchlist={handleToggleWatchlist}
               onSelectGroup={(type, name) => setPreviewGroupModal({ groupType: type, groupName: name })}
               onSelectStock={(stk) => {
@@ -1672,8 +1750,8 @@ export default function CandidatesTab({
                   onClick={handleToggleAllWatchlist}
                   disabled={displayedCandidates.length === 0 || isProcessingAll}
                   title={allDisplayedAreAdded
-                    ? `Remove all ${displayedCandidates.length} candidate stocks from '${watchlists.find(w => w.id === targetWatchlistId)?.name || 'Watchlist'}'`
-                    : `Add all ${displayedCandidates.length} candidate stocks into '${watchlists.find(w => w.id === targetWatchlistId)?.name || 'Watchlist'}'`
+                    ? `Remove all ${displayedCandidates.length} candidate stocks from Watchlist`
+                    : `Add all ${displayedCandidates.length} candidate stocks into Watchlist`
                   }
                   style={{
                     display: 'inline-flex',
@@ -1705,9 +1783,9 @@ export default function CandidatesTab({
                   ) : batchFeedback ? (
                     batchFeedback
                   ) : allDisplayedAreAdded ? (
-                    <><span>⭐️-</span> Remove All</>
+                    <><span>⭐️</span> Remove All</>
                   ) : (
-                    <><span>⭐️+</span> Add All {activeTagConfig?.icon ? `${activeTagConfig.icon} ` : ''}{activeScreenerTag ? `(${activeScreenerTag})` : ''}</>
+                    <><span>⭐️</span> Add All</>
                   )}
                 </button>
                 <button
@@ -1746,7 +1824,7 @@ export default function CandidatesTab({
                   if (idx !== -1) setBrowseIndex(idx);
                 }
               }}
-              columns={['symbol', 'rs_rank', 'ext_atr_50', 'rs_line']}
+              columns={candidateTableColumns}
               sortBy={sortBy}
               onSortChange={(newSort) => {
                 setSortBy(newSort);
@@ -1870,19 +1948,21 @@ export default function CandidatesTab({
               )}
               renderCell={(colKey, c) => {
                 if (colKey === 'symbol') {
-                  const isItemSaved = activeWatchlistSymbols.has(c.symbol.toUpperCase());
+                  const symUpper = (c.symbol || '').toUpperCase();
+                  const isItemSaved = activeWatchlistSymbols.has(symUpper);
                   return (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                       <StockBrandIcon symbol={c.symbol} size={18} />
                       <span style={{ fontWeight: 800, color: '#ffffff', fontSize: '11.5px' }}>{c.symbol}</span>
                       {isItemSaved && (
                         <span
-                          style={{ fontSize: '11px', cursor: 'pointer' }}
-                          title="In active watchlist (Click or press W to toggle)"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleToggleWatchlist(c.symbol);
+                          style={{
+                            fontSize: '11px',
+                            pointerEvents: 'none',
+                            userSelect: 'none',
+                            filter: 'drop-shadow(0 0 3px rgba(245, 158, 11, 0.5))',
                           }}
+                          title="Saved in Watchlist"
                         >
                           ⭐️
                         </span>
@@ -1892,38 +1972,19 @@ export default function CandidatesTab({
                 }
               }}
               enableSelectMode={true}
-              watchlists={watchlists}
-              targetWatchlistId={targetWatchlistId}
               targetWatchlistSymbols={activeWatchlistSymbols}
-              onTargetWatchlistChange={setTargetWatchlistId}
-              onBatchAddToWatchlist={async (targetWId, symbolsArray) => {
-                if (!targetWId || !symbolsArray || symbolsArray.length === 0) return;
+              onBatchAddToWatchlist={async (_, symbolsArray) => {
+                if (!symbolsArray || symbolsArray.length === 0) return;
                 try {
-                  const symSet = new Set(symbolsArray.map(s => s.toUpperCase()));
-                  const selectedCands = displayedCandidates.filter(c => symSet.has(c.symbol.toUpperCase()));
-                  const itemsToSave = (selectedCands.length > 0 ? selectedCands : symbolsArray.map(s => ({ symbol: s }))).map(c => {
-                    const cTags = c.tags && c.tags.length > 0 ? c.tags : (c.setup_tag ? [c.setup_tag] : (activeScreenerTag ? [activeScreenerTag] : []));
-                    return {
-                      symbol: (c.symbol || c).toUpperCase(),
-                      tag: cTags[0] || null,
-                      tags: cTags
-                    };
-                  });
-                  const res = await fetch(`${API_BASE}/api/watchlists/${targetWId}/items/batch`, {
+                  const res = await fetch(`${API_BASE}/api/watchlists/items/batch`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ items: itemsToSave })
+                    body: JSON.stringify({ symbols: symbolsArray })
                   });
                   if (res.ok) {
-                    if (targetWId === targetWatchlistId) {
-                      fetchTargetWatchlistItems(targetWId);
-                    }
-                    setAllWatchlistSymbols(prev => {
-                      const next = new Set(prev);
-                      symbolsArray.forEach(s => next.add(String(s).toUpperCase()));
-                      return next;
-                    });
+                    fetchWatchlistItems();
                     if (fetchWatchlists) fetchWatchlists();
+                    triggerToast(`Added ${symbolsArray.length} to Watchlist`);
                   }
                 } catch (e) {
                   console.error('Error adding batch to watchlist:', e);

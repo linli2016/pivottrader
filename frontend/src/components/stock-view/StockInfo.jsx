@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import StockBrandIcon from '../StockBrandIcon';
+import VanTharpCalculatorModal from '../VanTharpCalculatorModal';
 
 export function cleanCompanyName(rawName, symbol) {
   if (!rawName) return symbol || '';
@@ -22,9 +23,6 @@ export default function StockInfo({
   stockPrices = [],
   loadingPrices = false,
   // Watchlist props
-  watchlists = [],
-  targetWatchlistId = null,
-  onTargetWatchlistChange = null,
   onToggleWatchlist = null,
   isWatchlistSaved = false,
   // Multi-chart toggle
@@ -44,6 +42,7 @@ export default function StockInfo({
   showEarningsBadge = true,
 }) {
   const symbol = stock?.symbol || stock?.ticker || (typeof stock === 'string' ? stock : '');
+  const [showRiskCalc, setShowRiskCalc] = useState(false);
   const rawName = stock?.name || stock?.company_name || stockDetail?.metadata?.name || '';
   const cleanName = useMemo(() => cleanCompanyName(rawName, symbol), [rawName, symbol]);
 
@@ -113,11 +112,6 @@ export default function StockInfo({
   // Market Regime
   const effectiveRegime = marketRegime || stock?.market_regime || null;
 
-  const targetWatchlist = useMemo(() => {
-    if (!targetWatchlistId || !watchlists) return null;
-    return watchlists.find((w) => w.id === targetWatchlistId) || null;
-  }, [watchlists, targetWatchlistId]);
-
   const latestPrice = useMemo(() => {
     if (stockPrices && stockPrices.length > 0) {
       return stockPrices[stockPrices.length - 1];
@@ -130,7 +124,9 @@ export default function StockInfo({
     return val !== null && val !== undefined ? Number(val) : null;
   }, [stock?.ext_atr_50, stockDetail?.ext_atr_50, latestPrice?.ext_atr_50]);
 
-  const isExtDanger = extAtrVal !== null && extAtrVal > 4.0;
+  const isExtClimax = extAtrVal !== null && extAtrVal >= 10.0;
+  const isExtTrim = extAtrVal !== null && extAtrVal >= 7.0 && extAtrVal < 10.0;
+  const isExtDanger = extAtrVal !== null && extAtrVal > 4.0 && extAtrVal < 7.0;
   const isExtWarn = extAtrVal !== null && extAtrVal > 3.2 && extAtrVal <= 4.0;
 
   return (
@@ -183,31 +179,6 @@ export default function StockInfo({
                 title="Loading latest candles..."
               >
                 ⟳
-              </span>
-            )}
-            {/* Target Watchlist Saved Indicator Badge */}
-            {isWatchlistSaved && (
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '3px',
-                  padding: '2px 7px',
-                  borderRadius: '4px',
-                  background: 'rgba(16, 185, 129, 0.2)',
-                  border: '1px solid rgba(16, 185, 129, 0.45)',
-                  color: '#34d399',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  whiteSpace: 'nowrap',
-                  cursor: onToggleWatchlist ? 'pointer' : 'default',
-                  flexShrink: 0,
-                  boxShadow: '0 0 8px rgba(16, 185, 129, 0.2)'
-                }}
-                title={`Already saved in "${targetWatchlist?.name || 'target watchlist'}" (Click or press W to toggle)`}
-                onClick={() => onToggleWatchlist?.(symbol)}
-              >
-                ★ In {targetWatchlist?.name || 'Target'}
               </span>
             )}
           </div>
@@ -292,79 +263,94 @@ export default function StockInfo({
           {/* Optional page extra (non-counter) */}
           {headerExtra}
 
-          {/* Target Watchlist Controls */}
-          {watchlists && watchlists.length > 0 && (
+          {/* Watchlist Controls */}
+          {onToggleWatchlist && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted, #94a3b8)', fontWeight: 600 }}>Target:</span>
-              <select
-                value={targetWatchlistId || ''}
-                onChange={(e) => onTargetWatchlistChange?.(Number(e.target.value))}
-                title="Target Watchlist (for saving/adding stocks)"
+              <button
+                type="button"
+                onClick={() => onToggleWatchlist(symbol)}
+                disabled={!symbol}
+                title={
+                  isWatchlistSaved
+                    ? `Saved in Watchlist (Click or press W to remove)`
+                    : `Save ${symbol || 'stock'} to Watchlist (Hotkey: W)`
+                }
+                aria-label={isWatchlistSaved ? 'Remove from watchlist' : 'Save to watchlist'}
                 style={{
-                  background: 'rgba(0, 0, 0, 0.4)',
-                  color: '#38bdf8',
-                  border: '1px solid rgba(56, 189, 248, 0.35)',
-                  borderRadius: 'var(--border-radius-md, 6px)',
-                  padding: '5px 8px',
-                  fontSize: '11.5px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '5px',
+                  height: '28px',
+                  padding: isWatchlistSaved ? '0 9px' : '0 8px',
+                  borderRadius: '5px',
+                  boxSizing: 'border-box',
+                  transition: 'all 0.15s ease',
+                  background: isWatchlistSaved ? 'rgba(16, 185, 129, 0.22)' : 'rgba(255, 255, 255, 0.05)',
+                  color: isWatchlistSaved ? '#34d399' : 'var(--text-secondary, #94a3b8)',
+                  border: isWatchlistSaved ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid var(--border-color, #1e293b)',
+                  cursor: symbol ? 'pointer' : 'not-allowed',
+                  flexShrink: 0,
                 }}
               >
-                {watchlists.map((w) => (
-                  <option key={w.id} value={w.id} style={{ background: '#1e293b', color: '#ffffff' }}>
-                    ⭐️ {w.name} ({w.item_count || 0})
-                  </option>
-                ))}
-              </select>
+                {isWatchlistSaved ? (
+                  <>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="#34d399" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                    </svg>
+                    <span style={{ fontSize: '11px', fontWeight: 700 }}>Saved</span>
+                  </>
+                ) : (
+                  <>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    <span style={{ fontSize: '11px', fontWeight: 600 }}>Watchlist</span>
+                  </>
+                )}
+              </button>
             </div>
           )}
 
-          {onToggleWatchlist && (
-            <button
-              type="button"
-              onClick={() => onToggleWatchlist(symbol)}
-              disabled={!symbol}
-              title={
-                isWatchlistSaved
-                  ? `Saved in "${targetWatchlist?.name || 'target watchlist'}" (Click or press W to remove)`
-                  : `Save ${symbol || 'stock'} to "${targetWatchlist?.name || 'target watchlist'}" (Hotkey: W)`
-              }
-              aria-label={isWatchlistSaved ? 'Remove from watchlist' : 'Save to watchlist'}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '4px',
-                height: '28px',
-                padding: isWatchlistSaved ? '0 8px' : '0',
-                width: isWatchlistSaved ? 'auto' : '28px',
-                borderRadius: '5px',
-                boxSizing: 'border-box',
-                transition: 'all 0.15s ease',
-                background: isWatchlistSaved ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255, 255, 255, 0.05)',
-                color: isWatchlistSaved ? '#34d399' : 'var(--text-secondary, #94a3b8)',
-                border: isWatchlistSaved ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid var(--border-color, #1e293b)',
-                cursor: symbol ? 'pointer' : 'not-allowed',
-                flexShrink: 0,
-              }}
-            >
-              {isWatchlistSaved ? (
-                <>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="#34d399" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                  </svg>
-                  <span style={{ fontSize: '11px', fontWeight: 700 }}>Saved</span>
-                </>
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
-              )}
-            </button>
-          )}
-
+          {/* Position Sizing Calculator Button */}
+          <button
+            type="button"
+            onClick={() => setShowRiskCalc(true)}
+            disabled={!symbol}
+            title="Position Calculator (1/2/3 Level Stops, 1R Risk, LoD Guardrail)"
+            aria-label="Risk & Position Sizing Calculator"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              height: '28px',
+              padding: '0 8px',
+              borderRadius: '5px',
+              boxSizing: 'border-box',
+              background: showRiskCalc ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255, 255, 255, 0.05)',
+              color: showRiskCalc ? '#34d399' : '#38bdf8',
+              border: showRiskCalc ? '1px solid #10b981' : '1px solid rgba(56, 189, 248, 0.35)',
+              cursor: symbol ? 'pointer' : 'not-allowed',
+              transition: 'all 0.15s ease',
+              flexShrink: 0,
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="4" y="2" width="16" height="20" rx="2" />
+              <line x1="8" y1="6" x2="16" y2="6" />
+              <line x1="16" y1="14" x2="16" y2="18" />
+              <path d="M16 10h.01" />
+              <path d="M12 10h.01" />
+              <path d="M8 10h.01" />
+              <path d="M12 14h.01" />
+              <path d="M8 14h.01" />
+              <path d="M12 18h.01" />
+              <path d="M8 18h.01" />
+            </svg>
+            <span style={{ fontSize: '11px', fontWeight: 700 }}>Risk</span>
+          </button>
 
           {/* Multi-Chart View (Daily + Monthly + Weekly) Toggle Button */}
           {onToggleMultiCharts && (
@@ -460,31 +446,51 @@ export default function StockInfo({
           </span>
         )}
 
-        {/* 50-SMA ATR Extension (Jeff Sun Extension Guardrail) */}
+        {/* 50-SMA ATR Extension (Jeff Sun Extension Guardrail & TradingView Parity) */}
         {extAtrVal !== null && (
           <span
             title={
-              isExtDanger
-                ? '⚠️ Extended > 4x ATR from 50 SMA (Jeff Sun Hard Guardrail: Avoid Focus List)'
+              isExtClimax
+                ? '🔥 Parabolic Climax >= 10x ATR from 50 SMA (Jeff Sun / TradingView Parity: Peak Climax Scale-Out)'
+                : isExtTrim
+                ? '⚠️ Overextended >= 7x ATR from 50 SMA (Jeff Sun Scale-Out Zone: Trim 30-50%)'
+                : isExtDanger
+                ? '⚠️ Extended > 4x ATR from 50 SMA (Jeff Sun Hard Guardrail: Avoid Chasing)'
                 : isExtWarn
-                ? 'Caution: Extended > 3.2x ATR from 50 SMA'
-                : 'Extension from 50 SMA in multiples of 20-day ATR'
+                ? '⚡ Approaching 50-SMA Extension threshold (> 3.2x ATR)'
+                : '✓ Safe 50-SMA base distance (<= 3.2x ATR: Slingshot Coiled)'
             }
             style={{
               fontSize: '11px',
               padding: '2px 8px',
               borderRadius: '12px',
-              background: isExtDanger
-                ? 'rgba(239, 68, 68, 0.25)'
+              background: isExtClimax
+                ? 'rgba(239, 68, 68, 0.3)'
+                : isExtTrim
+                ? 'rgba(249, 115, 22, 0.25)'
+                : isExtDanger
+                ? 'rgba(234, 179, 8, 0.22)'
                 : isExtWarn
-                ? 'rgba(234, 179, 8, 0.2)'
+                ? 'rgba(234, 179, 8, 0.15)'
                 : 'rgba(16, 185, 129, 0.15)',
-              color: isExtDanger ? '#f87171' : isExtWarn ? '#fde047' : '#34d399',
+              color: isExtClimax
+                ? '#f87171'
+                : isExtTrim
+                ? '#fb923c'
+                : isExtDanger
+                ? '#fde047'
+                : isExtWarn
+                ? '#fef08a'
+                : '#34d399',
               border: `1px solid ${
-                isExtDanger
-                  ? 'rgba(239, 68, 68, 0.5)'
+                isExtClimax
+                  ? 'rgba(239, 68, 68, 0.6)'
+                  : isExtTrim
+                  ? 'rgba(249, 115, 22, 0.5)'
+                  : isExtDanger
+                  ? 'rgba(234, 179, 8, 0.45)'
                   : isExtWarn
-                  ? 'rgba(234, 179, 8, 0.4)'
+                  ? 'rgba(234, 179, 8, 0.3)'
                   : 'rgba(16, 185, 129, 0.3)'
               }`,
               fontWeight: 700,
@@ -493,7 +499,7 @@ export default function StockInfo({
               gap: '4px',
             }}
           >
-            {isExtDanger && <span>⚠️</span>}
+            {isExtClimax ? <span>🔥</span> : (isExtTrim || isExtDanger) ? <span>⚠️</span> : null}
             50-ATR: {extAtrVal > 0 ? `+${extAtrVal.toFixed(1)}x` : `${extAtrVal.toFixed(1)}x`}
           </span>
         )}
@@ -673,6 +679,31 @@ export default function StockInfo({
         )}
 
       </div>
+
+      {/* Position Sizing Calculator Modal (Van Tharp 1R + 1/2/3 Level Stops) */}
+      {showRiskCalc && symbol && (() => {
+        const curPrice = latestPrice?.close ?? stock?.close ?? 50.0;
+        const rawLod = latestPrice?.low ?? stock?.low ?? null;
+        const lodPrice = rawLod !== null && !isNaN(Number(rawLod)) && Number(rawLod) < Number(curPrice)
+          ? Number(rawLod)
+          : Number((Number(curPrice) * 0.985).toFixed(2));
+        const atrValue = latestPrice?.atr_20 ?? stock?.atr_20 ?? (adrVal && curPrice ? (Number(curPrice) * (Number(adrVal) / 100)) : null);
+
+        return (
+          <VanTharpCalculatorModal
+            isOpen={showRiskCalc}
+            onClose={() => setShowRiskCalc(false)}
+            symbol={symbol}
+            initialSymbol={symbol}
+            companyName={cleanName}
+            initialEntry={curPrice}
+            initialStop={lodPrice}
+            initialLod={rawLod}
+            initialAtr={atrValue}
+            initialDirection="LONG"
+          />
+        );
+      })()}
     </div>
   );
 }

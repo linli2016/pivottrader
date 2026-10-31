@@ -448,215 +448,6 @@ class DatabaseService:
                 
             return summary
 
-    def _combine_expressions(self, daily_expr: Optional[str], weekly_expr: Optional[str]) -> str:
-        d = (daily_expr or "").strip()
-        w = (weekly_expr or "").strip()
-        if not d and not w:
-            return ""
-        if not d:
-            return w
-        if not w:
-            return d
-
-        import re
-        trailing_pattern = re.compile(
-            r'\s+(ORDER\s+BY\s+[A-Za-z0-9_]+(?:\s+(?:ASC|DESC))?(?:\s+LIMIT\s+\d+)?|LIMIT\s+\d+)\s*$',
-            re.IGNORECASE
-        )
-        m = trailing_pattern.search(w)
-        if m:
-            core_w = w[:m.start()].strip()
-            trailing = w[m.start():].strip()
-            return f"({d}) AND ({core_w}) {trailing}"
-        return f"({d}) AND ({w})"
-
-    def _get_compound_folder_candidates(
-        self,
-        target_date: Optional[str] = None,
-        filters: Optional[Dict[str, Any]] = None,
-        daily_expression: Optional[str] = None,
-        target_folder: str = "weekly",
-        sort_by: Optional[str] = None,
-        sort_order: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        from application.services.setup_service import setup_service
-        config = setup_service.get_setups_config(visible_only=True)
-        folder = next((f for f in config.get("folders", []) if f.get("id") == target_folder), None)
-        if not folder:
-            return []
-
-        weekly_screeners = [s for s in folder.get("screeners", []) if s.get("visible") is not False]
-        if not weekly_screeners:
-            return []
-
-        # Pre-calculate point-in-time sector ranks once for all weekly sub-screeners
-        cached_sector_ranks = None
-        try:
-            with self.get_read_only_conn() as conn:
-                max_dt_row = conn.execute("SELECT MAX(date) FROM daily_bars WHERE date <= CAST(? AS DATE)", [target_date or '9999-12-31']).fetchone()
-                act_dt = max_dt_row[0] if max_dt_row and max_dt_row[0] else target_date
-                if act_dt:
-                    sec_rows = conn.execute("""
-                        WITH sec_bars AS (
-                            SELECT s.sector, AVG(d.rs_score) as avg_rs
-                            FROM daily_bars d
-                            JOIN symbols s ON d.symbol = s.symbol
-                            WHERE d.date = CAST(? AS DATE)
-                              AND s.active = true
-                              AND s.asset_type = 'Common Stock'
-                              AND s.sector IS NOT NULL AND s.sector != ''
-                              AND d.close >= 3.0
-                            GROUP BY s.sector
-                        )
-                        SELECT sector, ROW_NUMBER() OVER (ORDER BY avg_rs DESC) as rk
-                        FROM sec_bars
-                    """, [str(act_dt)]).fetchall()
-                    cached_sector_ranks = {sec_name: rk for sec_name, rk in sec_rows}
-        except Exception:
-            cached_sector_ranks = {}
-
-        merged_candidates = {}
-
-        for sc in weekly_screeners:
-            sc_id = sc.get("id")
-            sc_name = sc.get("name") or sc_id
-            sc_tag = sc.get("tag") or "Others"
-            sc_expr = sc.get("expression")
-
-            combined_expr = self._combine_expressions(daily_expression, sc_expr)
-            candidates = self.get_candidates(
-                target_date=target_date,
-                filters=filters,
-                expression=combined_expr,
-                sort_by=None,
-                sort_order=None,
-                screener_id=None,
-                compute_forward=False,
-                compute_rs=False,
-                sector_ranks_cache=cached_sector_ranks
-            )
-
-            for c in candidates:
-                sym = c["symbol"]
-                if sym not in merged_candidates:
-                    c_copy = dict(c)
-                    c_copy["matched_setups"] = [{"id": sc_id, "name": sc_name, "tag": sc_tag}]
-                    c_copy["tags"] = [sc_tag]
-                    c_copy["setup_tag"] = sc_tag
-                    c_copy["setup_name"] = sc_name
-                    merged_candidates[sym] = c_copy
-                else:
-                    existing = merged_candidates[sym]
-                    if not any(m["id"] == sc_id for m in existing.get("matched_setups", [])):
-                        existing.setdefault("matched_setups", []).append({"id": sc_id, "name": sc_name, "tag": sc_tag})
-                    if sc_tag not in existing.get("tags", []):
-                        existing.setdefault("tags", []).append(sc_tag)
-
-        results = list(merged_candidates.values())
-
-        # Calculate forward performance once on final merged candidates list
-        if results and target_date:
-            try:
-                with self.get_read_only_conn() as conn:
-                    cand_symbols = [c["symbol"] for c in results]
-                    symbols_str = ", ".join(f"'{s}'" for s in cand_symbols)
-                    forward_rows = conn.execute(f"""
-                        SELECT symbol, date, open, high, low, close 
-                        FROM daily_bars 
-                        WHERE symbol IN ({symbols_str}) AND date > CAST(? AS DATE)
-                        ORDER BY symbol, date ASC
-                    """, [target_date]).fetchall()
-
-                    from collections import defaultdict
-                    sym_forward = defaultdict(list)
-                    for sym, dt, op, h, l, cl in forward_rows:
-                        sym_forward[sym].append((op, h, l, cl, dt))
-
-                    for c in results:
-                        symbol = c["symbol"]
-                        f_bars = sym_forward.get(symbol, [])
-                        if f_bars:
-                            entry_bar = f_bars[0]
-                            entry_dt = entry_bar[4]
-                            entry_date_str = entry_dt.strftime("%Y-%m-%d") if hasattr(entry_dt, "strftime") else str(entry_dt)
-                            entry_price = round(float(entry_bar[0]), 2)
-                            c["entry_date"] = entry_date_str
-                            c["entry_price"] = entry_price
-
-                            b5 = f_bars[:5]
-                            close_5 = b5[-1][3]
-                            c["return_5d"] = round(((close_5 - entry_price) / entry_price) * 100.0, 2)
-                            max_h_5 = max(b[1] for b in b5)
-                            c["max_runup_5d"] = round(((max_h_5 - entry_price) / entry_price) * 100.0, 2)
-                            min_l_5 = min(b[2] for b in b5)
-                            c["max_drawdown_5d"] = round(((min_l_5 - entry_price) / entry_price) * 100.0, 2)
-                            c["forward_bars_count_5d"] = len(b5)
-
-                            b20 = f_bars[:20]
-                            close_20 = b20[-1][3]
-                            c["return_20d"] = round(((close_20 - entry_price) / entry_price) * 100.0, 2)
-                            max_h_20 = max(b[1] for b in b20)
-                            c["max_runup_20d"] = round(((max_h_20 - entry_price) / entry_price) * 100.0, 2)
-                            min_l_20 = min(b[2] for b in b20)
-                            c["max_drawdown_20d"] = round(((min_l_20 - entry_price) / entry_price) * 100.0, 2)
-                            c["forward_bars_count_20d"] = len(b20)
-            except Exception as e:
-                logger.warning(f"Error computing forward performance for compound screener: {e}")
-
-        # Enrich merged candidates with normalized RS
-        if results and target_date:
-            try:
-                with self.get_read_only_conn() as conn:
-                    cand_symbols = list({c["symbol"] for c in results if c.get("symbol")})
-                    if cand_symbols:
-                        rs_query = """
-                            WITH spy_bars AS (
-                                SELECT date, close as spy_close 
-                                FROM daily_bars 
-                                WHERE symbol = 'SPY' AND date <= CAST(? AS DATE)
-                            ),
-                            stock_bars AS (
-                                SELECT d.symbol, d.date, d.close, s.spy_close,
-                                       (d.close / NULLIF(s.spy_close, 0)) * 100.0 as rs_line,
-                                       ROW_NUMBER() OVER (PARTITION BY d.symbol ORDER BY d.date DESC) as rn
-                                FROM daily_bars d
-                                JOIN spy_bars s ON d.date = s.date
-                                WHERE d.symbol IN (SELECT unnest(?)) AND d.date <= CAST(? AS DATE)
-                            ),
-                            rs_win AS (
-                                SELECT symbol, date, close, rs_line, rn,
-                                       MIN(rs_line) OVER (PARTITION BY symbol) as min_rs,
-                                       MAX(rs_line) OVER (PARTITION BY symbol) as max_rs,
-                                       MAX(rs_line) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_max_rs,
-                                       MAX(close) OVER (PARTITION BY symbol ORDER BY date ROWS BETWEEN 252 PRECEDING AND 1 PRECEDING) as prev_max_close
-                                FROM stock_bars
-                                WHERE rn <= 252
-                            )
-                            SELECT symbol,
-                                   ROUND(GREATEST(-1.0, LEAST(1.0, ((rs_line - min_rs) / NULLIF(max_rs - min_rs, 0)) * 2.0 - 1.0)), 2) as normalized_rs,
-                                   (rs_line >= prev_max_rs AND close < prev_max_close) as is_rs_blue_dot,
-                                   ROUND(rs_line, 2) as rs_line
-                            FROM rs_win
-                            WHERE rn = 1;
-                        """
-                        rs_rows = conn.execute(rs_query, [str(target_date), cand_symbols, str(target_date)]).fetchall()
-                        rs_data = {r[0]: {"normalized_rs": r[1], "is_rs_blue_dot": bool(r[2]), "rs_line": r[3]} for r in rs_rows}
-                        for c in results:
-                            sym = c.get("symbol")
-                            if sym in rs_data:
-                                c["normalized_rs"] = rs_data[sym]["normalized_rs"]
-                                if not c.get("is_rs_blue_dot"):
-                                    c["is_rs_blue_dot"] = rs_data[sym]["is_rs_blue_dot"]
-                                c["rs_line"] = rs_data[sym]["rs_line"]
-            except Exception as e:
-                logger.warning(f"Error enriching compound screener with normalized RS: {e}")
-
-        eff_sort_by = sort_by or "rs_rank"
-        eff_order = (sort_order or "desc").lower()
-        is_reverse = eff_order != "asc"
-        results.sort(key=lambda x: (x.get(eff_sort_by) is not None, x.get(eff_sort_by) or 0), reverse=is_reverse)
-        return results
-
     def get_candidates(
         self,
         target_date: Optional[str] = None,
@@ -669,19 +460,10 @@ class DatabaseService:
         compute_rs: bool = True,
         sector_ranks_cache: Optional[Dict[str, int]] = None
     ) -> List[Dict[str, Any]]:
+        sc_config = None
         if screener_id:
             from application.services.setup_service import setup_service
             sc_config = setup_service.get_setup_by_id(screener_id)
-            target_folder = sc_config.get("target_folder")
-            if target_folder:
-                return self._get_compound_folder_candidates(
-                    target_date=target_date,
-                    filters=filters,
-                    daily_expression=expression or sc_config.get("expression"),
-                    target_folder=target_folder,
-                    sort_by=sort_by,
-                    sort_order=sort_order
-                )
 
         with self.get_read_only_conn() as conn:
             # Check if tables exist
@@ -716,6 +498,8 @@ class DatabaseService:
 
             f = filters or {}
             raw_expr = (expression or "").strip()
+            if not raw_expr and sc_config and sc_config.get("expression"):
+                raw_expr = str(sc_config["expression"]).strip()
             if not raw_expr and isinstance(f, dict) and f.get("expression"):
                 raw_expr = str(f["expression"]).strip()
 
@@ -725,9 +509,36 @@ class DatabaseService:
             expr_limit = None
             expr_qualify = None
 
+            db_tables = {t[0] for t in conn.execute("SHOW TABLES").fetchall()}
+            has_ivp_table = "intraday_volume_profiles" in db_tables
+            db_bar_cols = {c[1] for c in conn.execute("PRAGMA table_info('daily_bars')").fetchall()}
+            has_vol_20d_col = "vol_20d_ma" in db_bar_cols
+            has_precomputed_vol20 = False
+            if has_vol_20d_col:
+                try:
+                    has_precomputed_vol20 = bool(
+                        conn.execute(
+                            "SELECT 1 FROM daily_bars WHERE date = CAST(? AS DATE) AND vol_20d_ma IS NOT NULL LIMIT 1",
+                            [actual_date_str],
+                        ).fetchone()
+                    )
+                except Exception:
+                    has_precomputed_vol20 = False
+            ivp_alias = "ivp" if has_ivp_table else None
+
             if raw_expr:
                 try:
-                    sql_clause, used_variables, has_lags, expr_order_by, expr_limit, expr_qualify = ScanExpressionEngine.transpile_to_sql(raw_expr, table_alias="db")
+                    sql_clause, used_variables, has_lags, expr_order_by, expr_limit, expr_qualify = (
+                        ScanExpressionEngine.transpile_to_sql(
+                            raw_expr,
+                            table_alias="db",
+                            profile_alias=ivp_alias,
+                        )
+                    )
+                    if not has_precomputed_vol20 and (
+                        used_variables & {"PROJ_RVOL", "AVGV20", "VOL_20D_MA", "VOL_MA20"}
+                    ):
+                        has_lags = True
                     if sql_clause and sql_clause.strip() != "true":
                         where_clauses.append(sql_clause)
                 except Exception as e:
@@ -758,7 +569,6 @@ class DatabaseService:
             require_power_play = False
             require_episodic_pivot = False
             require_momentum = False
-            require_parabolic = False
             require_ipo_base = False
             require_pivot_tightness = False
             enable_vcp_pattern = False
@@ -770,7 +580,6 @@ class DatabaseService:
                 require_power_play = any(v in used_variables for v in ("POWER_PLAY", "PP_RUNUP", "RUNUP", "RUNUP_PCT", "RUNUP_DAYS", "PULLBACK", "PULLBACK_PCT", "DAYS_SINCE_PEAK", "BASE_DAYS"))
                 require_episodic_pivot = "EPISODIC_PIVOT" in used_variables
                 require_momentum = False
-                require_parabolic = "PARABOLIC_SHORT" in used_variables
                 require_ipo_base = "IPO_BASE" in used_variables
                 require_pivot_tightness = "PIVOT_SPREAD" in used_variables or "PIVOT_CLUSTERING" in used_variables
                 enable_vcp_pattern = "VCP" in used_variables
@@ -837,7 +646,6 @@ class DatabaseService:
                 require_power_play = bool(f.get("require_power_play", False))
                 require_episodic_pivot = bool(f.get("require_episodic_pivot", False))
                 require_momentum = bool(f.get("require_momentum", False))
-                require_parabolic = bool(f.get("require_parabolic", False))
                 require_ipo_base = bool(f.get("require_ipo_base", False))
                 vcp_subview = str(f.get("vcp_subview", ""))
                 enable_vcp_pattern = bool(f.get("enable_vcp_pattern", False) or f.get("require_vcp", False) or vcp_subview == "cup_and_handle")
@@ -911,28 +719,6 @@ class DatabaseService:
                             where_clauses.append("db.low_cheat_base_depth IS NOT NULL AND db.low_cheat_base_depth <= ?")
                             params.append(float(max_base_depth))
 
-                # Parabolic Short Overlay
-                if require_parabolic:
-                    min_runup = float(f.get("min_parabolic_runup", 40.0))
-                    min_ema_dist = float(f.get("min_parabolic_ema_dist", 18.0))
-                    min_up_days = int(f.get("min_parabolic_up_days", 3))
-                    parabolic_window = int(f.get("parabolic_window_days", 10))
-
-                    if has_precomputed_setups and parabolic_window == 10:
-                        where_clauses.append("""(
-                            COALESCE(db.parabolic_short_is_setup, false) = true OR (
-                                db.parabolic_runup_pct IS NOT NULL AND db.parabolic_runup_pct >= ? AND
-                                db.dist_ema10_pct IS NOT NULL AND db.dist_ema10_pct >= ? AND
-                                db.parabolic_up_days IS NOT NULL AND db.parabolic_up_days >= ?
-                            )
-                        )""")
-                        params.extend([min_runup, min_ema_dist, min_up_days])
-                    else:
-                        where_clauses.append("db.dist_ema10_pct IS NOT NULL AND db.dist_ema10_pct >= ?")
-                        params.append(min_ema_dist)
-                        where_clauses.append("db.parabolic_up_days IS NOT NULL AND db.parabolic_up_days >= ?")
-                        params.append(min_up_days)
-
                 # Consolidation Days / Base Days Filter (for Momentum / My Universe)
                 if require_momentum and f.get("min_breakout_days") is not None and int(f.get("min_breakout_days", 0)) > 0:
                     min_c_days = int(f.get("min_breakout_days"))
@@ -942,10 +728,17 @@ class DatabaseService:
 
             where_str = "\n                  AND ".join(where_clauses)
 
+            lag_vol20_select = (
+                "db.* EXCLUDE (vol_20d_ma),\n"
+                "                        COALESCE(db.vol_20d_ma, AVG(db.volume) OVER (PARTITION BY db.symbol ORDER BY db.date ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING)) as vol_20d_ma,"
+                if has_vol_20d_col else
+                "db.*,\n"
+                "                        AVG(db.volume) OVER (PARTITION BY db.symbol ORDER BY db.date ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) as vol_20d_ma,"
+            )
             cte_lags = f"""
                 lagged_bars AS (
                     SELECT 
-                        db.*,
+                        {lag_vol20_select}
                         LAG(db.close, 1) OVER (PARTITION BY db.symbol ORDER BY db.date) as lag_c1,
                         LAG(db.close, 2) OVER (PARTITION BY db.symbol ORDER BY db.date) as lag_c2,
                         LAG(db.close, 3) OVER (PARTITION BY db.symbol ORDER BY db.date) as lag_c3,
@@ -976,11 +769,25 @@ class DatabaseService:
                 order_clause = f"ORDER BY {expr_order_by}"
             elif sort_by:
                 order_dir = (sort_order or "DESC").upper()
-                order_clause = f"ORDER BY db.{sort_by} {order_dir}"
+                sort_col_map = {
+                    "eps_qoq_growth": "f.eps_qoq_growth",
+                    "sales_yoy_growth": "f.sales_yoy_growth",
+                    "eps_seq_qoq_growth": "f.eps_seq_qoq_growth",
+                    "sales_seq_qoq_growth": "f.sales_seq_qoq_growth",
+                    "total_revenue": "f.total_revenue",
+                    "float_shares": "s.float_shares",
+                    "market_cap": "s.market_cap",
+                    "proj_rvol": ScanExpressionEngine.get_proj_rvol_sql(table_alias="db"),
+                }
+                target_sort_col = sort_col_map.get(sort_by, f"db.{sort_by}")
+                order_clause = f"ORDER BY {target_sort_col} {order_dir} NULLS LAST"
             else:
                 order_clause = "ORDER BY db.rs_rank DESC"
 
             limit_clause = f"LIMIT {int(expr_limit)}" if expr_limit else ""
+            vol20_sel_sql = "db.vol_20d_ma" if (has_vol_20d_col or has_lags) else "NULL as vol_20d_ma"
+            ivp_sel_sql = "ivp.curve_5m" if has_ivp_table else "NULL as curve_5m"
+            ivp_join_sql = "LEFT JOIN intraday_volume_profiles ivp ON db.symbol = ivp.symbol" if has_ivp_table else ""
 
             query = f"""
                 WITH target_date_const AS (
@@ -1000,6 +807,11 @@ class DatabaseService:
                         eps_diluted,
                         eps_qoq_growth,
                         total_revenue,
+                        sales_yoy_growth,
+                        eps_seq_qoq_growth,
+                        sales_seq_qoq_growth,
+                        eps_ttm_yoy_growth,
+                        sales_ttm_yoy_growth,
                         inst_holders_count,
                         inst_holders_qoq_change,
                         inst_ownership_pct,
@@ -1087,10 +899,20 @@ class DatabaseService:
                     db.weinstein_stage,
                     ROUND((db.close - pb.prev_close) / NULLIF(pb.prev_close, 0) * 100.0, 2) as chg_pct,
                     db.er_20d,
-                    db.normalized_rs
+                    db.normalized_rs,
+                    f.sales_yoy_growth,
+                    f.eps_seq_qoq_growth,
+                    f.sales_seq_qoq_growth,
+                    f.eps_ttm_yoy_growth,
+                    f.sales_ttm_yoy_growth,
+                    s.float_shares,
+                    s.market_cap,
+                    {vol20_sel_sql},
+                    {ivp_sel_sql}
                 FROM {from_table}
                 LEFT JOIN prev_bars pb ON db.symbol = pb.symbol
                 LEFT JOIN latest_fundamentals f ON db.symbol = f.symbol AND f.rn = 1
+                {ivp_join_sql}
                 JOIN symbols s ON db.symbol = s.symbol
                 WHERE {where_str}
                 {qualify_clause}
@@ -1125,11 +947,29 @@ class DatabaseService:
                     print(f"Error calculating sector ranks: {e}")
 
             res = conn.execute(query, params).fetchall()
+            from application.engine.expression import (
+                get_intraday_volume_fraction,
+                get_intraday_elapsed_minutes,
+            )
+            vol_frac = get_intraday_volume_fraction(target_date=actual_date_str)
+            is_intraday_active = get_intraday_elapsed_minutes(target_date=actual_date_str) is not None
             
             candidates = []
             for row in res:
                 sec_val = row[49]
                 sec_rank = sector_ranks.get(sec_val) if sec_val else None
+                vol_val = row[16]
+                vol_ma = row[2]
+                rel_vol = row[38]
+                vol_20d_ma = float(row[86]) if len(row) > 86 and row[86] is not None else None
+                curve_5m = list(row[87]) if len(row) > 87 and row[87] is not None and len(row[87]) == 78 else None
+                baseline_vol = vol_20d_ma if (vol_20d_ma is not None and vol_20d_ma > 0) else vol_ma
+                if vol_val is not None and baseline_vol is not None and baseline_vol > 0 and vol_frac > 0:
+                    proj_rvol = round(float(vol_val) / (float(baseline_vol) * vol_frac), 2)
+                elif rel_vol is not None and vol_frac > 0:
+                    proj_rvol = round(float(rel_vol) / vol_frac, 2)
+                else:
+                    proj_rvol = None
                 candidates.append({
                     "symbol": row[0],
                     "name": row[51],
@@ -1173,6 +1013,7 @@ class DatabaseService:
                     "dist_ema20_pct": row[36],
                     "gap_pct": row[37],
                     "rel_vol_50d": row[38],
+                    "proj_rvol": proj_rvol,
                     "ep_is_setup": bool(row[39]) if row[39] is not None else False,
                     "ep_gap_pct": row[40],
                     "ep_rel_vol": row[41],
@@ -1214,9 +1055,17 @@ class DatabaseService:
                     "is_confirmed_staged": bool(row[64]) if len(row) > 64 and row[64] is not None else False,
                     "chg_pct": float(row[76]) if len(row) > 76 and row[76] is not None else None,
                     "today_pct": float(row[76]) if len(row) > 76 and row[76] is not None else None,
-                    "ext_atr_50": round((row[1] - row[17]) / (row[1] * (row[12] / 100.0)), 2) if (row[1] is not None and row[17] is not None and row[12] is not None and row[12] > 0 and row[1] > 0) else None,
+                    "ext_atr_50": round(((row[1] - row[17]) / row[17]) / (row[12] / 100.0), 2) if (row[1] is not None and row[17] is not None and row[17] > 0 and row[12] is not None and row[12] > 0) else None,
                     "er_20d": float(row[77]) if len(row) > 77 and row[77] is not None else None,
-                    "normalized_rs": float(row[78]) if len(row) > 78 and row[78] is not None else None
+                    "normalized_rs": float(row[78]) if len(row) > 78 and row[78] is not None else None,
+                    "sales_yoy_growth": float(row[79]) if len(row) > 79 and row[79] is not None else None,
+                    "eps_seq_qoq_growth": float(row[80]) if len(row) > 80 and row[80] is not None else None,
+                    "sales_seq_qoq_growth": float(row[81]) if len(row) > 81 and row[81] is not None else None,
+                    "eps_ttm_yoy_growth": float(row[82]) if len(row) > 82 and row[82] is not None else None,
+                    "sales_ttm_yoy_growth": float(row[83]) if len(row) > 83 and row[83] is not None else None,
+                    "float_shares": float(row[84]) if len(row) > 84 and row[84] is not None else None,
+                    "market_cap": float(row[85]) if len(row) > 85 and row[85] is not None else None,
+                    "vol_20d_ma": vol_20d_ma
                 })
 
             if not candidates:
@@ -1231,14 +1080,12 @@ class DatabaseService:
                 enable_cheat or (
                     require_low_cheat and not has_precomputed_low_cheat
                 ) or (
-                    require_parabolic and int(f.get("parabolic_window_days", 10)) != 10
-                ) or (
                     not has_precomputed_setups and (
-                        require_power_play or require_parabolic or enable_vcp_pattern or require_episodic_pivot
+                        require_power_play or enable_vcp_pattern or require_episodic_pivot
                     )
                 ) or (
                     candidates and len(candidates) <= 200 and (
-                        require_power_play or require_parabolic or enable_vcp_pattern or require_episodic_pivot or require_low_cheat or enable_cheat
+                        require_power_play or enable_vcp_pattern or require_episodic_pivot or require_low_cheat or enable_cheat
                     )
                 )
             )
@@ -1247,7 +1094,6 @@ class DatabaseService:
                 try:
                     from application.engine.setups.power_play import detect_power_play
                     from application.engine.setups.vcp import detect_vcp
-                    from application.engine.setups.parabolic_extension import detect_parabolic_extension
                     from application.engine.setups.episodic_pivot import detect_episodic_pivot
                     from application.engine.setups.low_cheat import detect_low_cheat, detect_cheat
 
@@ -1331,27 +1177,6 @@ class DatabaseService:
                                 c["vcp_is_setup"] = v_res.get("vcp_is_setup", False)
                                 c["vcp_troughs"] = v_res.get("vcp_troughs")
                                 c["vcp_depths"] = v_res.get("vcp_depths")
-
-                            # Parabolic Climax Evaluation
-                            if require_parabolic:
-                                min_p_runup = float(f.get("min_parabolic_runup", 40.0))
-                                min_p_ema_dist = float(f.get("min_parabolic_ema_dist", 18.0))
-                                min_p_up_days = int(f.get("min_parabolic_up_days", 3))
-                                p_window = int(f.get("parabolic_window_days", 10))
-                                para_res = detect_parabolic_extension(
-                                    h_list, l_list, cl_list, dt_list, c.get("ema_10"),
-                                    min_runup_pct=min_p_runup,
-                                    min_dist_ema10_pct=min_p_ema_dist,
-                                    min_up_days=min_p_up_days,
-                                    window_days=p_window
-                                )
-                                if para_res:
-                                    c["parabolic_short_is_setup"] = para_res.get("parabolic_short_is_setup", False)
-                                    c["parabolic_long_is_setup"] = para_res.get("parabolic_long_is_setup", False)
-                                    c["parabolic_runup_pct"] = para_res.get("parabolic_runup_pct")
-                                    c["parabolic_up_days"] = para_res.get("parabolic_up_days")
-                                else:
-                                    c["parabolic_short_is_setup"] = False
 
                             # Episodic Pivot Evaluation
                             if require_episodic_pivot:
@@ -1493,20 +1318,6 @@ class DatabaseService:
                 if enable_vcp_pattern:
                     candidates = [c for c in candidates if c.get("vcp_is_setup")]
 
-                if require_parabolic:
-                    min_runup = float(f.get("min_parabolic_runup", 40.0))
-                    min_ema_dist = float(f.get("min_parabolic_ema_dist", 18.0))
-                    min_up_days = int(f.get("min_parabolic_up_days", 3))
-
-                    candidates = [
-                        c for c in candidates
-                        if (c.get("parabolic_short_is_setup") or (
-                            c.get("parabolic_runup_pct") is not None and c["parabolic_runup_pct"] >= min_runup and
-                            c.get("dist_ema10_pct") is not None and c["dist_ema10_pct"] >= min_ema_dist and
-                            c.get("parabolic_up_days") is not None and c["parabolic_up_days"] >= min_up_days
-                        ))
-                    ]
-
             # If low cheat was requested, ensure low_cheat_is_setup is True
             if require_low_cheat and not enable_cheat:
                 candidates = [c for c in candidates if c.get("low_cheat_is_setup")]
@@ -1522,16 +1333,6 @@ class DatabaseService:
             # If cheat was enabled, filter by dynamically computed cheat_is_setup
             if enable_cheat:
                 candidates = [c for c in candidates if c.get("cheat_is_setup")]
-
-            # If parabolic setup is enabled with custom window, filter by dynamically computed runup
-            if require_parabolic and int(f.get("parabolic_window_days", 10)) != 10:
-                min_runup = float(f.get("min_parabolic_runup", 40.0))
-                candidates = [
-                    c for c in candidates
-                    if c.get("parabolic_short_is_setup") or (
-                        c.get("parabolic_runup_pct") is not None and c["parabolic_runup_pct"] >= min_runup
-                    )
-                ]
 
             # If pivot tightness was not precomputed on this date, apply in-memory filter
             if require_pivot_tightness and not has_precomputed_setups:
@@ -1840,6 +1641,23 @@ class DatabaseService:
                 except Exception as e:
                     logger.error(f"Error enriching candidates with normalized RS on {actual_date_str}: {e}")
 
+            if sc_config and candidates:
+                sc_tag = sc_config.get("tag") or "Others"
+                sc_name = sc_config.get("name") or sc_config.get("id")
+                is_parabolic_short = (screener_id == "parabolic_short")
+                is_parabolic_long = (screener_id == "parabolic_long")
+                for c in candidates:
+                    if not c.get("setup_tag"):
+                        c["setup_tag"] = sc_tag
+                    if not c.get("setup_name"):
+                        c["setup_name"] = sc_name
+                    if not c.get("tags"):
+                        c["tags"] = [sc_tag]
+                    if is_parabolic_short:
+                        c["parabolic_short_is_setup"] = True
+                    elif is_parabolic_long:
+                        c["parabolic_long_is_setup"] = True
+
             return candidates
 
 
@@ -1847,7 +1665,7 @@ class DatabaseService:
         symbol = symbol.upper()
         with self.get_read_only_conn() as conn:
             # Metadata
-            meta = conn.execute("SELECT symbol, exchange, name, asset_type, active, ipo_date, sector, industry, next_earnings_date, market_cap FROM symbols WHERE symbol = ?", [symbol]).fetchone()
+            meta = conn.execute("SELECT symbol, exchange, name, asset_type, active, ipo_date, sector, industry, next_earnings_date, market_cap, float_shares FROM symbols WHERE symbol = ?", [symbol]).fetchone()
             if not meta:
                 return {}
                 
@@ -1878,13 +1696,15 @@ class DatabaseService:
                 "theme": themes[0] if themes else None,
                 "next_earnings_date": meta[8] if len(meta) > 8 else None,
                 "market_cap": meta[9] if len(meta) > 9 else None,
+                "float_shares": meta[10] if len(meta) > 10 else None,
                 "description": company_desc
             }
             
             # Fundamentals
             funds = conn.execute("""
                 SELECT report_date, fiscal_quarter, eps_diluted, eps_qoq_growth, total_revenue,
-                       inst_holders_count, inst_holders_qoq_change, inst_ownership_pct, sponsorship_streak
+                       inst_holders_count, inst_holders_qoq_change, inst_ownership_pct, sponsorship_streak,
+                       sales_yoy_growth, eps_seq_qoq_growth, sales_seq_qoq_growth, eps_ttm_yoy_growth, sales_ttm_yoy_growth
                 FROM quarterly_fundamentals 
                 WHERE symbol = ?
                 ORDER BY fiscal_quarter DESC
@@ -1901,7 +1721,12 @@ class DatabaseService:
                     "inst_holders_count": row[5] if len(row) > 5 else None,
                     "inst_holders_qoq_change": row[6] if len(row) > 6 else None,
                     "inst_ownership_pct": row[7] if len(row) > 7 else None,
-                    "sponsorship_streak": row[8] if len(row) > 8 else None
+                    "sponsorship_streak": row[8] if len(row) > 8 else None,
+                    "sales_yoy_growth": row[9] if len(row) > 9 else None,
+                    "eps_seq_qoq_growth": row[10] if len(row) > 10 else None,
+                    "sales_seq_qoq_growth": row[11] if len(row) > 11 else None,
+                    "eps_ttm_yoy_growth": row[12] if len(row) > 12 else None,
+                    "sales_ttm_yoy_growth": row[13] if len(row) > 13 else None,
                 })
 
             # Institutional Sponsorship History
@@ -2240,7 +2065,20 @@ class DatabaseService:
             return bars_list
 
         # Daily timeframe
+        sym_curve_5m = None
         with self.get_read_only_conn() as conn:
+            try:
+                db_tables = {t[0] for t in conn.execute("SHOW TABLES").fetchall()}
+                if "intraday_volume_profiles" in db_tables:
+                    prof_row = conn.execute(
+                        "SELECT curve_5m FROM intraday_volume_profiles WHERE symbol = ?",
+                        [symbol],
+                    ).fetchone()
+                    if prof_row and prof_row[0] and len(prof_row[0]) == 78:
+                        sym_curve_5m = list(prof_row[0])
+            except Exception:
+                sym_curve_5m = None
+
             if limit and limit > 0:
                 lookback = limit + 260
                 rows = conn.execute("""
@@ -2261,11 +2099,16 @@ class DatabaseService:
         if limit and limit > 0:
             rows.reverse()
 
+        from application.engine.expression import get_current_et_date_str, get_intraday_volume_fraction
+        today_et_str = get_current_et_date_str()
+
         bars_list = []
         rs_lines = []
         closes = []
+        prior_vols = []
         for r in rows:
             d, o, h, l, cl, v, s50, s150, s200, rs_r, ti, v50m, h52, l52, d52h, atr, adr, er20 = r
+            d_str = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else (str(d)[:10] if d else None)
             sc = self._spy_daily_cache.get(d)
             rsl = round((cl / sc * 100.0), 4) if sc else None
             prev_rsl_max = max(rs_lines[-252:]) if rs_lines else None
@@ -2274,7 +2117,16 @@ class DatabaseService:
             rs_lines.append(rsl if rsl is not None else -999999)
             closes.append(cl)
 
-            ext_atr_50 = round((cl - s50) / (cl * (atr / 100.0)), 2) if (cl and s50 and atr and atr > 0) else None
+            vol_num = float(v) if v is not None else 0.0
+            vol_20d_ma = (sum(prior_vols[-20:]) / len(prior_vols[-20:])) if prior_vols else (float(v50m) if v50m is not None else None)
+            if d_str == today_et_str:
+                vol_frac = get_intraday_volume_fraction(target_date=d_str)
+                proj_rvol = round(vol_num / (vol_20d_ma * vol_frac), 2) if (vol_20d_ma and vol_20d_ma > 0 and vol_frac > 0) else None
+            else:
+                proj_rvol = round(vol_num / vol_20d_ma, 2) if (vol_20d_ma and vol_20d_ma > 0) else None
+            prior_vols.append(vol_num)
+
+            ext_atr_50 = round(((cl - s50) / s50) / (atr / 100.0), 2) if (cl and s50 and s50 > 0 and atr and atr > 0) else None
 
             # ER20 Linearity
             if er20 is not None:
@@ -2287,13 +2139,15 @@ class DatabaseService:
 
             bars_list.append({
                 "symbol": symbol,
-                "time": d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else (str(d)[:10] if d else None),
+                "time": d_str,
                 "open": float(o) if o is not None else 0.0,
                 "high": float(h) if h is not None else 0.0,
                 "low": float(l) if l is not None else 0.0,
                 "close": float(cl) if cl is not None else 0.0,
-                "volume": float(v) if v is not None else 0.0,
+                "volume": vol_num,
+                "vol_20d_ma": round(vol_20d_ma, 0) if vol_20d_ma is not None else None,
                 "vol_50d_ma": float(v50m) if v50m is not None else None,
+                "proj_rvol": proj_rvol,
                 "high_52w": float(h52) if h52 is not None else None,
                 "low_52w": float(l52) if l52 is not None else None,
                 "dist_from_52w_high": float(d52h) if d52h is not None else None,
@@ -2548,7 +2402,7 @@ class DatabaseService:
         # If yfinance quarterly is empty/partial, merge with database historical records
         with self.get_read_only_conn() as conn:
             db_funds = conn.execute("""
-                SELECT fiscal_quarter, eps_diluted, eps_qoq_growth, total_revenue
+                SELECT fiscal_quarter, eps_diluted, eps_qoq_growth, total_revenue, sales_yoy_growth
                 FROM quarterly_fundamentals
                 WHERE symbol = ?
                 ORDER BY fiscal_quarter DESC
@@ -2568,6 +2422,7 @@ class DatabaseService:
                 eps_val = float(row[1]) if row[1] is not None else None
                 eps_chg = float(row[2]) if row[2] is not None else None
                 rev_val = float(row[3]) / 1e6 if row[3] is not None else None
+                sales_chg = float(row[4]) if len(row) > 4 and row[4] is not None else None
                 
                 quarterly_data.append({
                     "date": f"{yr}-{(int(q_num)-1)*3+1:02d}-01",
@@ -2575,9 +2430,15 @@ class DatabaseService:
                     "eps": eps_val,
                     "eps_pct_change": eps_chg,
                     "sales": rev_val,
-                    "sales_pct_change": None,
+                    "sales_pct_change": sales_chg,
                     "net_margin": None
                 })
+            else:
+                q_item = existing_quarters[q_str]
+                if q_item.get("sales_pct_change") is None and len(row) > 4 and row[4] is not None:
+                    q_item["sales_pct_change"] = float(row[4])
+                if q_item.get("eps_pct_change") is None and row[2] is not None:
+                    q_item["eps_pct_change"] = float(row[2])
                 
         quarterly_data = sorted(quarterly_data, key=lambda x: x["date"], reverse=True)
         quarterly_data = quarterly_data[:8]
@@ -2789,6 +2650,7 @@ class DatabaseService:
                     COUNT(CASE WHEN weinstein_stage IS NOT NULL OR sma_150 IS NOT NULL THEN 1 END) as stage_total_count
                 FROM daily_gains
                 GROUP BY date
+                HAVING COUNT(*) >= CASE WHEN (SELECT COUNT(*) FROM symbols WHERE active = true) > 500 THEN 500 ELSE 1 END
                 ORDER BY date ASC
             )
             SELECT 
@@ -3462,6 +3324,159 @@ class DatabaseService:
             rows = conn.execute("SELECT DISTINCT UPPER(symbol) FROM watchlist_items WHERE symbol IS NOT NULL").fetchall()
             return [r[0] for r in rows if r[0]]
 
+    def refresh_watchlist_intraday_profiles(
+        self,
+        symbols: Optional[List[str]] = None,
+        force: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Ensures 20-day 5-minute cumulative volume curves (`intraday_volume_profiles`)
+        are cached in DuckDB for Watchlist symbols once per trading day (Hybrid ZVR).
+        Checks staleness via read-only connection first so repeat calls during the session
+        take <1ms with zero network I/O and zero write locks.
+        """
+        from application.providers.yfinance_prov import YFinanceProvider
+        from application.engine.expression import get_current_et_date_str
+
+        target_syms = list(dict.fromkeys([
+            s.strip().upper()
+            for s in (symbols if symbols is not None else self.get_all_watchlist_symbols())
+            if s and s.strip() and not s.strip().startswith("^")
+        ]))
+        if not target_syms:
+            return {"requested": 0, "stale_count": 0, "cached_count": 0}
+
+        today_et = get_current_et_date_str()
+        stale_syms = list(target_syms)
+
+        if not force:
+            try:
+                with self.get_read_only_conn() as conn:
+                    tables = {t[0] for t in conn.execute("SHOW TABLES").fetchall()}
+                    if "intraday_volume_profiles" in tables:
+                        placeholders = ", ".join(["?"] * len(target_syms))
+                        fresh_rows = conn.execute(
+                            f"""
+                            SELECT symbol FROM intraday_volume_profiles
+                            WHERE symbol IN ({placeholders})
+                              AND as_of_date >= CAST(? AS DATE)
+                              AND curve_5m IS NOT NULL
+                              AND len(curve_5m) = 78
+                            """,
+                            [*target_syms, today_et],
+                        ).fetchall()
+                        fresh_set = {r[0] for r in fresh_rows if r and r[0]}
+                        stale_syms = [s for s in target_syms if s not in fresh_set]
+            except Exception as e:
+                logger.debug(f"Could not check intraday_volume_profiles freshness: {e}")
+
+        if not stale_syms:
+            return {
+                "requested": len(target_syms),
+                "stale_count": 0,
+                "cached_count": 0,
+                "already_fresh": len(target_syms),
+            }
+
+        provider = YFinanceProvider()
+        profiles = provider.fetch_intraday_5m_volume_profiles(stale_syms, cutoff_date=today_et, lookback_days=20)
+        cached_count = 0
+        if profiles:
+            self._rwlock.acquire_write()
+            try:
+                self.close_connection()
+                from application.database import DatabaseManager
+                db_mgr = DatabaseManager(self.get_db_path(), init_schema=False)
+                cached_count = db_mgr.upsert_intraday_volume_profiles(profiles)
+            finally:
+                self._rwlock.release_write()
+
+        return {
+            "requested": len(target_syms),
+            "stale_count": len(stale_syms),
+            "cached_count": cached_count,
+        }
+
+    def sync_watchlist_live_quotes(self) -> Dict[str, Any]:
+        """
+        Ultra-fast (<0.5s) in-process live quote synchronization scoped strictly to
+        symbols in user watchlists (plus SPY/QQQ benchmarks).
+        Fetches real-time quotes in a single batch HTTP request, ensures per-ticker
+        5-minute ZVR volume curves are cached once per day, upserts bars, and
+        updates intraday momentum & RVOL/ZVR metrics without spawning a background subprocess.
+        """
+        from application.providers.yfinance_prov import YFinanceProvider
+        from application.engine.expression import get_intraday_volume_fraction
+
+        watchlist_syms = self.get_all_watchlist_symbols()
+        if not watchlist_syms:
+            return {
+                "status": "completed",
+                "state": "EMPTY",
+                "reason": "No symbols found in watchlists.",
+                "target_date": None,
+                "updated_count": 0,
+                "intraday_vol_fraction": 1.0,
+            }
+
+        symbols_to_fetch = list(dict.fromkeys(watchlist_syms + ["SPY", "QQQ"]))
+        profile_stats = {"cached_count": 0}
+        try:
+            profile_stats = self.refresh_watchlist_intraday_profiles(symbols=symbols_to_fetch)
+        except Exception as e:
+            logger.warning(f"Warning refreshing watchlist 5m ZVR profiles: {e}")
+
+        provider = YFinanceProvider()
+        session_info = provider.get_market_session_status()
+        state = session_info.get("state")
+        reason = session_info.get("reason")
+        target_date = session_info.get("target_date")
+        base_date = session_info.get("base_date")
+
+        if state in ("CLOSED", "PRE_OPEN_NO_DATA"):
+            return {
+                "status": "skipped",
+                "state": state,
+                "reason": reason,
+                "target_date": target_date,
+                "updated_count": 0,
+                "intraday_vol_fraction": get_intraday_volume_fraction(target_date=target_date),
+            }
+
+        ext_bars = provider.fetch_premarket_or_intraday_bars(
+            symbols_to_fetch,
+            session_state=state,
+            target_date=target_date,
+            base_date=base_date
+        )
+
+        updated_count = 0
+        if not ext_bars.empty:
+            self._rwlock.acquire_write()
+            try:
+                self.close_connection()
+                from application.database import DatabaseManager
+                from application.engine.momentum import MomentumEngine
+                db_path = self.get_db_path()
+                db_mgr = DatabaseManager(db_path, init_schema=False)
+                db_mgr.upsert_daily_bars(ext_bars)
+                mom_engine = MomentumEngine(db_path)
+                mom_engine.update_intraday_metrics(target_date=target_date, symbols=symbols_to_fetch)
+                updated_count = len(ext_bars)
+            finally:
+                self._rwlock.release_write()
+            self.clear_caches()
+
+        return {
+            "status": "completed",
+            "state": state,
+            "reason": reason,
+            "target_date": target_date,
+            "updated_count": updated_count,
+            "watchlist_count": len(watchlist_syms),
+            "intraday_vol_fraction": get_intraday_volume_fraction(target_date=target_date),
+        }
+
     def create_watchlist(self, name: str) -> Dict[str, Any]:
         with self.get_write_conn() as conn:
             conn.execute("""
@@ -3514,10 +3529,11 @@ class DatabaseService:
 
             cols = [c[1] for c in conn.execute("PRAGMA table_info('watchlist_items')").fetchall()]
             tags_select = "COALESCE(tags, '') as tags" if "tags" in cols else "'' as tags"
+            flag_select = "COALESCE(flag_color, NULL) as flag_color" if "flag_color" in cols else "NULL as flag_color"
 
             query = f"""
                 WITH target_symbols AS (
-                    SELECT symbol, added_at, {tags_select} FROM watchlist_items WHERE watchlist_id = ?
+                    SELECT symbol, added_at, {tags_select}, {flag_select} FROM watchlist_items WHERE watchlist_id = ?
                 ),
                 recent_bars AS (
                     SELECT 
@@ -3696,9 +3712,10 @@ class DatabaseService:
                     trs.normalized_rs,
                     lb.sma_50,
                     lb.pivot_spread_pct,
-                    ROUND((lb.close - lb.sma_50) / NULLIF(lb.close * (lb.atr_20d / 100.0), 0), 2) as ext_atr_50,
+                    ROUND(((lb.close - lb.sma_50) / NULLIF(lb.sma_50, 0)) / NULLIF(lb.atr_20d / 100.0, 0), 2) as ext_atr_50,
                     ts.tags,
-                    lb.er_20d
+                    lb.er_20d,
+                    ts.flag_color
                 FROM target_symbols ts
                 JOIN symbols s ON ts.symbol = s.symbol
                 LEFT JOIN all_latest_bars lb ON s.symbol = lb.symbol
@@ -3753,7 +3770,8 @@ class DatabaseService:
                     "pivot_spread_pct": row[39] if len(row) > 39 else None,
                     "ext_atr_50": row[40] if len(row) > 40 else None,
                     "tags": [t.strip() for t in (row[41] or "").split(",") if t.strip()] if len(row) > 41 and row[41] else [],
-                    "er_20d": float(row[42]) if len(row) > 42 and row[42] is not None else None
+                    "er_20d": float(row[42]) if len(row) > 42 and row[42] is not None else None,
+                    "flag_color": str(row[43]).strip().lower() if len(row) > 43 and row[43] else None
                 }
                 for row in rows
             ]
@@ -3839,27 +3857,50 @@ class DatabaseService:
                 deduped.append(t)
         return ",".join(deduped)
 
-    def add_watchlist_item(self, watchlist_id: int, symbol: str, tag: Optional[str] = None, tags: Optional[List[str]] = None) -> bool:
+    def _clean_flag_color(self, flag_color: Optional[str]) -> Optional[str]:
+        if not flag_color or not isinstance(flag_color, str):
+            return None
+        cleaned = flag_color.strip().lower()
+        if cleaned in ("", "null", "none", "clear", "unflag", "0"):
+            return None
+        valid_colors = {"green", "orange", "blue", "purple", "red"}
+        return cleaned if cleaned in valid_colors else None
+
+    def add_watchlist_item(
+        self,
+        watchlist_id: int = 1,
+        symbol: str = "",
+        tag: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        flag_color: Optional[str] = None
+    ) -> bool:
         with self.get_write_conn() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS watchlist_items (
-                    watchlist_id INTEGER NOT NULL,
+                    watchlist_id INTEGER NOT NULL DEFAULT 1,
                     symbol VARCHAR NOT NULL,
+                    flag_color VARCHAR DEFAULT NULL,
                     tags VARCHAR DEFAULT '',
                     added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (watchlist_id, symbol)
                 );
             """)
             try:
+                conn.execute("ALTER TABLE watchlist_items ADD COLUMN flag_color VARCHAR DEFAULT NULL;")
+            except Exception:
+                pass
+            try:
                 conn.execute("ALTER TABLE watchlist_items ADD COLUMN tags VARCHAR DEFAULT '';")
             except Exception:
                 pass
             symbol_upper = symbol.strip().upper()
             tag_str = self._normalize_watchlist_tags(tag=tag, tags=tags)
+            cleaned_color = self._clean_flag_color(flag_color)
             conn.execute("""
-                INSERT INTO watchlist_items (watchlist_id, symbol, tags)
-                VALUES (?, ?, ?)
+                INSERT INTO watchlist_items (watchlist_id, symbol, flag_color, tags)
+                VALUES (?, ?, ?, ?)
                 ON CONFLICT (watchlist_id, symbol) DO UPDATE SET
+                    flag_color = COALESCE(EXCLUDED.flag_color, watchlist_items.flag_color),
                     tags = array_to_string(
                         list_distinct(
                             list_filter(
@@ -3872,52 +3913,61 @@ class DatabaseService:
                         ),
                         ','
                     );
-            """, [watchlist_id, symbol_upper, tag_str])
+            """, [watchlist_id, symbol_upper, cleaned_color, tag_str])
             return True
 
     def add_watchlist_items_batch(
         self,
-        watchlist_id: int,
+        watchlist_id: int = 1,
         symbols: Optional[List[str]] = None,
         tag: Optional[str] = None,
         tags: Optional[List[str]] = None,
+        flag_color: Optional[str] = None,
         items: Optional[List[Dict[str, Any]]] = None
     ) -> int:
         with self.get_write_conn() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS watchlist_items (
-                    watchlist_id INTEGER NOT NULL,
+                    watchlist_id INTEGER NOT NULL DEFAULT 1,
                     symbol VARCHAR NOT NULL,
+                    flag_color VARCHAR DEFAULT NULL,
                     tags VARCHAR DEFAULT '',
                     added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (watchlist_id, symbol)
                 );
             """)
             try:
+                conn.execute("ALTER TABLE watchlist_items ADD COLUMN flag_color VARCHAR DEFAULT NULL;")
+            except Exception:
+                pass
+            try:
                 conn.execute("ALTER TABLE watchlist_items ADD COLUMN tags VARCHAR DEFAULT '';")
             except Exception:
                 pass
             
             rows = []
+            default_color = self._clean_flag_color(flag_color)
             if items:
                 for it in items:
                     sym = it.get("symbol", "").strip().upper()
                     if not sym:
                         continue
                     t_str = self._normalize_watchlist_tags(tag=it.get("tag"), tags=it.get("tags"))
-                    rows.append((watchlist_id, sym, t_str))
+                    it_color = self._clean_flag_color(it.get("flag_color")) or default_color
+                    rows.append((watchlist_id, sym, it_color, t_str))
             elif symbols:
                 cleaned = list(set(s.strip().upper() for s in symbols if s and s.strip()))
                 tag_str = self._normalize_watchlist_tags(tag=tag, tags=tags)
-                rows = [(watchlist_id, s, tag_str) for s in cleaned]
+                rows = [(watchlist_id, s, default_color, tag_str) for s in cleaned]
 
             if not rows:
                 return 0
 
             conn.executemany("""
-                INSERT INTO watchlist_items (watchlist_id, symbol, tags)
-                VALUES (?, ?, ?)
+                INSERT INTO watchlist_items (watchlist_id, symbol, flag_color, tags)
+                VALUES (?, ?, ?, ?)
                 ON CONFLICT (watchlist_id, symbol) DO UPDATE SET
+                    flag_color = COALESCE(EXCLUDED.flag_color, watchlist_items.flag_color),
                     tags = array_to_string(
                         list_distinct(
                             list_filter(
@@ -3932,6 +3982,13 @@ class DatabaseService:
                     );
             """, rows)
             return len(rows)
+
+    def update_watchlist_item_flag(self, symbol: str, flag_color: Optional[str] = None, watchlist_id: int = 1) -> bool:
+        with self.get_write_conn() as conn:
+            symbol_upper = symbol.strip().upper()
+            cleaned_color = self._clean_flag_color(flag_color)
+            conn.execute("UPDATE watchlist_items SET flag_color = ? WHERE watchlist_id = ? AND symbol = ?", [cleaned_color, watchlist_id, symbol_upper])
+            return True
 
     def update_watchlist_item_tags(self, watchlist_id: int, symbol: str, tags: List[str]) -> bool:
         with self.get_write_conn() as conn:

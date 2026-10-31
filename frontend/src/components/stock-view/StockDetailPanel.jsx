@@ -245,6 +245,23 @@ export default function StockDetailPanel({
                 {stockDetail.fundamentals.length}Q
               </span>
             )}
+            {stockDetail?.metadata?.float_shares > 0 && (
+              <span
+                title="Publicly Traded Float Shares"
+                style={{
+                  fontSize: '9.5px',
+                  color: '#38bdf8',
+                  background: 'rgba(56, 189, 248, 0.12)',
+                  border: '1px solid rgba(56, 189, 248, 0.25)',
+                  padding: '1px 5px',
+                  borderRadius: '4px',
+                  fontFamily: 'var(--font-mono)',
+                  fontWeight: 600,
+                }}
+              >
+                Float {(stockDetail.metadata.float_shares / 1e6).toFixed(1)}M
+              </span>
+            )}
           </div>
           <span style={{ fontSize: '10px', color: 'var(--text-muted, #94a3b8)' }}>
             {collapsedSections.fundamentals ? '▼' : '▲'}
@@ -259,8 +276,9 @@ export default function StockDetailPanel({
                     <th style={{ padding: '4px 6px' }}>Quarter</th>
                     <th style={{ padding: '4px 6px' }}>Date</th>
                     <th style={{ padding: '4px 6px', textAlign: 'right' }}>EPS</th>
-                    <th style={{ padding: '4px 6px', textAlign: 'right' }}>QoQ %</th>
+                    <th style={{ padding: '4px 6px', textAlign: 'right' }}>EPS YoY%</th>
                     <th style={{ padding: '4px 6px', textAlign: 'right' }}>Revenue</th>
+                    <th style={{ padding: '4px 6px', textAlign: 'right' }}>Sales YoY%</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -281,8 +299,10 @@ export default function StockDetailPanel({
                           padding: '4px 6px',
                           color:
                             f.eps_qoq_growth !== null && f.eps_qoq_growth !== undefined
-                              ? f.eps_qoq_growth >= 0
+                              ? f.eps_qoq_growth >= 40
                                 ? '#34d399'
+                                : f.eps_qoq_growth >= 0
+                                ? '#cbd5e1'
                                 : '#f87171'
                               : 'var(--text-secondary, #94a3b8)',
                         }}
@@ -301,11 +321,31 @@ export default function StockDetailPanel({
                       >
                         {f.total_revenue ? `$${(f.total_revenue / 1000000).toFixed(1)}M` : 'N/A'}
                       </td>
+                      <td
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontWeight: 700,
+                          textAlign: 'right',
+                          padding: '4px 6px',
+                          color:
+                            f.sales_yoy_growth !== null && f.sales_yoy_growth !== undefined
+                              ? f.sales_yoy_growth >= 40
+                                ? '#34d399'
+                                : f.sales_yoy_growth >= 0
+                                ? '#cbd5e1'
+                                : '#f87171'
+                              : 'var(--text-secondary, #94a3b8)',
+                        }}
+                      >
+                        {f.sales_yoy_growth !== null && f.sales_yoy_growth !== undefined
+                          ? `${f.sales_yoy_growth >= 0 ? '+' : ''}${f.sales_yoy_growth.toFixed(1)}%`
+                          : 'N/A'}
+                      </td>
                     </tr>
                   ))}
                   {(!stockDetail?.fundamentals || stockDetail.fundamentals.length === 0) && (
                     <tr>
-                      <td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-secondary, #94a3b8)', padding: '12px' }}>
+                      <td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-secondary, #94a3b8)', padding: '12px' }}>
                         No quarterly statements cached for this stock.
                       </td>
                     </tr>

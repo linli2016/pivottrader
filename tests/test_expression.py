@@ -240,7 +240,7 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertTrue(res_ep["valid"])
         self.assertIn("EPISODIC_PIVOT", res_ep["variables"])
         self.assertIn("GAP_PCT", res_ep["variables"])
-        self.assertIn("REL_VOL", res_ep["variables"])
+        self.assertIn("RVOL", res_ep["variables"])
 
         res_ipo = ScanExpressionEngine.validate("IPO_BASE")
         self.assertTrue(res_ipo["valid"])
@@ -367,7 +367,7 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertIn("NULLIF(b.high - b.low, 0)", res2["sql"])
 
         # Test complete High Volume Breakout expression (Ultra-fast single-bar formula)
-        expr3 = "STAGE2 AND RS_RANK >= 75 AND C >= 5.0 AND DOLLAR_VOL >= 5000000 AND REL_VOL >= 2.5 AND C >= O * 1.025 AND ((IS_52W_HIGH AND CLOSE_RANGE >= 0.75) OR (DIST_52W_HIGH <= 15.0 AND CLOSE_RANGE >= 0.70))"
+        expr3 = "STAGE2 AND RS_RANK >= 75 AND C >= 5.0 AND DOLLAR_VOL >= 5000000 AND RVOL >= 2.5 AND C >= O * 1.025 AND ((IS_52W_HIGH AND CLOSE_RANGE >= 0.75) OR (DIST_52W_HIGH <= 15.0 AND CLOSE_RANGE >= 0.70))"
         res3 = ScanExpressionEngine.validate(expr3)
         self.assertTrue(res3["valid"])
         self.assertFalse(res3["has_lags"])
@@ -391,8 +391,8 @@ class TestScanExpressionEngine(unittest.TestCase):
         # Test multiline expression support
         expr_multiline = """
         STAGE2 AND RS_RANK >= 75 AND C >= 5.0
-        AND ((IS_52W_HIGH AND REL_VOL >= 1.8)
-             OR (DIST_52W_HIGH <= 15.0 AND REL_VOL >= 1.5))
+        AND ((IS_52W_HIGH AND RVOL >= 1.8)
+             OR (DIST_52W_HIGH <= 15.0 AND RVOL >= 1.5))
         """
         res_multi = ScanExpressionEngine.validate(expr_multiline)
         # Test Model Book expression scan integration
@@ -527,6 +527,80 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertIn("b.ema_20 > b.ema_50", res["sql"])
         self.assertIn("50000000", res["sql"])
         self.assertIn("b.adr_20d >= 3.5", res["sql"])
+
+    def test_projected_rvol_and_watchlist_screener(self):
+        import datetime
+        from zoneinfo import ZoneInfo
+        from application.engine.expression import get_intraday_volume_fraction
+
+        et = ZoneInfo("America/New_York")
+        # 1. Exact open (09:30 ET on a Wednesday) -> clamped at minimum 0.03
+        dt_open = datetime.datetime(2026, 4, 15, 9, 30, 0, tzinfo=et)
+        self.assertEqual(get_intraday_volume_fraction(as_of=dt_open), 0.03)
+
+        # 2. First hour (10:30 ET, x = 60/390 = 0.1538) -> U-shape gives higher fraction than linear (0.1538)
+        dt_1030 = datetime.datetime(2026, 4, 15, 10, 30, 0, tzinfo=et)
+        frac_1030 = get_intraday_volume_fraction(as_of=dt_1030)
+        self.assertGreater(frac_1030, 60.0 / 390.0)
+        self.assertLess(frac_1030, 0.30)
+
+        # 3. Exact midpoint (12:45 ET, x = 195/390 = 0.5) -> symmetric U-shape equals 0.5
+        dt_mid = datetime.datetime(2026, 4, 15, 12, 45, 0, tzinfo=et)
+        self.assertAlmostEqual(get_intraday_volume_fraction(as_of=dt_mid), 0.5, places=4)
+
+        # 4. After close (16:05 ET) -> 1.0
+        dt_close = datetime.datetime(2026, 4, 15, 16, 5, 0, tzinfo=et)
+        self.assertEqual(get_intraday_volume_fraction(as_of=dt_close), 1.0)
+
+        # 5. Historical date during live market hours -> 1.0
+        self.assertEqual(get_intraday_volume_fraction(as_of=dt_1030, target_date="2026-04-14"), 1.0)
+
+        # 6. Validate Watchlist RVOL screener expression
+        expr = "IN_WATCHLIST AND PROJ_RVOL >= 1.5 ORDER BY PROJ_RVOL DESC"
+        res = ScanExpressionEngine.validate(expr)
+        self.assertTrue(res["valid"], res.get("error"))
+        self.assertIn("IN_WATCHLIST", res["variables"])
+        self.assertIn("PROJ_RVOL", res["variables"])
+        self.assertIn("watchlist_items", res["sql"])
+        self.assertIsNotNone(res["order_by_sql"])
+
+    def test_zanger_fundamental_variables_and_chained_screeners(self):
+        from application.services.setup_service import setup_service
+
+        # 1. Native EPS & Sales YoY, Sequential QoQ, TTM, and Float variables
+        expr = (
+            "EPS_DILUTED > 0 AND EPS_GROWTH >= 40.0 AND SALES_GROWTH >= 40.0 "
+            "AND EPS_QOQ > 0 AND SALES_QOQ > 0 "
+            "AND EPS_TTM_GROWTH >= 25 AND SALES_TTM_GROWTH >= 25 "
+            "AND FLOAT <= 100M ORDER BY SALES_GROWTH DESC"
+        )
+        res = ScanExpressionEngine.validate(expr)
+        self.assertTrue(res["valid"], res.get("error"))
+        self.assertIn("f.eps_diluted > 0", res["sql"])
+        self.assertIn("f.eps_qoq_growth >= 40.0", res["sql"])
+        self.assertIn("f.sales_yoy_growth >= 40.0", res["sql"])
+        self.assertIn("f.eps_seq_qoq_growth > 0", res["sql"])
+        self.assertIn("f.sales_seq_qoq_growth > 0", res["sql"])
+        self.assertIn("s.float_shares <= 100000000", res["sql"])
+        self.assertEqual(res["order_by_sql"], "f.sales_yoy_growth DESC")
+
+        # 2. Validate all Dan Zanger screeners and chaining in screeners.yaml
+        ScanExpressionEngine.clear_cache()
+        cfg = setup_service.get_setups_config(visible_only=False)
+        zanger_folder = next((f for f in cfg["folders"] if f["id"] == "dan_zanger"), None)
+        self.assertIsNotNone(zanger_folder)
+        screener_ids = [s["id"] for s in zanger_folder["screeners"]]
+        self.assertIn("zanger_monster_growth", screener_ids)
+        self.assertIn("zanger_zvr_breakout", screener_ids)
+        for sc in zanger_folder["screeners"]:
+            val = ScanExpressionEngine.validate(sc["expression"])
+            self.assertTrue(val["valid"], f"Screener {sc['id']} failed validation: {val.get('error')}")
+
+        # 3. Chaining SCREENER_ZANGER_MONSTER_GROWTH with another technical screener
+        chained = ScanExpressionEngine.validate("SCREENER_ZANGER_MONSTER_GROWTH AND SCREENER_POWER_PLAY")
+        self.assertTrue(chained["valid"], chained.get("error"))
+        self.assertIn("f.sales_yoy_growth >= 40.0", chained["sql"])
+        self.assertIn("b.pp_runup_pct >= 100.0", chained["sql"])
 
 if __name__ == "__main__":
     unittest.main()

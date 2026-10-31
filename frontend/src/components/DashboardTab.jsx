@@ -452,10 +452,10 @@ export default function DashboardTab({
     }
   };
 
-  // Monitor syncStatus: when it finishes (running -> idle), automatically reload the cockpit
+  // Monitor syncStatus: when it finishes (running -> completed / idle), automatically reload the cockpit
   const prevSyncStatusRef = useRef(syncStatus?.status);
   useEffect(() => {
-    if (prevSyncStatusRef.current === 'running' && syncStatus?.status === 'idle') {
+    if (prevSyncStatusRef.current === 'running' && (syncStatus?.status === 'completed' || syncStatus?.status === 'idle')) {
       reloadAllDashboardData();
     }
     prevSyncStatusRef.current = syncStatus?.status;
@@ -2572,9 +2572,9 @@ export default function DashboardTab({
               <span className="badge badge-outline">STEP 4</span>
               <span className="routine-icon">⭐️</span>
             </div>
-            <span className="routine-title">4. Watchlists</span>
-            <span className="routine-desc">Trim to 10–15 Focus Candidates</span>
-            <button className="btn btn-secondary btn-sm routine-btn">Open Watchlists →</button>
+            <span className="routine-title">4. Watchlist</span>
+            <span className="routine-desc">Flag Focus & Setup Candidates</span>
+            <button className="btn btn-secondary btn-sm routine-btn">Open Watchlist →</button>
           </div>
 
           {/* Step 5 */}

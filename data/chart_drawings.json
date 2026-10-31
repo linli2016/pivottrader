@@ -1,0 +1,98 @@
+{
+  "PANW": [
+    {
+      "id": "line_1793468357574_hd1tg",
+      "type": "line",
+      "p1": {
+        "logical": 681,
+        "price": 306.78716071928966,
+        "time": "2026-07-27",
+        "offsetFromBar": 0
+      },
+      "p2": {
+        "logical": 764,
+        "price": 349.45995731339156,
+        "time": "2026-10-30",
+        "offsetFromBar": 15
+      },
+      "color": "#ffffff",
+      "width": 1
+    },
+    {
+      "id": "line_1793468362296_bhrnj",
+      "type": "line",
+      "p1": {
+        "logical": 666,
+        "price": 371.2825232456825,
+        "time": "2026-07-06",
+        "offsetFromBar": 0
+      },
+      "p2": {
+        "logical": 761,
+        "price": 458.96472664733346,
+        "time": "2026-10-30",
+        "offsetFromBar": 12
+      },
+      "color": "#ffffff",
+      "width": 1
+    }
+  ],
+  "FROG": [
+    {
+      "id": "line_1793468389597_rh027",
+      "type": "line",
+      "p1": {
+        "logical": 682,
+        "price": 72.74444210813272,
+        "time": "2026-07-28",
+        "offsetFromBar": 0
+      },
+      "p2": {
+        "logical": 766,
+        "price": 89.96965647290739,
+        "time": "2026-10-30",
+        "offsetFromBar": 17
+      },
+      "color": "#ffffff",
+      "width": 1
+    },
+    {
+      "id": "line_1793468395869_sa4mx",
+      "type": "line",
+      "p1": {
+        "logical": 666,
+        "price": 97.95228098530717,
+        "time": "2026-07-06",
+        "offsetFromBar": 0
+      },
+      "p2": {
+        "logical": 765,
+        "price": 106.64316899206413,
+        "time": "2026-10-30",
+        "offsetFromBar": 16
+      },
+      "color": "#ffffff",
+      "width": 1
+    }
+  ],
+  "LIFE": [
+    {
+      "id": "line_1793471571886_f0vyo",
+      "type": "line",
+      "p1": {
+        "logical": 38,
+        "price": 9.800495785713453,
+        "time": "2026-03-25",
+        "offsetFromBar": 0
+      },
+      "p2": {
+        "logical": 208,
+        "price": 32.10040737415067,
+        "time": "2026-10-30",
+        "offsetFromBar": 18
+      },
+      "color": "#ffffff",
+      "width": 1
+    }
+  ]
+}

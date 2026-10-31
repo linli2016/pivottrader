@@ -20,6 +20,7 @@ class WatchlistUpdateSchema(BaseModel):
 class WatchlistItemAddSchema(BaseModel):
     symbol: Optional[str] = None
     symbols: Optional[List[str]] = None
+    flag_color: Optional[str] = None
     tag: Optional[str] = None
     tags: Optional[List[str]] = None
     items: Optional[List[Dict[str, Any]]] = None
@@ -27,6 +28,10 @@ class WatchlistItemAddSchema(BaseModel):
 
 class WatchlistItemTagsUpdateSchema(BaseModel):
     tags: List[str]
+
+
+class WatchlistItemFlagUpdateSchema(BaseModel):
+    flag_color: Optional[str] = None
 
 
 class WatchlistBatchRemoveSchema(BaseModel):
@@ -46,7 +51,7 @@ def get_watchlist_tags():
 
 @router.get("")
 def get_watchlists():
-    """Retrieve all user watchlists and item counts."""
+    """Retrieve user watchlist and item counts."""
     try:
         return db_service.get_watchlists()
     except Exception as e:
@@ -56,7 +61,7 @@ def get_watchlists():
 
 @router.get("/symbols")
 def get_all_watchlist_symbols():
-    """Retrieve all distinct symbols across all watchlists."""
+    """Retrieve all distinct symbols across the watchlist."""
     try:
         return db_service.get_all_watchlist_symbols()
     except Exception as e:
@@ -96,9 +101,10 @@ def delete_watchlist(watchlist_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/items")
 @router.get("/{watchlist_id}/items")
-def get_watchlist_items(watchlist_id: int):
-    """Get all ticker items in a specific watchlist."""
+def get_watchlist_items(watchlist_id: int = 1):
+    """Get all ticker items in the watchlist."""
     try:
         return db_service.get_watchlist_items(watchlist_id)
     except Exception as e:
@@ -106,24 +112,53 @@ def get_watchlist_items(watchlist_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/items")
 @router.post("/{watchlist_id}/items")
-def add_watchlist_item(watchlist_id: int, payload: WatchlistItemAddSchema):
-    """Add a stock symbol or batch of symbols to a specific watchlist."""
+def add_watchlist_item(payload: WatchlistItemAddSchema, watchlist_id: int = 1):
+    """Add a stock symbol or batch of symbols to the watchlist."""
     try:
         if payload.items:
-            count = db_service.add_watchlist_items_batch(watchlist_id, items=payload.items)
+            count = db_service.add_watchlist_items_batch(
+                watchlist_id=watchlist_id,
+                items=payload.items,
+                flag_color=payload.flag_color
+            )
             return {"status": "ok", "added_count": count, "watchlist_id": watchlist_id}
         if payload.symbols:
-            count = db_service.add_watchlist_items_batch(watchlist_id, symbols=payload.symbols, tag=payload.tag, tags=payload.tags)
+            count = db_service.add_watchlist_items_batch(
+                watchlist_id=watchlist_id,
+                symbols=payload.symbols,
+                tag=payload.tag,
+                tags=payload.tags,
+                flag_color=payload.flag_color
+            )
             return {"status": "ok", "added_count": count, "watchlist_id": watchlist_id}
         if payload.symbol:
-            db_service.add_watchlist_item(watchlist_id, payload.symbol, tag=payload.tag, tags=payload.tags)
+            db_service.add_watchlist_item(
+                watchlist_id=watchlist_id,
+                symbol=payload.symbol,
+                tag=payload.tag,
+                tags=payload.tags,
+                flag_color=payload.flag_color
+            )
             return {"status": "ok", "symbol": payload.symbol, "watchlist_id": watchlist_id}
         raise HTTPException(status_code=400, detail="Either 'symbol', 'symbols', or 'items' must be provided")
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error in add_watchlist_item: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/items/{symbol}/flag")
+@router.put("/{watchlist_id}/items/{symbol}/flag")
+def update_watchlist_item_flag_endpoint(symbol: str, payload: WatchlistItemFlagUpdateSchema, watchlist_id: int = 1):
+    """Update or clear the color flag of a watchlist symbol."""
+    try:
+        db_service.update_watchlist_item_flag(symbol=symbol, flag_color=payload.flag_color, watchlist_id=watchlist_id)
+        return {"status": "ok", "watchlist_id": watchlist_id, "symbol": symbol, "flag_color": payload.flag_color}
+    except Exception as e:
+        logger.error(f"Error in update_watchlist_item_flag_endpoint: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -138,24 +173,36 @@ def update_watchlist_item_tags_endpoint(watchlist_id: int, symbol: str, payload:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/items/batch")
 @router.post("/{watchlist_id}/items/batch")
-def add_watchlist_items_batch_endpoint(watchlist_id: int, payload: WatchlistItemAddSchema):
-    """Add a batch of stock symbols to a specific watchlist."""
+def add_watchlist_items_batch_endpoint(payload: WatchlistItemAddSchema, watchlist_id: int = 1):
+    """Add a batch of stock symbols to the watchlist."""
     try:
         if payload.items:
-            count = db_service.add_watchlist_items_batch(watchlist_id, items=payload.items)
+            count = db_service.add_watchlist_items_batch(
+                watchlist_id=watchlist_id,
+                items=payload.items,
+                flag_color=payload.flag_color
+            )
             return {"status": "ok", "added_count": count, "watchlist_id": watchlist_id}
         symbols = payload.symbols or ([payload.symbol] if payload.symbol else [])
-        count = db_service.add_watchlist_items_batch(watchlist_id, symbols=symbols, tag=payload.tag, tags=payload.tags)
+        count = db_service.add_watchlist_items_batch(
+            watchlist_id=watchlist_id,
+            symbols=symbols,
+            tag=payload.tag,
+            tags=payload.tags,
+            flag_color=payload.flag_color
+        )
         return {"status": "ok", "added_count": count, "watchlist_id": watchlist_id}
     except Exception as e:
         logger.error(f"Error in add_watchlist_items_batch: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/items")
 @router.delete("/{watchlist_id}/items")
-def clear_watchlist_items(watchlist_id: int):
-    """Clear all stock symbols from a watchlist."""
+def clear_watchlist_items(watchlist_id: int = 1):
+    """Clear all stock symbols from the watchlist."""
     try:
         return db_service.clear_watchlist_items(watchlist_id)
     except Exception as e:
@@ -163,9 +210,10 @@ def clear_watchlist_items(watchlist_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/items/{symbol}")
 @router.delete("/{watchlist_id}/items/{symbol}")
-def remove_watchlist_item(watchlist_id: int, symbol: str):
-    """Remove a single stock symbol from a watchlist."""
+def remove_watchlist_item(symbol: str, watchlist_id: int = 1):
+    """Remove a single stock symbol from the watchlist."""
     try:
         return db_service.remove_watchlist_item(watchlist_id, symbol)
     except Exception as e:
@@ -173,9 +221,10 @@ def remove_watchlist_item(watchlist_id: int, symbol: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/items/remove-batch")
 @router.post("/{watchlist_id}/items/remove-batch")
-def remove_watchlist_items_batch_endpoint(watchlist_id: int, payload: WatchlistBatchRemoveSchema):
-    """Remove a batch of stock symbols from a specific watchlist."""
+def remove_watchlist_items_batch_endpoint(payload: WatchlistBatchRemoveSchema, watchlist_id: int = 1):
+    """Remove a batch of stock symbols from the watchlist."""
     try:
         count = db_service.remove_watchlist_items_batch(watchlist_id, payload.symbols)
         return {"status": "ok", "removed_count": count, "watchlist_id": watchlist_id}
@@ -184,9 +233,10 @@ def remove_watchlist_items_batch_endpoint(watchlist_id: int, payload: WatchlistB
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/items/batch")
 @router.delete("/{watchlist_id}/items/batch")
-def delete_watchlist_items_batch_endpoint(watchlist_id: int, payload: WatchlistBatchRemoveSchema):
-    """Remove a batch of stock symbols from a specific watchlist (DELETE endpoint)."""
+def delete_watchlist_items_batch_endpoint(payload: WatchlistBatchRemoveSchema, watchlist_id: int = 1):
+    """Remove a batch of stock symbols from the watchlist (DELETE endpoint)."""
     try:
         count = db_service.remove_watchlist_items_batch(watchlist_id, payload.symbols)
         return {"status": "ok", "removed_count": count, "watchlist_id": watchlist_id}

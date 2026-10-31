@@ -24,7 +24,7 @@
   flex-direction: column;
   position: relative;
   overflow: hidden;
-  background: var(--bg-primary, #090d16);
+  background: #131722;
 }
 
 /* Horizontal Splitter (Between Daily and Bottom Charts) */

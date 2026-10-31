@@ -11,21 +11,12 @@ export default function StockDetailDrawer({
   stockDetail,
   stockPrices,
   setActiveTab,
-  watchlists = [],
   fetchWatchlists = null,
 }) {
-  const [targetWatchlistId, setTargetWatchlistId] = useState(() => watchlists?.[0]?.id || null);
   const [drawerTargetSymbols, setDrawerTargetSymbols] = useState(() => new Set());
 
   useEffect(() => {
-    if (watchlists && watchlists.length > 0 && !targetWatchlistId) {
-      setTargetWatchlistId(watchlists[0].id);
-    }
-  }, [watchlists, targetWatchlistId]);
-
-  useEffect(() => {
-    if (!targetWatchlistId) return;
-    fetch(`${API_BASE}/api/watchlists/${targetWatchlistId}/items`)
+    fetch(`${API_BASE}/api/watchlists/items`)
       .then(res => res.ok ? res.json() : [])
       .then(data => {
         if (Array.isArray(data)) {
@@ -33,16 +24,16 @@ export default function StockDetailDrawer({
         }
       })
       .catch(() => {});
-  }, [targetWatchlistId]);
+  }, []);
 
   const handleToggleWatchlist = useCallback(async (sym) => {
-    if (!targetWatchlistId || !sym) return;
+    if (!sym) return;
     const symUpper = sym.toUpperCase();
     const isSaved = drawerTargetSymbols.has(symUpper);
 
     try {
       if (isSaved) {
-        const res = await fetch(`${API_BASE}/api/watchlists/${targetWatchlistId}/items/${encodeURIComponent(symUpper)}`, {
+        const res = await fetch(`${API_BASE}/api/watchlists/items/${encodeURIComponent(symUpper)}`, {
           method: 'DELETE',
         });
         if (res.ok) {
@@ -54,7 +45,7 @@ export default function StockDetailDrawer({
           if (fetchWatchlists) fetchWatchlists();
         }
       } else {
-        const res = await fetch(`${API_BASE}/api/watchlists/${targetWatchlistId}/items`, {
+        const res = await fetch(`${API_BASE}/api/watchlists/items`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ symbol: symUpper }),
@@ -71,7 +62,7 @@ export default function StockDetailDrawer({
     } catch (e) {
       console.error('Error toggling watchlist:', e);
     }
-  }, [targetWatchlistId, drawerTargetSymbols, fetchWatchlists]);
+  }, [drawerTargetSymbols, fetchWatchlists]);
 
   const currentIndex = useMemo(() => {
     if (!activeStockList || activeStockList.length === 0 || !selectedStock) return -1;
@@ -147,10 +138,7 @@ export default function StockDetailDrawer({
           detail={stockDetail}
           asOfDate={selectedStock?.screen_date || null}
           marketRegime={selectedStock?.market_regime}
-          watchlists={watchlists}
-          targetWatchlistId={targetWatchlistId}
-          targetWatchlistSymbols={drawerTargetSymbols}
-          onTargetWatchlistChange={setTargetWatchlistId}
+          watchlistSymbols={drawerTargetSymbols}
           onToggleWatchlist={handleToggleWatchlist}
           onSelectStock={(stk) => {
             const sym = stk?.symbol || stk;
@@ -210,7 +198,7 @@ export default function StockDetailDrawer({
                   type="button"
                   className="btn btn-secondary btn-sm"
                   onClick={handleOpenWatchlists}
-                  title="Open in Watchlists"
+                  title="Open in Watchlist"
                   style={{
                     fontSize: '11px',
                     padding: '3px 8px',
@@ -220,7 +208,7 @@ export default function StockDetailDrawer({
                     gap: '4px'
                   }}
                 >
-                  📊 Watchlists
+                  📊 Watchlist
                 </button>
               )}
 

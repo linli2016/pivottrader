@@ -1,6 +1,40 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { fmtMoney } from './JournalCharts';
 import './PositionCalculator.css';
+
+// Module-level in-memory cache to prevent duplicate account queries across multiple renders or modal opens
+let cachedAccountsData = null;
+let pendingAccountsPromise = null;
+const EMPTY_ACCOUNTS = [];
+
+export function clearAccountsCache() {
+  cachedAccountsData = null;
+  pendingAccountsPromise = null;
+}
+
+async function getJournalAccountsData() {
+  if (cachedAccountsData) return cachedAccountsData;
+  if (pendingAccountsPromise) return pendingAccountsPromise;
+
+  pendingAccountsPromise = fetch('/api/journal/accounts')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      cachedAccountsData = data;
+      pendingAccountsPromise = null;
+      return data;
+    })
+    .catch((err) => {
+      pendingAccountsPromise = null;
+      return null;
+    });
+
+  return pendingAccountsPromise;
+}
+
+// Pre-warm IBKR accounts cache in background so it's ready when modal opens
+if (typeof window !== 'undefined') {
+  getJournalAccountsData().catch(() => {});
+}
 
 /**
  * VanTharpCalculatorModal (Position Calculator)
@@ -11,43 +45,55 @@ import './PositionCalculator.css';
 export default function VanTharpCalculatorModal({
   isOpen,
   onClose,
-  accounts = [],
+  accounts = EMPTY_ACCOUNTS,
   totalUsdBalance = 0,
   totalUsdEquity = 0,
   defaultAccountId = '',
   symbol: propSymbol = '',
   initialSymbol = '',
+  companyName = '',
   initialEntry = null,
   initialEntryPrice = null,
   initialStop = null,
   initialStopPrice = null,
+  initialLod = null,
+  lod = null,
   initialAtr = null,
   initialDollarAtr = null,
   initialDirection = 'LONG',
 }) {
   // Auto-fetch accounts if modal opened outside JournalTab where accounts aren't passed
-  const [internalAccounts, setInternalAccounts] = useState([]);
-  const [internalTotalUsdEquity, setInternalTotalUsdEquity] = useState(0);
-  const [internalTotalUsdBalance, setInternalTotalUsdBalance] = useState(0);
+  const [internalAccounts, setInternalAccounts] = useState(() => cachedAccountsData?.accounts || []);
+  const [internalTotalUsdEquity, setInternalTotalUsdEquity] = useState(() => cachedAccountsData?.total_usd_equity || 0);
+  const [internalTotalUsdBalance, setInternalTotalUsdBalance] = useState(() => cachedAccountsData?.total_usd_balance || 0);
+  const hasLoadedAccountsRef = React.useRef(Boolean(cachedAccountsData));
 
   useEffect(() => {
-    if (isOpen && (!accounts || accounts.length === 0)) {
-      let cancelled = false;
-      fetch('/api/journal/accounts')
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
-          if (!cancelled && data && data.accounts) {
-            setInternalAccounts(data.accounts);
-            setInternalTotalUsdEquity(data.total_usd_equity || 0);
-            setInternalTotalUsdBalance(data.total_usd_balance || 0);
+    if (!isOpen) return;
+    if (accounts && accounts.length > 0) return;
+    if (hasLoadedAccountsRef.current && internalAccounts.length > 0) return;
+
+    let cancelled = false;
+    getJournalAccountsData()
+      .then((data) => {
+        if (!cancelled && data && data.accounts) {
+          hasLoadedAccountsRef.current = true;
+          setInternalAccounts(data.accounts);
+          setInternalTotalUsdEquity(data.total_usd_equity || 0);
+          setInternalTotalUsdBalance(data.total_usd_balance || 0);
+          if (data.accounts.length > 0 || (data.total_usd_equity && data.total_usd_equity > 0)) {
+            setIsCustomEquity(false);
+          } else {
+            setIsCustomEquity(true);
           }
-        })
-        .catch(() => {});
-      return () => {
-        cancelled = true;
-      };
-    }
-  }, [isOpen, accounts]);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, accounts.length]);
 
   const effectiveAccounts = accounts && accounts.length > 0 ? accounts : internalAccounts;
   const effectiveTotalUsdEquity = totalUsdEquity > 0 ? totalUsdEquity : internalTotalUsdEquity;
@@ -59,18 +105,52 @@ export default function VanTharpCalculatorModal({
   });
 
   // USD Equity
-  const [customEquity, setCustomEquity] = useState('');
-  const [isCustomEquity, setIsCustomEquity] = useState(false);
+  const [customEquity, setCustomEquity] = useState(() => {
+    try {
+      return (
+        localStorage.getItem('pt_calc_custom_equity') ||
+        localStorage.getItem('pt_risk_calc_equity') ||
+        '100000'
+      );
+    } catch {
+      return '100000';
+    }
+  });
 
-  // Risk % (default to 1% as Van Tharp taught & requested by user)
+  // Default to IBKR accounts (isCustomEquity = false), only true if accounts are confirmed empty
+  const [isCustomEquity, setIsCustomEquity] = useState(() => {
+    if (cachedAccountsData && (!cachedAccountsData.accounts || cachedAccountsData.accounts.length === 0) && !cachedAccountsData.total_usd_equity) {
+      return true;
+    }
+    return false;
+  });
+
+  const handleCustomEquityChange = (val) => {
+    setCustomEquity(val);
+    try {
+      localStorage.setItem('pt_calc_custom_equity', String(val));
+      localStorage.setItem('pt_risk_calc_equity', String(val));
+    } catch { /* ignore */ }
+  };
+
+  // Risk % (default to 1% or saved preference across either key)
   const [riskPct, setRiskPct] = useState(() => {
     try {
-      const saved = localStorage.getItem('pt_vt_risk_pct');
+      const saved = localStorage.getItem('pt_vt_risk_pct') || localStorage.getItem('pt_risk_calc_risk_pct');
       return saved ? parseFloat(saved) || 1.0 : 1.0;
     } catch {
       return 1.0;
     }
   });
+
+  const handleRiskPctChange = (val) => {
+    const num = Math.max(0.05, Math.min(10.0, parseFloat(val) || 0.05));
+    setRiskPct(num);
+    try {
+      localStorage.setItem('pt_vt_risk_pct', String(num));
+      localStorage.setItem('pt_risk_calc_risk_pct', String(num));
+    } catch { /* ignore */ }
+  };
 
   // Stop Sizer Strategy Mode: '1-stop' | '2-stop' | '3-stop'
   const [stopMode, setStopMode] = useState(() => {
@@ -94,6 +174,7 @@ export default function VanTharpCalculatorModal({
   const [dollarAtr, setDollarAtr] = useState(
     initialAtr != null ? String(initialAtr) : (initialDollarAtr != null ? String(initialDollarAtr) : '')
   );
+  const [referenceLod, setReferenceLod] = useState(null);
   const [copied, setCopied] = useState(false);
 
   // Sync inputs when modal opens or initial props change
@@ -101,14 +182,70 @@ export default function VanTharpCalculatorModal({
     if (isOpen) {
       const sym = initialSymbol || propSymbol;
       if (sym) setSymbol(sym.toUpperCase());
+
       const ent = initialEntry != null ? initialEntry : initialEntryPrice;
-      if (ent != null) setEntryPrice(Number(ent).toFixed(2));
-      const stp = initialStop != null ? initialStop : initialStopPrice;
-      if (stp != null) setStopPrice(Number(stp).toFixed(2));
+      const entNum = ent != null && !isNaN(Number(ent)) ? Number(ent) : null;
+      if (entNum != null) setEntryPrice(entNum.toFixed(2));
+
       const atr = initialAtr != null ? initialAtr : initialDollarAtr;
-      if (atr != null) setDollarAtr(Number(atr).toFixed(2));
+      const atrNum = atr != null && !isNaN(Number(atr)) ? Number(atr) : null;
+      if (atrNum != null) setDollarAtr(atrNum.toFixed(2));
+
+      const effectiveLodVal = initialLod != null ? Number(initialLod) : (lod != null ? Number(lod) : null);
+      const lodCandidate = effectiveLodVal != null && !isNaN(effectiveLodVal)
+        ? effectiveLodVal
+        : (initialStop != null && !isNaN(Number(initialStop)) ? Number(initialStop) : null);
+      if (lodCandidate != null && !isNaN(lodCandidate)) {
+        setReferenceLod(lodCandidate);
+      }
+
+      const stp = initialStop != null ? initialStop : initialStopPrice;
+      if (stp != null && !isNaN(Number(stp))) {
+        const stpNum = Number(stp);
+        if (initialDirection === 'SHORT') {
+          if (entNum != null && stpNum <= entNum) {
+            const defStop = atrNum != null ? entNum + 0.5 * atrNum : entNum * 1.015;
+            setStopPrice(defStop.toFixed(2));
+          } else {
+            setStopPrice(stpNum.toFixed(2));
+          }
+        } else {
+          // LONG
+          if (entNum != null && stpNum >= entNum) {
+            const defStop = atrNum != null ? Math.max(0.01, entNum - 0.5 * atrNum) : entNum * 0.985;
+            setStopPrice(defStop.toFixed(2));
+          } else {
+            setStopPrice(stpNum.toFixed(2));
+          }
+        }
+      } else if (entNum != null) {
+        const defStop = initialDirection === 'SHORT'
+          ? (atrNum != null ? entNum + 0.5 * atrNum : entNum * 1.015)
+          : (atrNum != null ? Math.max(0.01, entNum - 0.5 * atrNum) : entNum * 0.985);
+        setStopPrice(defStop.toFixed(2));
+      }
+
       if (initialDirection) setDirection(initialDirection);
-      if (defaultAccountId) setSelectedAccountId(defaultAccountId);
+      if (defaultAccountId) {
+        setSelectedAccountId(defaultAccountId);
+      } else if (effectiveAccounts.length === 1) {
+        setSelectedAccountId(effectiveAccounts[0].account_id);
+      } else if (selectedAccountId === 'custom') {
+        setSelectedAccountId('all');
+      }
+
+      // Default to IBKR accounts mode whenever the dialog is opened
+      const hasIbkr =
+        (effectiveAccounts && effectiveAccounts.length > 0) ||
+        effectiveTotalUsdEquity > 0 ||
+        (cachedAccountsData?.accounts && cachedAccountsData.accounts.length > 0) ||
+        (cachedAccountsData?.total_usd_equity && cachedAccountsData.total_usd_equity > 0);
+
+      if (hasIbkr || !hasLoadedAccountsRef.current) {
+        setIsCustomEquity(false);
+      } else {
+        setIsCustomEquity(true);
+      }
     }
   }, [
     isOpen,
@@ -118,16 +255,33 @@ export default function VanTharpCalculatorModal({
     initialEntryPrice,
     initialStop,
     initialStopPrice,
+    initialLod,
+    lod,
     initialAtr,
     initialDollarAtr,
     initialDirection,
     defaultAccountId,
   ]);
 
+  // Keep selectedAccountId aligned with available IBKR accounts
+  useEffect(() => {
+    if (isCustomEquity) return;
+    if (defaultAccountId && effectiveAccounts.some((a) => a.account_id === defaultAccountId)) {
+      setSelectedAccountId(defaultAccountId);
+    } else if (effectiveAccounts.length === 1) {
+      setSelectedAccountId(effectiveAccounts[0].account_id);
+    } else if (effectiveAccounts.length > 1) {
+      if (selectedAccountId !== 'all' && !effectiveAccounts.some((a) => a.account_id === selectedAccountId)) {
+        setSelectedAccountId('all');
+      }
+    }
+  }, [defaultAccountId, effectiveAccounts, isCustomEquity, selectedAccountId]);
+
   // Persist user preferences
   useEffect(() => {
     try {
       localStorage.setItem('pt_vt_risk_pct', String(riskPct));
+      localStorage.setItem('pt_risk_calc_risk_pct', String(riskPct));
     } catch { /* ignore */ }
   }, [riskPct]);
 
@@ -421,9 +575,14 @@ export default function VanTharpCalculatorModal({
             <div>
               <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 Position Calculator {symbol ? `(${symbol.toUpperCase()})` : ''}
+                {companyName && (
+                  <span style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8' }}>
+                    · {companyName}
+                  </span>
+                )}
               </h3>
               <div style={{ fontSize: '10.5px', color: '#94a3b8', marginTop: '1px' }}>
-                Van Tharp Total Equity 1R Model · Stop Tranche Sizer · LoD ATR Guardrail
+                Van Tharp Total Equity 1R Model · 1/2/3 Level Stop Sizer · LoD ATR Guardrail
               </div>
             </div>
           </div>
@@ -446,81 +605,143 @@ export default function VanTharpCalculatorModal({
             <div className="vt-card">
               <div className="vt-card-title">
                 <span>1. Account &amp; 1R Risk Budget</span>
+                {effectiveAccounts.length > 0 && isCustomEquity && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCustomEquity(false);
+                      setSelectedAccountId('all');
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#38bdf8',
+                      fontSize: '10.5px',
+                      cursor: 'pointer',
+                      padding: 0,
+                      fontWeight: 600,
+                    }}
+                  >
+                    ← Back to IBKR Accounts
+                  </button>
+                )}
               </div>
 
-              <div className="vt-input-group">
-                <select
-                  className="vt-select-account"
-                  value={isCustomEquity ? 'custom' : selectedAccountId}
-                  onChange={handleAccountSelect}
-                >
-                  {effectiveAccounts.length > 1 && (
-                    <option value="all">
-                      All Accounts Combined ({fmtMoney(effectiveTotalUsdEquity || effectiveTotalUsdBalance, { sign: false })} Total Equity)
-                    </option>
-                  )}
-                  {effectiveAccounts.map((a) => (
-                    <option key={a.account_id} value={a.account_id}>
-                      {a.account_id} {a.name ? `(${a.name})` : ''} — {fmtMoney(a.total_usd_equity || a.usd_balance, { sign: false })}
-                    </option>
-                  ))}
-                  <option value="custom">✏️ Custom USD Equity…</option>
-                </select>
-              </div>
-
+              {/* Account Dropdown or Custom Input */}
               {isCustomEquity ? (
-                <div className="vt-input-group">
-                  <input
-                    type="number"
-                    step="1000"
-                    min="0"
-                    className="vt-input"
-                    value={customEquity}
-                    onChange={(e) => setCustomEquity(e.target.value)}
-                    placeholder="e.g. 100000"
-                  />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ flex: 1 }} className="vt-input-group">
+                    <label className="vt-label">Custom USD Total Equity ($)</label>
+                    <input
+                      type="number"
+                      step="1000"
+                      min="0"
+                      className="vt-input"
+                      value={customEquity}
+                      onChange={(e) => handleCustomEquityChange(e.target.value)}
+                      placeholder="e.g. 100000"
+                    />
+                  </div>
+                  {effectiveAccounts.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setIsCustomEquity(false)}
+                      style={{ height: '28px', alignSelf: 'flex-end', fontSize: '11px' }}
+                    >
+                      Use Accounts
+                    </button>
+                  )}
                 </div>
               ) : (
-                <div className="vt-account-risk-row">
-                  {/* Account stats */}
-                  <div className="vt-account-stat-box">
-                    <div className="vt-stat-box-row">
-                      <span className="vt-sublabel">Total USD Equity:</span>
-                      <span className="vt-usd-value">{fmtMoney(calc.equity, { sign: false })}</span>
-                    </div>
-                    {activeAccount && (
-                      <div className="vt-stat-box-breakdown">
-                        <span>Cash: <b>{fmtMoney(activeAccount.usd_balance, { sign: false })}</b></span>
-                        <span>•</span>
-                        <span>Open: <b>{fmtMoney(activeAccount.open_positions_value || 0, { sign: true })}</b></span>
-                        {activeAccount.cad_balance > 0 && (
-                          <span className="vt-cad-tag">CAD C{fmtMoney(activeAccount.cad_balance, { sign: false })}</span>
-                        )}
-                      </div>
+                <div className="vt-input-group">
+                  <select
+                    className="vt-select-account"
+                    value={selectedAccountId}
+                    onChange={handleAccountSelect}
+                  >
+                    {effectiveAccounts.length > 1 && (
+                      <option value="all">
+                        All Accounts Combined ({fmtMoney(effectiveTotalUsdEquity || effectiveTotalUsdBalance, { sign: false })} Total Equity)
+                      </option>
                     )}
-                  </div>
-
-                  {/* 1R Budget Box */}
-                  <div className="vt-risk-side-box">
-                    <div className="vt-risk-presets">
-                      {[0.5, 0.75, 1.0, 1.5].map((pct) => (
-                        <button
-                          key={pct}
-                          type="button"
-                          className={`vt-preset-btn ${riskPct === pct ? 'active' : ''}`}
-                          onClick={() => setRiskPct(pct)}
-                        >
-                          {pct}% {pct === 1.0 ? '⭐' : ''}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="vt-risk-bottom-row">
-                      <span style={{ fontSize: '10px', color: '#fb7185', fontWeight: 700 }}>1R BUDGET:</span>
-                      <span className="vt-1r-val">{fmtMoney(calc.dollarRisk, { sign: false })} USD</span>
-                    </div>
-                  </div>
+                    {effectiveAccounts.map((a) => (
+                      <option key={a.account_id} value={a.account_id}>
+                        {a.account_id} {a.name ? `(${a.name})` : ''} — {fmtMoney(a.total_usd_equity || a.usd_balance, { sign: false })}
+                      </option>
+                    ))}
+                    <option value="custom">✏️ Custom USD Equity…</option>
+                  </select>
                 </div>
               )}
+
+              {/* Account stats and 1R Budget Box - ALWAYS VISIBLE */}
+              <div className="vt-account-risk-row">
+                {/* Account stats */}
+                <div className="vt-account-stat-box">
+                  <div className="vt-stat-box-row">
+                    <span className="vt-sublabel">{isCustomEquity ? 'Equity Base:' : 'Total USD Equity:'}</span>
+                    <span className="vt-usd-value">{fmtMoney(calc.equity, { sign: false })}</span>
+                  </div>
+                  {!isCustomEquity && activeAccount ? (
+                    <div className="vt-stat-box-breakdown">
+                      <span>Cash: <b>{fmtMoney(activeAccount.usd_balance, { sign: false })}</b></span>
+                      <span>•</span>
+                      <span>Open: <b>{fmtMoney(activeAccount.open_positions_value || 0, { sign: true })}</b></span>
+                      {activeAccount.cad_balance > 0 && (
+                        <span className="vt-cad-tag">CAD C{fmtMoney(activeAccount.cad_balance, { sign: false })}</span>
+                      )}
+                    </div>
+                  ) : !isCustomEquity && effectiveAccounts.length > 0 ? (
+                    <div className="vt-stat-box-breakdown">
+                      <span>Cash: <b>{fmtMoney(calc.cash, { sign: false })}</b></span>
+                      <span>•</span>
+                      <span>Open: <b>{fmtMoney(effectiveAccounts.reduce((s, a) => s + (a.open_positions_value || 0), 0), { sign: true })}</b></span>
+                      {effectiveAccounts.reduce((s, a) => s + (a.cad_balance || 0), 0) > 0 && (
+                        <span className="vt-cad-tag">CAD C{fmtMoney(effectiveAccounts.reduce((s, a) => s + (a.cad_balance || 0), 0), { sign: false })}</span>
+                      )}
+                    </div>
+                  ) : isCustomEquity ? (
+                    <div style={{ fontSize: '10px', color: '#64748b' }}>
+                      Manual capital base for 1R sizing
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* 1R Budget Box */}
+                <div className="vt-risk-side-box">
+                  <div className="vt-risk-presets">
+                    {[0.25, 0.5, 0.75, 1.0, 1.5].map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        className={`vt-preset-btn ${riskPct === pct ? 'active' : ''}`}
+                        onClick={() => handleRiskPctChange(pct)}
+                      >
+                        {pct}% {pct === 1.0 ? '⭐' : ''}
+                      </button>
+                    ))}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '2px', marginLeft: '2px' }}>
+                      <input
+                        type="number"
+                        step="0.05"
+                        min="0.05"
+                        max="10"
+                        className="vt-input"
+                        style={{ width: '42px', height: '20px', fontSize: '10px', padding: '1px 2px', textAlign: 'center' }}
+                        value={riskPct}
+                        onChange={(e) => handleRiskPctChange(e.target.value)}
+                        title="Custom Risk %"
+                      />
+                      <span style={{ fontSize: '9px', color: '#94a3b8' }}>%</span>
+                    </div>
+                  </div>
+                  <div className="vt-risk-bottom-row">
+                    <span style={{ fontSize: '10px', color: '#fb7185', fontWeight: 700 }}>1R BUDGET:</span>
+                    <span className="vt-1r-val">{fmtMoney(calc.dollarRisk, { sign: false })} USD</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* 2. Pre-Entry Trade Setup & LoD Guardrail */}
@@ -577,7 +798,28 @@ export default function VanTharpCalculatorModal({
                 </div>
 
                 <div className="vt-input-group">
-                  <label className="vt-label">Stop / LoD ($)</label>
+                  <label className="vt-label">
+                    <span>Stop / LoD ($)</span>
+                    {referenceLod != null && !isNaN(referenceLod) && (
+                      <button
+                        type="button"
+                        onClick={() => setStopPrice(Number(referenceLod).toFixed(2))}
+                        title="Click to reset stop price to today's Low of Day"
+                        style={{
+                          background: 'rgba(56, 189, 248, 0.15)',
+                          border: '1px solid rgba(56, 189, 248, 0.35)',
+                          borderRadius: '3px',
+                          color: '#38bdf8',
+                          fontSize: '9.5px',
+                          padding: '0 4px',
+                          cursor: 'pointer',
+                          fontWeight: 700,
+                        }}
+                      >
+                        ⚡ LOD: ${Number(referenceLod).toFixed(2)}
+                      </button>
+                    )}
+                  </label>
                   <input
                     type="number"
                     step="0.01"

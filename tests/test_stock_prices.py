@@ -42,6 +42,17 @@ class TestStockPrices(unittest.TestCase):
             self.assertLessEqual(bar["low"], bar["open"])
             self.assertLessEqual(bar["low"], bar["close"])
 
+    def test_ext_atr_50_tradingview_formula(self):
+        prices = db_service.get_stock_prices("NVDA", limit=50, timeframe="daily")
+        self.assertGreater(len(prices), 0)
+        found = False
+        for p in prices:
+            if p.get("close") and p.get("sma_50") and p.get("atr_20d") and p.get("atr_20d") > 0:
+                expected = round(((p["close"] - p["sma_50"]) / p["sma_50"]) / (p["atr_20d"] / 100.0), 2)
+                self.assertAlmostEqual(p["ext_atr_50"], expected, places=2)
+                found = True
+        self.assertTrue(found, "Expected at least one bar with ext_atr_50 calculated")
+
 
 if __name__ == "__main__":
     unittest.main()

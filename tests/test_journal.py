@@ -260,9 +260,16 @@ class TestJournalService(unittest.TestCase):
         trade_id = journal["trades"][0]["id"]
         self.assertAlmostEqual(journal["stats"]["total_pnl"], 198.0)
 
-        self.svc.update_notes(trade_id, "Clean VCP breakout", ["vcp", " breakout ", ""], initial_stop=9.0)
+        self.svc.update_notes(
+            trade_id,
+            "Clean VCP breakout",
+            ["vcp", " breakout ", ""],
+            initial_stop=9.0,
+            mistakes="Sold half too early",
+        )
         trade = self.svc.get_journal()["trades"][0]
         self.assertEqual(trade["notes"], "Clean VCP breakout")
+        self.assertEqual(trade["mistakes"], "Sold half too early")
         self.assertEqual(trade["tags"], ["breakout", "vcp"])
         self.assertEqual(trade["initial_stop"], 9.0)
         # Entry price: 10.0, stop: 9.0 -> risk per share: 1.0. Qty: 100 -> total risk: 100. Pnl: 198 -> R = 1.98
@@ -547,6 +554,29 @@ class TestJournalService(unittest.TestCase):
         self.assertEqual(acct_u1["usd_balance"], 125000.50)
         self.assertEqual(acct_u1["cad_balance"], 45000.25)
         self.assertEqual(acct_u1["risk_1pct_usd"], 1250.01)
+
+    def test_ignored_open_trade_skips_price_fetch(self):
+        xml = _statement(
+            _trade_xml("1", "XQQ", "20240115;093512", 100, 10.0),
+        )
+        self.svc.import_statement(xml)
+        with patch.object(self.svc, "get_latest_close_prices", return_value={}):
+            trades = self.svc.get_trades(include_ignored=True)
+            self.assertEqual(len(trades), 1)
+            trade_id = trades[0]["id"]
+
+        # Ignore the trade
+        self.svc.ignore_trade(trade_id, reason="Excluded ETF")
+
+        # Mock get_latest_close_prices to verify it's never called for XQQ
+        with patch.object(self.svc, "get_latest_close_prices") as mock_prices:
+            active_trades = self.svc.get_trades(include_ignored=False)
+            self.assertEqual(len(active_trades), 0)
+            mock_prices.assert_not_called()
+
+            # And get_account_balances should also skip price lookups for ignored trades
+            self.svc.get_account_balances()
+            mock_prices.assert_not_called()
 
 
 class TestIBKRFlexClient(unittest.TestCase):

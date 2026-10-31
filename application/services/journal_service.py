@@ -472,6 +472,7 @@ class JournalService:
                 CREATE TABLE IF NOT EXISTS trade_notes (
                     trade_id TEXT PRIMARY KEY,
                     notes TEXT DEFAULT '',
+                    mistakes TEXT DEFAULT '',
                     tags TEXT DEFAULT '[]',
                     initial_stop REAL,
                     updated_at TEXT
@@ -490,13 +491,18 @@ class JournalService:
                 );
                 CREATE TABLE IF NOT EXISTS journal_meta (key TEXT PRIMARY KEY, value TEXT);
             """)
-            # Migration check: add initial_stop column if missing in older schema
+            # Migration check: add initial_stop and mistakes columns if missing in older schema
             columns = [c[1] for c in conn.execute("PRAGMA table_info(trade_notes)").fetchall()]
             if "initial_stop" not in columns:
                 try:
                     conn.execute("ALTER TABLE trade_notes ADD COLUMN initial_stop REAL")
                 except Exception as e:
                     logger.warning(f"Failed to add initial_stop column: {e}")
+            if "mistakes" not in columns:
+                try:
+                    conn.execute("ALTER TABLE trade_notes ADD COLUMN mistakes TEXT DEFAULT ''")
+                except Exception as e:
+                    logger.warning(f"Failed to add mistakes column: {e}")
 
 
     # ----- Flex credentials -----
@@ -763,10 +769,11 @@ class JournalService:
 
     def load_notes(self) -> Dict[str, Dict[str, Any]]:
         with self._connect() as conn:
-            rows = conn.execute("SELECT trade_id, notes, tags, initial_stop, updated_at FROM trade_notes").fetchall()
+            rows = conn.execute("SELECT trade_id, notes, mistakes, tags, initial_stop, updated_at FROM trade_notes").fetchall()
         return {
             r["trade_id"]: {
                 "notes": r["notes"] or "",
+                "mistakes": r["mistakes"] or "",
                 "tags": json.loads(r["tags"] or "[]"),
                 "initial_stop": r["initial_stop"],
                 "notes_updated_at": r["updated_at"],
@@ -852,6 +859,13 @@ class JournalService:
                     import yfinance as yf
                     fi = getattr(yf.Ticker(s), "fast_info", None)
                     price = getattr(fi, "last_price", None) or getattr(fi, "previous_close", None)
+                    if (not price or float(price) <= 0) and not s.endswith(".TO"):
+                        # Fallback for Canadian stocks/ETFs on TSX
+                        try:
+                            fi_to = getattr(yf.Ticker(f"{s}.TO"), "fast_info", None)
+                            price = getattr(fi_to, "last_price", None) or getattr(fi_to, "previous_close", None)
+                        except Exception:
+                            pass
                     if price and float(price) > 0:
                         results[s] = (float(price), max_market_date or date.today().isoformat())
                 except Exception as ex:
@@ -867,8 +881,9 @@ class JournalService:
         """
         For open trades, calculate unrealized and total P/L, return %,
         and related metrics based on current close price.
+        Excludes ignored trades from live price fetches.
         """
-        open_trades = [t for t in trades if t.get("status") == "OPEN"]
+        open_trades = [t for t in trades if t.get("status") == "OPEN" and not t.get("is_ignored")]
         if not open_trades:
             return
 
@@ -931,18 +946,23 @@ class JournalService:
                    include_ignored: bool = False,
                    price_map: Optional[Dict[str, Tuple[float, str]]] = None) -> List[Dict[str, Any]]:
         trades = build_round_trips(self.load_executions())
-        self._populate_open_trade_metrics(trades, price_map=price_map)
         notes = self.load_notes()
         ignored_map = self.load_ignored_trade_ids()
-        sym = (symbol or "").strip().upper()
-        out = []
+
+        # Tag ignored status before live price metrics to prevent querying excluded trades
         for t in trades:
             is_ignored = t["id"] in ignored_map
             t["is_ignored"] = is_ignored
             if is_ignored:
                 t["ignored_reason"] = ignored_map[t["id"]].get("reason", "")
                 t["ignored_at"] = ignored_map[t["id"]].get("ignored_at", "")
-            if is_ignored and not include_ignored:
+
+        self._populate_open_trade_metrics(trades, price_map=price_map)
+
+        sym = (symbol or "").strip().upper()
+        out = []
+        for t in trades:
+            if t.get("is_ignored") and not include_ignored:
                 continue
             ref_date = t["open_date"] or t["close_date"]
             if start and ref_date < start:
@@ -955,6 +975,7 @@ class JournalService:
                 continue
             n = notes.get(t["id"], {})
             t["notes"] = n.get("notes", "")
+            t["mistakes"] = n.get("mistakes", "")
             t["tags"] = n.get("tags", [])
             initial_stop = n.get("initial_stop")
             t["initial_stop"] = initial_stop
@@ -1152,19 +1173,20 @@ class JournalService:
         return self.get_account_balances()
 
     def update_notes(self, trade_id: str, notes: str, tags: Optional[List[str]] = None,
-                     initial_stop: Optional[float] = None) -> Dict[str, Any]:
+                     initial_stop: Optional[float] = None, mistakes: str = "") -> Dict[str, Any]:
         clean_tags = sorted({str(t).strip() for t in (tags or []) if str(t).strip()})
         now = datetime.now().isoformat(timespec="seconds")
         with self._write_lock, self._connect() as conn:
             conn.execute(
-                """INSERT INTO trade_notes (trade_id, notes, tags, initial_stop, updated_at) VALUES (?, ?, ?, ?, ?)
-                   ON CONFLICT(trade_id) DO UPDATE SET notes = excluded.notes, tags = excluded.tags,
-                   initial_stop = excluded.initial_stop, updated_at = excluded.updated_at""",
-                [trade_id, notes or "", json.dumps(clean_tags), initial_stop, now],
+                """INSERT INTO trade_notes (trade_id, notes, mistakes, tags, initial_stop, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(trade_id) DO UPDATE SET notes = excluded.notes, mistakes = excluded.mistakes,
+                   tags = excluded.tags, initial_stop = excluded.initial_stop, updated_at = excluded.updated_at""",
+                [trade_id, notes or "", mistakes or "", json.dumps(clean_tags), initial_stop, now],
             )
         return {
             "trade_id": trade_id,
             "notes": notes or "",
+            "mistakes": mistakes or "",
             "tags": clean_tags,
             "initial_stop": initial_stop,
             "notes_updated_at": now,

@@ -286,11 +286,12 @@ const COLUMNS = [
   { key: 'avg_entry', label: 'Entry', get: (t) => t.avg_entry ?? 0, num: true },
   { key: 'initial_stop', label: 'Stop', get: (t) => t.initial_stop ?? -Infinity, num: true },
   { key: 'avg_exit', label: 'Exit / Cur', get: (t) => (t.status === 'OPEN' ? (t.current_price ?? 0) : (t.avg_exit ?? 0)), num: true },
-  { key: 'initial_risk_pct', label: 'iRisk', get: (t) => t.initial_risk_pct ?? -Infinity, num: true },
   { key: 'pnl', label: 'P&L', get: (t) => t.pnl ?? -Infinity, num: true },
+  { key: 'initial_risk_pct', label: 'iRisk', get: (t) => t.initial_risk_pct ?? -Infinity, num: true },
   { key: 'pnl_pct', label: 'Return', get: (t) => t.pnl_pct ?? -Infinity, num: true },
   { key: 'r_multiple', label: 'R-Mult', get: (t) => t.r_multiple ?? -Infinity, num: true },
   { key: 'holding_days', label: 'Days', get: (t) => t.holding_days ?? -1, num: true },
+  { key: 'mistakes', label: 'Mistakes', get: (t) => (t.mistakes || '').trim().toLowerCase() },
   { key: 'notes', label: 'Notes', get: (t) => (t.notes ? 1 : 0) + (t.tags?.length ? 1 : 0), num: true },
 ];
 
@@ -380,36 +381,19 @@ function TradeTable({ trades, sort, onSortChange, onOpenTrade, onSelectStock, on
                   fmtNum(t.avg_exit)
                 )}
               </td>
-              <td className="jr-num">
-                {t.initial_risk_pct !== null && t.initial_risk_pct !== undefined ? (
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    style={{ padding: '0 4px', fontSize: '11.5px', color: '#38bdf8' }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenCalculator?.({
-                        symbol: t.symbol,
-                        entry: t.avg_entry,
-                        stop: t.initial_stop,
-                        direction: t.direction,
-                        account_id: t.account_id,
-                      });
-                    }}
-                    title="Open Van Tharp Sizing Calculator for this trade"
-                  >
-                    {t.initial_risk_pct.toFixed(1)}% 🧮
-                  </button>
-                ) : (
-                  <span className="jr-muted">—</span>
-                )}
-              </td>
               <td className={`jr-num ${pnlClass(t.pnl)}`}>
                 {t.pnl !== null && t.pnl !== undefined ? (
                   <span title={t.status === 'OPEN' && t.unrealized_pnl !== null && t.unrealized_pnl !== undefined ? `Unrealized: ${fmtMoney(t.unrealized_pnl)}${t.realized_pnl ? ` · Realized: ${fmtMoney(t.realized_pnl)}` : ''}` : undefined}>
                     {fmtMoney(t.pnl)}
                   </span>
                 ) : <span className="jr-muted">—</span>}
+              </td>
+              <td className="jr-num">
+                {t.initial_risk_pct !== null && t.initial_risk_pct !== undefined ? (
+                  `${t.initial_risk_pct.toFixed(1)}%`
+                ) : (
+                  <span className="jr-muted">—</span>
+                )}
               </td>
               <td className={`jr-num ${pnlClass(t.pnl_pct)}`}>
                 {t.pnl_pct !== null && t.pnl_pct !== undefined ? fmtPct(t.pnl_pct, 2) : <span className="jr-muted">—</span>}
@@ -422,6 +406,13 @@ function TradeTable({ trades, sort, onSortChange, onOpenTrade, onSelectStock, on
                 ) : <span className="jr-muted">—</span>}
               </td>
               <td className="jr-num">{t.holding_days ?? '—'}</td>
+              <td className="jr-mistakes-cell" title={t.mistakes || ''}>
+                {t.mistakes ? (
+                  <span className="jr-mistake-preview">⚠️ {t.mistakes}</span>
+                ) : (
+                  <span className="jr-muted">—</span>
+                )}
+              </td>
               <td className="jr-notes-cell" title={t.notes || ''}>
                 {t.tags?.map((tag) => <span key={tag} className="jr-tag">{tag}</span>)}
                 {t.notes ? <span className="jr-notes-preview">📝 {t.notes}</span> : (!t.tags?.length && <span className="jr-muted">Add…</span>)}
@@ -442,8 +433,9 @@ function TradeTable({ trades, sort, onSortChange, onOpenTrade, onSelectStock, on
   );
 }
 
-function TradeDetail({ trade, onSaved, allTags, onToggleIgnore, onSelectStock, onOpenCalculator }) {
+function TradeDetail({ trade, onSaved, allTags, allMistakes = [], onToggleIgnore, onSelectStock, onOpenCalculator }) {
   const [notes, setNotes] = useState(trade.notes || '');
+  const [mistakes, setMistakes] = useState(trade.mistakes || '');
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [tagsText, setTagsText] = useState((trade.tags || []).join(', '));
   const [initialStop, setInitialStop] = useState(
@@ -458,7 +450,7 @@ function TradeDetail({ trade, onSaved, allTags, onToggleIgnore, onSelectStock, o
   useEffect(() => {
     let active = true;
     setLoadingPrices(true);
-    fetch(`${API_BASE}/api/stocks/${encodeURIComponent(trade.symbol)}/prices?limit=750`)
+    fetch(`${API_BASE}/api/stocks/${encodeURIComponent(trade.symbol)}/prices?limit=3500`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
@@ -553,6 +545,7 @@ function TradeDetail({ trade, onSaved, allTags, onToggleIgnore, onSelectStock, o
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           notes,
+          mistakes,
           tags,
           initial_stop: validStop ? parsedStop : null,
         }),
@@ -572,6 +565,13 @@ function TradeDetail({ trade, onSaved, allTags, onToggleIgnore, onSelectStock, o
   const addTag = (tag) => {
     const cur = tagsText.split(',').map((t) => t.trim()).filter(Boolean);
     if (!cur.includes(tag)) setTagsText([...cur, tag].join(', '));
+  };
+
+  const addMistake = (mistakeItem) => {
+    const cur = mistakes.split(',').map((m) => m.trim()).filter(Boolean);
+    if (!cur.includes(mistakeItem)) {
+      setMistakes(cur.length ? `${mistakes.trim().replace(/,\s*$/, '')}, ${mistakeItem}` : mistakeItem);
+    }
   };
 
   const renderedMarkdown = useMemo(() => {
@@ -697,7 +697,7 @@ function TradeDetail({ trade, onSaved, allTags, onToggleIgnore, onSelectStock, o
                   symbol={trade.symbol}
                   companyName={trade.description || trade.symbol}
                   asOfDate={trade.open_date}
-                  height={560}
+                  height="100%"
                   showScreenshotButton={false}
                   tradeExecutions={combinedExecutions}
                 />
@@ -887,7 +887,6 @@ function TradeDetail({ trade, onSaved, allTags, onToggleIgnore, onSelectStock, o
               <div className="jr-notes-edit-mode">
                 <textarea
                   className="jr-textarea jr-notes-textarea"
-                  rows={10}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Markdown supported: write setup analysis, rules evaluation, entry execution, trade management, exit discipline..."
@@ -895,6 +894,29 @@ function TradeDetail({ trade, onSaved, allTags, onToggleIgnore, onSelectStock, o
                 />
               </div>
             )}
+
+            {/* Mistakes and Suggestions */}
+            <div className="jr-mistakes-section">
+              <label className="jr-field" style={{ margin: 0 }}>
+                <span className="stat-label" style={{ color: '#fb7185' }}>⚠️ Mistakes Made on Trade</span>
+                <textarea
+                  className="jr-textarea jr-mistakes-input"
+                  rows={2}
+                  value={mistakes}
+                  onChange={(e) => setMistakes(e.target.value)}
+                  placeholder="Log execution or discipline mistakes (e.g., Chased extended entry, Oversized position, Moved stop, Sold too early)..."
+                />
+              </label>
+              {allMistakes.length > 0 && (
+                <div className="jr-tag-suggestions">
+                  {allMistakes.map((m) => (
+                    <button key={m} type="button" className="chip-filter jr-mistake-chip" onClick={() => addMistake(m)}>
+                      +{m}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Tags and Suggestions */}
             <div className="jr-tags-section">
@@ -937,7 +959,7 @@ function TradeDetail({ trade, onSaved, allTags, onToggleIgnore, onSelectStock, o
                   onClick={save}
                   disabled={saving}
                 >
-                  {saving ? 'Saving…' : 'Save Notes & Stop'}
+                  {saving ? 'Saving…' : 'Save Journal Entry'}
                 </button>
               </div>
             </div>
@@ -1322,6 +1344,7 @@ export default function JournalTab({ onSelectStock }) {
   const [periodFilter, setPeriodFilter] = useState(null);
   const [binFilter, setBinFilter] = useState(null);
   const [tagFilter, setTagFilter] = useState(null);
+  const [mistakeFilter, setMistakeFilter] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeTradeId, setActiveTradeId] = useState(null);
   const [confirmTrade, setConfirmTrade] = useState(null);
@@ -1443,6 +1466,7 @@ export default function JournalTab({ onSelectStock }) {
       trades: d.trades.map((t) => (t.id === tradeId ? {
         ...t,
         notes: saved.notes,
+        mistakes: saved.mistakes,
         tags: saved.tags,
         initial_stop: saved.initial_stop,
         notes_updated_at: saved.notes_updated_at,
@@ -1455,6 +1479,16 @@ export default function JournalTab({ onSelectStock }) {
 
   const trades = data?.trades || [];
   const allTags = useMemo(() => [...new Set(trades.flatMap((t) => t.tags || []))].sort(), [trades]);
+  const allMistakes = useMemo(() => [
+    ...new Set(
+      trades.flatMap((t) =>
+        (t.mistakes || '')
+          .split(',')
+          .map((m) => m.trim())
+          .filter(Boolean)
+      )
+    ),
+  ].sort(), [trades]);
 
   const filteredTrades = useMemo(() => trades.filter((t) => {
     if (outcome === 'win' && !(t.status === 'CLOSED' && t.pnl > 0)) return false;
@@ -1462,13 +1496,21 @@ export default function JournalTab({ onSelectStock }) {
     if (outcome === 'open' && t.status !== 'OPEN') return false;
     if (periodFilter && !(t.close_date || '').startsWith(periodFilter)) return false;
     if (tagFilter && !(t.tags || []).includes(tagFilter)) return false;
+    if (mistakeFilter) {
+      if (mistakeFilter === '__any__') {
+        if (!(t.mistakes && t.mistakes.trim())) return false;
+      } else {
+        const tradeMistakes = (t.mistakes || '').split(',').map((m) => m.trim());
+        if (!tradeMistakes.includes(mistakeFilter)) return false;
+      }
+    }
     if (binFilter) {
       if (t.status !== 'CLOSED') return false;
       const v = binFilter.mode === 'pct' ? t.pnl_pct : t.pnl;
       if (v === null || v === undefined || v < binFilter.start - 1e-9 || v >= binFilter.end - 1e-9) return false;
     }
     return true;
-  }), [trades, outcome, periodFilter, binFilter, tagFilter]);
+  }), [trades, outcome, periodFilter, binFilter, tagFilter, mistakeFilter]);
 
   const sortedTrades = useMemo(() => {
     const col = COLUMNS.find((c) => c.key === (sort?.key || 'open')) || COLUMNS[0];
@@ -1526,7 +1568,7 @@ export default function JournalTab({ onSelectStock }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeTradeId, handlePrevTrade, handleNextTrade]);
 
-  const hasListFilters = outcome !== 'all' || periodFilter || binFilter || tagFilter || Boolean(account) || showIgnored;
+  const hasListFilters = outcome !== 'all' || periodFilter || binFilter || tagFilter || mistakeFilter || Boolean(account) || showIgnored;
   const presets = [
     { id: 'all', label: 'All' },
     { id: 'ytd', label: 'YTD' },
@@ -1626,6 +1668,13 @@ export default function JournalTab({ onSelectStock }) {
                   {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               )}
+              {allMistakes.length > 0 && (
+                <select className="jr-select" value={mistakeFilter || ''} onChange={(e) => setMistakeFilter(e.target.value || null)} aria-label="Mistake filter">
+                  <option value="">All mistakes</option>
+                  <option value="__any__">⚠️ Any Mistake Logged</option>
+                  {allMistakes.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              )}
               {(data?.ignored_count > 0 || showIgnored) && (
                 <button
                   type="button"
@@ -1644,6 +1693,7 @@ export default function JournalTab({ onSelectStock }) {
               {periodFilter && <button className="chip-filter active" onClick={() => setPeriodFilter(null)}>Period {periodFilter} ✕</button>}
               {binFilter && <button className="chip-filter active" onClick={() => setBinFilter(null)}>{binFilter.label} ✕</button>}
               {tagFilter && <button className="chip-filter active" onClick={() => setTagFilter(null)}>Tag {tagFilter} ✕</button>}
+              {mistakeFilter && <button className="chip-filter active" onClick={() => setMistakeFilter(null)}>Mistake: {mistakeFilter === '__any__' ? 'Any' : mistakeFilter} ✕</button>}
               {outcome !== 'all' && <button className="chip-filter active" onClick={() => setOutcome('all')}>{outcome} ✕</button>}
               {showIgnored && <button className="chip-filter active" onClick={() => setShowIgnored(false)}>Included Excluded ✕</button>}
             </div>
@@ -1705,6 +1755,7 @@ export default function JournalTab({ onSelectStock }) {
             trade={activeTrade}
             onSaved={handleNotesSaved}
             allTags={allTags}
+            allMistakes={allMistakes}
             onToggleIgnore={handleToggleIgnore}
             onSelectStock={onSelectStock}
             onOpenCalculator={handleOpenCalculator}

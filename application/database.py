@@ -106,6 +106,10 @@ class DatabaseManager:
                 conn.execute("ALTER TABLE symbols ADD COLUMN market_cap DOUBLE;")
             except Exception:
                 pass
+            try:
+                conn.execute("ALTER TABLE symbols ADD COLUMN float_shares DOUBLE;")
+            except Exception:
+                pass
             
             # 2. Historical Daily Bars Table
             conn.execute("""
@@ -117,6 +121,7 @@ class DatabaseManager:
                     low DOUBLE NOT NULL,
                     close DOUBLE NOT NULL,
                     volume BIGINT NOT NULL,
+                    vol_20d_ma DOUBLE,
                     vol_50d_ma DOUBLE,
                     rs_score DOUBLE,
                     rs_rank INTEGER,
@@ -246,6 +251,7 @@ class DatabaseManager:
                 ("stage2_days", "INTEGER"),
                 ("weinstein_stage", "INTEGER"),
                 ("normalized_rs", "DOUBLE"),
+                ("vol_20d_ma", "DOUBLE"),
                 ("vol_52w_high", "BIGINT"),
                 ("is_52w_high_vol", "BOOLEAN"),
             ]
@@ -268,6 +274,11 @@ class DatabaseManager:
                     eps_diluted DOUBLE,
                     eps_qoq_growth DOUBLE,
                     total_revenue DOUBLE,
+                    sales_yoy_growth DOUBLE,
+                    eps_seq_qoq_growth DOUBLE,
+                    sales_seq_qoq_growth DOUBLE,
+                    eps_ttm_yoy_growth DOUBLE,
+                    sales_ttm_yoy_growth DOUBLE,
                     inst_holders_count INTEGER,
                     inst_holders_qoq_change INTEGER,
                     inst_ownership_pct DOUBLE,
@@ -276,12 +287,17 @@ class DatabaseManager:
                 );
             """)
 
-            # Migration for quarterly_fundamentals institutional columns
+            # Migration for quarterly_fundamentals growth and institutional columns
             for col_name, col_type in [
+                ("sales_yoy_growth", "DOUBLE"),
+                ("eps_seq_qoq_growth", "DOUBLE"),
+                ("sales_seq_qoq_growth", "DOUBLE"),
+                ("eps_ttm_yoy_growth", "DOUBLE"),
+                ("sales_ttm_yoy_growth", "DOUBLE"),
                 ("inst_holders_count", "INTEGER"),
                 ("inst_holders_qoq_change", "INTEGER"),
                 ("inst_ownership_pct", "DOUBLE"),
-                ("sponsorship_streak", "INTEGER")
+                ("sponsorship_streak", "INTEGER"),
             ]:
                 try:
                     conn.execute(f"ALTER TABLE quarterly_fundamentals ADD COLUMN {col_name} {col_type};")
@@ -334,6 +350,18 @@ class DatabaseManager:
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_inst_sponsorship_sym ON institutional_sponsorship(symbol);")
 
+            # 6. Per-Ticker 5-Minute Intraday Cumulative Volume Profiles (Hybrid ZVR Cache)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS intraday_volume_profiles (
+                    symbol VARCHAR PRIMARY KEY,
+                    as_of_date DATE NOT NULL,
+                    sample_days INTEGER NOT NULL,
+                    avg_daily_vol DOUBLE,
+                    curve_5m DOUBLE[],
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
     def upsert_symbols(self, symbols_data: List[Dict[str, Any]]) -> None:
         """Inserts or updates records in the symbols table."""
         if not symbols_data:
@@ -342,7 +370,7 @@ class DatabaseManager:
         df = pd.DataFrame(symbols_data)
         
         # Ensure correct column ordering and existence
-        columns = ["symbol", "exchange", "name", "asset_type", "active", "ipo_date", "sector", "industry", "next_earnings_date", "market_cap"]
+        columns = ["symbol", "exchange", "name", "asset_type", "active", "ipo_date", "sector", "industry", "next_earnings_date", "market_cap", "float_shares"]
         for col in columns:
             if col not in df.columns:
                 df[col] = None if col != "active" else True
@@ -353,8 +381,8 @@ class DatabaseManager:
             # Using DuckDB's pandas integration
             conn.execute("CREATE OR REPLACE TEMP TABLE temp_symbols AS SELECT * FROM df")
             conn.execute("""
-                INSERT INTO symbols (symbol, exchange, name, asset_type, active, ipo_date, sector, industry, next_earnings_date, market_cap, last_updated)
-                SELECT symbol, exchange, name, asset_type, active, CAST(ipo_date AS VARCHAR), CAST(sector AS VARCHAR), CAST(industry AS VARCHAR), CAST(next_earnings_date AS VARCHAR), CAST(market_cap AS DOUBLE), CURRENT_TIMESTAMP as last_updated
+                INSERT INTO symbols (symbol, exchange, name, asset_type, active, ipo_date, sector, industry, next_earnings_date, market_cap, float_shares, last_updated)
+                SELECT symbol, exchange, name, asset_type, active, CAST(ipo_date AS VARCHAR), CAST(sector AS VARCHAR), CAST(industry AS VARCHAR), CAST(next_earnings_date AS VARCHAR), CAST(market_cap AS DOUBLE), CAST(float_shares AS DOUBLE), CURRENT_TIMESTAMP as last_updated
                 FROM temp_symbols
                 ON CONFLICT (symbol) DO UPDATE SET
                     name = EXCLUDED.name,
@@ -367,9 +395,33 @@ class DatabaseManager:
                     industry = COALESCE(EXCLUDED.industry, symbols.industry),
                     next_earnings_date = COALESCE(EXCLUDED.next_earnings_date, symbols.next_earnings_date),
                     market_cap = COALESCE(EXCLUDED.market_cap, symbols.market_cap),
+                    float_shares = COALESCE(EXCLUDED.float_shares, symbols.float_shares),
                     last_updated = EXCLUDED.last_updated
             """)
             conn.execute("DROP TABLE temp_symbols")
+
+    def update_symbol_fundamentals_meta(self, meta_updates: List[Dict[str, Any]]) -> None:
+        """Batch-updates float_shares, market_cap, and next_earnings_date on existing symbols."""
+        if not meta_updates:
+            return
+        df = pd.DataFrame(meta_updates)
+        for col in ["symbol", "float_shares", "market_cap", "next_earnings_date"]:
+            if col not in df.columns:
+                df[col] = None
+        df = df[["symbol", "float_shares", "market_cap", "next_earnings_date"]]
+        with self.get_connection() as conn:
+            conn.execute("CREATE OR REPLACE TEMP TABLE temp_sym_meta AS SELECT * FROM df")
+            conn.execute("""
+                UPDATE symbols
+                SET
+                    float_shares = COALESCE(CAST(m.float_shares AS DOUBLE), symbols.float_shares),
+                    market_cap = COALESCE(CAST(m.market_cap AS DOUBLE), symbols.market_cap),
+                    next_earnings_date = COALESCE(CAST(m.next_earnings_date AS VARCHAR), symbols.next_earnings_date),
+                    last_updated = CURRENT_TIMESTAMP
+                FROM temp_sym_meta m
+                WHERE symbols.symbol = m.symbol
+            """)
+            conn.execute("DROP TABLE temp_sym_meta")
 
     def deactivate_missing_symbols(self, active_symbols: List[str]) -> int:
         """Marks symbols in the database as active = FALSE if they are not in active_symbols."""
@@ -493,38 +545,91 @@ class DatabaseManager:
             conn.execute("DROP TABLE temp_bars")
 
     def upsert_quarterly_fundamentals(self, df: pd.DataFrame) -> None:
-        """Inserts or updates quarterly fundamental statements."""
+        """Inserts or updates quarterly fundamental statements while preserving sponsorship columns."""
         if df.empty:
             return
             
-        columns = ["symbol", "report_date", "fiscal_quarter", "eps_diluted", "eps_qoq_growth", "total_revenue"]
-        for col in columns:
+        required_cols = ["symbol", "report_date", "fiscal_quarter"]
+        optional_cols = [
+            "eps_diluted",
+            "eps_qoq_growth",
+            "total_revenue",
+            "sales_yoy_growth",
+            "eps_seq_qoq_growth",
+            "sales_seq_qoq_growth",
+            "eps_ttm_yoy_growth",
+            "sales_ttm_yoy_growth",
+        ]
+        df = df.copy()
+        for col in required_cols:
             if col not in df.columns:
-                if col == "eps_qoq_growth":
-                    df[col] = None
-                else:
-                    raise ValueError(f"Required column '{col}' missing from fundamentals DataFrame")
+                raise ValueError(f"Required column '{col}' missing from fundamentals DataFrame")
+        for col in optional_cols:
+            if col not in df.columns:
+                df[col] = None
                     
         df["report_date"] = pd.to_datetime(df["report_date"]).dt.date
+        columns = required_cols + optional_cols
         fund_df = df[columns].copy()
         
         with self.get_connection() as conn:
             conn.execute("CREATE OR REPLACE TEMP TABLE temp_fund AS SELECT * FROM fund_df")
             conn.execute("""
-                INSERT OR REPLACE INTO quarterly_fundamentals (symbol, report_date, fiscal_quarter, eps_diluted, eps_qoq_growth, total_revenue)
-                SELECT symbol, report_date, fiscal_quarter, eps_diluted, eps_qoq_growth, total_revenue
+                INSERT INTO quarterly_fundamentals (
+                    symbol, report_date, fiscal_quarter,
+                    eps_diluted, eps_qoq_growth, total_revenue,
+                    sales_yoy_growth, eps_seq_qoq_growth, sales_seq_qoq_growth,
+                    eps_ttm_yoy_growth, sales_ttm_yoy_growth
+                )
+                SELECT
+                    symbol,
+                    CAST(report_date AS DATE),
+                    fiscal_quarter,
+                    CAST(eps_diluted AS DOUBLE),
+                    CAST(eps_qoq_growth AS DOUBLE),
+                    CAST(total_revenue AS DOUBLE),
+                    CAST(sales_yoy_growth AS DOUBLE),
+                    CAST(eps_seq_qoq_growth AS DOUBLE),
+                    CAST(sales_seq_qoq_growth AS DOUBLE),
+                    CAST(eps_ttm_yoy_growth AS DOUBLE),
+                    CAST(sales_ttm_yoy_growth AS DOUBLE)
                 FROM temp_fund
+                ON CONFLICT (symbol, fiscal_quarter) DO UPDATE SET
+                    report_date = EXCLUDED.report_date,
+                    eps_diluted = COALESCE(EXCLUDED.eps_diluted, quarterly_fundamentals.eps_diluted),
+                    eps_qoq_growth = COALESCE(EXCLUDED.eps_qoq_growth, quarterly_fundamentals.eps_qoq_growth),
+                    total_revenue = COALESCE(EXCLUDED.total_revenue, quarterly_fundamentals.total_revenue),
+                    sales_yoy_growth = COALESCE(EXCLUDED.sales_yoy_growth, quarterly_fundamentals.sales_yoy_growth),
+                    eps_seq_qoq_growth = COALESCE(EXCLUDED.eps_seq_qoq_growth, quarterly_fundamentals.eps_seq_qoq_growth),
+                    sales_seq_qoq_growth = COALESCE(EXCLUDED.sales_seq_qoq_growth, quarterly_fundamentals.sales_seq_qoq_growth),
+                    eps_ttm_yoy_growth = COALESCE(EXCLUDED.eps_ttm_yoy_growth, quarterly_fundamentals.eps_ttm_yoy_growth),
+                    sales_ttm_yoy_growth = COALESCE(EXCLUDED.sales_ttm_yoy_growth, quarterly_fundamentals.sales_ttm_yoy_growth)
             """)
             conn.execute("DROP TABLE temp_fund")
             
-            # Recalculate and fill in missing eps_qoq_growth rates using database context
+            # Recalculate and fill in missing eps_qoq_growth (YoY %) using prior-year quarter (Q-4)
             conn.execute("""
                 UPDATE quarterly_fundamentals
                 SET eps_qoq_growth = ((quarterly_fundamentals.eps_diluted - prior.eps_diluted) / CASE WHEN ABS(prior.eps_diluted) = 0 THEN 0.01 ELSE ABS(prior.eps_diluted) END) * 100
                 FROM quarterly_fundamentals prior
                 WHERE quarterly_fundamentals.symbol = prior.symbol
+                  AND quarterly_fundamentals.eps_diluted IS NOT NULL
+                  AND prior.eps_diluted IS NOT NULL
                   AND CAST(SUBSTRING(quarterly_fundamentals.fiscal_quarter, 1, 4) AS INTEGER) - 1 || SUBSTRING(quarterly_fundamentals.fiscal_quarter, 5) = prior.fiscal_quarter
                   AND (quarterly_fundamentals.eps_qoq_growth IS NULL OR quarterly_fundamentals.eps_qoq_growth = 0)
+            """)
+
+            # Recalculate and fill in missing sales_yoy_growth using prior-year quarter (Q-4)
+            conn.execute("""
+                UPDATE quarterly_fundamentals
+                SET sales_yoy_growth = ((quarterly_fundamentals.total_revenue - prior.total_revenue) / prior.total_revenue) * 100
+                FROM quarterly_fundamentals prior
+                WHERE quarterly_fundamentals.symbol = prior.symbol
+                  AND quarterly_fundamentals.total_revenue IS NOT NULL
+                  AND prior.total_revenue IS NOT NULL
+                  AND prior.total_revenue > 0
+                  AND CAST(SUBSTRING(quarterly_fundamentals.fiscal_quarter, 1, 4) AS INTEGER) - 1 || SUBSTRING(quarterly_fundamentals.fiscal_quarter, 5) = prior.fiscal_quarter
+                  AND quarterly_fundamentals.sales_yoy_growth IS NULL
             """)
 
     def upsert_earnings_calendar(self, records: List[Dict[str, Any]]) -> None:
@@ -861,3 +966,42 @@ class DatabaseManager:
         with self.get_connection() as conn:
             conn.execute("DELETE FROM watchlist_items WHERE watchlist_id = ?", [watchlist_id])
             return True
+
+    def upsert_intraday_volume_profiles(self, profiles: List[Dict[str, Any]]) -> int:
+        """Upserts 78-slot 5-minute intraday cumulative volume profiles into DuckDB."""
+        if not profiles:
+            return 0
+        rows_to_insert = []
+        for p in profiles:
+            sym = (p.get("symbol") or "").strip().upper()
+            curve = p.get("curve_5m")
+            as_of = p.get("as_of_date")
+            sample_days = int(p.get("sample_days") or 0)
+            avg_daily_vol = float(p.get("avg_daily_vol")) if p.get("avg_daily_vol") is not None else None
+            if not sym or not as_of or not curve or len(curve) != 78 or sample_days <= 0:
+                continue
+            rows_to_insert.append((sym, str(as_of)[:10], sample_days, avg_daily_vol, [float(v) for v in curve]))
+        if not rows_to_insert:
+            return 0
+        with self.get_connection() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS intraday_volume_profiles (
+                    symbol VARCHAR PRIMARY KEY,
+                    as_of_date DATE NOT NULL,
+                    sample_days INTEGER NOT NULL,
+                    avg_daily_vol DOUBLE,
+                    curve_5m DOUBLE[],
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            conn.executemany("""
+                INSERT INTO intraday_volume_profiles (symbol, as_of_date, sample_days, avg_daily_vol, curve_5m, updated_at)
+                VALUES (?, CAST(? AS DATE), ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT (symbol) DO UPDATE SET
+                    as_of_date = EXCLUDED.as_of_date,
+                    sample_days = EXCLUDED.sample_days,
+                    avg_daily_vol = EXCLUDED.avg_daily_vol,
+                    curve_5m = EXCLUDED.curve_5m,
+                    updated_at = CURRENT_TIMESTAMP;
+            """, rows_to_insert)
+        return len(rows_to_insert)

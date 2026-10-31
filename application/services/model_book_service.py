@@ -563,10 +563,21 @@ class ModelBookService:
                     s.name, s.sector, s.industry, s.asset_type, s.exchange, s.next_earnings_date,
                     LAG(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as lag_c1,
                     LAG(d.close, 2) OVER (PARTITION BY d.symbol ORDER BY d.date) as lag_c2,
+                    LAG(d.close, 3) OVER (PARTITION BY d.symbol ORDER BY d.date) as lag_c3,
+                    LAG(d.close, 4) OVER (PARTITION BY d.symbol ORDER BY d.date) as lag_c4,
+                    LAG(d.close, 5) OVER (PARTITION BY d.symbol ORDER BY d.date) as lag_c5,
                     LAG(d.open, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as lag_o1,
                     LAG(d.high, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as lag_h1,
                     LAG(d.low, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as lag_l1,
                     LAG(d.volume, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as lag_v1,
+                    AVG(d.close) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 9 PRECEDING AND CURRENT ROW) as sma_10,
+                    AVG(d.close) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) as sma_20,
+                    ROUND((d.close * 0.3839 + 
+                        LAG(d.close, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) * 0.2559 + 
+                        LAG(d.close, 2) OVER (PARTITION BY d.symbol ORDER BY d.date) * 0.1706 + 
+                        LAG(d.close, 3) OVER (PARTITION BY d.symbol ORDER BY d.date) * 0.1137 + 
+                        LAG(d.close, 4) OVER (PARTITION BY d.symbol ORDER BY d.date) * 0.0758), 2) as ema_5,
+                    ROUND((d.close - LAG(d.close, 5) OVER (PARTITION BY d.symbol ORDER BY d.date)) / NULLIF(LAG(d.close, 5) OVER (PARTITION BY d.symbol ORDER BY d.date), 0) * 100.0, 2) as ret_1w,
                     MAX(d.high) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) as max_high_20d,
                     MIN(d.low) OVER (PARTITION BY d.symbol ORDER BY d.date ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING) as min_low_20d,
                     LEAD(d.date, 1) OVER (PARTITION BY d.symbol ORDER BY d.date) as next_date,
@@ -581,11 +592,18 @@ class ModelBookService:
                   AND (s.industry IS NULL OR UPPER(s.industry) NOT LIKE '%ETF%')
                   AND d.symbol NOT IN ('SPY', 'QQQ', 'IWM', 'XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC')
             ),
+            ordered_fundamentals AS (
+                SELECT *
+                FROM quarterly_fundamentals
+                ORDER BY symbol, report_date
+            ),
             candidates AS (
-                SELECT *,
-                    (max_high_20d - min_low_20d) / NULLIF(max_high_20d, 0) * 100 as drawdown_pct
+                SELECT d.*,
+                    (d.max_high_20d - d.min_low_20d) / NULLIF(d.max_high_20d, 0) * 100 as drawdown_pct
                 FROM numbered d
-                WHERE date >= CAST(? AS DATE) AND date <= CAST(? AS DATE)
+                LEFT JOIN symbols s ON d.symbol = s.symbol
+                ASOF LEFT JOIN ordered_fundamentals f ON d.symbol = f.symbol AND d.date >= f.report_date
+                WHERE d.date >= CAST(? AS DATE) AND d.date <= CAST(? AS DATE)
                   AND {where_sql}
             )
             SELECT 
@@ -930,7 +948,7 @@ class ModelBookService:
                 SELECT 
                     d.symbol, d.date, d.open, d.high, d.low, d.close, d.volume,
                     d.vol_50d_ma, COALESCE(d.dollar_vol_50d_ma, d.close * d.vol_50d_ma) as dollar_vol_50d_ma,
-                    d.adr_20d, d.rs_score, d.rs_rank, d.dist_ema10_pct, d.parabolic_runup_pct,
+                    d.adr_20d, d.rs_score, d.rs_rank, d.dist_ema10_pct,
                     d.sma_50, d.sma_150, d.sma_200, d.dist_from_52w_high, d.dist_from_52w_low,
                     d.ti_65, d.ret_1m, d.ret_3m, d.ret_6m,
                     s.name, s.sector, s.industry, s.asset_type, s.exchange, s.next_earnings_date,

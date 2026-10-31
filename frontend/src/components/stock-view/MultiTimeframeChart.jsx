@@ -27,6 +27,8 @@ const MultiTimeframeChart = forwardRef(function MultiTimeframeChart({
   showRsLine = null,
   showEarnings = null,
   showSymbol = null,
+  drawings = null,
+  onDrawingsChange = null,
 }, ref) {
   const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef(null);
@@ -133,6 +135,8 @@ const MultiTimeframeChart = forwardRef(function MultiTimeframeChart({
                   showRsLine={showRsLine}
                   showEarnings={showEarnings}
                   showSymbol={showSymbol}
+                  drawings={drawings}
+                  onDrawingsChange={onDrawingsChange}
                 />
               </div>
 
@@ -180,6 +184,8 @@ const MultiTimeframeChart = forwardRef(function MultiTimeframeChart({
               showRsLine={showRsLine}
               showEarnings={showEarnings}
               showSymbol={showSymbol}
+              drawings={drawings}
+              onDrawingsChange={onDrawingsChange}
             />
           )}
 
