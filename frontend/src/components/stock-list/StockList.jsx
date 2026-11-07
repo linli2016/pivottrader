@@ -5,6 +5,16 @@ import StockListTable from './StockListTable';
 import { FLAG_ORDER } from '../../utils/flagConstants';
 import './StockList.css';
 
+// Helper to extract timestamp in ms for robust sorting by added time
+const getAddedTime = (item) => {
+  if (!item?.added_at) return 0;
+  if (typeof item.added_at === 'number') return item.added_at;
+  if (item.added_at instanceof Date) return item.added_at.getTime();
+  const str = String(item.added_at).replace(' ', 'T');
+  const t = Date.parse(str);
+  return isNaN(t) ? 0 : t;
+};
+
 export default function StockList({
   // Items & Selection
   items = [],
@@ -151,6 +161,9 @@ export default function StockList({
           const orderA = FLAG_ORDER[a.flag_color] ?? 99;
           const orderB = FLAG_ORDER[b.flag_color] ?? 99;
           if (orderA !== orderB) return orderA - orderB;
+          const timeA = getAddedTime(a);
+          const timeB = getAddedTime(b);
+          if (timeA !== timeB) return timeB - timeA;
           return (a.symbol || '').localeCompare(b.symbol || '');
         });
       case 'flag_desc':
@@ -158,6 +171,9 @@ export default function StockList({
           const orderA = FLAG_ORDER[a.flag_color] ?? 99;
           const orderB = FLAG_ORDER[b.flag_color] ?? 99;
           if (orderA !== orderB) return orderB - orderA;
+          const timeA = getAddedTime(a);
+          const timeB = getAddedTime(b);
+          if (timeA !== timeB) return timeA - timeB;
           return (a.symbol || '').localeCompare(b.symbol || '');
         });
       case 'symbol':
@@ -216,7 +232,11 @@ export default function StockList({
       case 'group_rs':
         return copy.sort((a, b) => (b.group_rs_rank ?? b.rs_rank ?? 0) - (a.group_rs_rank ?? a.rs_rank ?? 0));
       case 'added':
-        return copy.sort((a, b) => new Date(b.added_at || 0) - new Date(a.added_at || 0));
+        return copy.sort((a, b) => {
+          const diff = getAddedTime(b) - getAddedTime(a);
+          if (diff !== 0) return diff;
+          return (a.symbol || '').localeCompare(b.symbol || '');
+        });
       default:
         return copy;
     }

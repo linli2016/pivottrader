@@ -2,7 +2,7 @@ import React from 'react';
 import StockListRow from './StockListRow';
 
 const COLUMN_DEFAULTS = {
-  flag: { label: '⚑', align: 'center', sortable: true, sortAsc: 'flag_asc', sortDesc: 'flag_desc', width: '32px', tooltip: 'Flag color. Click to sort by priority (Green → Orange → Blue → Purple → Red).' },
+  flag: { label: '⚑', align: 'center', sortable: true, sortAsc: 'flag_asc', sortDesc: 'flag_desc', width: '32px', tooltip: 'Flag color & added time. Click to sort by flag priority and added time.' },
   symbol: { label: 'Symbol', align: 'left', sortable: true, sortAsc: 'symbol', sortDesc: 'symbol_desc' },
   today_pct: { label: 'Today', align: 'right', sortable: true, sortAsc: 'chg_pct_asc', sortDesc: 'chg_pct_desc' },
   rs_rank: { label: 'RS', align: 'center', sortable: true, sortAsc: 'rs_rank_asc', sortDesc: 'rs_rank', tooltip: 'IBD Relative Strength Rank (1–99). Click to sort.' },

@@ -89,7 +89,11 @@ export default function StockListRow({
                     e.stopPropagation();
                     setShowFlagPicker((prev) => !prev);
                   }}
-                  title={currentFlag ? `${currentFlag.label} (Click to change/clear flag)` : 'Flag stock (Click to set color)'}
+                  title={
+                    currentFlag
+                      ? `${currentFlag.label}${item.added_at ? ` • Added ${item.added_at.slice(0, 16)}` : ''} (Click to change/clear flag)`
+                      : `Flag stock${item.added_at ? ` • Added ${item.added_at.slice(0, 16)}` : ''} (Click to set color)`
+                  }
                   style={{
                     background: 'transparent',
                     border: 'none',

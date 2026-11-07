@@ -11,6 +11,13 @@
 
 .jr-pos { color: #34d399; }
 .jr-neg { color: #fb7185; }
+.jr-arisk-breached {
+  color: #fb7185;
+  font-weight: 600;
+  background: rgba(244, 63, 94, 0.15);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
 .jr-muted { color: var(--text-muted); font-size: 12px; }
 .jr-num { text-align: right; font-variant-numeric: tabular-nums; }
 .jr-open-cur-price { color: #38bdf8; font-weight: 500; }

@@ -579,6 +579,173 @@ class TestJournalService(unittest.TestCase):
             mock_prices.assert_not_called()
 
 
+class TestTradeExcursions(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.tmp.close()
+        self.cfg_tmp = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+        self.cfg_tmp.close()
+        self.svc = JournalService(db_path=self.tmp.name, config_path=self.cfg_tmp.name)
+
+    def tearDown(self):
+        for path in (self.tmp.name, self.cfg_tmp.name):
+            if os.path.exists(path):
+                os.remove(path)
+
+    def test_long_trade_arisk_and_mfe(self):
+        # Long trade: Bought 100 shares @ $100 on 2024-01-10, closed @ $110 on 2024-01-15
+        xml = _statement(
+            _trade_xml("101", "TESTL", "20240110;093500", 100, 100.0, conid="901"),
+            _trade_xml("102", "TESTL", "20240115;153000", -100, 110.0, oc="C", fifo=998.0, conid="901"),
+        )
+        self.svc.import_statement(xml)
+
+        bars_map = {
+            "TESTL": [
+                ("2024-01-10", 96.0, 102.0, 101.0),
+                ("2024-01-11", 97.0, 108.0, 107.0),
+                ("2024-01-12", 94.0, 115.0, 112.0),
+                ("2024-01-15", 108.0, 112.0, 110.0),
+            ]
+        }
+
+        trades = self.svc.get_trades(bars_map=bars_map)
+        self.assertEqual(len(trades), 1)
+        t = trades[0]
+        self.assertEqual(t["status"], "CLOSED")
+        self.assertEqual(t["direction"], "LONG")
+        # aRisk: (100 - 94) / 100 = 6.0%
+        self.assertAlmostEqual(t["actual_risk_pct"], 6.0)
+        self.assertEqual(t["actual_risk_price"], 94.0)
+        self.assertEqual(t["actual_risk_date"], "2024-01-12")
+        # MFE: (115 - 100) / 100 = 15.0%
+        self.assertAlmostEqual(t["mfe_pct"], 15.0)
+        self.assertEqual(t["mfe_price"], 115.0)
+        self.assertEqual(t["mfe_date"], "2024-01-12")
+
+    def test_short_trade_arisk_and_mfe(self):
+        # Short trade: Sold short 50 shares @ $50 on 2024-02-01, covered @ $45 on 2024-02-05
+        xml = _statement(
+            _trade_xml("201", "TESTS", "20240201;093500", -50, 50.0, conid="902"),
+            _trade_xml("202", "TESTS", "20240205;153000", 50, 45.0, oc="C", fifo=248.0, conid="902"),
+        )
+        self.svc.import_statement(xml)
+
+        bars_map = {
+            "TESTS": [
+                ("2024-02-01", 48.0, 52.0, 49.0),
+                ("2024-02-02", 46.0, 54.0, 48.0),
+                ("2024-02-05", 44.0, 48.0, 45.0),
+            ]
+        }
+
+        trades = self.svc.get_trades(bars_map=bars_map)
+        self.assertEqual(len(trades), 1)
+        t = trades[0]
+        self.assertEqual(t["status"], "CLOSED")
+        self.assertEqual(t["direction"], "SHORT")
+        # aRisk for SHORT: worst is highest high (54 - 50) / 50 = 8.0%
+        self.assertAlmostEqual(t["actual_risk_pct"], 8.0)
+        self.assertEqual(t["actual_risk_price"], 54.0)
+        self.assertEqual(t["actual_risk_date"], "2024-02-02")
+        # MFE for SHORT: best is lowest low (50 - 44) / 50 = 12.0%
+        self.assertAlmostEqual(t["mfe_pct"], 12.0)
+        self.assertEqual(t["mfe_price"], 44.0)
+        self.assertEqual(t["mfe_date"], "2024-02-05")
+
+    def test_zero_drawdown_runner(self):
+        # Long trade where stock never dipped below entry
+        xml = _statement(
+            _trade_xml("301", "RUN", "2024-03-01T09:30:00", 100, 20.0, conid="903"),
+            _trade_xml("302", "RUN", "2024-03-05T15:00:00", -100, 25.0, oc="C", fifo=498.0, conid="903"),
+        )
+        self.svc.import_statement(xml)
+        bars_map = {
+            "RUN": [
+                ("2024-03-01", 20.0, 22.0, 21.5),
+                ("2024-03-05", 22.0, 26.0, 25.0),
+            ]
+        }
+        trades = self.svc.get_trades(bars_map=bars_map)
+        t = trades[0]
+        self.assertEqual(t["actual_risk_pct"], 0.0)
+        self.assertAlmostEqual(t["mfe_pct"], 30.0)
+
+        # Check stats aggregation
+        stats = compute_statistics(trades)
+        self.assertEqual(stats["avg_actual_risk_pct"], 0.0)
+        self.assertAlmostEqual(stats["avg_mfe_pct"], 30.0)
+
+    def test_exit_day_lod_uses_exit_price(self):
+        # Long trade: Buy at $100, sell at $97 on exit day. Exit day LoD dropped to $90 after exit.
+        # Day 2 had a low of $96, which is lower than exit price $97.
+        xml = _statement(
+            _trade_xml("401", "EXLOD", "20240401;093500", 100, 100.0, conid="904"),
+            _trade_xml("402", "EXLOD", "20240403;100000", -100, 97.0, oc="C", fifo=-302.0, conid="904"),
+        )
+        self.svc.import_statement(xml)
+        bars_map = {
+            "EXLOD": [
+                ("2024-04-01", 98.0, 102.0, 101.0),
+                ("2024-04-02", 96.0, 105.0, 103.0),
+                ("2024-04-03", 90.0, 104.0, 91.0),  # LoD dropped to 90.0 after exit at 97.0
+            ]
+        }
+        trades = self.svc.get_trades(bars_map=bars_map)
+        t = trades[0]
+        # Should NOT use 90.0! Effective low on 2024-04-03 is exit price 97.0.
+        # Lowest price during trade was 96.0 on 2024-04-02!
+        self.assertAlmostEqual(t["actual_risk_pct"], 4.0)
+        self.assertEqual(t["actual_risk_price"], 96.0)
+        self.assertEqual(t["actual_risk_date"], "2024-04-02")
+
+    def test_exit_day_lowest_price_is_exit_price(self):
+        # Long trade: Buy at $100, sell at $95 on exit day. Exit day LoD was $88.0.
+        # Day 1 low was $98.
+        xml = _statement(
+            _trade_xml("501", "EXLOD2", "20240401;093500", 100, 100.0, conid="905"),
+            _trade_xml("502", "EXLOD2", "20240402;100000", -100, 95.0, oc="C", fifo=-502.0, conid="905"),
+        )
+        self.svc.import_statement(xml)
+        bars_map = {
+            "EXLOD2": [
+                ("2024-04-01", 98.0, 102.0, 101.0),
+                ("2024-04-02", 88.0, 99.0, 89.0),  # LoD was 88.0, but trade exited at 95.0
+            ]
+        }
+        trades = self.svc.get_trades(bars_map=bars_map)
+        t = trades[0]
+        # Exit day was the lowest point, but using exit price $95.0 instead of LoD $88.0
+        self.assertAlmostEqual(t["actual_risk_pct"], 5.0)
+        self.assertEqual(t["actual_risk_price"], 95.0)
+        self.assertEqual(t["actual_risk_date"], "2024-04-02")
+
+    def test_intraday_entry_ignores_prior_morning_lod(self):
+        # Long trade entered late afternoon at 15:28:05 at $109.74 (like INTC)
+        # Entry day had open=104.70, low=104.70, high=111.37, close=108.80
+        # Next day had low=106.40, close=108.60
+        # Subsequent exit at 123.00
+        xml = _statement(
+            _trade_xml("601", "INTC_TEST", "20240917;152805", 10, 109.74, conid="906"),
+            _trade_xml("602", "INTC_TEST", "20240925;100000", -10, 123.00, oc="C", fifo=130.0, conid="906"),
+        )
+        self.svc.import_statement(xml)
+        bars_map = {
+            "INTC_TEST": [
+                ("2024-09-17", 104.70, 111.37, 108.80),  # low was 104.70 at open before 15:28 entry
+                ("2024-09-18", 106.40, 110.50, 108.60),  # actual lowest price after entry
+                ("2024-09-25", 120.00, 125.00, 123.00),
+            ]
+        }
+        trades = self.svc.get_trades(bars_map=bars_map)
+        t = trades[0]
+        # Must NOT use 104.70 (4.59% aRisk)!
+        # Must use 106.40 on 2024-09-18: (109.74 - 106.40) / 109.74 = 3.04%
+        self.assertAlmostEqual(t["actual_risk_pct"], (109.74 - 106.40) / 109.74 * 100.0, places=2)
+        self.assertEqual(t["actual_risk_price"], 106.40)
+        self.assertEqual(t["actual_risk_date"], "2024-09-18")
+
+
 class TestIBKRFlexClient(unittest.TestCase):
     def test_get_retries_on_connection_error(self):
         mock_session = MagicMock()

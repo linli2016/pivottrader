@@ -56,6 +56,36 @@ export const SECTOR_LEGEND_DOTS = [
   { name: 'Utilities', color: '#84cc16' }
 ];
 
+export function sortItemsByField(items, sortBy, sortOrder) {
+  if (!sortBy || !Array.isArray(items)) return items;
+  return [...items].sort((a, b) => {
+    let valA = a[sortBy];
+    let valB = b[sortBy];
+
+    const isMissingA = valA === null || valA === undefined || valA === '' || valA === '-' || valA === '--' || Number.isNaN(valA);
+    const isMissingB = valB === null || valB === undefined || valB === '' || valB === '-' || valB === '--' || Number.isNaN(valB);
+
+    if (isMissingA && isMissingB) return 0;
+    if (isMissingA) return 1;
+    if (isMissingB) return -1;
+
+    // Check if numeric (number or string representation of a number)
+    const numA = typeof valA === 'number' ? valA : parseFloat(String(valA).replace(/[^0-9.-]/g, ''));
+    const numB = typeof valB === 'number' ? valB : parseFloat(String(valB).replace(/[^0-9.-]/g, ''));
+
+    const isNumA = !Number.isNaN(numA) && typeof valA !== 'boolean';
+    const isNumB = !Number.isNaN(numB) && typeof valB !== 'boolean';
+
+    if (isNumA && isNumB) {
+      return sortOrder === 'asc' ? numA - numB : numB - numA;
+    }
+
+    const strA = String(valA).toLowerCase();
+    const strB = String(valB).toLowerCase();
+    return sortOrder === 'asc' ? strA.localeCompare(strB) : strB.localeCompare(strA);
+  });
+}
+
 export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates = [], initialStageFilter = 'all' }) {
   const [activeTab, setActiveTab] = useState('sectors'); // 'sectors', 'industries', or 'themes'
   const [viewMode, setViewMode] = useState('rrg'); // 'rrg' | 'board' | 'heatmap' | 'table'
@@ -101,6 +131,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
   const [expandedSubIndustries, setExpandedSubIndustries] = useState({}); // { [subIndKey]: boolean }
   const [subIndustryConstituents, setSubIndustryConstituents] = useState({}); // { [cacheKey]: [] }
   const [loadingSubIndustries, setLoadingSubIndustries] = useState({});
+  const [subTableSort, setSubTableSort] = useState({}); // { [tableKey]: { sortBy: string, sortOrder: 'asc'|'desc' } }
 
   // Theme Management Modal state
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
@@ -446,14 +477,69 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
     }
   };
 
-  // Sort handler
+  // Sort handler for main table
   const handleSort = (field) => {
     if (sortBy === field) {
       setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'));
     } else {
       setSortBy(field);
-      setSortOrder('desc');
+      // For rank and name, default to ascending; for numerical returns/scores, default to descending
+      setSortOrder(field === 'rank' || field === 'name' ? 'asc' : 'desc');
     }
+  };
+
+  // Sort handler for drill-down tables (industries/themes/stocks)
+  const handleSubTableSort = (tableKey, column, defaultSort = 'desc') => {
+    setSubTableSort((prev) => {
+      const cur = prev[tableKey];
+      if (cur && cur.sortBy === column) {
+        return {
+          ...prev,
+          [tableKey]: { sortBy: column, sortOrder: cur.sortOrder === 'desc' ? 'asc' : 'desc' }
+        };
+      }
+      return {
+        ...prev,
+        [tableKey]: { sortBy: column, sortOrder: defaultSort }
+      };
+    });
+  };
+
+  // Get sorted items for drill-down tables
+  const getSortedSubItems = (items, tableKey, defaultSortBy = 'ret_1w_pct', defaultSortOrder = 'desc') => {
+    const cur = subTableSort[tableKey] || { sortBy: defaultSortBy, sortOrder: defaultSortOrder };
+    return sortItemsByField(items, cur.sortBy, cur.sortOrder);
+  };
+
+  // Render a clickable sortable header for sub-tables
+  const renderSortableTh = (tableKey, column, label, align = 'right', width = null, title = null, defaultSort = 'desc') => {
+    const cur = subTableSort[tableKey];
+    const isActive = cur?.sortBy === column;
+    const arrow = isActive ? (cur.sortOrder === 'desc' ? ' ▼' : ' ▲') : '';
+
+    return (
+      <th
+        onClick={(e) => {
+          e.stopPropagation();
+          handleSubTableSort(tableKey, column, defaultSort);
+        }}
+        aria-sort={isActive ? (cur.sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+        style={{
+          textAlign: align,
+          padding: '6px 10px',
+          width: width || 'auto',
+          cursor: 'pointer',
+          userSelect: 'none',
+          color: isActive ? '#38bdf8' : 'var(--text-muted)',
+          fontWeight: isActive ? 700 : 600,
+          whiteSpace: 'nowrap',
+          transition: 'color 0.15s ease'
+        }}
+        title={title || `Click to sort by ${label}`}
+      >
+        {label}{arrow}
+      </th>
+    );
   };
 
   // Group sectors into 4 RRG quadrants
@@ -536,21 +622,8 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
       });
     }
 
-    // Sort
-    list.sort((a, b) => {
-      let valA = a[sortBy];
-      let valB = b[sortBy];
-
-      if (valA === null || valA === undefined) valA = -999999;
-      if (valB === null || valB === undefined) valB = -999999;
-
-      if (typeof valA === 'string') {
-        return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-      }
-      return sortOrder === 'asc' ? valA - valB : valB - valA;
-    });
-
-    return list;
+    // Sort using numeric-safe, nulls-last comparator
+    return sortItemsByField(list, sortBy, sortOrder);
   }, [data, activeTab, selectedSectorFilter, stageFilter, searchTerm, sortBy, sortOrder]);
 
   const selectedItem = useMemo(() => {
@@ -1739,89 +1812,212 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border-color)', userSelect: 'none', position: 'sticky', top: 0, zIndex: 10, background: '#0e1422' }}>
                 <th
+                  onClick={() => handleSort('rank')}
+                  aria-sort={sortBy === 'rank' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  style={{
+                    textAlign: 'center',
+                    padding: '10px 8px',
+                    cursor: 'pointer',
+                    width: '45px',
+                    color: sortBy === 'rank' ? '#38bdf8' : 'var(--text-secondary)',
+                    fontWeight: sortBy === 'rank' ? 700 : 600,
+                    whiteSpace: 'nowrap'
+                  }}
+                  title="Rank in universe (Click to sort)"
+                >
+                  # {sortBy === 'rank' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
+                </th>
+                <th
                   onClick={() => handleSort('name')}
-                  style={{ textAlign: 'left', padding: '10px 12px', cursor: 'pointer', minWidth: '200px' }}
+                  aria-sort={sortBy === 'name' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  style={{
+                    textAlign: 'left',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    minWidth: '200px',
+                    color: sortBy === 'name' ? '#38bdf8' : 'var(--text-secondary)',
+                    fontWeight: sortBy === 'name' ? 700 : 600
+                  }}
+                  title="Group Name (Click to sort)"
                 >
                   NAME {sortBy === 'name' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th
                   onClick={() => handleSort('stage_num')}
-                  style={{ textAlign: 'center', padding: '10px 12px', cursor: 'pointer', width: '105px', minWidth: '95px', whiteSpace: 'nowrap' }}
-                  title="Stan Weinstein 4-Stage Status (Stage 1 Basing, Stage 2 Advancing, Stage 3 Topping, Stage 4 Declining)"
+                  aria-sort={sortBy === 'stage_num' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  style={{
+                    textAlign: 'center',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    width: '105px',
+                    minWidth: '95px',
+                    whiteSpace: 'nowrap',
+                    color: sortBy === 'stage_num' ? '#38bdf8' : 'var(--text-secondary)',
+                    fontWeight: sortBy === 'stage_num' ? 700 : 600
+                  }}
+                  title="Stan Weinstein 4-Stage Status (Click to sort)"
                 >
                   STAGE {sortBy === 'stage_num' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th
                   onClick={() => handleSort('mansfield_rs')}
-                  style={{ textAlign: 'right', padding: '10px 10px', cursor: 'pointer', width: '105px' }}
-                  title="Mansfield Relative Strength vs SPY (Positive = Outperforming benchmark, Negative = Underperforming)"
+                  aria-sort={sortBy === 'mansfield_rs' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  style={{
+                    textAlign: 'right',
+                    padding: '10px 10px',
+                    cursor: 'pointer',
+                    width: '105px',
+                    color: sortBy === 'mansfield_rs' ? '#38bdf8' : 'var(--text-secondary)',
+                    fontWeight: sortBy === 'mansfield_rs' ? 700 : 600
+                  }}
+                  title="Mansfield Relative Strength vs SPY (Click to sort)"
                 >
                   Mansfield RS {sortBy === 'mansfield_rs' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th
                   onClick={() => handleSort('pct_in_stage2')}
-                  style={{ textAlign: 'right', padding: '10px 10px', cursor: 'pointer', width: '85px' }}
-                  title="% of constituent stocks in Stage 2 (Weinstein Breadth Confirmation)"
+                  aria-sort={sortBy === 'pct_in_stage2' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  style={{
+                    textAlign: 'right',
+                    padding: '10px 10px',
+                    cursor: 'pointer',
+                    width: '85px',
+                    color: sortBy === 'pct_in_stage2' ? '#38bdf8' : 'var(--text-secondary)',
+                    fontWeight: sortBy === 'pct_in_stage2' ? 700 : 600
+                  }}
+                  title="% of constituent stocks in Stage 2 (Click to sort)"
                 >
                   % in S2 {sortBy === 'pct_in_stage2' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th
                   onClick={() => handleSort('today_pct')}
-                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '80px' }}
+                  aria-sort={sortBy === 'today_pct' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  style={{
+                    textAlign: 'right',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    width: '80px',
+                    color: sortBy === 'today_pct' ? '#38bdf8' : 'var(--text-secondary)',
+                    fontWeight: sortBy === 'today_pct' ? 700 : 600
+                  }}
+                  title="Today Return % (Click to sort)"
                 >
                   Today {sortBy === 'today_pct' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th
                   onClick={() => handleSort('ret_1w_pct')}
-                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '80px' }}
+                  aria-sort={sortBy === 'ret_1w_pct' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  style={{
+                    textAlign: 'right',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    width: '80px',
+                    color: sortBy === 'ret_1w_pct' ? '#38bdf8' : 'var(--text-secondary)',
+                    fontWeight: sortBy === 'ret_1w_pct' ? 700 : 600
+                  }}
+                  title="1-Week Return % (Click to sort)"
                 >
                   1W {sortBy === 'ret_1w_pct' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th
                   onClick={() => handleSort('ret_1m_pct')}
-                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '80px' }}
+                  aria-sort={sortBy === 'ret_1m_pct' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  style={{
+                    textAlign: 'right',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    width: '80px',
+                    color: sortBy === 'ret_1m_pct' ? '#38bdf8' : 'var(--text-secondary)',
+                    fontWeight: sortBy === 'ret_1m_pct' ? 700 : 600
+                  }}
+                  title="1-Month Return % (Click to sort)"
                 >
                   1M {sortBy === 'ret_1m_pct' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th
                   onClick={() => handleSort('ret_3m_pct')}
-                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '80px' }}
+                  aria-sort={sortBy === 'ret_3m_pct' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  style={{
+                    textAlign: 'right',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    width: '80px',
+                    color: sortBy === 'ret_3m_pct' ? '#38bdf8' : 'var(--text-secondary)',
+                    fontWeight: sortBy === 'ret_3m_pct' ? 700 : 600
+                  }}
+                  title="3-Month Return % (Click to sort)"
                 >
                   3M {sortBy === 'ret_3m_pct' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th
                   onClick={() => handleSort('ret_ytd_pct')}
-                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '80px' }}
+                  aria-sort={sortBy === 'ret_ytd_pct' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  style={{
+                    textAlign: 'right',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    width: '80px',
+                    color: sortBy === 'ret_ytd_pct' ? '#38bdf8' : 'var(--text-secondary)',
+                    fontWeight: sortBy === 'ret_ytd_pct' ? 700 : 600
+                  }}
+                  title="YTD Return % (Click to sort)"
                 >
                   YTD {sortBy === 'ret_ytd_pct' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th
                   onClick={() => handleSort('rs_rank')}
-                  style={{ textAlign: 'center', padding: '10px 12px', cursor: 'pointer', width: '75px' }}
+                  aria-sort={sortBy === 'rs_rank' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  style={{
+                    textAlign: 'center',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    width: '75px',
+                    color: sortBy === 'rs_rank' ? '#38bdf8' : 'var(--text-secondary)',
+                    fontWeight: sortBy === 'rs_rank' ? 700 : 600
+                  }}
+                  title="Relative Strength Rank 1-99 (Click to sort)"
                 >
                   RS Rank {sortBy === 'rs_rank' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th
                   onClick={() => handleSort('dist_52wh_pct')}
-                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '85px' }}
+                  aria-sort={sortBy === 'dist_52wh_pct' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  style={{
+                    textAlign: 'right',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    width: '85px',
+                    color: sortBy === 'dist_52wh_pct' ? '#38bdf8' : 'var(--text-secondary)',
+                    fontWeight: sortBy === 'dist_52wh_pct' ? 700 : 600
+                  }}
+                  title="Distance from 52-Week High % (Click to sort)"
                 >
                   52wH {sortBy === 'dist_52wh_pct' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 <th
                   onClick={() => handleSort('rvol_pct')}
-                  style={{ textAlign: 'right', padding: '10px 12px', cursor: 'pointer', width: '80px' }}
+                  aria-sort={sortBy === 'rvol_pct' ? (sortOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+                  style={{
+                    textAlign: 'right',
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    width: '80px',
+                    color: sortBy === 'rvol_pct' ? '#38bdf8' : 'var(--text-secondary)',
+                    fontWeight: sortBy === 'rvol_pct' ? 700 : 600
+                  }}
+                  title="Relative Volume % (Click to sort)"
                 >
                   RVol {sortBy === 'rvol_pct' ? (sortOrder === 'desc' ? '▼' : '▲') : ''}
                 </th>
                 {activeTab === 'themes' && (
-                  <th style={{ textAlign: 'center', width: '70px', padding: '10px' }}>Actions</th>
+                  <th style={{ textAlign: 'center', width: '70px', padding: '10px', color: 'var(--text-muted)' }}>Actions</th>
                 )}
               </tr>
             </thead>
             <tbody>
               {filteredAndSortedGroups.length === 0 ? (
                 <tr>
-                  <td colSpan={activeTab === 'themes' ? 13 : 12} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                  <td colSpan={activeTab === 'themes' ? 14 : 13} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
                     No {activeTab} matched your search or stage filter.
                   </td>
                 </tr>
@@ -1860,6 +2056,11 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                         }}
                         className={`group-row ${selectedGroupName === group.name ? 'selected-group-row' : ''}`}
                       >
+                        {/* Rank # */}
+                        <td style={{ textAlign: 'center', padding: '11px 8px', color: 'var(--text-muted)', fontWeight: 700, fontSize: '12px', width: '45px' }}>
+                          #{group.rank || '-'}
+                        </td>
+
                         {/* Group Name + Chevron */}
                         <td style={{ padding: '11px 12px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1874,22 +2075,10 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                             >
                               ▶
                             </span>
-                            {activeTab === 'sectors' && group.rank && (
-                              <span
-                                style={{
-                                  fontSize: '11px',
-                                  fontWeight: 700,
-                                  color: 'var(--text-muted)',
-                                  minWidth: '24px'
-                                }}
-                              >
-                                #{group.rank}
-                              </span>
-                            )}
                             <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '13px' }}>
                               {group.name}
                             </span>
-                            {activeTab === 'sectors' && group.rank_delta !== undefined && group.rank_delta !== null && (
+                            {group.rank_delta !== undefined && group.rank_delta !== null && (
                               <span
                                 style={{
                                   fontSize: '11px',
@@ -1901,7 +2090,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                                 {group.rank_delta > 0 ? `▲ ${group.rank_delta}` : group.rank_delta < 0 ? `▼ ${Math.abs(group.rank_delta)}` : '—'}
                               </span>
                             )}
-                            {activeTab === 'sectors' && group.quadrant && (
+                            {group.quadrant && (
                               <span
                                 className="pill"
                                 style={{
@@ -2027,7 +2216,7 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                       {isExpanded && (
                         <tr>
                           <td
-                            colSpan={activeTab === 'themes' ? 13 : 12}
+                            colSpan={activeTab === 'themes' ? 14 : 13}
                             style={{
                               padding: '14px 16px 22px 28px',
                               backgroundColor: 'rgba(0, 0, 0, 0.38)',
@@ -2107,139 +2296,145 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                                       No industry groups found in this sector.
                                     </div>
                                   ) : (
-                                    <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                                      <thead>
-                                        <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
-                                          <th style={{ textAlign: 'left', padding: '6px 10px' }}>Industry Group</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 10px', width: '80px' }}>Today</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 10px', width: '80px' }}>1W</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 10px', width: '80px' }}>1M</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 10px', width: '80px' }}>3M</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 10px', width: '80px' }}>YTD</th>
-                                          <th style={{ textAlign: 'center', padding: '6px 10px', width: '75px' }}>RS Rank</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 10px', width: '85px' }}>52wH</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 10px', width: '80px' }}>RVol</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {currentSectorIndustries.map((subInd) => {
-                                          const subKey = `${group.name}:${subInd.name}`;
-                                          const isSubExpanded = !!expandedSubIndustries[subKey];
-                                          const subCacheKey = `ind:${subInd.name}:${dateKey}`;
-                                          const subStocks = subIndustryConstituents[subCacheKey] || [];
-                                          const isSubLoading = !!loadingSubIndustries[subKey];
+                                    (() => {
+                                      const sortedSectorIndustries = getSortedSubItems(currentSectorIndustries, `sec-ind:${group.name}`, 'ret_1w_pct', 'desc');
+                                      return (
+                                        <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+                                          <thead>
+                                            <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                                              {renderSortableTh(`sec-ind:${group.name}`, 'name', 'Industry Group', 'left', null, 'Sort by Industry Name', 'asc')}
+                                              {renderSortableTh(`sec-ind:${group.name}`, 'today_pct', 'Today', 'right', '80px', 'Sort by Today return')}
+                                              {renderSortableTh(`sec-ind:${group.name}`, 'ret_1w_pct', '1W', 'right', '80px', 'Sort by 1-Week return')}
+                                              {renderSortableTh(`sec-ind:${group.name}`, 'ret_1m_pct', '1M', 'right', '80px', 'Sort by 1-Month return')}
+                                              {renderSortableTh(`sec-ind:${group.name}`, 'ret_3m_pct', '3M', 'right', '80px', 'Sort by 3-Month return')}
+                                              {renderSortableTh(`sec-ind:${group.name}`, 'ret_ytd_pct', 'YTD', 'right', '80px', 'Sort by YTD return')}
+                                              {renderSortableTh(`sec-ind:${group.name}`, 'rs_rank', 'RS Rank', 'center', '75px', 'Sort by RS Rank')}
+                                              {renderSortableTh(`sec-ind:${group.name}`, 'dist_52wh_pct', '52wH', 'right', '85px', 'Sort by 52w High distance')}
+                                              {renderSortableTh(`sec-ind:${group.name}`, 'rvol_pct', 'RVol', 'right', '80px', 'Sort by Relative Volume')}
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {sortedSectorIndustries.map((subInd) => {
+                                              const subKey = `${group.name}:${subInd.name}`;
+                                              const isSubExpanded = !!expandedSubIndustries[subKey];
+                                              const subCacheKey = `ind:${subInd.name}:${dateKey}`;
+                                              const subStocks = subIndustryConstituents[subCacheKey] || [];
+                                              const isSubLoading = !!loadingSubIndustries[subKey];
+                                              const sortedSubStocks = getSortedSubItems(subStocks, `sub-stk:${subKey}`, 'rs_rank', 'desc');
 
-                                          return (
-                                            <React.Fragment key={subInd.name}>
-                                              <tr
-                                                onClick={() => toggleSubIndustryExpand(group.name, subInd.name)}
-                                                style={{
-                                                  borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
-                                                  cursor: 'pointer',
-                                                  backgroundColor: isSubExpanded ? 'rgba(56, 189, 248, 0.05)' : 'transparent'
-                                                }}
-                                                className="group-row"
-                                              >
-                                                <td style={{ padding: '7px 10px' }}>
-                                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                    <span
-                                                      style={{
-                                                        display: 'inline-block',
-                                                        transform: isSubExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                                                        transition: 'transform 0.2s ease',
-                                                        fontSize: '10px',
-                                                        color: isSubExpanded ? '#38bdf8' : 'var(--text-muted)'
-                                                      }}
-                                                    >
-                                                      ▶
-                                                    </span>
-                                                    <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                                                      {subInd.name}
-                                                    </span>
-                                                    <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                                                      ({subInd.stock_count})
-                                                    </span>
-                                                  </div>
-                                                </td>
-                                                <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(subInd.today_pct)}</td>
-                                                <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(subInd.ret_1w_pct)}</td>
-                                                <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(subInd.ret_1m_pct)}</td>
-                                                <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(subInd.ret_3m_pct)}</td>
-                                                <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(subInd.ret_ytd_pct)}</td>
-                                                <td style={{ textAlign: 'center', padding: '7px 10px' }}>{getRsRankBadge(subInd.rs_rank)}</td>
-                                                <td style={{ textAlign: 'right', padding: '7px 10px' }}>{format52wH(subInd.dist_52wh_pct)}</td>
-                                                <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatRVol(subInd.rvol_pct)}</td>
-                                              </tr>
-
-                                              {/* 2nd Level Expansion: Stocks in this Sub-Industry */}
-                                              {isSubExpanded && (
-                                                <tr>
-                                                  <td
-                                                    colSpan={9}
+                                              return (
+                                                <React.Fragment key={subInd.name}>
+                                                  <tr
+                                                    onClick={() => toggleSubIndustryExpand(group.name, subInd.name)}
                                                     style={{
-                                                      padding: '10px 14px 14px 34px',
-                                                      backgroundColor: 'rgba(0, 0, 0, 0.45)',
-                                                      borderBottom: '1px solid rgba(255, 255, 255, 0.06)'
+                                                      borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
+                                                      cursor: 'pointer',
+                                                      backgroundColor: isSubExpanded ? 'rgba(56, 189, 248, 0.05)' : 'transparent'
                                                     }}
+                                                    className="group-row"
                                                   >
-                                                    {isSubLoading ? (
-                                                      <div style={{ padding: '8px', color: 'var(--text-secondary)', fontSize: '11px' }}>
-                                                        ⏳ Loading stocks for <strong>{subInd.name}</strong>...
+                                                    <td style={{ padding: '7px 10px' }}>
+                                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span
+                                                          style={{
+                                                            display: 'inline-block',
+                                                            transform: isSubExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                                            transition: 'transform 0.2s ease',
+                                                            fontSize: '10px',
+                                                            color: isSubExpanded ? '#38bdf8' : 'var(--text-muted)'
+                                                          }}
+                                                        >
+                                                          ▶
+                                                        </span>
+                                                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                                          {subInd.name}
+                                                        </span>
+                                                        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                                                          ({subInd.stock_count})
+                                                        </span>
                                                       </div>
-                                                    ) : subStocks.length === 0 ? (
-                                                      <div style={{ padding: '6px', color: 'var(--text-muted)', fontSize: '11px' }}>
-                                                        No stocks found.
-                                                      </div>
-                                                    ) : (
-                                                      <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
-                                                        <thead>
-                                                          <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                                                            <th style={{ textAlign: 'left', padding: '5px 6px', width: '80px' }}>Symbol</th>
-                                                            <th style={{ textAlign: 'left', padding: '5px 6px' }}>Company Name</th>
-                                                            <th style={{ textAlign: 'right', padding: '5px 6px', width: '70px' }}>Price</th>
-                                                            <th style={{ textAlign: 'right', padding: '5px 6px', width: '65px' }}>Today</th>
-                                                            <th style={{ textAlign: 'right', padding: '5px 6px', width: '65px' }}>1W</th>
-                                                            <th style={{ textAlign: 'right', padding: '5px 6px', width: '65px' }}>1M</th>
-                                                            <th style={{ textAlign: 'center', padding: '5px 6px', width: '65px' }}>RS Rank</th>
-                                                            <th style={{ textAlign: 'right', padding: '5px 6px', width: '70px' }}>52wH</th>
-                                                            <th style={{ textAlign: 'right', padding: '5px 6px', width: '65px' }}>RVol</th>
-                                                            <th style={{ textAlign: 'left', padding: '5px 6px', width: '150px' }}>Active Setups</th>
-                                                          </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                          {subStocks.map((stock) => (
-                                                            <tr
-                                                              key={stock.symbol}
-                                                              onClick={() => onSelectStock(stock, subStocks)}
-                                                              style={{
-                                                                borderBottom: '1px solid rgba(255, 255, 255, 0.02)',
-                                                                cursor: 'pointer'
-                                                              }}
-                                                              className="stock-hover-row"
-                                                            >
-                                                              <td style={{ padding: '5px 6px', fontWeight: 800, color: '#38bdf8' }}>{stock.symbol}</td>
-                                                              <td style={{ padding: '5px 6px', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stock.name}</td>
-                                                              <td style={{ textAlign: 'right', padding: '5px 6px', fontWeight: 600 }}>${stock.close?.toFixed(2)}</td>
-                                                              <td style={{ textAlign: 'right', padding: '5px 6px' }}>{formatReturn(stock.today_pct)}</td>
-                                                              <td style={{ textAlign: 'right', padding: '5px 6px' }}>{formatReturn(stock.ret_1w_pct)}</td>
-                                                              <td style={{ textAlign: 'right', padding: '5px 6px' }}>{formatReturn(stock.ret_1m_pct)}</td>
-                                                              <td style={{ textAlign: 'center', padding: '5px 6px' }}>{getRsRankBadge(stock.rs_rank)}</td>
-                                                              <td style={{ textAlign: 'right', padding: '5px 6px' }}>{format52wH(stock.dist_52wh_pct)}</td>
-                                                              <td style={{ textAlign: 'right', padding: '5px 6px' }}>{formatRVol(stock.rvol_pct)}</td>
-                                                              <td style={{ padding: '5px 6px' }}>{renderSetupBadges(stock.setups)}</td>
-                                                            </tr>
-                                                          ))}
-                                                        </tbody>
-                                                      </table>
-                                                    )}
-                                                  </td>
-                                                </tr>
-                                              )}
-                                            </React.Fragment>
-                                          );
-                                        })}
-                                      </tbody>
-                                    </table>
+                                                    </td>
+                                                    <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(subInd.today_pct)}</td>
+                                                    <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(subInd.ret_1w_pct)}</td>
+                                                    <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(subInd.ret_1m_pct)}</td>
+                                                    <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(subInd.ret_3m_pct)}</td>
+                                                    <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(subInd.ret_ytd_pct)}</td>
+                                                    <td style={{ textAlign: 'center', padding: '7px 10px' }}>{getRsRankBadge(subInd.rs_rank)}</td>
+                                                    <td style={{ textAlign: 'right', padding: '7px 10px' }}>{format52wH(subInd.dist_52wh_pct)}</td>
+                                                    <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatRVol(subInd.rvol_pct)}</td>
+                                                  </tr>
+
+                                                  {/* 2nd Level Expansion: Stocks in this Sub-Industry */}
+                                                  {isSubExpanded && (
+                                                    <tr>
+                                                      <td
+                                                        colSpan={9}
+                                                        style={{
+                                                          padding: '10px 14px 14px 34px',
+                                                          backgroundColor: 'rgba(0, 0, 0, 0.45)',
+                                                          borderBottom: '1px solid rgba(255, 255, 255, 0.06)'
+                                                        }}
+                                                      >
+                                                        {isSubLoading ? (
+                                                          <div style={{ padding: '8px', color: 'var(--text-secondary)', fontSize: '11px' }}>
+                                                            ⏳ Loading stocks for <strong>{subInd.name}</strong>...
+                                                          </div>
+                                                        ) : subStocks.length === 0 ? (
+                                                          <div style={{ padding: '6px', color: 'var(--text-muted)', fontSize: '11px' }}>
+                                                            No stocks found.
+                                                          </div>
+                                                        ) : (
+                                                          <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
+                                                            <thead>
+                                                              <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                                                                {renderSortableTh(`sub-stk:${subKey}`, 'symbol', 'Symbol', 'left', '80px', 'Sort by Symbol', 'asc')}
+                                                                {renderSortableTh(`sub-stk:${subKey}`, 'name', 'Company Name', 'left', null, 'Sort by Company Name', 'asc')}
+                                                                {renderSortableTh(`sub-stk:${subKey}`, 'close', 'Price', 'right', '70px', 'Sort by Price')}
+                                                                {renderSortableTh(`sub-stk:${subKey}`, 'today_pct', 'Today', 'right', '65px', 'Sort by Today return')}
+                                                                {renderSortableTh(`sub-stk:${subKey}`, 'ret_1w_pct', '1W', 'right', '65px', 'Sort by 1-Week return')}
+                                                                {renderSortableTh(`sub-stk:${subKey}`, 'ret_1m_pct', '1M', 'right', '65px', 'Sort by 1-Month return')}
+                                                                {renderSortableTh(`sub-stk:${subKey}`, 'rs_rank', 'RS Rank', 'center', '65px', 'Sort by RS Rank')}
+                                                                {renderSortableTh(`sub-stk:${subKey}`, 'dist_52wh_pct', '52wH', 'right', '70px', 'Sort by 52w High distance')}
+                                                                {renderSortableTh(`sub-stk:${subKey}`, 'rvol_pct', 'RVol', 'right', '65px', 'Sort by Relative Volume')}
+                                                                <th style={{ textAlign: 'left', padding: '5px 6px', width: '150px' }}>Active Setups</th>
+                                                              </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                              {sortedSubStocks.map((stock) => (
+                                                                <tr
+                                                                  key={stock.symbol}
+                                                                  onClick={() => onSelectStock(stock, sortedSubStocks)}
+                                                                  style={{
+                                                                    borderBottom: '1px solid rgba(255, 255, 255, 0.02)',
+                                                                    cursor: 'pointer'
+                                                                  }}
+                                                                  className="stock-hover-row"
+                                                                >
+                                                                  <td style={{ padding: '5px 6px', fontWeight: 800, color: '#38bdf8' }}>{stock.symbol}</td>
+                                                                  <td style={{ padding: '5px 6px', color: 'var(--text-secondary)', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stock.name}</td>
+                                                                  <td style={{ textAlign: 'right', padding: '5px 6px', fontWeight: 600 }}>${stock.close?.toFixed(2)}</td>
+                                                                  <td style={{ textAlign: 'right', padding: '5px 6px' }}>{formatReturn(stock.today_pct)}</td>
+                                                                  <td style={{ textAlign: 'right', padding: '5px 6px' }}>{formatReturn(stock.ret_1w_pct)}</td>
+                                                                  <td style={{ textAlign: 'right', padding: '5px 6px' }}>{formatReturn(stock.ret_1m_pct)}</td>
+                                                                  <td style={{ textAlign: 'center', padding: '5px 6px' }}>{getRsRankBadge(stock.rs_rank)}</td>
+                                                                  <td style={{ textAlign: 'right', padding: '5px 6px' }}>{format52wH(stock.dist_52wh_pct)}</td>
+                                                                  <td style={{ textAlign: 'right', padding: '5px 6px' }}>{formatRVol(stock.rvol_pct)}</td>
+                                                                  <td style={{ padding: '5px 6px' }}>{renderSetupBadges(stock.setups)}</td>
+                                                                </tr>
+                                                              ))}
+                                                            </tbody>
+                                                          </table>
+                                                        )}
+                                                      </td>
+                                                    </tr>
+                                                  )}
+                                                </React.Fragment>
+                                              );
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      );
+                                    })()
                                   )
                                 )}
 
@@ -2250,41 +2445,46 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                                       No active momentum themes mapped to this sector.
                                     </div>
                                   ) : (
-                                    <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                                      <thead>
-                                        <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
-                                          <th style={{ textAlign: 'left', padding: '6px 10px' }}>Theme</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 10px', width: '80px' }}>Today</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 10px', width: '80px' }}>1W</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 10px', width: '80px' }}>1M</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 10px', width: '80px' }}>3M</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 10px', width: '80px' }}>YTD</th>
-                                          <th style={{ textAlign: 'center', padding: '6px 10px', width: '75px' }}>RS Rank</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 10px', width: '85px' }}>52wH</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 10px', width: '80px' }}>RVol</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {currentSectorThemes.map((th) => (
-                                          <tr key={th.name} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
-                                            <td style={{ padding: '7px 10px' }}>
-                                              <span style={{ fontWeight: 600, color: '#38bdf8' }}>{th.name}</span>
-                                              <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: '6px' }}>
-                                                ({th.stock_count} stocks: {th.top_symbols?.join(', ')})
-                                              </span>
-                                            </td>
-                                            <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(th.today_pct)}</td>
-                                            <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(th.ret_1w_pct)}</td>
-                                            <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(th.ret_1m_pct)}</td>
-                                            <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(th.ret_3m_pct)}</td>
-                                            <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(th.ret_ytd_pct)}</td>
-                                            <td style={{ textAlign: 'center', padding: '7px 10px' }}>{getRsRankBadge(th.rs_rank)}</td>
-                                            <td style={{ textAlign: 'right', padding: '7px 10px' }}>{format52wH(th.dist_52wh_pct)}</td>
-                                            <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatRVol(th.rvol_pct)}</td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
+                                    (() => {
+                                      const sortedSectorThemes = getSortedSubItems(currentSectorThemes, `sec-th:${group.name}`, 'ret_1w_pct', 'desc');
+                                      return (
+                                        <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+                                          <thead>
+                                            <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                                              {renderSortableTh(`sec-th:${group.name}`, 'name', 'Theme', 'left', null, 'Sort by Theme Name', 'asc')}
+                                              {renderSortableTh(`sec-th:${group.name}`, 'today_pct', 'Today', 'right', '80px', 'Sort by Today return')}
+                                              {renderSortableTh(`sec-th:${group.name}`, 'ret_1w_pct', '1W', 'right', '80px', 'Sort by 1-Week return')}
+                                              {renderSortableTh(`sec-th:${group.name}`, 'ret_1m_pct', '1M', 'right', '80px', 'Sort by 1-Month return')}
+                                              {renderSortableTh(`sec-th:${group.name}`, 'ret_3m_pct', '3M', 'right', '80px', 'Sort by 3-Month return')}
+                                              {renderSortableTh(`sec-th:${group.name}`, 'ret_ytd_pct', 'YTD', 'right', '80px', 'Sort by YTD return')}
+                                              {renderSortableTh(`sec-th:${group.name}`, 'rs_rank', 'RS Rank', 'center', '75px', 'Sort by RS Rank')}
+                                              {renderSortableTh(`sec-th:${group.name}`, 'dist_52wh_pct', '52wH', 'right', '85px', 'Sort by 52w High distance')}
+                                              {renderSortableTh(`sec-th:${group.name}`, 'rvol_pct', 'RVol', 'right', '80px', 'Sort by Relative Volume')}
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {sortedSectorThemes.map((th) => (
+                                              <tr key={th.name} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
+                                                <td style={{ padding: '7px 10px' }}>
+                                                  <span style={{ fontWeight: 600, color: '#38bdf8' }}>{th.name}</span>
+                                                  <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: '6px' }}>
+                                                    ({th.stock_count} stocks: {th.top_symbols?.join(', ')})
+                                                  </span>
+                                                </td>
+                                                <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(th.today_pct)}</td>
+                                                <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(th.ret_1w_pct)}</td>
+                                                <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(th.ret_1m_pct)}</td>
+                                                <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(th.ret_3m_pct)}</td>
+                                                <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatReturn(th.ret_ytd_pct)}</td>
+                                                <td style={{ textAlign: 'center', padding: '7px 10px' }}>{getRsRankBadge(th.rs_rank)}</td>
+                                                <td style={{ textAlign: 'right', padding: '7px 10px' }}>{format52wH(th.dist_52wh_pct)}</td>
+                                                <td style={{ textAlign: 'right', padding: '7px 10px' }}>{formatRVol(th.rvol_pct)}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      );
+                                    })()
                                   )
                                 )}
 
@@ -2295,46 +2495,51 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                                       No stocks found in this sector.
                                     </div>
                                   ) : (
-                                    <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                                      <thead>
-                                        <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                                          <th style={{ textAlign: 'left', padding: '6px 8px', width: '90px' }}>Symbol</th>
-                                          <th style={{ textAlign: 'left', padding: '6px 8px' }}>Company Name</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 8px', width: '80px' }}>Price</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 8px', width: '75px' }}>Today</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 8px', width: '75px' }}>1W</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 8px', width: '75px' }}>1M</th>
-                                          <th style={{ textAlign: 'center', padding: '6px 8px', width: '70px' }}>RS Rank</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 8px', width: '75px' }}>52wH</th>
-                                          <th style={{ textAlign: 'right', padding: '6px 8px', width: '75px' }}>RVol</th>
-                                          <th style={{ textAlign: 'left', padding: '6px 8px', width: '160px' }}>Active Setups</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {currentSectorStocks.slice(0, 30).map((stock) => (
-                                          <tr
-                                            key={stock.symbol}
-                                            onClick={() => onSelectStock(stock, currentSectorStocks)}
-                                            style={{
-                                              borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
-                                              cursor: 'pointer'
-                                            }}
-                                            className="stock-hover-row"
-                                          >
-                                            <td style={{ padding: '6px 8px', fontWeight: 800, color: '#38bdf8' }}>{stock.symbol}</td>
-                                            <td style={{ padding: '6px 8px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stock.name}</td>
-                                            <td style={{ textAlign: 'right', padding: '6px 8px', fontWeight: 600 }}>${stock.close?.toFixed(2)}</td>
-                                            <td style={{ textAlign: 'right', padding: '6px 8px' }}>{formatReturn(stock.today_pct)}</td>
-                                            <td style={{ textAlign: 'right', padding: '6px 8px' }}>{formatReturn(stock.ret_1w_pct)}</td>
-                                            <td style={{ textAlign: 'right', padding: '6px 8px' }}>{formatReturn(stock.ret_1m_pct)}</td>
-                                            <td style={{ textAlign: 'center', padding: '6px 8px' }}>{getRsRankBadge(stock.rs_rank)}</td>
-                                            <td style={{ textAlign: 'right', padding: '6px 8px' }}>{format52wH(stock.dist_52wh_pct)}</td>
-                                            <td style={{ textAlign: 'right', padding: '6px 8px' }}>{formatRVol(stock.rvol_pct)}</td>
-                                            <td style={{ padding: '6px 8px' }}>{renderSetupBadges(stock.setups)}</td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
+                                    (() => {
+                                      const sortedSectorStocks = getSortedSubItems(currentSectorStocks, `sec-stk:${group.name}`, 'rs_rank', 'desc');
+                                      return (
+                                        <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+                                          <thead>
+                                            <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                                              {renderSortableTh(`sec-stk:${group.name}`, 'symbol', 'Symbol', 'left', '90px', 'Sort by Symbol', 'asc')}
+                                              {renderSortableTh(`sec-stk:${group.name}`, 'name', 'Company Name', 'left', null, 'Sort by Company Name', 'asc')}
+                                              {renderSortableTh(`sec-stk:${group.name}`, 'close', 'Price', 'right', '80px', 'Sort by Price')}
+                                              {renderSortableTh(`sec-stk:${group.name}`, 'today_pct', 'Today', 'right', '75px', 'Sort by Today return')}
+                                              {renderSortableTh(`sec-stk:${group.name}`, 'ret_1w_pct', '1W', 'right', '75px', 'Sort by 1-Week return')}
+                                              {renderSortableTh(`sec-stk:${group.name}`, 'ret_1m_pct', '1M', 'right', '75px', 'Sort by 1-Month return')}
+                                              {renderSortableTh(`sec-stk:${group.name}`, 'rs_rank', 'RS Rank', 'center', '70px', 'Sort by RS Rank')}
+                                              {renderSortableTh(`sec-stk:${group.name}`, 'dist_52wh_pct', '52wH', 'right', '75px', 'Sort by 52w High distance')}
+                                              {renderSortableTh(`sec-stk:${group.name}`, 'rvol_pct', 'RVol', 'right', '75px', 'Sort by Relative Volume')}
+                                              <th style={{ textAlign: 'left', padding: '6px 8px', width: '160px' }}>Active Setups</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {sortedSectorStocks.slice(0, 30).map((stock) => (
+                                              <tr
+                                                key={stock.symbol}
+                                                onClick={() => onSelectStock(stock, sortedSectorStocks)}
+                                                style={{
+                                                  borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
+                                                  cursor: 'pointer'
+                                                }}
+                                                className="stock-hover-row"
+                                              >
+                                                <td style={{ padding: '6px 8px', fontWeight: 800, color: '#38bdf8' }}>{stock.symbol}</td>
+                                                <td style={{ padding: '6px 8px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stock.name}</td>
+                                                <td style={{ textAlign: 'right', padding: '6px 8px', fontWeight: 600 }}>${stock.close?.toFixed(2)}</td>
+                                                <td style={{ textAlign: 'right', padding: '6px 8px' }}>{formatReturn(stock.today_pct)}</td>
+                                                <td style={{ textAlign: 'right', padding: '6px 8px' }}>{formatReturn(stock.ret_1w_pct)}</td>
+                                                <td style={{ textAlign: 'right', padding: '6px 8px' }}>{formatReturn(stock.ret_1m_pct)}</td>
+                                                <td style={{ textAlign: 'center', padding: '6px 8px' }}>{getRsRankBadge(stock.rs_rank)}</td>
+                                                <td style={{ textAlign: 'right', padding: '6px 8px' }}>{format52wH(stock.dist_52wh_pct)}</td>
+                                                <td style={{ textAlign: 'right', padding: '6px 8px' }}>{formatRVol(stock.rvol_pct)}</td>
+                                                <td style={{ padding: '6px 8px' }}>{renderSetupBadges(stock.setups)}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      );
+                                    })()
                                   )
                                 )}
                               </div>
@@ -2356,67 +2561,72 @@ export default function GroupRadarTab({ onSelectStock = () => {}, tradingDates =
                                   )}
                                 </div>
 
-                                <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                                  <thead>
-                                    <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                                      <th style={{ textAlign: 'left', padding: '6px 8px', width: '90px' }}>Symbol</th>
-                                      <th style={{ textAlign: 'left', padding: '6px 8px' }}>Company Name</th>
-                                      <th style={{ textAlign: 'right', padding: '6px 8px', width: '80px' }}>Price</th>
-                                      <th style={{ textAlign: 'right', padding: '6px 8px', width: '75px' }}>Today</th>
-                                      <th style={{ textAlign: 'right', padding: '6px 8px', width: '75px' }}>1W</th>
-                                      <th style={{ textAlign: 'right', padding: '6px 8px', width: '75px' }}>1M</th>
-                                      <th style={{ textAlign: 'center', padding: '6px 8px', width: '70px' }}>RS Rank</th>
-                                      <th style={{ textAlign: 'right', padding: '6px 8px', width: '75px' }}>52wH</th>
-                                      <th style={{ textAlign: 'right', padding: '6px 8px', width: '75px' }}>RVol</th>
-                                      <th style={{ textAlign: 'left', padding: '6px 8px', width: '160px' }}>Active Setups</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {groupStocks.map((stock) => (
-                                      <tr
-                                        key={stock.symbol}
-                                        onClick={() => onSelectStock(stock, groupStocks)}
-                                        style={{
-                                          borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
-                                          cursor: 'pointer',
-                                          transition: 'background-color 0.12s ease'
-                                        }}
-                                        className="stock-hover-row"
-                                      >
-                                        <td style={{ padding: '6px 8px', fontWeight: 800, color: '#38bdf8' }}>
-                                          {stock.symbol}
-                                        </td>
-                                        <td style={{ padding: '6px 8px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                          {stock.name}
-                                        </td>
-                                        <td style={{ textAlign: 'right', padding: '6px 8px', fontWeight: 600 }}>
-                                          ${stock.close?.toFixed(2)}
-                                        </td>
-                                        <td style={{ textAlign: 'right', padding: '6px 8px' }}>
-                                          {formatReturn(stock.today_pct)}
-                                        </td>
-                                        <td style={{ textAlign: 'right', padding: '6px 8px' }}>
-                                          {formatReturn(stock.ret_1w_pct)}
-                                        </td>
-                                        <td style={{ textAlign: 'right', padding: '6px 8px' }}>
-                                          {formatReturn(stock.ret_1m_pct)}
-                                        </td>
-                                        <td style={{ textAlign: 'center', padding: '6px 8px' }}>
-                                          {getRsRankBadge(stock.rs_rank)}
-                                        </td>
-                                        <td style={{ textAlign: 'right', padding: '6px 8px' }}>
-                                          {format52wH(stock.dist_52wh_pct)}
-                                        </td>
-                                        <td style={{ textAlign: 'right', padding: '6px 8px' }}>
-                                          {formatRVol(stock.rvol_pct)}
-                                        </td>
-                                        <td style={{ padding: '6px 8px' }}>
-                                          {renderSetupBadges(stock.setups)}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
+                                {(() => {
+                                  const sortedGroupStocks = getSortedSubItems(groupStocks, `grp-stk:${group.name}`, 'rs_rank', 'desc');
+                                  return (
+                                    <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+                                      <thead>
+                                        <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                                          {renderSortableTh(`grp-stk:${group.name}`, 'symbol', 'Symbol', 'left', '90px', 'Sort by Symbol', 'asc')}
+                                          {renderSortableTh(`grp-stk:${group.name}`, 'name', 'Company Name', 'left', null, 'Sort by Company Name', 'asc')}
+                                          {renderSortableTh(`grp-stk:${group.name}`, 'close', 'Price', 'right', '80px', 'Sort by Price')}
+                                          {renderSortableTh(`grp-stk:${group.name}`, 'today_pct', 'Today', 'right', '75px', 'Sort by Today return')}
+                                          {renderSortableTh(`grp-stk:${group.name}`, 'ret_1w_pct', '1W', 'right', '75px', 'Sort by 1-Week return')}
+                                          {renderSortableTh(`grp-stk:${group.name}`, 'ret_1m_pct', '1M', 'right', '75px', 'Sort by 1-Month return')}
+                                          {renderSortableTh(`grp-stk:${group.name}`, 'rs_rank', 'RS Rank', 'center', '70px', 'Sort by RS Rank')}
+                                          {renderSortableTh(`grp-stk:${group.name}`, 'dist_52wh_pct', '52wH', 'right', '75px', 'Sort by 52w High distance')}
+                                          {renderSortableTh(`grp-stk:${group.name}`, 'rvol_pct', 'RVol', 'right', '75px', 'Sort by Relative Volume')}
+                                          <th style={{ textAlign: 'left', padding: '6px 8px', width: '160px' }}>Active Setups</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {sortedGroupStocks.map((stock) => (
+                                          <tr
+                                            key={stock.symbol}
+                                            onClick={() => onSelectStock(stock, sortedGroupStocks)}
+                                            style={{
+                                              borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
+                                              cursor: 'pointer',
+                                              transition: 'background-color 0.12s ease'
+                                            }}
+                                            className="stock-hover-row"
+                                          >
+                                            <td style={{ padding: '6px 8px', fontWeight: 800, color: '#38bdf8' }}>
+                                              {stock.symbol}
+                                            </td>
+                                            <td style={{ padding: '6px 8px', color: 'var(--text-secondary)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                              {stock.name}
+                                            </td>
+                                            <td style={{ textAlign: 'right', padding: '6px 8px', fontWeight: 600 }}>
+                                              ${stock.close?.toFixed(2)}
+                                            </td>
+                                            <td style={{ textAlign: 'right', padding: '6px 8px' }}>
+                                              {formatReturn(stock.today_pct)}
+                                            </td>
+                                            <td style={{ textAlign: 'right', padding: '6px 8px' }}>
+                                              {formatReturn(stock.ret_1w_pct)}
+                                            </td>
+                                            <td style={{ textAlign: 'right', padding: '6px 8px' }}>
+                                              {formatReturn(stock.ret_1m_pct)}
+                                            </td>
+                                            <td style={{ textAlign: 'center', padding: '6px 8px' }}>
+                                              {getRsRankBadge(stock.rs_rank)}
+                                            </td>
+                                            <td style={{ textAlign: 'right', padding: '6px 8px' }}>
+                                              {format52wH(stock.dist_52wh_pct)}
+                                            </td>
+                                            <td style={{ textAlign: 'right', padding: '6px 8px' }}>
+                                              {formatRVol(stock.rvol_pct)}
+                                            </td>
+                                            <td style={{ padding: '6px 8px' }}>
+                                              {renderSetupBadges(stock.setups)}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  );
+                                })()}
                               </div>
                             )}
                           </td>

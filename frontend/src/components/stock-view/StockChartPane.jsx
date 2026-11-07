@@ -16,6 +16,7 @@ const StockChartPane = forwardRef(function StockChartPane({
   // Watchlist props
   onToggleWatchlist = null,
   isWatchlistSaved = false,
+  watchlistFlag = null,
   // Multi-chart toggle & split state
   showMultiCharts = true,
   onToggleMultiCharts = null,
@@ -55,6 +56,7 @@ const StockChartPane = forwardRef(function StockChartPane({
         loadingPrices={loadingPrices}
         onToggleWatchlist={onToggleWatchlist}
         isWatchlistSaved={isWatchlistSaved}
+        watchlistFlag={watchlistFlag}
         showMultiCharts={showMultiCharts}
         onToggleMultiCharts={onToggleMultiCharts}
         isDetailCollapsed={isDetailCollapsed}

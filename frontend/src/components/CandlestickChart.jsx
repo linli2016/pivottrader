@@ -3191,7 +3191,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       if (tradePriceLines.initial_stop && !isNaN(Number(tradePriceLines.initial_stop))) {
         tradePriceLinesRef.current.push(cs.createPriceLine({
           price: Number(tradePriceLines.initial_stop),
-          color: '#f59e0b',
+          color: tradePriceLines.stopColor || '#f43f5e',
           lineWidth: 1,
           lineStyle: LineStyle.Dotted,
           axisLabelVisible: true,
@@ -3209,7 +3209,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         }));
       }
     }
-  }, [tradePriceLines]);
+  }, [tradePriceLines, chartData]);
 
   // Clean up chart instance on component unmount & handle container resize
   useEffect(() => {

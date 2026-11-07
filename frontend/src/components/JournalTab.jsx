@@ -204,6 +204,14 @@ function StatsGrid({ stats }) {
           sub={`${s.r_trades_count} trade${s.r_trades_count > 1 ? 's' : ''} with stop price`}
           title="Average R-Multiple realized across closed trades with stop price defined" />
       )}
+      {s.avg_actual_risk_pct !== null && s.avg_actual_risk_pct !== undefined && (
+        <StatCard
+          label="Avg Heat / Run-up"
+          value={<><span className="jr-neg">-{s.avg_actual_risk_pct.toFixed(1)}%</span> / <span className="jr-pos">+{s.avg_mfe_pct !== null && s.avg_mfe_pct !== undefined ? s.avg_mfe_pct.toFixed(1) : 0}%</span></>}
+          sub="Avg aRisk / Avg MFE"
+          title="Average actual risk (maximum drawdown after entry) vs average maximum favorable excursion (peak run-up) across closed trades"
+        />
+      )}
       <StatCard label="Commissions" value={fmtMoney(s.total_commission, { sign: false })} sub="Included in all P&L figures" />
     </div>
   );
@@ -288,6 +296,8 @@ const COLUMNS = [
   { key: 'avg_exit', label: 'Exit / Cur', get: (t) => (t.status === 'OPEN' ? (t.current_price ?? 0) : (t.avg_exit ?? 0)), num: true },
   { key: 'pnl', label: 'P&L', get: (t) => t.pnl ?? -Infinity, num: true },
   { key: 'initial_risk_pct', label: 'iRisk', get: (t) => t.initial_risk_pct ?? -Infinity, num: true },
+  { key: 'actual_risk_pct', label: 'aRisk', get: (t) => t.actual_risk_pct ?? -Infinity, num: true },
+  { key: 'mfe_pct', label: 'MFE', get: (t) => t.mfe_pct ?? -Infinity, num: true },
   { key: 'pnl_pct', label: 'Return', get: (t) => t.pnl_pct ?? -Infinity, num: true },
   { key: 'r_multiple', label: 'R-Mult', get: (t) => t.r_multiple ?? -Infinity, num: true },
   { key: 'holding_days', label: 'Days', get: (t) => t.holding_days ?? -1, num: true },
@@ -391,6 +401,37 @@ function TradeTable({ trades, sort, onSortChange, onOpenTrade, onSelectStock, on
               <td className="jr-num">
                 {t.initial_risk_pct !== null && t.initial_risk_pct !== undefined ? (
                   `${t.initial_risk_pct.toFixed(1)}%`
+                ) : (
+                  <span className="jr-muted">—</span>
+                )}
+              </td>
+              <td className="jr-num">
+                {t.actual_risk_pct !== null && t.actual_risk_pct !== undefined ? (
+                  (() => {
+                    const breached = t.initial_risk_pct !== null && t.initial_risk_pct !== undefined && t.actual_risk_pct > (t.initial_risk_pct + 0.05);
+                    const isZero = t.actual_risk_pct < 0.05;
+                    const tooltip = `Worst Price: $${fmtNum(t.actual_risk_price)}${t.actual_risk_date ? ` (${t.actual_risk_date})` : ''}${breached ? ` · ⚠️ Breached initial stop (${t.initial_risk_pct.toFixed(1)}%)` : ''}`;
+                    return (
+                      <span
+                        className={breached ? 'jr-arisk-breached' : isZero ? 'jr-pos' : ''}
+                        title={tooltip}
+                      >
+                        {breached ? '⚠️ ' : ''}{t.actual_risk_pct.toFixed(1)}%
+                      </span>
+                    );
+                  })()
+                ) : (
+                  <span className="jr-muted">—</span>
+                )}
+              </td>
+              <td className="jr-num">
+                {t.mfe_pct !== null && t.mfe_pct !== undefined ? (
+                  <span
+                    className={t.mfe_pct > 0.05 ? 'jr-pos' : ''}
+                    title={`Peak Price: $${fmtNum(t.mfe_price)}${t.mfe_date ? ` (${t.mfe_date})` : ''}`}
+                  >
+                    {t.mfe_pct > 0.05 ? `+${t.mfe_pct.toFixed(1)}%` : '0.0%'}
+                  </span>
                 ) : (
                   <span className="jr-muted">—</span>
                 )}
@@ -534,6 +575,22 @@ function TradeDetail({ trade, onSaved, allTags, allMistakes = [], onToggleIgnore
       }
     }
   }
+
+  const tradePriceLines = useMemo(() => {
+    const effectiveStop = validStop ? parsedStop : (trade.initial_stop ? Number(trade.initial_stop) : null);
+    const lines = {};
+    if (effectiveStop && !isNaN(effectiveStop) && effectiveStop > 0) {
+      lines.initial_stop = effectiveStop;
+      lines.stopColor = '#f43f5e';
+    }
+    if (trade.avg_entry && !isNaN(Number(trade.avg_entry))) {
+      lines.avg_entry = Number(trade.avg_entry);
+    }
+    if (trade.status === 'CLOSED' && trade.avg_exit && !isNaN(Number(trade.avg_exit))) {
+      lines.avg_exit = Number(trade.avg_exit);
+    }
+    return Object.keys(lines).length > 0 ? lines : null;
+  }, [validStop, parsedStop, trade]);
 
   const save = async () => {
     setSaving(true);
@@ -700,6 +757,7 @@ function TradeDetail({ trade, onSaved, allTags, allMistakes = [], onToggleIgnore
                   height="100%"
                   showScreenshotButton={false}
                   tradeExecutions={combinedExecutions}
+                  tradePriceLines={tradePriceLines}
                 />
               )}
             </div>
@@ -770,6 +828,32 @@ function TradeDetail({ trade, onSaved, allTags, allMistakes = [], onToggleIgnore
               <div className="jr-metric-item">
                 <span className="jr-metric-lbl">Comm</span>
                 <span className="jr-metric-val">{fmtMoney(trade.commission, { sign: false })}</span>
+              </div>
+              <div className="jr-metric-item">
+                <span className="jr-metric-lbl">aRisk</span>
+                <span
+                  className="jr-metric-val"
+                  title={trade.actual_risk_price ? `Worst price: $${fmtNum(trade.actual_risk_price)}${trade.actual_risk_date ? ` (${trade.actual_risk_date})` : ''}` : undefined}
+                >
+                  {trade.actual_risk_pct !== null && trade.actual_risk_pct !== undefined ? (
+                    <span className={trade.initial_risk_pct !== null && trade.actual_risk_pct > trade.initial_risk_pct + 0.05 ? 'jr-arisk-breached' : ''}>
+                      {trade.initial_risk_pct !== null && trade.actual_risk_pct > trade.initial_risk_pct + 0.05 ? '⚠️ ' : ''}{trade.actual_risk_pct.toFixed(1)}%
+                    </span>
+                  ) : '—'}
+                </span>
+              </div>
+              <div className="jr-metric-item">
+                <span className="jr-metric-lbl">MFE</span>
+                <span
+                  className="jr-metric-val"
+                  title={trade.mfe_price ? `Peak price: $${fmtNum(trade.mfe_price)}${trade.mfe_date ? ` (${trade.mfe_date})` : ''}` : undefined}
+                >
+                  {trade.mfe_pct !== null && trade.mfe_pct !== undefined ? (
+                    <span className={trade.mfe_pct > 0.05 ? 'jr-pos' : ''}>
+                      {trade.mfe_pct > 0.05 ? `+${trade.mfe_pct.toFixed(1)}%` : '0.0%'}
+                    </span>
+                  ) : '—'}
+                </span>
               </div>
             </div>
 

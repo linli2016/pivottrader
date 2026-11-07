@@ -6,6 +6,7 @@ import GroupStageChart from './GroupStageChart';
 import ExpressionCheatSheet from './ExpressionCheatSheet';
 import StockBrandIcon from './StockBrandIcon';
 import { getLocalDateStr } from '../utils/dateUtils';
+import { FLAG_COLORS } from '../utils/flagConstants';
 
 const SETUP_COLORS = {
   // Folders
@@ -755,6 +756,7 @@ export default function CandidatesTab({
   }, [browseIndex, currentCandidate?.symbol, displayedCandidates, fetchBrowsePrices, prefetchSymbols]);
 
   const [activeWatchlistSymbols, setActiveWatchlistSymbols] = React.useState(new Set());
+  const [watchlistFlags, setWatchlistFlags] = React.useState(new Map());
   const [watchlistToast, setWatchlistToast] = React.useState(null);
 
   const triggerToast = React.useCallback((msg) => {
@@ -767,9 +769,20 @@ export default function CandidatesTab({
       const res = await fetch(`${API_BASE}/api/watchlists/items`);
       if (res.ok) {
         const data = await res.json();
-        const symSet = new Set(data.map(item => (item.symbol || '').toUpperCase()));
+        const symSet = new Set();
+        const flagsMap = new Map();
+        (data || []).forEach((item) => {
+          const s = (item.symbol || '').toUpperCase();
+          if (s) {
+            symSet.add(s);
+            if (item.flag_color) {
+              flagsMap.set(s, item.flag_color);
+            }
+          }
+        });
         setActiveWatchlistSymbols(symSet);
         setAllWatchlistSymbols(symSet);
+        setWatchlistFlags(flagsMap);
       }
     } catch (e) {
       console.error("Error fetching watchlist items:", e);
@@ -780,13 +793,14 @@ export default function CandidatesTab({
     fetchWatchlistItems();
   }, [fetchWatchlistItems]);
 
-  const handleToggleWatchlist = React.useCallback(async (symbol) => {
+  const handleToggleWatchlist = React.useCallback(async (symbol, flagColor = undefined) => {
     if (!symbol) return;
     const symUpper = symbol.toUpperCase();
     const isSaved = activeWatchlistSymbols.has(symUpper);
 
-    try {
-      if (isSaved) {
+    // Explicit remove action requested from popup
+    if (flagColor === 'REMOVE') {
+      try {
         const res = await fetch(`${API_BASE}/api/watchlists/items/${encodeURIComponent(symUpper)}`, {
           method: 'DELETE',
         });
@@ -801,14 +815,77 @@ export default function CandidatesTab({
             next.delete(symUpper);
             return next;
           });
+          setWatchlistFlags((prev) => {
+            const next = new Map(prev);
+            next.delete(symUpper);
+            return next;
+          });
+          if (fetchWatchlists) fetchWatchlists();
+          triggerToast(`Removed ${symUpper} from Watchlist`);
+        }
+      } catch (e) {
+        console.error(`Error removing watchlist item: ${e.message}`);
+      }
+      return;
+    }
+
+    // If stock is already saved and flagColor is provided (color string or null to unflag): update flag
+    if (isSaved && flagColor !== undefined) {
+      try {
+        const res = await fetch(`${API_BASE}/api/watchlists/items/${encodeURIComponent(symUpper)}/flag`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ flag_color: flagColor }),
+        });
+        if (res.ok) {
+          setWatchlistFlags((prev) => {
+            const next = new Map(prev);
+            if (flagColor) next.set(symUpper, flagColor);
+            else next.delete(symUpper);
+            return next;
+          });
+          if (fetchWatchlists) fetchWatchlists();
+          const flagDef = flagColor ? FLAG_COLORS[flagColor] : null;
+          triggerToast(flagDef ? `Flagged ${symUpper} as ${flagDef.label}` : `Unflagged ${symUpper}`);
+        }
+      } catch (e) {
+        console.error(`Error updating watchlist flag: ${e.message}`);
+      }
+      return;
+    }
+
+    // Toggle behavior (called by W button or hotkey without flagColor)
+    try {
+      if (isSaved && flagColor === undefined) {
+        const res = await fetch(`${API_BASE}/api/watchlists/items/${encodeURIComponent(symUpper)}`, {
+          method: 'DELETE',
+        });
+        if (res.ok) {
+          setActiveWatchlistSymbols((prev) => {
+            const next = new Set(prev);
+            next.delete(symUpper);
+            return next;
+          });
+          setAllWatchlistSymbols((prev) => {
+            const next = new Set(prev);
+            next.delete(symUpper);
+            return next;
+          });
+          setWatchlistFlags((prev) => {
+            const next = new Map(prev);
+            next.delete(symUpper);
+            return next;
+          });
           if (fetchWatchlists) fetchWatchlists();
           triggerToast(`Removed ${symUpper} from Watchlist`);
         }
       } else {
+        // Add to watchlist (without flag if flagColor is null/undefined, or with selected flagColor)
+        const targetColor = flagColor || null;
         const res = await fetch(`${API_BASE}/api/watchlists/items`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbol: symUpper }),
+          body: JSON.stringify({ symbol: symUpper, flag_color: targetColor }),
         });
         if (res.ok) {
           setActiveWatchlistSymbols((prev) => {
@@ -821,8 +898,18 @@ export default function CandidatesTab({
             next.add(symUpper);
             return next;
           });
+          setWatchlistFlags((prev) => {
+            const next = new Map(prev);
+            if (targetColor) next.set(symUpper, targetColor);
+            return next;
+          });
           if (fetchWatchlists) fetchWatchlists();
-          triggerToast(`⭐️ Added ${symUpper} to Watchlist`);
+          const flagDef = targetColor ? FLAG_COLORS[targetColor] : null;
+          triggerToast(
+            flagDef
+              ? `⭐️ Added ${symUpper} as ${flagDef.label} to Watchlist`
+              : `⭐️ Added ${symUpper} to Watchlist`
+          );
         }
       }
     } catch (e) {
@@ -1697,6 +1784,7 @@ export default function CandidatesTab({
               setupName={activeSetupName}
               asOfDate={currentCandidate?.screen_date || (selectedDate !== 'latest' ? selectedDate : null)}
               targetWatchlistSymbols={activeWatchlistSymbols}
+              targetWatchlistFlags={watchlistFlags}
               onToggleWatchlist={handleToggleWatchlist}
               onSelectGroup={(type, name) => setPreviewGroupModal({ groupType: type, groupName: name })}
               onSelectStock={(stk) => {
@@ -1950,22 +2038,42 @@ export default function CandidatesTab({
                 if (colKey === 'symbol') {
                   const symUpper = (c.symbol || '').toUpperCase();
                   const isItemSaved = activeWatchlistSymbols.has(symUpper);
+                  const savedFlag = watchlistFlags.get(symUpper);
+                  const flagDef = savedFlag ? FLAG_COLORS[savedFlag] : null;
                   return (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                       <StockBrandIcon symbol={c.symbol} size={18} />
                       <span style={{ fontWeight: 800, color: '#ffffff', fontSize: '11.5px' }}>{c.symbol}</span>
                       {isItemSaved && (
-                        <span
-                          style={{
-                            fontSize: '11px',
-                            pointerEvents: 'none',
-                            userSelect: 'none',
-                            filter: 'drop-shadow(0 0 3px rgba(245, 158, 11, 0.5))',
-                          }}
-                          title="Saved in Watchlist"
-                        >
-                          ⭐️
-                        </span>
+                        flagDef ? (
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              lineHeight: 1,
+                              color: flagDef.color,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              pointerEvents: 'none',
+                              userSelect: 'none',
+                              filter: `drop-shadow(0 0 3px ${flagDef.color}80)`,
+                            }}
+                            title={`Saved in Watchlist (${flagDef.label})`}
+                          >
+                            ⚑
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              pointerEvents: 'none',
+                              userSelect: 'none',
+                              filter: 'drop-shadow(0 0 3px rgba(245, 158, 11, 0.5))',
+                            }}
+                            title="Saved in Watchlist"
+                          >
+                            ⭐️
+                          </span>
+                        )
                       )}
                     </div>
                   );

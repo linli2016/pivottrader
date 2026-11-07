@@ -23,7 +23,9 @@ const StockView = forwardRef(function StockView({
   onSelectGroup = null,
   // Watchlist props
   targetWatchlistSymbols: propTargetWatchlistSymbols = null,
+  targetWatchlistFlags = null,
   watchlistSymbols: propWatchlistSymbols = null,
+  watchlistFlag: propWatchlistFlag = null,
   onToggleWatchlist = null,
   isWatchlistSaved: propIsWatchlistSaved = null,
   // Setup & regime props
@@ -290,19 +292,36 @@ const StockView = forwardRef(function StockView({
     return false;
   }, [symbol, propIsWatchlistSaved, activeWatchlistSymbols, internalTargetSymbols]);
 
+  const watchlistFlag = useMemo(() => {
+    if (propWatchlistFlag !== null && propWatchlistFlag !== undefined) {
+      return propWatchlistFlag;
+    }
+    if (stock?.flag_color) {
+      return stock.flag_color;
+    }
+    if (!symbol) return null;
+    const cleanSym = symbol.toUpperCase().trim();
+    const flags = targetWatchlistFlags;
+    if (flags) {
+      if (typeof flags.get === 'function') return flags.get(cleanSym) || null;
+      if (typeof flags === 'object' && flags[cleanSym]) return flags[cleanSym];
+    }
+    return null;
+  }, [propWatchlistFlag, stock?.flag_color, symbol, targetWatchlistFlags]);
+
   const handleToggleWatchlistAction = useCallback(
-    (sym) => {
+    (sym, flagColor = undefined) => {
       if (!sym) return;
       const cleanSym = sym.toUpperCase().trim();
       if (!propTargetWatchlistSymbols) {
         setInternalTargetSymbols((prev) => {
           const next = new Set(prev);
-          if (next.has(cleanSym)) next.delete(cleanSym);
+          if (flagColor === 'REMOVE' || (flagColor === undefined && next.has(cleanSym))) next.delete(cleanSym);
           else next.add(cleanSym);
           return next;
         });
       }
-      onToggleWatchlist?.(sym);
+      onToggleWatchlist?.(sym, flagColor);
     },
     [propTargetWatchlistSymbols, onToggleWatchlist]
   );
@@ -335,6 +354,7 @@ const StockView = forwardRef(function StockView({
         marketRegime={marketRegime}
         onToggleWatchlist={handleToggleWatchlistAction}
         isWatchlistSaved={isWatchlistSaved}
+        watchlistFlag={watchlistFlag}
         showMultiCharts={showMultiCharts}
         onToggleMultiCharts={handleToggleMultiCharts}
         multiChartTopPct={multiChartTopPct}

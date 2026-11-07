@@ -212,6 +212,16 @@ class _TradeBuilder:
             "pnl_local": pnl,
             "pnl": pnl_base,
             "pnl_pct": pnl_pct,
+            "initial_risk_per_share": None,
+            "initial_risk_total": None,
+            "initial_risk_pct": None,
+            "r_multiple": None,
+            "actual_risk_pct": None,
+            "actual_risk_price": None,
+            "actual_risk_date": None,
+            "mfe_pct": None,
+            "mfe_price": None,
+            "mfe_date": None,
             "num_executions": len(combined_execs),
             "executions": combined_execs,
         }
@@ -349,6 +359,12 @@ def compute_statistics(trades: List[Dict[str, Any]]) -> Dict[str, Any]:
     win_rs = [t["r_multiple"] for t in wins if t.get("r_multiple") is not None]
     loss_rs = [t["r_multiple"] for t in losses if t.get("r_multiple") is not None]
 
+    actual_risks = [t["actual_risk_pct"] for t in closed if t.get("actual_risk_pct") is not None]
+    mfes = [t["mfe_pct"] for t in closed if t.get("mfe_pct") is not None]
+    win_mfes = [t["mfe_pct"] for t in wins if t.get("mfe_pct") is not None]
+    loss_mfes = [t["mfe_pct"] for t in losses if t.get("mfe_pct") is not None]
+    initial_risks = [t["initial_risk_pct"] for t in closed if t.get("initial_risk_pct") is not None]
+
     open_trades_list = [t for t in trades if t.get("status") == "OPEN"]
     open_trades_with_pnl = [t for t in open_trades_list if t.get("pnl") is not None]
     open_pnl = sum(t["pnl"] for t in open_trades_with_pnl) if open_trades_with_pnl else None
@@ -394,6 +410,11 @@ def compute_statistics(trades: List[Dict[str, Any]]) -> Dict[str, Any]:
         "max_consecutive_losses": max_cl,
         "max_drawdown": max_dd,
         "max_drawdown_pct": max_dd_pct,
+        "avg_actual_risk_pct": _mean(actual_risks),
+        "avg_initial_risk_pct": _mean(initial_risks),
+        "avg_mfe_pct": _mean(mfes),
+        "avg_mfe_pct_win": _mean(win_mfes),
+        "avg_mfe_pct_loss": _mean(loss_mfes),
         "total_commission": sum(t.get("commission") or 0.0 for t in closed),
     }
 
@@ -941,10 +962,210 @@ class JournalService:
             else:
                 t["pnl_pct"] = unrealized_pct
 
+    def _populate_trade_excursion_metrics(
+        self,
+        trades: List[Dict[str, Any]],
+        bars_map: Optional[Dict[str, List[Tuple[str, float, float, float]]]] = None,
+    ) -> None:
+        """
+        Calculate actual risk (aRisk / MAE) and maximum favorable excursion (MFE)
+        for trades based on daily_bars during the trade holding window.
+        """
+        if not trades:
+            return
+
+        valid_trades = [
+            t for t in trades
+            if t.get("avg_entry") and t.get("avg_entry") > EPS and t.get("open_date")
+        ]
+        if not valid_trades:
+            return
+
+        # Fetch daily bars from DuckDB if bars_map is not provided
+        if bars_map is None:
+            symbols = list({str(t["symbol"]).strip().upper() for t in valid_trades if t.get("symbol")})
+            if symbols:
+                min_date = min(t["open_date"] for t in valid_trades)
+                has_open = any(t.get("status") == "OPEN" for t in valid_trades)
+                max_date = (
+                    date.today().isoformat()
+                    if has_open
+                    else max(t.get("close_date") or t.get("open_date") for t in valid_trades)
+                )
+                bars_map = {}
+                try:
+                    from application.services.database import db_service
+                    with db_service.get_read_only_conn() as conn:
+                        placeholders = ", ".join(["?"] * len(symbols))
+                        q = f"""
+                            SELECT symbol, CAST(date AS VARCHAR) as dt, low, high, close
+                            FROM daily_bars
+                            WHERE symbol IN ({placeholders}) AND date >= ? AND date <= ?
+                            ORDER BY symbol, date ASC
+                        """
+                        rows = conn.execute(q, symbols + [min_date, max_date]).fetchall()
+                        for sym, dt, low, high, close in rows:
+                            if low is not None and high is not None:
+                                bars_map.setdefault(str(sym).upper(), []).append(
+                                    (str(dt)[:10], float(low), float(high), float(close) if close is not None else float(low))
+                                )
+                except Exception as e:
+                    logger.warning(f"Could not fetch excursion bars from daily_bars: {e}")
+                    bars_map = {}
+            else:
+                bars_map = {}
+
+        today_str = date.today().isoformat()
+        for t in trades:
+            avg_entry = t.get("avg_entry")
+            open_date = t.get("open_date")
+            if not avg_entry or avg_entry <= EPS or not open_date:
+                t["actual_risk_pct"] = None
+                t["actual_risk_price"] = None
+                t["actual_risk_date"] = None
+                t["mfe_pct"] = None
+                t["mfe_price"] = None
+                t["mfe_date"] = None
+                continue
+
+            direction = t.get("direction", "LONG")
+            status = t.get("status", "CLOSED")
+            close_date = t.get("close_date")
+            end_date = close_date if status == "CLOSED" and close_date else today_str
+
+            sym = str(t.get("symbol") or "").strip().upper()
+            sym_bars = [b for b in bars_map.get(sym, []) if open_date <= b[0] <= end_date]
+
+            exit_prices = [
+                float(e["price"]) for e in t.get("executions", [])
+                if e.get("action") == "EXIT" and e.get("price") is not None and float(e["price"]) > 0
+            ]
+            if status == "OPEN" and t.get("current_price"):
+                exit_prices.append(float(t["current_price"]))
+
+            worst_price = None
+            worst_date = None
+            best_price = None
+            best_date = None
+            actual_risk_pct = None
+            mfe_pct = None
+
+            if sym_bars:
+                # Determine exit price on close_date if closed
+                exit_price_on_close = None
+                if status == "CLOSED" and close_date:
+                    close_day_exits = [
+                        float(e["price"]) for e in t.get("executions", [])
+                        if e.get("action") == "EXIT" and e.get("price") is not None and (e.get("date_time") or "")[:10] == close_date
+                    ]
+                    if close_day_exits:
+                        exit_price_on_close = min(close_day_exits) if direction == "LONG" else max(close_day_exits)
+                    elif t.get("avg_exit"):
+                        exit_price_on_close = float(t["avg_exit"])
+
+                open_dt = t.get("open_datetime") or ""
+                open_time = open_dt[11:19] if len(open_dt) >= 19 else "09:30:00"
+                is_intraday_entry = open_time > "09:35:00"
+
+                if direction == "LONG":
+                    effective_bars_low = []
+                    for b in sym_bars:
+                        dt, b_low, b_high, b_close = b[0], b[1], b[2], b[3]
+                        if open_date == close_date and dt == open_date and exit_price_on_close is not None:
+                            effective_bars_low.append((dt, min(avg_entry, exit_price_on_close)))
+                        elif dt == open_date and is_intraday_entry:
+                            # Intraday entry: prior morning lows occurred before entry
+                            effective_bars_low.append((dt, min(avg_entry, b_close)))
+                        elif status == "CLOSED" and close_date and dt == close_date and exit_price_on_close is not None:
+                            # Exit day: drops after exit do not belong to the trade
+                            effective_bars_low.append((dt, exit_price_on_close))
+                        else:
+                            effective_bars_low.append((dt, b_low))
+
+                    worst_bar = min(effective_bars_low, key=lambda b: b[1])
+                    worst_price = worst_bar[1]
+                    worst_date = worst_bar[0]
+                    if exit_prices:
+                        min_exit = min(exit_prices)
+                        if min_exit < worst_price:
+                            worst_price = min_exit
+                            worst_date = close_date or open_date
+
+                    best_bar = max(sym_bars, key=lambda b: b[2])
+                    best_price = best_bar[2]
+                    best_date = best_bar[0]
+                    if exit_prices:
+                        max_exit = max(exit_prices)
+                        if max_exit > best_price:
+                            best_price = max_exit
+                            best_date = close_date or open_date
+
+                    actual_risk_pct = max(0.0, (avg_entry - worst_price) / avg_entry * 100.0) if worst_price < avg_entry else 0.0
+                    mfe_pct = max(0.0, (best_price - avg_entry) / avg_entry * 100.0) if best_price > avg_entry else 0.0
+                else:  # SHORT
+                    effective_bars_high = []
+                    for b in sym_bars:
+                        dt, b_low, b_high, b_close = b[0], b[1], b[2], b[3]
+                        if open_date == close_date and dt == open_date and exit_price_on_close is not None:
+                            effective_bars_high.append((dt, max(avg_entry, exit_price_on_close)))
+                        elif dt == open_date and is_intraday_entry:
+                            # Intraday entry: prior morning highs occurred before entry
+                            effective_bars_high.append((dt, max(avg_entry, b_close)))
+                        elif status == "CLOSED" and close_date and dt == close_date and exit_price_on_close is not None:
+                            # Exit day: rallies after exit do not belong to the trade
+                            effective_bars_high.append((dt, exit_price_on_close))
+                        else:
+                            effective_bars_high.append((dt, b_high))
+
+                    worst_bar = max(effective_bars_high, key=lambda b: b[1])
+                    worst_price = worst_bar[1]
+                    worst_date = worst_bar[0]
+                    if exit_prices:
+                        max_exit = max(exit_prices)
+                        if max_exit > worst_price:
+                            worst_price = max_exit
+                            worst_date = close_date or open_date
+
+                    best_bar = min(sym_bars, key=lambda b: b[1])
+                    best_price = best_bar[1]
+                    best_date = best_bar[0]
+                    if exit_prices:
+                        min_exit = min(exit_prices)
+                        if min_exit < best_price:
+                            best_price = min_exit
+                            best_date = close_date or open_date
+
+                    actual_risk_pct = max(0.0, (worst_price - avg_entry) / avg_entry * 100.0) if worst_price > avg_entry else 0.0
+                    mfe_pct = max(0.0, (avg_entry - best_price) / avg_entry * 100.0) if best_price < avg_entry else 0.0
+
+            elif exit_prices:
+                if direction == "LONG":
+                    worst_price = min(exit_prices)
+                    best_price = max(exit_prices)
+                    worst_date = close_date or open_date
+                    best_date = close_date or open_date
+                    actual_risk_pct = max(0.0, (avg_entry - worst_price) / avg_entry * 100.0) if worst_price < avg_entry else 0.0
+                    mfe_pct = max(0.0, (best_price - avg_entry) / avg_entry * 100.0) if best_price > avg_entry else 0.0
+                else:  # SHORT
+                    worst_price = max(exit_prices)
+                    best_price = min(exit_prices)
+                    worst_date = close_date or open_date
+                    best_date = close_date or open_date
+                    actual_risk_pct = max(0.0, (worst_price - avg_entry) / avg_entry * 100.0) if worst_price > avg_entry else 0.0
+                    mfe_pct = max(0.0, (avg_entry - best_price) / avg_entry * 100.0) if best_price < avg_entry else 0.0
+
+            t["actual_risk_pct"] = actual_risk_pct
+            t["actual_risk_price"] = round(worst_price, 4) if worst_price is not None else None
+            t["actual_risk_date"] = worst_date
+            t["mfe_pct"] = mfe_pct
+            t["mfe_price"] = round(best_price, 4) if best_price is not None else None
+            t["mfe_date"] = best_date
+
     def get_trades(self, start: Optional[str] = None, end: Optional[str] = None,
                    symbol: Optional[str] = None, account: Optional[str] = None,
                    include_ignored: bool = False,
-                   price_map: Optional[Dict[str, Tuple[float, str]]] = None) -> List[Dict[str, Any]]:
+                   price_map: Optional[Dict[str, Tuple[float, str]]] = None,
+                   bars_map: Optional[Dict[str, List[Tuple[str, float, float, float]]]] = None) -> List[Dict[str, Any]]:
         trades = build_round_trips(self.load_executions())
         notes = self.load_notes()
         ignored_map = self.load_ignored_trade_ids()
@@ -1007,6 +1228,7 @@ class JournalService:
             t["initial_risk_pct"] = initial_risk_pct
             t["r_multiple"] = r_multiple
             out.append(t)
+        self._populate_trade_excursion_metrics(out, bars_map=bars_map)
         return out
 
     def get_journal(self, start: Optional[str] = None, end: Optional[str] = None,

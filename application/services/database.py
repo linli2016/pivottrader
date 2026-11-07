@@ -3723,7 +3723,16 @@ class DatabaseService:
                 LEFT JOIN latest_sponsorship isp ON s.symbol = isp.symbol
                 LEFT JOIN latest_spy spy ON lb.last_trade_date = spy.date
                 LEFT JOIN target_rs_latest trs ON s.symbol = trs.symbol
-                ORDER BY ts.added_at DESC
+                ORDER BY 
+                    CASE 
+                        WHEN ts.flag_color = 'green' THEN 1
+                        WHEN ts.flag_color = 'orange' THEN 2
+                        WHEN ts.flag_color = 'blue' THEN 3
+                        WHEN ts.flag_color = 'purple' THEN 4
+                        WHEN ts.flag_color = 'red' THEN 5
+                        ELSE 99
+                    END ASC,
+                    ts.added_at DESC
             """
             rows = conn.execute(query, [watchlist_id]).fetchall()
             items = [

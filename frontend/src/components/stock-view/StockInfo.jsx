@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import StockBrandIcon from '../StockBrandIcon';
 import VanTharpCalculatorModal from '../VanTharpCalculatorModal';
+import { FLAG_COLORS } from '../../utils/flagConstants';
 
 export function cleanCompanyName(rawName, symbol) {
   if (!rawName) return symbol || '';
@@ -25,6 +26,7 @@ export default function StockInfo({
   // Watchlist props
   onToggleWatchlist = null,
   isWatchlistSaved = false,
+  watchlistFlag = null,
   // Multi-chart toggle
   showMultiCharts = true,
   onToggleMultiCharts = null,
@@ -43,6 +45,16 @@ export default function StockInfo({
 }) {
   const symbol = stock?.symbol || stock?.ticker || (typeof stock === 'string' ? stock : '');
   const [showRiskCalc, setShowRiskCalc] = useState(false);
+  const [showFlagPopup, setShowFlagPopup] = useState(false);
+
+  useEffect(() => {
+    setShowFlagPopup(false);
+  }, [symbol]);
+
+  const currentFlagDef = useMemo(() => {
+    const activeColor = watchlistFlag || stock?.flag_color;
+    return activeColor && FLAG_COLORS[activeColor] ? FLAG_COLORS[activeColor] : null;
+  }, [watchlistFlag, stock?.flag_color]);
   const rawName = stock?.name || stock?.company_name || stockDetail?.metadata?.name || '';
   const cleanName = useMemo(() => cleanCompanyName(rawName, symbol), [rawName, symbol]);
 
@@ -265,17 +277,17 @@ export default function StockInfo({
 
           {/* Watchlist Controls */}
           {onToggleWatchlist && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
               <button
                 type="button"
-                onClick={() => onToggleWatchlist(symbol)}
+                onClick={() => setShowFlagPopup((prev) => !prev)}
                 disabled={!symbol}
                 title={
                   isWatchlistSaved
-                    ? `Saved in Watchlist (Click or press W to remove)`
-                    : `Save ${symbol || 'stock'} to Watchlist (Hotkey: W)`
+                    ? `Saved in Watchlist${currentFlagDef ? ` (${currentFlagDef.label})` : ''} - Click to change flag or remove (Hotkey: W)`
+                    : `Add ${symbol || 'stock'} to Watchlist with flag color (Hotkey: W without flag)`
                 }
-                aria-label={isWatchlistSaved ? 'Remove from watchlist' : 'Save to watchlist'}
+                aria-label="Add to watchlist with flag color"
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -286,19 +298,32 @@ export default function StockInfo({
                   borderRadius: '5px',
                   boxSizing: 'border-box',
                   transition: 'all 0.15s ease',
-                  background: isWatchlistSaved ? 'rgba(16, 185, 129, 0.22)' : 'rgba(255, 255, 255, 0.05)',
-                  color: isWatchlistSaved ? '#34d399' : 'var(--text-secondary, #94a3b8)',
-                  border: isWatchlistSaved ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid var(--border-color, #1e293b)',
+                  background: isWatchlistSaved
+                    ? (currentFlagDef ? `${currentFlagDef.color}25` : 'rgba(16, 185, 129, 0.22)')
+                    : 'rgba(255, 255, 255, 0.05)',
+                  color: isWatchlistSaved
+                    ? (currentFlagDef ? currentFlagDef.color : '#34d399')
+                    : 'var(--text-secondary, #94a3b8)',
+                  border: isWatchlistSaved
+                    ? `1px solid ${currentFlagDef ? currentFlagDef.color : 'rgba(16, 185, 129, 0.5)'}`
+                    : '1px solid var(--border-color, #1e293b)',
                   cursor: symbol ? 'pointer' : 'not-allowed',
                   flexShrink: 0,
                 }}
               >
                 {isWatchlistSaved ? (
                   <>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="#34d399" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                    </svg>
-                    <span style={{ fontSize: '11px', fontWeight: 700 }}>Saved</span>
+                    {currentFlagDef ? (
+                      <span style={{ fontSize: '11px', lineHeight: 1 }}>⚑</span>
+                    ) : (
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="#34d399" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                      </svg>
+                    )}
+                    <span style={{ fontSize: '11px', fontWeight: 700 }}>
+                      {currentFlagDef ? currentFlagDef.shortLabel : 'Saved'}
+                    </span>
+                    <span style={{ fontSize: '8px', opacity: 0.7, marginLeft: '1px' }}>▼</span>
                   </>
                 ) : (
                   <>
@@ -307,11 +332,152 @@ export default function StockInfo({
                       <line x1="5" y1="12" x2="19" y2="12"></line>
                     </svg>
                     <span style={{ fontSize: '11px', fontWeight: 600 }}>Watchlist</span>
+                    <span style={{ fontSize: '8px', opacity: 0.7, marginLeft: '1px' }}>▼</span>
                   </>
                 )}
               </button>
-            </div>
-          )}
+
+                {showFlagPopup && (
+                  <>
+                    <div
+                      style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
+                      onClick={() => setShowFlagPopup(false)}
+                    />
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 5px)',
+                        right: 0,
+                        zIndex: 9999,
+                        background: '#0f172a',
+                        border: '1px solid #334155',
+                        borderRadius: '8px',
+                        padding: '6px',
+                        boxShadow: '0 12px 30px rgba(0, 0, 0, 0.75)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                        minWidth: '165px',
+                        pointerEvents: 'auto',
+                      }}
+                    >
+                      <div style={{ fontSize: '10px', color: '#94a3b8', padding: '3px 8px 4px', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                        Select Watchlist Flag:
+                      </div>
+                      {Object.values(FLAG_COLORS).map((f) => {
+                        const isCurrent = (currentFlagDef?.id || watchlistFlag) === f.id;
+                        return (
+                          <button
+                            key={f.id}
+                            type="button"
+                            onClick={() => {
+                              onToggleWatchlist(symbol, f.id);
+                              setShowFlagPopup(false);
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '5px 8px',
+                              background: isCurrent ? `${f.color}25` : 'transparent',
+                              border: isCurrent ? `1px solid ${f.color}60` : '1px solid transparent',
+                              borderRadius: '5px',
+                              color: isCurrent ? '#ffffff' : 'var(--text-secondary, #cbd5e1)',
+                              fontSize: '11px',
+                              fontWeight: isCurrent ? 700 : 500,
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              width: '100%',
+                              transition: 'background 0.12s ease',
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isCurrent) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isCurrent) e.currentTarget.style.background = 'transparent';
+                            }}
+                          >
+                            <span
+                              style={{
+                                width: '12px',
+                                height: '12px',
+                                borderRadius: '50%',
+                                background: f.color,
+                                boxShadow: `0 0 5px ${f.color}80`,
+                                flexShrink: 0,
+                              }}
+                            />
+                            <span style={{ flex: 1, whiteSpace: 'nowrap' }}>{f.label}</span>
+                            {isCurrent && <span style={{ color: f.color, fontSize: '10px' }}>✓</span>}
+                          </button>
+                        );
+                      })}
+
+                      <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', margin: '2px 0' }} />
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onToggleWatchlist(symbol, null);
+                          setShowFlagPopup(false);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '5px 8px',
+                          background: isWatchlistSaved && !currentFlagDef ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+                          border: '1px solid transparent',
+                          borderRadius: '5px',
+                          color: 'var(--text-muted, #94a3b8)',
+                          fontSize: '11px',
+                          fontWeight: isWatchlistSaved && !currentFlagDef ? 700 : 500,
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          width: '100%',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = isWatchlistSaved && !currentFlagDef ? 'rgba(255, 255, 255, 0.1)' : 'transparent')}
+                      >
+                        <span style={{ fontSize: '10px', opacity: 0.7 }}>⚪</span>
+                        <span style={{ flex: 1 }}>No Flag (Plain)</span>
+                        {isWatchlistSaved && !currentFlagDef && <span style={{ fontSize: '10px' }}>✓</span>}
+                      </button>
+
+                      {isWatchlistSaved && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onToggleWatchlist(symbol, 'REMOVE');
+                            setShowFlagPopup(false);
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '5px 8px',
+                            background: 'transparent',
+                            border: '1px solid transparent',
+                            borderRadius: '5px',
+                            color: '#fb7185',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            width: '100%',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(244, 63, 94, 0.15)')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                        >
+                          <span style={{ fontSize: '11px' }}>🗑️</span>
+                          <span>Remove from Watchlist</span>
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
           {/* Position Sizing Calculator Button */}
           <button

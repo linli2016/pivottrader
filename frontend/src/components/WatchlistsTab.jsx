@@ -23,6 +23,16 @@ export const QUADRANT_COLORS = {
 const globalWatchlistItemsCache = new Map(); // 'items' -> items[]
 const globalStockDataCache = new Map(); // symbol -> { prices, detail, peersData }
 
+// Helper to extract timestamp in ms for robust sorting by added time
+const getAddedTime = (item) => {
+  if (!item?.added_at) return 0;
+  if (typeof item.added_at === 'number') return item.added_at;
+  if (item.added_at instanceof Date) return item.added_at.getTime();
+  const str = String(item.added_at).replace(' ', 'T');
+  const t = Date.parse(str);
+  return isNaN(t) ? 0 : t;
+};
+
 export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetchWatchlists, setupsConfig = {} }) {
   // Main Navigation Mode for Right Dock: 'watchlists' | 'groups' | 'positions'
   const [dockTab, setDockTab] = useState('watchlists');
@@ -837,6 +847,9 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
           const orderA = FLAG_ORDER[a.flag_color] ?? 99;
           const orderB = FLAG_ORDER[b.flag_color] ?? 99;
           if (orderA !== orderB) return orderA - orderB;
+          const timeA = getAddedTime(a);
+          const timeB = getAddedTime(b);
+          if (timeA !== timeB) return timeB - timeA;
           return (a.symbol || '').localeCompare(b.symbol || '');
         });
       case 'flag_desc':
@@ -844,6 +857,9 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
           const orderA = FLAG_ORDER[a.flag_color] ?? 99;
           const orderB = FLAG_ORDER[b.flag_color] ?? 99;
           if (orderA !== orderB) return orderB - orderA;
+          const timeA = getAddedTime(a);
+          const timeB = getAddedTime(b);
+          if (timeA !== timeB) return timeA - timeB;
           return (a.symbol || '').localeCompare(b.symbol || '');
         });
       case 'symbol':
@@ -898,7 +914,11 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
       case 'group_rs':
         return copy.sort((a, b) => (b.group_rs_rank ?? b.rs_rank ?? 0) - (a.group_rs_rank ?? a.rs_rank ?? 0));
       case 'added':
-        return copy.sort((a, b) => new Date(b.added_at || 0) - new Date(a.added_at || 0));
+        return copy.sort((a, b) => {
+          const diff = getAddedTime(b) - getAddedTime(a);
+          if (diff !== 0) return diff;
+          return (a.symbol || '').localeCompare(b.symbol || '');
+        });
       default:
         return copy;
     }
@@ -1338,7 +1358,13 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
             peersData={peersData}
             loadingPrices={loadingPrices}
             isWatchlistSaved={true}
-            onToggleWatchlist={handleRemoveSymbol}
+            onToggleWatchlist={(sym, flagColor) => {
+              if (flagColor === 'REMOVE' || flagColor === undefined) {
+                handleRemoveSymbol(sym);
+              } else {
+                handleUpdateFlag(sym, flagColor);
+              }
+            }}
             onSelectStock={selectStock}
             onSelectGroup={handleOpenGroupChart}
           />
@@ -1691,6 +1717,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
               columns={['flag', 'symbol', 'today_pct', 'rs_rank', 'ext_atr_50', 'rs_line', 'actions']}
               sortBy={sortBy}
               onSortChange={setSortBy}
+              defaultSortBy="flag_asc"
               onUpdateFlag={handleUpdateFlag}
               showIndustryFilter={true}
               selectedIndustry={selectedIndustry}
