@@ -2,12 +2,14 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { marked } from 'marked';
 import { QULLAMAGGIE_CONTENT } from '../data/learnQullamaggie';
 import { MARTIN_LUK_CONTENT } from '../data/learnMartinLuk';
+import { BRIAN_SHANNON_CONTENT } from '../data/learnBrianShannon';
+import { FELIPE_GUIRAO_CONTENT } from '../data/learnFelipeGuirao';
 import { KOVA_CONTENT } from '../data/learnKova';
 import { JEFF_SUN_CONTENT } from '../data/learnJeffSun';
 import { DAN_ZANGER_CONTENT } from '../data/learnDanZanger';
 import { COMPARISON_CONTENT } from '../data/learnComparison';
 
-const SYSTEM_ORDER = ['qullamaggie', 'martinluk', 'kova', 'jeffsun', 'danzanger', 'comparison'];
+const SYSTEM_ORDER = ['qullamaggie', 'martinluk', 'brianshannon', 'felipeguirao', 'kova', 'jeffsun', 'danzanger', 'comparison'];
 
 function PatternDiagramSvg({ patternType }) {
   return (
@@ -135,6 +137,99 @@ function PatternDiagramSvg({ patternType }) {
           <line x1="36" y1="58" x2="202" y2="58" stroke="#f43f5e" strokeDasharray="4 3" strokeWidth="1.4" />
           <path d="M16 78 L56 32 L82 58 L116 12 L148 58 L170 36 L190 58 L220 84" stroke="#f43f5e" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
           <circle cx="190" cy="58" r="3.5" fill="#f43f5e" />
+        </>
+      )}
+      {patternType === 'avwap_bounce' && (
+        <>
+          <path d="M18 82 Q110 62 220 38" stroke="#38bdf8" strokeWidth="2" strokeDasharray="5 3" />
+          <path d="M18 82 L68 26 L98 48 L118 38 L138 56 L154 44 L166 50 L182 32 L218 10" stroke="#10b981" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="18" cy="82" r="3.5" fill="#38bdf8" />
+          <circle cx="166" cy="50" r="3.5" fill="#f59e0b" />
+        </>
+      )}
+      {patternType === 'avwap_pinch' && (
+        <>
+          <path d="M16 84 Q115 64 218 46" stroke="#38bdf8" strokeWidth="1.8" strokeDasharray="4 3" />
+          <path d="M68 18 Q135 36 218 42" stroke="#f43f5e" strokeWidth="1.8" strokeDasharray="4 3" />
+          <path d="M16 84 L68 18 L96 60 L122 30 L144 52 L162 37 L174 45 L186 35 L218 10" stroke="#10b981" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="68" cy="18" r="3.2" fill="#f43f5e" />
+          <circle cx="186" cy="35" r="3.8" fill="#f59e0b" />
+        </>
+      )}
+      {patternType === 'avwap_handoff' && (
+        <>
+          <path d="M16 84 Q120 72 220 58" stroke="#64748b" strokeWidth="1.5" strokeDasharray="4 3" />
+          <path d="M104 52 Q160 36 220 18" stroke="#38bdf8" strokeWidth="2" strokeDasharray="5 3" />
+          <path d="M16 84 L64 46 L104 52 L144 18 L166 32 L182 22 L218 8" stroke="#10b981" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="104" cy="52" r="3.5" fill="#38bdf8" />
+          <circle cx="166" cy="32" r="3.5" fill="#f59e0b" />
+        </>
+      )}
+      {patternType === 'avwap_reclaim' && (
+        <>
+          <path d="M16 74 Q120 56 220 40" stroke="#38bdf8" strokeWidth="2" strokeDasharray="5 3" />
+          <path d="M16 74 L68 24 L106 46 L132 38 L152 68 L170 44 L184 48 L218 12" stroke="#10b981" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="152" cy="68" r="3.5" fill="#f43f5e" />
+          <circle cx="170" cy="44" r="3.8" fill="#f59e0b" />
+        </>
+      )}
+      {patternType === 'undercut_reclaim' && (
+        <>
+          <line x1="64" y1="54" x2="210" y2="54" stroke="#64748b" strokeDasharray="3 3" strokeWidth="1.2" />
+          <path d="M16 78 Q120 58 220 38" stroke="#38bdf8" strokeWidth="1.8" strokeDasharray="4 3" />
+          <path d="M16 78 L64 22 L96 54 L124 38 L154 74 L172 48 L218 10" stroke="#10b981" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="154" cy="74" r="3.5" fill="#f43f5e" />
+          <circle cx="172" cy="48" r="3.8" fill="#f59e0b" />
+        </>
+      )}
+      {patternType === 'oversold_panic_bounce' && (
+        <>
+          <path d="M16 14 Q96 24 218 40" stroke="#f59e0b" strokeWidth="1.6" strokeDasharray="4 3" />
+          <path d="M16 18 L52 38 M64 46 L94 64 M106 72 L134 84 L164 60 L216 36" stroke="#10b981" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M52 38 L64 46 M94 64 L106 72" stroke="#f43f5e" strokeWidth="2" strokeDasharray="2 2" />
+          <circle cx="134" cy="84" r="3.5" fill="#f43f5e" />
+          <circle cx="148" cy="72" r="3.8" fill="#f59e0b" />
+        </>
+      )}
+      {patternType === 'weak_ema_short_bounce' && (
+        <>
+          <path d="M48 16 Q130 32 220 56" stroke="#f59e0b" strokeWidth="1.7" strokeDasharray="4 3" />
+          <path d="M48 24 Q130 40 220 64" stroke="#38bdf8" strokeWidth="1.5" />
+          <path d="M16 42 L48 14 L88 64 L118 50 L144 40 L166 44 L216 84" stroke="#f43f5e" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="166" cy="44" r="3.8" fill="#f43f5e" />
+        </>
+      )}
+      {patternType === 'first_valid_consolidation' && (
+        <>
+          <path d="M16 84 Q60 60 220 36" stroke="#f59e0b" strokeWidth="1.8" strokeDasharray="4 3" />
+          <path d="M16 88 Q60 74 220 54" stroke="#38bdf8" strokeWidth="1.5" />
+          <line x1="90" y1="36" x2="176" y2="36" stroke="#64748b" strokeDasharray="3 3" strokeWidth="1.2" />
+          <path d="M16 82 L70 30 L94 48 L108 38 L124 46 L140 38 L154 44 L168 36 L178 30 L218 8" stroke="#10b981" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="168" cy="36" r="3.5" fill="#f43f5e" />
+          <circle cx="178" cy="30" r="3.8" fill="#f59e0b" />
+        </>
+      )}
+      {patternType === 'bearish_flag_breakdown' && (
+        <>
+          <path d="M16 16 Q90 28 220 58" stroke="#f59e0b" strokeWidth="1.8" strokeDasharray="4 3" />
+          <path d="M16 26 Q90 38 220 68" stroke="#38bdf8" strokeWidth="1.5" />
+          <line x1="84" y1="52" x2="168" y2="52" stroke="#64748b" strokeDasharray="3 3" strokeWidth="1.2" />
+          <path d="M16 18 L68 76 L92 56 L110 66 L128 54 L146 64 L164 52 L176 60 L216 88" stroke="#f43f5e" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="164" cy="52" r="3.5" fill="#f59e0b" />
+          <circle cx="176" cy="60" r="3.8" fill="#f43f5e" />
+        </>
+      )}
+      {patternType === 'five_day_time_exit' && (
+        <>
+          <line x1="50" y1="20" x2="50" y2="76" stroke="#64748b" strokeDasharray="2 3" strokeWidth="1" />
+          <line x1="85" y1="20" x2="85" y2="76" stroke="#64748b" strokeDasharray="2 3" strokeWidth="1" />
+          <line x1="120" y1="20" x2="120" y2="76" stroke="#64748b" strokeDasharray="2 3" strokeWidth="1" />
+          <line x1="155" y1="20" x2="155" y2="76" stroke="#64748b" strokeDasharray="2 3" strokeWidth="1" />
+          <line x1="190" y1="20" x2="190" y2="76" stroke="#f59e0b" strokeDasharray="2 3" strokeWidth="1.2" />
+          <path d="M20 78 L50 64 L85 52 L120 40 L155 30 L190 18" stroke="#10b981" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="50" cy="64" r="3.5" fill="#38bdf8" />
+          <circle cx="120" cy="40" r="3.2" fill="#10b981" />
+          <circle cx="190" cy="18" r="4.2" fill="#f59e0b" />
         </>
       )}
     </svg>
@@ -288,19 +383,67 @@ export default function LearnTab({ setActiveTab, onSelectSetup }) {
     scaleAndMarginDiscipline: false
   });
 
+  // Brian Shannon Interactive Calculator State
+  const [bsEquity, setBsEquity] = useState(100000);
+  const [bsRiskPct, setBsRiskPct] = useState(0.75); // 0.75% equity risk
+  const [bsEntryPrice, setBsEntryPrice] = useState(51.0);
+  const [bsAvwapPrice, setBsAvwapPrice] = useState(50.2);
+  const [bsStopPrice, setBsStopPrice] = useState(49.8);
+  const [bsSma5dPrice, setBsSma5dPrice] = useState(50.4);
+  const [bsSma5dSlope, setBsSma5dSlope] = useState('rising'); // 'rising' | 'flattening' | 'declining'
+
+  // Brian Shannon Interactive Checklist State
+  const [bsChecklistItems, setBsChecklistItems] = useState({
+    stage2Markup: true,
+    sma5dRising: true,
+    avwapAnchorValid: true,
+    rightSideHigherLow: true,
+    volumeConfirmation: true,
+    mtfaAligned: true,
+    structuralStopSet: true,
+    riskCappedOnePct: true,
+    noImminentEarnings: true,
+    sellOneThirdPlan: false
+  });
+
+  // Felipe Guirao Interactive Calculator State
+  const [fgEquity, setFgEquity] = useState(100000);
+  const [fgRiskPct, setFgRiskPct] = useState(1.0); // 1.0% non-negotiable risk
+  const [fgEntryPrice, setFgEntryPrice] = useState(45.5);
+  const [fgStopPrice, setFgStopPrice] = useState(44.1); // Signal candle low
+  const [fgEntryDay, setFgEntryDay] = useState('Monday'); // 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday'
+
+  // Felipe Guirao Interactive Checklist State
+  const [fgChecklistItems, setFgChecklistItems] = useState({
+    youngTrendLeg1: true,
+    emaStackedTrending: true,
+    cmlIndicatorGreen: true,
+    min7DayConsolidation: true,
+    vcpContraction: true,
+    ema8Interaction: true,
+    ema20HeldAbove: true,
+    signalCandleExpanded: true,
+    noUpperWick: true,
+    eodEntryAnd5DayExit: true
+  });
+
   // Select system content
   const t =
     system === 'qullamaggie'
       ? QULLAMAGGIE_CONTENT
       : system === 'martinluk'
         ? MARTIN_LUK_CONTENT
-        : system === 'comparison'
-          ? COMPARISON_CONTENT
-          : system === 'jeffsun'
-            ? JEFF_SUN_CONTENT
-            : system === 'danzanger'
-              ? DAN_ZANGER_CONTENT
-              : KOVA_CONTENT;
+        : system === 'brianshannon'
+          ? BRIAN_SHANNON_CONTENT
+          : system === 'felipeguirao'
+            ? FELIPE_GUIRAO_CONTENT
+            : system === 'comparison'
+              ? COMPARISON_CONTENT
+              : system === 'jeffsun'
+                ? JEFF_SUN_CONTENT
+                : system === 'danzanger'
+                  ? DAN_ZANGER_CONTENT
+                  : KOVA_CONTENT;
 
   // Handle system switch
   const handleSystemChange = (newSystem) => {
@@ -309,6 +452,10 @@ export default function LearnTab({ setActiveTab, onSelectSetup }) {
       setActiveChapterId('kq_core_philosophy');
     } else if (newSystem === 'martinluk') {
       setActiveChapterId('ml_philosophy');
+    } else if (newSystem === 'brianshannon') {
+      setActiveChapterId('bs_philosophy');
+    } else if (newSystem === 'felipeguirao') {
+      setActiveChapterId('fg_philosophy');
     } else if (newSystem === 'comparison') {
       setActiveChapterId('comp_matrix');
     } else if (newSystem === 'jeffsun') {
@@ -741,12 +888,139 @@ export default function LearnTab({ setActiveTab, onSelectSetup }) {
     };
   }, [dzChecklistItems]);
 
+  // Brian Shannon Calculator calculations
+  const bsCalcResults = useMemo(() => {
+    const equity = parseFloat(bsEquity) || 0;
+    const riskPct = parseFloat(bsRiskPct) || 0;
+    const entry = parseFloat(bsEntryPrice) || 0;
+    const avwap = parseFloat(bsAvwapPrice) || 0;
+    const stop = parseFloat(bsStopPrice) || 0;
+    const sma5d = parseFloat(bsSma5dPrice) || 0;
+
+    const stopDistance = entry > 0 ? entry - stop : 0;
+    const stopPct = entry > 0 ? (stopDistance / entry) * 100 : 0;
+    const isAboveAvwap = entry >= avwap && avwap > 0;
+    const isAbove5dSma = entry >= sma5d && sma5d > 0 && bsSma5dSlope !== 'declining';
+    const isStopBelowAvwap = stop < avwap && stopDistance > 0;
+
+    const totalRiskDollars = equity * (riskPct / 100);
+    let totalShares = 0;
+    if (stopDistance > 0 && totalRiskDollars > 0) {
+      totalShares = Math.floor(totalRiskDollars / stopDistance);
+    }
+
+    const totalPositionValue = totalShares * entry;
+    const positionPctOfEquity = equity > 0 ? (totalPositionValue / equity) * 100 : 0;
+
+    // Brian Shannon Scaling: Sell 1/3 on the way up (+2R to +3R), Stop to BE, Trail 2/3 on Higher Lows / 5d SMA
+    const trimSharesOneThird = Math.floor(totalShares / 3);
+    const runnerSharesTwoThirds = Math.max(0, totalShares - trimSharesOneThird);
+    const target2R = entry + 2.0 * stopDistance;
+    const target3R = entry + 3.0 * stopDistance;
+    const target5R = entry + 5.0 * stopDistance;
+
+    return {
+      stopDistance,
+      stopPct,
+      isAboveAvwap,
+      isAbove5dSma,
+      isStopBelowAvwap,
+      totalRiskDollars,
+      totalShares,
+      totalPositionValue,
+      positionPctOfEquity,
+      trimSharesOneThird,
+      runnerSharesTwoThirds,
+      target2R,
+      target3R,
+      target5R
+    };
+  }, [bsEquity, bsRiskPct, bsEntryPrice, bsAvwapPrice, bsStopPrice, bsSma5dPrice, bsSma5dSlope]);
+
+  const bsChecklistScore = useMemo(() => {
+    const keys = Object.keys(bsChecklistItems);
+    const completed = keys.filter(k => bsChecklistItems[k]).length;
+    return {
+      completed,
+      total: keys.length,
+      pct: Math.round((completed / keys.length) * 100)
+    };
+  }, [bsChecklistItems]);
+
+  // Felipe Guirao Calculator calculations
+  const fgCalcResults = useMemo(() => {
+    const equity = parseFloat(fgEquity) || 0;
+    const riskPct = parseFloat(fgRiskPct) || 0;
+    const entry = parseFloat(fgEntryPrice) || 0;
+    const stop = parseFloat(fgStopPrice) || 0;
+
+    const stopDistance = entry > 0 ? entry - stop : 0;
+    const stopPct = entry > 0 ? (stopDistance / entry) * 100 : 0;
+    const isStopValid = stopDistance > 0 && stopPct <= 7.0;
+
+    const totalRiskDollars = equity * (riskPct / 100);
+    let totalShares = 0;
+    if (stopDistance > 0 && totalRiskDollars > 0) {
+      totalShares = Math.floor(totalRiskDollars / stopDistance);
+    }
+
+    const totalPositionValue = totalShares * entry;
+    const positionPctOfEquity = equity > 0 ? (totalPositionValue / equity) * 100 : 0;
+
+    const targetBreakeven = entry + stopDistance; // 1:1 RR breakeven level
+    const target2R = entry + (stopDistance * 2.0);
+    const target3R = entry + (stopDistance * 3.0);
+    const target5R = entry + (stopDistance * 5.0);
+
+    const dayMap = {
+      'Monday': 'Friday Close (Day 5)',
+      'Tuesday': 'Next Monday Close (Day 5)',
+      'Wednesday': 'Next Tuesday Close (Day 5)',
+      'Thursday': 'Next Wednesday Close (Day 5)',
+      'Friday': 'Next Thursday Close (Day 5)'
+    };
+    const day5ExitDay = dayMap[fgEntryDay] || 'Day 5 Close';
+
+    return {
+      stopDistance,
+      stopPct,
+      isStopValid,
+      totalRiskDollars,
+      totalShares,
+      totalPositionValue,
+      positionPctOfEquity,
+      targetBreakeven,
+      target2R,
+      target3R,
+      target5R,
+      day5ExitDay
+    };
+  }, [fgEquity, fgRiskPct, fgEntryPrice, fgStopPrice, fgEntryDay]);
+
+  const fgChecklistScore = useMemo(() => {
+    const keys = Object.keys(fgChecklistItems);
+    const completed = keys.filter(k => fgChecklistItems[k]).length;
+    return {
+      completed,
+      total: keys.length,
+      pct: Math.round((completed / keys.length) * 100)
+    };
+  }, [fgChecklistItems]);
+
   const toggleKqChecklist = (key) => {
     setKqChecklistItems(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   const toggleMlChecklist = (key) => {
     setMlChecklistItems(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleBsChecklist = (key) => {
+    setBsChecklistItems(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleFgChecklist = (key) => {
+    setFgChecklistItems(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   const toggleCompChecklist = (key) => {
@@ -829,6 +1103,42 @@ export default function LearnTab({ setActiveTab, onSelectSetup }) {
         </button>
 
         <button
+          ref={(el) => { tabRefs.current.brianshannon = el; }}
+          id="learn-tab-brianshannon"
+          role="tab"
+          aria-selected={system === 'brianshannon'}
+          aria-controls="learn-panel-brianshannon"
+          tabIndex={system === 'brianshannon' ? 0 : -1}
+          className={`learn-system-btn ${system === 'brianshannon' ? 'active' : ''}`}
+          onClick={() => handleSystemChange('brianshannon')}
+          onKeyDown={(e) => handleSystemTabKeyDown(e, 'brianshannon')}
+        >
+          <span className="system-icon" aria-hidden="true">⚓</span>
+          <div className="system-btn-text">
+            <span className="system-name">Brian Shannon, CMT</span>
+            <span className="system-sub">Anchored VWAP · 5-Day SMA · MTFA</span>
+          </div>
+        </button>
+
+        <button
+          ref={(el) => { tabRefs.current.felipeguirao = el; }}
+          id="learn-tab-felipeguirao"
+          role="tab"
+          aria-selected={system === 'felipeguirao'}
+          aria-controls="learn-panel-felipeguirao"
+          tabIndex={system === 'felipeguirao' ? 0 : -1}
+          className={`learn-system-btn ${system === 'felipeguirao' ? 'active' : ''}`}
+          onClick={() => handleSystemChange('felipeguirao')}
+          onKeyDown={(e) => handleSystemTabKeyDown(e, 'felipeguirao')}
+        >
+          <span className="system-icon" aria-hidden="true">⏱️</span>
+          <div className="system-btn-text">
+            <span className="system-name">Felipe Guirao, CMT</span>
+            <span className="system-sub">EOD Swing · 8/20 EMA · 5-Day Exit Horizon</span>
+          </div>
+        </button>
+
+        <button
           ref={(el) => { tabRefs.current.kova = el; }}
           id="learn-tab-kova"
           role="tab"
@@ -896,7 +1206,7 @@ export default function LearnTab({ setActiveTab, onSelectSetup }) {
           <span className="system-icon" aria-hidden="true">⚖️</span>
           <div className="system-btn-text">
             <span className="system-name">Master Comparison</span>
-            <span className="system-sub">5 Super Traders · Universal DNA</span>
+            <span className="system-sub">6 Super Traders · Universal DNA</span>
           </div>
         </button>
       </div>
@@ -1152,12 +1462,12 @@ export default function LearnTab({ setActiveTab, onSelectSetup }) {
                           </div>
                         </div>
 
-                        {/* Dan Zanger Verbatim Methodology Commentary */}
+                        {/* Verbatim Methodology Commentary */}
                         {pat.originalText && pat.originalText.length > 0 && (
                           <div className="learn-zanger-text-box">
                             <div className="learn-zanger-text-header">
                               <span className="learn-zanger-quote-symbol" aria-hidden="true">“</span>
-                              <span>Dan Zanger's Chartpattern.com Commentary</span>
+                              <span>{pat.quoteHeader || "Dan Zanger's Chartpattern.com Commentary"}</span>
                             </div>
                             <div className="learn-zanger-text-body">
                               {pat.originalText.map((p, pIdx) => (
@@ -3808,6 +4118,828 @@ export default function LearnTab({ setActiveTab, onSelectSetup }) {
                       </div>
                       <div className="order-footer">
                         Action: Liquidate 100% into blow-off euphoria
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ========================================================= */}
+              {/* BRIAN SHANNON INTERACTIVE CHECKLIST (bs_checklist)        */}
+              {/* ========================================================= */}
+              {activeChapter.id === 'bs_checklist' && (
+                <div className="learn-interactive-checklist-pane">
+                  <div className="checklist-score-banner">
+                    <div className="score-summary">
+                      <span className="score-title">Brian Shannon AlphaTrends Compliance Score</span>
+                      <div className="score-number">
+                        {bsChecklistScore.pct}%{' '}
+                        <span className="score-sub">({bsChecklistScore.completed}/{bsChecklistScore.total} checks)</span>
+                      </div>
+                    </div>
+                    <div className="score-status">
+                      {bsChecklistScore.pct === 100 ? (
+                        <span className="badge badge-emerald" style={{ fontSize: '14px', padding: '6px 14px' }}>
+                          ✓ Right-Side &amp; MTFA Validated — Ready to Execute
+                        </span>
+                      ) : (
+                        <span className="badge badge-warning" style={{ fontSize: '14px', padding: '6px 14px' }}>
+                          ⚠ AlphaTrends Alignment Incomplete — Wait for Confirmation
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="checklist-items-grid">
+                    <label className={`checklist-item ${bsChecklistItems.stage2Markup ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={bsChecklistItems.stage2Markup}
+                        onChange={() => toggleBsChecklist('stage2Markup')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          1. Daily Chart in Stage 2 Markup (&quot;Only Price Pays&quot;)
+                        </span>
+                        <span className="checklist-item-desc">
+                          Stock is printing Higher Highs and Higher Lows above a rising 20-day / 50-day SMA and major Daily AVWAP.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className={`checklist-item ${bsChecklistItems.sma5dRising ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={bsChecklistItems.sma5dRising}
+                        onChange={() => toggleBsChecklist('sma5dRising')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          2. Price Above Flattening or Rising 5-Day SMA (65 SMA on 30m)
+                        </span>
+                        <span className="checklist-item-desc">
+                          Non-negotiable rule: NEVER buy a stock for a swing trade while it is below a declining 5-day moving average.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className={`checklist-item ${bsChecklistItems.avwapAnchorValid ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={bsChecklistItems.avwapAnchorValid}
+                        onChange={() => toggleBsChecklist('avwapAnchorValid')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          3. Meaningful AVWAP Anchor Identified (Swing Low / Earnings / IPO / YTD)
+                        </span>
+                        <span className="checklist-item-desc">
+                          AVWAP is anchored to a major volume/psychology inflection point and buyers are defending their cost basis.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className={`checklist-item ${bsChecklistItems.rightSideHigherLow ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={bsChecklistItems.rightSideHigherLow}
+                        onChange={() => toggleBsChecklist('rightSideHigherLow')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          4. Right-Side Confirmation (Bounce + Higher Low + Resistance Break)
+                        </span>
+                        <span className="checklist-item-desc">
+                          No blind limit orders on a falling knife! Price tested AVWAP, held, formed a Higher Low, and broke short-term resistance.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className={`checklist-item ${bsChecklistItems.volumeConfirmation ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={bsChecklistItems.volumeConfirmation}
+                        onChange={() => toggleBsChecklist('volumeConfirmation')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          5. Volume Contraction on Pullback &amp; Expansion on Right-Side Turn
+                        </span>
+                        <span className="checklist-item-desc">
+                          Selling volume dried up into the AVWAP test or Pinch apex, followed by institutional buying volume on the trigger.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className={`checklist-item ${bsChecklistItems.mtfaAligned ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={bsChecklistItems.mtfaAligned}
+                        onChange={() => toggleBsChecklist('mtfaAligned')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          6. Multiple Timeframe Alignment (Daily + 30m + 5m/15m Synchronized)
+                        </span>
+                        <span className="checklist-item-desc">
+                          Higher timeframe provides trend tailwind, 30m 5-Day SMA confirms weekly control, and 5m/15m triggers entry.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className={`checklist-item ${bsChecklistItems.structuralStopSet ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={bsChecklistItems.structuralStopSet}
+                        onChange={() => toggleBsChecklist('structuralStopSet')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          7. Hard Structural Stop Placed Below Right-Side Higher Low / Pinch Low
+                        </span>
+                        <span className="checklist-item-desc">
+                          Stop is placed at the exact price level that invalidates the setup (beneath the Higher Low and AVWAP).
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className={`checklist-item ${bsChecklistItems.riskCappedOnePct ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={bsChecklistItems.riskCappedOnePct}
+                        onChange={() => toggleBsChecklist('riskCappedOnePct')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          8. Share Size Computed From Stop Distance (≤ 0.5% – 1.0% Equity Risk)
+                        </span>
+                        <span className="checklist-item-desc">
+                          Risk Management is Job #1: Share count is mathematically sized so a stop-out is a harmless paper cut.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className={`checklist-item ${bsChecklistItems.noImminentEarnings ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={bsChecklistItems.noImminentEarnings}
+                        onChange={() => toggleBsChecklist('noImminentEarnings')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          9. No Binary Quarterly Earnings Report Imminent
+                        </span>
+                        <span className="checklist-item-desc">
+                          Never gamble on binary earnings gaps without a substantial profit cushion or reduced size.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className={`checklist-item ${bsChecklistItems.sellOneThirdPlan ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={bsChecklistItems.sellOneThirdPlan}
+                        onChange={() => toggleBsChecklist('sellOneThirdPlan')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          10. &quot;Sell 1/3 on the Way Up&quot; &amp; Higher-Low Trailing Plan Set
+                        </span>
+                        <span className="checklist-item-desc">
+                          Ready to trim 1/3 at +2R to +3R, move stop to Breakeven, and trail the remaining 2/3 under 30m Higher Lows.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {/* ========================================================= */}
+              {/* BRIAN SHANNON INTERACTIVE CALCULATOR (bs_calculator)      */}
+              {/* ========================================================= */}
+              {activeChapter.id === 'bs_calculator' && (
+                <div className="learn-calculator-pane">
+                  <div className="calc-inputs-grid">
+                    <div className="calc-input-group">
+                      <label htmlFor="bs-equity-input">Total Account Equity ($)</label>
+                      <input
+                        id="bs-equity-input"
+                        type="number"
+                        className="calc-input"
+                        value={bsEquity}
+                        onChange={(e) => setBsEquity(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="calc-input-group">
+                      <label htmlFor="bs-risk-input">Max Equity Risk Per Trade (%)</label>
+                      <span id="bs-risk-hint" className="calc-hint">AlphaTrends Rule: 0.50% – 1.00%</span>
+                      <input
+                        id="bs-risk-input"
+                        aria-describedby="bs-risk-hint"
+                        type="number"
+                        step="0.05"
+                        className="calc-input"
+                        value={bsRiskPct}
+                        onChange={(e) => setBsRiskPct(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="calc-input-group">
+                      <label htmlFor="bs-entry-input">Right-Side Entry Trigger ($)</label>
+                      <span id="bs-entry-hint" className="calc-hint">Break above intraday bounce high</span>
+                      <input
+                        id="bs-entry-input"
+                        aria-describedby="bs-entry-hint"
+                        type="number"
+                        step="0.1"
+                        className="calc-input"
+                        value={bsEntryPrice}
+                        onChange={(e) => setBsEntryPrice(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="calc-input-group">
+                      <label htmlFor="bs-avwap-input">Anchored VWAP Level ($)</label>
+                      <span id="bs-avwap-hint" className="calc-hint">Key Swing Low / Earnings / Pinch AVWAP</span>
+                      <input
+                        id="bs-avwap-input"
+                        aria-describedby="bs-avwap-hint"
+                        type="number"
+                        step="0.1"
+                        className="calc-input"
+                        value={bsAvwapPrice}
+                        onChange={(e) => setBsAvwapPrice(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="calc-input-group">
+                      <label htmlFor="bs-stop-input">Structural Higher Low Stop ($)</label>
+                      <span id="bs-stop-hint" className="calc-hint">Just beneath Higher Low / Pinch apex</span>
+                      <input
+                        id="bs-stop-input"
+                        aria-describedby="bs-stop-hint"
+                        type="number"
+                        step="0.1"
+                        className="calc-input"
+                        value={bsStopPrice}
+                        onChange={(e) => setBsStopPrice(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="calc-input-group">
+                      <label htmlFor="bs-sma5d-input">30m 5-Day SMA Level ($)</label>
+                      <span id="bs-sma5d-hint" className="calc-hint">65-period SMA on 30-min chart</span>
+                      <input
+                        id="bs-sma5d-input"
+                        aria-describedby="bs-sma5d-hint"
+                        type="number"
+                        step="0.1"
+                        className="calc-input"
+                        value={bsSma5dPrice}
+                        onChange={(e) => setBsSma5dPrice(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="calc-input-group">
+                      <label htmlFor="bs-slope-select">5-Day SMA Slope Direction</label>
+                      <span className="calc-hint">Never buy a declining 5-Day SMA!</span>
+                      <select
+                        id="bs-slope-select"
+                        className="calc-input"
+                        value={bsSma5dSlope}
+                        onChange={(e) => setBsSma5dSlope(e.target.value)}
+                      >
+                        <option value="rising">↗ Rising (Stage 2 Buyers in Control)</option>
+                        <option value="flattening">→ Flattening / Turning Up (Right-Side Transition)</option>
+                        <option value="declining">↘ Declining (Stage 4 — Stand Aside!)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Live AlphaTrends Rule Validation Banners */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px', margin: '20px 0' }}>
+                    <div className={`calc-alert-banner ${bsCalcResults.isAbove5dSma ? 'alert-success' : 'alert-danger'}`}>
+                      {bsCalcResults.isAbove5dSma ? (
+                        <span>
+                          ✓ 5-Day SMA Filter Valid: Entry (${parseFloat(bsEntryPrice || 0).toFixed(2)}) is above {bsSma5dSlope} 5d SMA (${parseFloat(bsSma5dPrice || 0).toFixed(2)})
+                        </span>
+                      ) : (
+                        <span>
+                          🚫 5-Day SMA Rule Violated: Never buy below a declining 5-Day SMA! Wait for right-side reclaim.
+                        </span>
+                      )}
+                    </div>
+
+                    <div className={`calc-alert-banner ${bsCalcResults.isAboveAvwap && bsCalcResults.isStopBelowAvwap ? 'alert-success' : 'alert-warning'}`}>
+                      {bsCalcResults.isAboveAvwap && bsCalcResults.isStopBelowAvwap ? (
+                        <span>
+                          ✓ AVWAP Structure Valid: Entry above AVWAP (${parseFloat(bsAvwapPrice || 0).toFixed(2)}) &amp; Stop protected beneath AVWAP
+                        </span>
+                      ) : (
+                        <span>
+                          ⚠️ Check AVWAP Placement: Entry should be above AVWAP with structural stop tucked underneath it
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Calculated Metrics Grid */}
+                  <div className="calc-metrics-grid">
+                    <div className="calc-metric-card">
+                      <span className="calc-metric-label">Max Dollar Risk (1R)</span>
+                      <span className="calc-metric-value" style={{ color: '#f43f5e' }}>
+                        ${bsCalcResults.totalRiskDollars.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      </span>
+                      <span className="calc-metric-sub">{bsRiskPct}% of account equity</span>
+                    </div>
+
+                    <div className="calc-metric-card">
+                      <span className="calc-metric-label">Structural Stop Distance</span>
+                      <span className="calc-metric-value text-warning">
+                        ${bsCalcResults.stopDistance.toFixed(2)}
+                      </span>
+                      <span className="calc-metric-sub">
+                        -{bsCalcResults.stopPct.toFixed(2)}% below entry
+                      </span>
+                    </div>
+
+                    <div className="calc-metric-card">
+                      <span className="calc-metric-label">Shares to Buy</span>
+                      <span className="calc-metric-value text-emerald">
+                        {bsCalcResults.totalShares.toLocaleString()}
+                      </span>
+                      <span className="calc-metric-sub">
+                        Sized from Higher Low stop
+                      </span>
+                    </div>
+
+                    <div className="calc-metric-card">
+                      <span className="calc-metric-label">Total Position Value</span>
+                      <span className="calc-metric-value text-primary">
+                        ${bsCalcResults.totalPositionValue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      </span>
+                      <span className="calc-metric-sub">
+                        {bsCalcResults.positionPctOfEquity.toFixed(1)}% of equity
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Brian Shannon 3-Step Scaling & Higher-Low Trailing Plan */}
+                  <h3 className="section-subheading" style={{ marginTop: '28px' }}>
+                    ⚓ Brian Shannon &quot;Sell Some on the Way Up&quot; &amp; Higher-Low Trailing Plan
+                  </h3>
+                  <div className="pyramid-orders-grid">
+                    <div className="pyramid-order-card">
+                      <div className="order-header">
+                        <span className="badge badge-emerald">STEP 1: SELL 1/3 INTO STRENGTH</span>
+                        <span className="order-trigger-badge">+2R to +3R Surge</span>
+                      </div>
+                      <div className="order-main">
+                        <div className="order-shares" style={{ color: '#34d399' }}>
+                          ${bsCalcResults.target2R.toFixed(2)} – ${bsCalcResults.target3R.toFixed(2)}
+                        </div>
+                        <div className="order-price">
+                          Sell Shares: <strong>{bsCalcResults.trimSharesOneThird.toLocaleString()} shs (1/3)</strong>
+                        </div>
+                      </div>
+                      <div className="order-footer">
+                        Action: Bank realized profit into initial momentum push
+                      </div>
+                    </div>
+
+                    <div className="pyramid-order-card">
+                      <div className="order-header">
+                        <span className="badge badge-warning">STEP 2: RAISE STOP TO BREAKEVEN</span>
+                        <span className="order-trigger-badge">Risk = $0</span>
+                      </div>
+                      <div className="order-main">
+                        <div className="order-shares" style={{ color: '#f59e0b' }}>
+                          ${bsEntryPrice > 0 ? parseFloat(bsEntryPrice).toFixed(2) : '0.00'}
+                        </div>
+                        <div className="order-price">
+                          Stop Level: <strong>Entry Price or New 30m Higher Low</strong>
+                        </div>
+                      </div>
+                      <div className="order-footer">
+                        Action: Never let a good winner turn into a loser
+                      </div>
+                    </div>
+
+                    <div className="pyramid-order-card">
+                      <div className="order-header">
+                        <span className="badge badge-outline">STEP 3: 5-DAY SMA &amp; HL TRAIL</span>
+                        <span className="order-trigger-badge">Core 2/3 Runner</span>
+                      </div>
+                      <div className="order-main">
+                        <div className="order-shares" style={{ color: '#38bdf8' }}>
+                          {bsCalcResults.runnerSharesTwoThirds.toLocaleString()} <span className="shares-label">Shares</span>
+                        </div>
+                        <div className="order-price">
+                          5R Target: <strong>${bsCalcResults.target5R.toFixed(2)}</strong> · Trail: <strong>30m Higher Lows &amp; Handoff AVWAP</strong>
+                        </div>
+                      </div>
+                      <div className="order-footer">
+                        Action: Hold while above rising 5-Day SMA &amp; Higher Lows
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ========================================================= */}
+              {/* FELIPE GUIRAO INTERACTIVE CHECKLIST (fg_checklist)        */}
+              {/* ========================================================= */}
+              {activeChapter.id === 'fg_checklist' && (
+                <div className="learn-checklist-pane">
+                  <div className="checklist-progress-bar-wrap">
+                    <div className="checklist-progress-bar">
+                      <div
+                        className="checklist-progress-fill"
+                        style={{
+                          width: `${fgChecklistScore.pct}%`,
+                          backgroundColor: fgChecklistScore.pct === 100 ? '#10b981' : '#f59e0b'
+                        }}
+                      />
+                    </div>
+                    <div className="checklist-progress-meta">
+                      <span className="score-main">
+                        {fgChecklistScore.pct}%{' '}
+                        <span className="score-sub">({fgChecklistScore.completed}/{fgChecklistScore.total} checks)</span>
+                      </span>
+                      {fgChecklistScore.pct === 100 ? (
+                        <span className="badge badge-emerald" style={{ fontSize: '14px', padding: '6px 14px' }}>
+                          ✓ Liberty Signal Validated — Ready to Enter at Market Close (3:58 PM / MOC)
+                        </span>
+                      ) : (
+                        <span className="badge badge-warning" style={{ fontSize: '14px', padding: '6px 14px' }}>
+                          ⚠ System Rules Incomplete — Wait for EOD Confirmation
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="checklist-items-grid">
+                    <label className={`checklist-item ${fgChecklistItems.youngTrendLeg1 ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={fgChecklistItems.youngTrendLeg1}
+                        onChange={() => toggleFgChecklist('youngTrendLeg1')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          1. Base Breakout &amp; Leg 1 Established (Target Leg 2)
+                        </span>
+                        <span className="checklist-item-desc">
+                          Stock broke out from a multi-week/month base, establishing Leg 1. We target the first valid consolidation to ride Leg 2 (the strongest wave).
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className={`checklist-item ${fgChecklistItems.emaStackedTrending ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={fgChecklistItems.emaStackedTrending}
+                        onChange={() => toggleFgChecklist('emaStackedTrending')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          2. 8, 20 &amp; 50 EMAs Stacked &amp; Trending Upward
+                        </span>
+                        <span className="checklist-item-desc">
+                          8, 20, and 50 EMAs are cleanly stacked in order (8 &gt; 20 &gt; 50) and trending upward behind the price action.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className={`checklist-item ${fgChecklistItems.cmlIndicatorGreen ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={fgChecklistItems.cmlIndicatorGreen}
+                        onChange={() => toggleFgChecklist('cmlIndicatorGreen')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          3. CML (Custom Momentum &amp; Linearity) Indicator is GREEN
+                        </span>
+                        <span className="checklist-item-desc">
+                          Guirao&apos;s proprietary CML indicator is bright green, confirming linear trend strength and strong institutional momentum.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className={`checklist-item ${fgChecklistItems.min7DayConsolidation ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={fgChecklistItems.min7DayConsolidation}
+                        onChange={() => toggleFgChecklist('min7DayConsolidation')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          4. Consolidation At Least 7 Days from Swing High
+                        </span>
+                        <span className="checklist-item-desc">
+                          The consolidation must be at least 7 full trading sessions from the high before breakout. No hasty premature entries.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className={`checklist-item ${fgChecklistItems.vcpContraction ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={fgChecklistItems.vcpContraction}
+                        onChange={() => toggleFgChecklist('vcpContraction')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          5. Volatility Contraction Pattern (VCP) with Converging Lines
+                        </span>
+                        <span className="checklist-item-desc">
+                          Clear volatility contraction: trendlines converge into a quiet apex, not expand (no expanding or megaphone patterns).
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className={`checklist-item ${fgChecklistItems.ema8Interaction ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={fgChecklistItems.ema8Interaction}
+                        onChange={() => toggleFgChecklist('ema8Interaction')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          6. Consolidation Touches the 8/20 EMA Layer
+                        </span>
+                        <span className="checklist-item-desc">
+                          Daily candles pull back and touch or interact with the 8/20 EMA moving average layer during the consolidation.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className={`checklist-item ${fgChecklistItems.ema20HeldAbove ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={fgChecklistItems.ema20HeldAbove}
+                        onChange={() => toggleFgChecklist('ema20HeldAbove')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          7. Zero Daily Closes Below the 20 EMA (Hard Rule)
+                        </span>
+                        <span className="checklist-item-desc">
+                          Non-negotiable rule: price may fluctuate intraday, but must NEVER close below the 20 EMA on a daily closing basis.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className={`checklist-item ${fgChecklistItems.signalCandleExpanded ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={fgChecklistItems.signalCandleExpanded}
+                        onChange={() => toggleFgChecklist('signalCandleExpanded')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          8. Breakout Candle Bigger &amp; Stronger Than Preceding 2 Candles
+                        </span>
+                        <span className="checklist-item-desc">
+                          Strong range expansion candle closing above resistance (horizontal or down-trendline), bigger and stronger than the 2 preceding candles.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className={`checklist-item ${fgChecklistItems.noUpperWick ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={fgChecklistItems.noUpperWick}
+                        onChange={() => toggleFgChecklist('noUpperWick')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          9. Clean Close with No Big Upper Wick
+                        </span>
+                        <span className="checklist-item-desc">
+                          Signal candle closes firmly near its high without an upper tail/wick, verifying buyers locked in range expansion into the close.
+                        </span>
+                      </div>
+                    </label>
+
+                    <label className={`checklist-item ${fgChecklistItems.eodEntryAnd5DayExit ? 'checked' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={fgChecklistItems.eodEntryAnd5DayExit}
+                        onChange={() => toggleFgChecklist('eodEntryAnd5DayExit')}
+                      />
+                      <div className="checklist-item-content">
+                        <span className="checklist-item-title">
+                          10. 3:58 PM Entry, Stop Below LOD, 1:1 RR to BE &amp; 5-Day Exit
+                        </span>
+                        <span className="checklist-item-desc">
+                          Enter at 3:58 PM EST (last 2 minutes of day), GTC stop below LOD, raise stop to BE at 1:1 RR, and exit trade on Day 5 at 3:50 PM.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {/* ========================================================= */}
+              {/* FELIPE GUIRAO INTERACTIVE CALCULATOR (fg_calculator)      */}
+              {/* ========================================================= */}
+              {activeChapter.id === 'fg_calculator' && (
+                <div className="learn-calculator-pane">
+                  <div className="calc-inputs-grid">
+                    <div className="calc-input-group">
+                      <label htmlFor="fg-equity-input">Total Account Equity ($)</label>
+                      <input
+                        id="fg-equity-input"
+                        type="number"
+                        className="calc-input"
+                        value={fgEquity}
+                        onChange={(e) => setFgEquity(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="calc-input-group">
+                      <label htmlFor="fg-risk-input">Fixed Risk Per Trade (%)</label>
+                      <span id="fg-risk-hint" className="calc-hint">Liberty Signal Standard: 1.00%</span>
+                      <input
+                        id="fg-risk-input"
+                        aria-describedby="fg-risk-hint"
+                        type="number"
+                        step="0.05"
+                        className="calc-input"
+                        value={fgRiskPct}
+                        onChange={(e) => setFgRiskPct(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="calc-input-group">
+                      <label htmlFor="fg-entry-input">EOD Entry Price ($)</label>
+                      <span id="fg-entry-hint" className="calc-hint">Market Close (3:58 PM / MOC)</span>
+                      <input
+                        id="fg-entry-input"
+                        aria-describedby="fg-entry-hint"
+                        type="number"
+                        step="0.1"
+                        className="calc-input"
+                        value={fgEntryPrice}
+                        onChange={(e) => setFgEntryPrice(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="calc-input-group">
+                      <label htmlFor="fg-stop-input">Breakout Signal Candle Low ($)</label>
+                      <span id="fg-stop-hint" className="calc-hint">Day 0 Breakout Low (−$0.01)</span>
+                      <input
+                        id="fg-stop-input"
+                        aria-describedby="fg-stop-hint"
+                        type="number"
+                        step="0.1"
+                        className="calc-input"
+                        value={fgStopPrice}
+                        onChange={(e) => setFgStopPrice(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="calc-input-group">
+                      <label htmlFor="fg-entry-day-select">Entry Day of Week</label>
+                      <span className="calc-hint">Maps your 5-day cycle exit</span>
+                      <select
+                        id="fg-entry-day-select"
+                        className="calc-input"
+                        value={fgEntryDay}
+                        onChange={(e) => setFgEntryDay(e.target.value)}
+                      >
+                        <option value="Monday">Monday (Exit Friday Close)</option>
+                        <option value="Tuesday">Tuesday (Exit Next Monday Close)</option>
+                        <option value="Wednesday">Wednesday (Exit Next Tuesday Close)</option>
+                        <option value="Thursday">Thursday (Exit Next Wednesday Close)</option>
+                        <option value="Friday">Friday (Exit Next Thursday Close)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Rule Validation Banners */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px', margin: '20px 0' }}>
+                    <div className={`calc-alert-banner ${fgCalcResults.isStopValid ? 'alert-success' : 'alert-danger'}`}>
+                      {fgCalcResults.isStopValid ? (
+                        <span>
+                          ✓ Structural Stop Valid: {fgCalcResults.stopPct.toFixed(2)}% distance (${fgCalcResults.stopDistance.toFixed(2)}) below entry
+                        </span>
+                      ) : (
+                        <span>
+                          🚫 Stop Distance Invalid: Must be greater than $0 and ≤ 7.0% for clean swing sizing
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="calc-alert-banner alert-info">
+                      <span>
+                        ⏱️ Scheduled 5-Day Exit: <strong>{fgCalcResults.day5ExitDay}</strong> at market close
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Calculated Metrics Grid */}
+                  <div className="calc-metrics-grid">
+                    <div className="calc-metric-card">
+                      <span className="calc-metric-label">Fixed Dollar Risk (1R)</span>
+                      <span className="calc-metric-value text-amber">
+                        ${fgCalcResults.totalRiskDollars.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                      <span className="calc-metric-sub">
+                        Strictly {fgRiskPct}% of equity
+                      </span>
+                    </div>
+
+                    <div className="calc-metric-card">
+                      <span className="calc-metric-label">Stop-Loss Price</span>
+                      <span className="calc-metric-value text-rose">
+                        ${(parseFloat(fgStopPrice || 0) - 0.01).toFixed(2)}
+                      </span>
+                      <span className="calc-metric-sub">
+                        1 tick below signal low
+                      </span>
+                    </div>
+
+                    <div className="calc-metric-card">
+                      <span className="calc-metric-label">Shares to Buy</span>
+                      <span className="calc-metric-value text-emerald">
+                        {fgCalcResults.totalShares.toLocaleString()}
+                      </span>
+                      <span className="calc-metric-sub">
+                        Sized from signal candle stop
+                      </span>
+                    </div>
+
+                    <div className="calc-metric-card">
+                      <span className="calc-metric-label">Total Position Value</span>
+                      <span className="calc-metric-value text-primary">
+                        ${fgCalcResults.totalPositionValue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      </span>
+                      <span className="calc-metric-sub">
+                        {fgCalcResults.positionPctOfEquity.toFixed(1)}% of equity
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Felipe Guirao 3-Step Management Architecture */}
+                  <h3 className="section-subheading" style={{ marginTop: '28px' }}>
+                    ⏱️ Felipe Guirao 3-Step Trade Management &amp; 5-Day Horizon
+                  </h3>
+                  <div className="pyramid-orders-grid">
+                    <div className="pyramid-order-card">
+                      <div className="order-header">
+                        <span className="badge badge-emerald">STEP 1: MARKET CLOSE FILL</span>
+                        <span className="order-trigger-badge">Day 1 Close (3:58 PM / MOC)</span>
+                      </div>
+                      <div className="order-main">
+                        <div className="order-shares" style={{ color: '#34d399' }}>
+                          ${parseFloat(fgEntryPrice || 0).toFixed(2)}
+                        </div>
+                        <div className="order-price">
+                          Size: <strong>{fgCalcResults.totalShares.toLocaleString()} shs</strong> · Stop: <strong>${(parseFloat(fgStopPrice || 0) - 0.01).toFixed(2)}</strong>
+                        </div>
+                      </div>
+                      <div className="order-footer">
+                        Action: Enter directly at market close; risk strictly 1% from candle low
+                      </div>
+                    </div>
+
+                    <div className="pyramid-order-card">
+                      <div className="order-header">
+                        <span className="badge badge-warning">STEP 2: BREAKEVEN TRAIL</span>
+                        <span className="order-trigger-badge">1:1 RR Target</span>
+                      </div>
+                      <div className="order-main">
+                        <div className="order-shares" style={{ color: '#f59e0b' }}>
+                          ${fgCalcResults.targetBreakeven.toFixed(2)}
+                        </div>
+                        <div className="order-price">
+                          Stop Level: <strong>Raise stop to ${parseFloat(fgEntryPrice || 0).toFixed(2)} (Breakeven)</strong>
+                        </div>
+                      </div>
+                      <div className="order-footer">
+                        Action: Free roll! Risk slashed to $0.00 once 1:1 RR reached
+                      </div>
+                    </div>
+
+                    <div className="pyramid-order-card">
+                      <div className="order-header">
+                        <span className="badge badge-outline">STEP 3: SYSTEMATIC TIME EXIT</span>
+                        <span className="order-trigger-badge">Day 5 Close</span>
+                      </div>
+                      <div className="order-main">
+                        <div className="order-shares" style={{ color: '#38bdf8' }}>
+                          {fgCalcResults.day5ExitDay}
+                        </div>
+                        <div className="order-price">
+                          Profit Milestones: +2R (<strong>${fgCalcResults.target2R.toFixed(2)}</strong>) · +3R (<strong>${fgCalcResults.target3R.toFixed(2)}</strong>)
+                        </div>
+                      </div>
+                      <div className="order-footer">
+                        Action: Liquidate entire remaining position at 3:55 PM EST
                       </div>
                     </div>
                   </div>

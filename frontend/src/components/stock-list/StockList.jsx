@@ -146,11 +146,20 @@ export default function StockList({
     if (!selectedIndustry || selectedIndustry === 'ALL') {
       return items;
     }
+    if (selectedIndustry === 'MIN_3') {
+      const validIndustries = new Set(
+        industryCounts.filter((ic) => ic.count >= 3).map((ic) => ic.industry)
+      );
+      return items.filter((item) => {
+        const ind = (item.industry || item.group_name || item.sector || '').trim() || 'Unclassified';
+        return validIndustries.has(ind);
+      });
+    }
     return items.filter((item) => {
       const ind = (item.industry || item.group_name || item.sector || '').trim() || 'Unclassified';
       return ind === selectedIndustry;
     });
-  }, [items, selectedIndustry]);
+  }, [items, selectedIndustry, industryCounts]);
 
   // Sort items according to sortBy
   const sortedItems = useMemo(() => {

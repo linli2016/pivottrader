@@ -10,8 +10,8 @@ export const FLAG_COLORS = {
   },
   orange: {
     id: 'orange',
-    label: 'Setting Up',
-    shortLabel: 'Setup',
+    label: 'Early Stage 2',
+    shortLabel: 'Stage 2A',
     color: '#f97316',
     bg: 'rgba(249, 115, 22, 0.15)',
     border: '#f97316',

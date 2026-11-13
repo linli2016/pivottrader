@@ -1297,56 +1297,56 @@ ALIAS_CATALOG: Dict[str, Dict[str, Any]] = {
         "type": "boolean",
         "label": "Stage 1 (Basing)",
         "category": "trend",
-        "description": "Stan Weinstein Stage 1: Base building & accumulation after prior decline (flat 30W MA)"
+        "description": "Stan Weinstein Stage 1: Base building & accumulation after prior decline (flat 200-day MA with 50/150 MA convergence)"
     },
     "STAGE_1": {
         "expr": "STAGE = 1",
         "type": "boolean",
         "label": "Stage 1 (Basing)",
         "category": "trend",
-        "description": "Stan Weinstein Stage 1: Base building & accumulation after prior decline (flat 30W MA)"
+        "description": "Stan Weinstein Stage 1: Base building & accumulation after prior decline (flat 200-day MA with 50/150 MA convergence)"
     },
     "STAGE2": {
         "expr": "STAGE = 2",
         "type": "boolean",
         "label": "Stage 2 (Advancing)",
         "category": "trend",
-        "description": "Stan Weinstein Stage 2: Markup uptrend with rising 30-week (150-day) moving average"
+        "description": "Stan Weinstein Stage 2: Markup uptrend with rising 200-day moving average (confirmed by 150 & 50 SMAs)"
     },
     "STAGE_2": {
         "expr": "STAGE = 2",
         "type": "boolean",
         "label": "Stage 2 (Advancing)",
         "category": "trend",
-        "description": "Stan Weinstein Stage 2: Markup uptrend with rising 30-week (150-day) moving average"
+        "description": "Stan Weinstein Stage 2: Markup uptrend with rising 200-day moving average (confirmed by 150 & 50 SMAs)"
     },
     "STAGE3": {
         "expr": "STAGE = 3",
         "type": "boolean",
         "label": "Stage 3 (Topping)",
         "category": "trend",
-        "description": "Stan Weinstein Stage 3: Top distribution & churning near highs (flattening 30W MA)"
+        "description": "Stan Weinstein Stage 3: Top distribution & churning near highs (flattening 200-day MA, momentum cracking)"
     },
     "STAGE_3": {
         "expr": "STAGE = 3",
         "type": "boolean",
         "label": "Stage 3 (Topping)",
         "category": "trend",
-        "description": "Stan Weinstein Stage 3: Top distribution & churning near highs (flattening 30W MA)"
+        "description": "Stan Weinstein Stage 3: Top distribution & churning near highs (flattening 200-day MA, momentum cracking)"
     },
     "STAGE4": {
         "expr": "STAGE = 4",
         "type": "boolean",
         "label": "Stage 4 (Declining)",
         "category": "trend",
-        "description": "Stan Weinstein Stage 4: Markdown downtrend below falling 30-week (150-day) moving average"
+        "description": "Stan Weinstein Stage 4: Markdown downtrend below falling 200-day moving average (50 < 150 < 200 alignment)"
     },
     "STAGE_4": {
         "expr": "STAGE = 4",
         "type": "boolean",
         "label": "Stage 4 (Declining)",
         "category": "trend",
-        "description": "Stan Weinstein Stage 4: Markdown downtrend below falling 30-week (150-day) moving average"
+        "description": "Stan Weinstein Stage 4: Markdown downtrend below falling 200-day moving average (50 < 150 < 200 alignment)"
     },
     "CONFIRMED_STAGE4": {
         "expr": (
@@ -1362,23 +1362,23 @@ ALIAS_CATALOG: Dict[str, Dict[str, Any]] = {
     },
     "WEINSTEIN_BREAKDOWN": {
         "expr": (
-            "STAGE4 AND C < SMA_150 AND C < SMA_50 AND SMA_50 < SMA_150 "
+            "STAGE4 AND C < SMA_200 AND C < SMA_150 AND C < SMA_50 AND SMA_50 < SMA_150 "
             "AND RS_RANK <= 40 AND CLOSE_RANGE <= 0.35"
         ),
         "type": "boolean",
         "label": "Weinstein Stage 4 Breakdown",
         "category": "pattern",
-        "description": "Primary Stage 3 to Stage 4 breakdown below falling 30-week (150-day) MA with weak close and lagging relative strength"
+        "description": "Primary Stage 3 to Stage 4 breakdown below falling 200-day / 40-week MA (and 150-day MA) with weak close and lagging relative strength"
     },
     "WEINSTEIN_PULLBACK": {
         "expr": (
-            "STAGE4 AND C < SMA_150 AND (SMA_150 - C) / SMA_150 <= 0.06 "
+            "STAGE4 AND C < SMA_200 AND (SMA_200 - C) / SMA_200 <= 0.06 "
             "AND C < C1 AND RS_RANK <= 35"
         ),
         "type": "boolean",
         "label": "Weinstein Short Pullback",
         "category": "pattern",
-        "description": "Second-chance short entry: reflexive bounce testing underside of falling 30-week (150-day) MA and rolling over"
+        "description": "Second-chance short entry: reflexive bounce testing underside of falling 200-day MA and rolling over"
     },
     "STAGE4_CONTINUATION": {
         "expr": (
@@ -1411,6 +1411,65 @@ ALIAS_CATALOG: Dict[str, Dict[str, Any]] = {
         "label": "Low Cheat",
         "category": "trend",
         "description": "Stage 2 Trend Template without C > 50 SMA (Low Cheat early base setup)"
+    },
+    "STAGE2A_BREAKOUT": {
+        "expr": (
+            "C >= 5.0 AND DOLLAR_VOL >= 5000000 AND C > SMA_200 AND C > SMA_50 "
+            "AND (SMA_200_20D_AGO IS NULL OR SMA_200 >= SMA_200_20D_AGO) "
+            "AND STAGE2_DAYS <= 15 "
+            "AND (PROJ_RVOL >= 1.5 OR RVOL >= 2.0 OR HIGHEST_VOL_1Y) "
+            "AND C > C1 AND CLOSE_RANGE >= 0.70 AND RS_RANK >= 70"
+        ),
+        "type": "boolean",
+        "label": "Stage 2A Breakout",
+        "category": "pattern",
+        "description": "Stan Weinstein Stage 2A: Early base breakout above flattening/rising 200 SMA on explosive volume (Tiger in the tank)"
+    },
+    "WEINSTEIN_STAGE2A_BREAKOUT": {
+        "expr": (
+            "C >= 5.0 AND DOLLAR_VOL >= 5000000 AND C > SMA_200 AND C > SMA_50 "
+            "AND (SMA_200_20D_AGO IS NULL OR SMA_200 >= SMA_200_20D_AGO) "
+            "AND STAGE2_DAYS <= 15 "
+            "AND (PROJ_RVOL >= 1.5 OR RVOL >= 2.0 OR HIGHEST_VOL_1Y) "
+            "AND C > C1 AND CLOSE_RANGE >= 0.70 AND RS_RANK >= 70"
+        ),
+        "type": "boolean",
+        "label": "Weinstein Stage 2A Breakout",
+        "category": "pattern",
+        "description": "Stan Weinstein Stage 2A: Early base breakout above flattening/rising 200 SMA on explosive volume (Tiger in the tank)"
+    },
+    "STAGE2A_RETEST": {
+        "expr": (
+            "C >= 5.0 AND DOLLAR_VOL >= 5000000 AND C > SMA_200 AND C >= SMA_50 "
+            "AND STAGE2_DAYS >= 3 AND STAGE2_DAYS <= 25 "
+            "AND PULLBACK <= 12.0 AND EXT_ATR_50 <= 2.5 AND RVOL <= 0.85 AND RS_RANK >= 70"
+        ),
+        "type": "boolean",
+        "label": "Stage 2A Retest",
+        "category": "pattern",
+        "description": "Stan Weinstein Stage 2A: Low-volume retest pullback ('obedient child') holding above the breakout pivot"
+    },
+    "STAGE2A_PULLBACK": {
+        "expr": (
+            "C >= 5.0 AND DOLLAR_VOL >= 5000000 AND C > SMA_200 AND C >= SMA_50 "
+            "AND STAGE2_DAYS >= 3 AND STAGE2_DAYS <= 25 "
+            "AND PULLBACK <= 12.0 AND EXT_ATR_50 <= 2.5 AND RVOL <= 0.85 AND RS_RANK >= 70"
+        ),
+        "type": "boolean",
+        "label": "Stage 2A Pullback",
+        "category": "pattern",
+        "description": "Stan Weinstein Stage 2A: Low-volume retest pullback ('obedient child') holding above the breakout pivot"
+    },
+    "WEINSTEIN_STAGE2A_RETEST": {
+        "expr": (
+            "C >= 5.0 AND DOLLAR_VOL >= 5000000 AND C > SMA_200 AND C >= SMA_50 "
+            "AND STAGE2_DAYS >= 3 AND STAGE2_DAYS <= 25 "
+            "AND PULLBACK <= 12.0 AND EXT_ATR_50 <= 2.5 AND RVOL <= 0.85 AND RS_RANK >= 70"
+        ),
+        "type": "boolean",
+        "label": "Weinstein Stage 2A Retest",
+        "category": "pattern",
+        "description": "Stan Weinstein Stage 2A: Low-volume retest pullback ('obedient child') holding above the breakout pivot"
     },
     "EPISODIC_PIVOT": {
         "expr": "COALESCE(GAP_PCT, 0) >= 10.0 AND COALESCE(RVOL, 0) >= 2.5",

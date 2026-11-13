@@ -224,30 +224,34 @@ class MomentumEngine:
                         ELSE 0 
                     END as stage2_days,
                     CASE
-                        WHEN sma_150 IS NOT NULL AND close > sma_150 
+                        WHEN COALESCE(sma_200, sma_150) IS NOT NULL 
+                         AND close > COALESCE(sma_200, sma_150)
+                         AND (sma_150 IS NULL OR close >= sma_150)
                          AND (sma_50 IS NULL OR close >= sma_50)
-                         AND (sma_50 IS NULL OR sma_50 >= sma_150)
-                         AND (sma_150_20d_ago IS NOT NULL AND (sma_150 - sma_150_20d_ago) / sma_150_20d_ago * 100.0 > 0.5)
+                         AND (sma_50 IS NULL OR sma_150 IS NULL OR sma_50 >= sma_150)
+                         AND (sma_200_20d_ago IS NULL OR (sma_200 - sma_200_20d_ago) / NULLIF(sma_200_20d_ago, 0) * 100.0 > 0.0)
                          AND COALESCE(dist_from_52w_high, 0) <= 25.0
                         THEN 2
 
-                        WHEN sma_150 IS NOT NULL AND close < sma_150 
+                        WHEN COALESCE(sma_200, sma_150) IS NOT NULL 
+                         AND close < COALESCE(sma_200, sma_150)
+                         AND (sma_150 IS NULL OR close < sma_150)
                          AND (sma_50 IS NULL OR close < sma_50)
-                         AND (sma_50 IS NULL OR sma_50 < sma_150)
-                         AND (sma_150_20d_ago IS NOT NULL AND (sma_150 - sma_150_20d_ago) / sma_150_20d_ago * 100.0 < -0.5)
+                         AND (sma_50 IS NULL OR sma_150 IS NULL OR sma_50 < sma_150)
+                         AND (sma_200_20d_ago IS NULL OR (sma_200 - sma_200_20d_ago) / NULLIF(sma_200_20d_ago, 0) * 100.0 < -0.2)
                         THEN 4
 
                         WHEN (COALESCE(dist_from_52w_high, 50.0) <= 20.0 OR COALESCE(ret_6m, 0) > 30.0)
-                         AND (close < sma_50 OR (sma_150_20d_ago IS NOT NULL AND (sma_150 - sma_150_20d_ago) / sma_150_20d_ago * 100.0 <= 0.5))
-                         AND close >= sma_150 * 0.90
+                         AND (close < sma_50 OR (sma_200_20d_ago IS NOT NULL AND (sma_200 - sma_200_20d_ago) / NULLIF(sma_200_20d_ago, 0) * 100.0 <= 0.5))
+                         AND close >= COALESCE(sma_200, sma_150) * 0.90
                         THEN 3
 
                         WHEN (COALESCE(dist_from_52w_high, 0) > 20.0 OR COALESCE(dist_from_52w_low, 100.0) <= 35.0)
-                         AND (sma_150_20d_ago IS NOT NULL AND ABS((sma_150 - sma_150_20d_ago) / sma_150_20d_ago * 100.0) <= 1.5)
-                         AND close >= sma_150 * 0.85
+                         AND (sma_200_20d_ago IS NOT NULL AND ABS((sma_200 - sma_200_20d_ago) / NULLIF(sma_200_20d_ago, 0) * 100.0) <= 1.5)
+                         AND close >= COALESCE(sma_200, sma_150) * 0.85
                         THEN 1
 
-                        WHEN close >= sma_150 THEN 2
+                        WHEN close >= COALESCE(sma_200, sma_150) THEN 2
                         ELSE 4
                     END as weinstein_stage
                 FROM stage2_islands

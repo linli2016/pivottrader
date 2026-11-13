@@ -2585,6 +2585,7 @@ class DatabaseService:
                     db.weinstein_stage,
                     db.sma_50,
                     db.sma_150,
+                    db.sma_200,
                     db.dist_from_52w_high,
                     db.dist_from_52w_low,
                     db.ret_6m
@@ -2609,9 +2610,11 @@ class DatabaseService:
                     LAG(close, 20) OVER (PARTITION BY symbol ORDER BY date) as close_20d_ago,
                     LAG(close, 65) OVER (PARTITION BY symbol ORDER BY date) as close_65d_ago,
                     LAG(sma_150, 20) OVER (PARTITION BY symbol ORDER BY date) as sma_150_20d_ago,
+                    LAG(sma_200, 20) OVER (PARTITION BY symbol ORDER BY date) as sma_200_20d_ago,
                     weinstein_stage,
                     sma_50,
                     sma_150,
+                    sma_200,
                     dist_from_52w_high,
                     dist_from_52w_low,
                     ret_6m
@@ -2643,11 +2646,11 @@ class DatabaseService:
                     COUNT(CASE WHEN close_20d_ago > 0 AND ((close - close_20d_ago)/close_20d_ago)*100 >= 50.0 THEN 1 END) as up_50pct_1m,
                     COUNT(CASE WHEN close_65d_ago > 0 AND ((close - close_65d_ago)/close_65d_ago)*100 >= 50.0 THEN 1 END) as up_50pct_3m,
                     COUNT(CASE WHEN close_65d_ago > 0 AND ((close - close_65d_ago)/close_65d_ago)*100 <= -50.0 THEN 1 END) as down_50pct_3m,
-                    COUNT(CASE WHEN (weinstein_stage = 1 OR (weinstein_stage IS NULL AND sma_150 IS NOT NULL AND (COALESCE(dist_from_52w_high, 0) > 20.0 OR COALESCE(dist_from_52w_low, 100.0) <= 35.0) AND ABS((sma_150 - sma_150_20d_ago) / NULLIF(sma_150_20d_ago, 0) * 100.0) <= 1.5 AND close >= sma_150 * 0.85)) THEN 1 END) as stage1_count,
-                    COUNT(CASE WHEN (weinstein_stage = 2 OR (weinstein_stage IS NULL AND sma_150 IS NOT NULL AND close > sma_150 AND (sma_50 IS NULL OR close >= sma_50) AND (sma_50 IS NULL OR sma_50 >= sma_150) AND (sma_150 - sma_150_20d_ago) / NULLIF(sma_150_20d_ago, 0) * 100.0 > 0.5 AND COALESCE(dist_from_52w_high, 0) <= 25.0)) THEN 1 END) as stage2_count,
-                    COUNT(CASE WHEN (weinstein_stage = 3 OR (weinstein_stage IS NULL AND sma_150 IS NOT NULL AND (COALESCE(dist_from_52w_high, 50.0) <= 20.0 OR COALESCE(ret_6m, 0) > 30.0) AND (close < sma_50 OR (sma_150 - sma_150_20d_ago) / NULLIF(sma_150_20d_ago, 0) * 100.0 <= 0.5) AND close >= sma_150 * 0.90)) THEN 1 END) as stage3_count,
-                    COUNT(CASE WHEN (weinstein_stage = 4 OR (weinstein_stage IS NULL AND sma_150 IS NOT NULL AND close < sma_150 AND (sma_50 IS NULL OR close < sma_50) AND (sma_50 IS NULL OR sma_50 < sma_150) AND (sma_150 - sma_150_20d_ago) / NULLIF(sma_150_20d_ago, 0) * 100.0 < -0.5)) THEN 1 END) as stage4_count,
-                    COUNT(CASE WHEN weinstein_stage IS NOT NULL OR sma_150 IS NOT NULL THEN 1 END) as stage_total_count
+                    COUNT(CASE WHEN (weinstein_stage = 1 OR (weinstein_stage IS NULL AND COALESCE(sma_200, sma_150) IS NOT NULL AND (COALESCE(dist_from_52w_high, 0) > 20.0 OR COALESCE(dist_from_52w_low, 100.0) <= 35.0) AND (sma_200_20d_ago IS NOT NULL AND ABS((sma_200 - sma_200_20d_ago) / NULLIF(sma_200_20d_ago, 0) * 100.0) <= 1.5) AND close >= COALESCE(sma_200, sma_150) * 0.85)) THEN 1 END) as stage1_count,
+                    COUNT(CASE WHEN (weinstein_stage = 2 OR (weinstein_stage IS NULL AND COALESCE(sma_200, sma_150) IS NOT NULL AND close > COALESCE(sma_200, sma_150) AND (sma_150 IS NULL OR close >= sma_150) AND (sma_50 IS NULL OR close >= sma_50) AND (sma_50 IS NULL OR sma_150 IS NULL OR sma_50 >= sma_150) AND (sma_200_20d_ago IS NULL OR (sma_200 - sma_200_20d_ago) / NULLIF(sma_200_20d_ago, 0) * 100.0 > 0.0) AND COALESCE(dist_from_52w_high, 0) <= 25.0)) THEN 1 END) as stage2_count,
+                    COUNT(CASE WHEN (weinstein_stage = 3 OR (weinstein_stage IS NULL AND (COALESCE(dist_from_52w_high, 50.0) <= 20.0 OR COALESCE(ret_6m, 0) > 30.0) AND (close < sma_50 OR (sma_200_20d_ago IS NOT NULL AND (sma_200 - sma_200_20d_ago) / NULLIF(sma_200_20d_ago, 0) * 100.0 <= 0.5)) AND close >= COALESCE(sma_200, sma_150) * 0.90)) THEN 1 END) as stage3_count,
+                    COUNT(CASE WHEN (weinstein_stage = 4 OR (weinstein_stage IS NULL AND COALESCE(sma_200, sma_150) IS NOT NULL AND close < COALESCE(sma_200, sma_150) AND (sma_150 IS NULL OR close < sma_150) AND (sma_50 IS NULL OR close < sma_50) AND (sma_50 IS NULL OR sma_150 IS NULL OR sma_50 < sma_150) AND (sma_200_20d_ago IS NULL OR (sma_200 - sma_200_20d_ago) / NULLIF(sma_200_20d_ago, 0) * 100.0 < -0.2))) THEN 1 END) as stage4_count,
+                    COUNT(CASE WHEN weinstein_stage IS NOT NULL OR sma_200 IS NOT NULL OR sma_150 IS NOT NULL THEN 1 END) as stage_total_count
                 FROM daily_gains
                 GROUP BY date
                 HAVING COUNT(*) >= CASE WHEN (SELECT COUNT(*) FROM symbols WHERE active = true) > 500 THEN 500 ELSE 1 END
@@ -3076,7 +3079,7 @@ class DatabaseService:
                         "pct": float(latest.get("stage1_pct", 0.0)),
                         "color": "#38bdf8",
                         "bias": "Neutral • Base Accumulation",
-                        "desc": "Flat 30W MA. Basing & accumulation after prior markdown"
+                        "desc": "Flat 200D MA. Basing & accumulation with 50D/150D convergence"
                     },
                     "stage2": {
                         "stage": 2,
@@ -3086,7 +3089,7 @@ class DatabaseService:
                         "pct": float(latest.get("stage2_pct", 0.0)),
                         "color": "#10b981",
                         "bias": "Bullish • Markup & Expansion",
-                        "desc": "Rising 30W MA. Markup trend, clean breakout setups"
+                        "desc": "Price > rising 200D MA (confirmed by 50D & 150D). Markup trend, clean breakout setups"
                     },
                     "stage3": {
                         "stage": 3,
@@ -3096,7 +3099,7 @@ class DatabaseService:
                         "pct": float(latest.get("stage3_pct", 0.0)),
                         "color": "#f59e0b",
                         "bias": "Caution • Top Distribution",
-                        "desc": "Flattening 30W MA. Volatile churning near highs, take profits"
+                        "desc": "Flattening 200D MA. Volatile churning near highs, take profits"
                     },
                     "stage4": {
                         "stage": 4,
@@ -3106,7 +3109,7 @@ class DatabaseService:
                         "pct": float(latest.get("stage4_pct", 0.0)),
                         "color": "#f43f5e",
                         "bias": "Bearish • Markdown & Defense",
-                        "desc": "Falling 30W MA. Markdown downtrend, avoid longs / preserve cash"
+                        "desc": "Price < declining 200D MA. Markdown downtrend, avoid longs / preserve cash"
                     },
                     "net_expansion": round(float(latest.get("stage2_pct", 0.0)) - float(latest.get("stage4_pct", 0.0)), 1),
                     "delta_5d_stage2_pct": round(float(latest.get("stage2_pct", 0.0)) - float(daily_list[4].get("stage2_pct", latest.get("stage2_pct", 0.0)) if len(daily_list) > 4 else latest.get("stage2_pct", 0.0)), 1),

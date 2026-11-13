@@ -305,7 +305,7 @@ const COLUMNS = [
   { key: 'notes', label: 'Notes', get: (t) => (t.notes ? 1 : 0) + (t.tags?.length ? 1 : 0), num: true },
 ];
 
-function TradeTable({ trades, sort, onSortChange, onOpenTrade, onSelectStock, onToggleIgnore, accounts = [], onSelectAccount, onOpenCalculator }) {
+function TradeTable({ trades, sort, onSortChange, onOpenTrade, onSelectStock, onToggleIgnore, accounts = [], accountNames = {}, onSelectAccount, onOpenCalculator }) {
   const [limit, setLimit] = useState(PAGE_SIZE);
 
   useEffect(() => { setLimit(PAGE_SIZE); }, [trades]);
@@ -364,9 +364,9 @@ function TradeTable({ trades, sort, onSortChange, onOpenTrade, onSelectStock, on
                     type="button"
                     className="jr-account-badge"
                     onClick={(e) => { e.stopPropagation(); onSelectAccount?.(t.account_id); }}
-                    title={`Filter journal to account ${t.account_id}`}
+                    title={`Filter journal to ${accountNames?.[t.account_id] || t.account_id}`}
                   >
-                    {t.account_id}
+                    {accountNames?.[t.account_id] || t.account_id}
                   </button>
                 </td>
               )}
@@ -375,6 +375,7 @@ function TradeTable({ trades, sort, onSortChange, onOpenTrade, onSelectStock, on
                   {t.symbol}
                 </button>
                 {t.incomplete && <span className="jr-flag" title="Opened before the imported history window; P&L from IBKR FIFO realized P&L">◐</span>}
+                {t.split_adjusted && <span className="jr-flag" title={`Split adjusted (${t.split_ratio}:1)`}>🔀</span>}
               </td>
               <td><span className={`pill ${t.direction === 'LONG' ? 'pill-success' : 'pill-danger'}`}>{t.direction}</span></td>
               <td className="jr-num">{fmtQty(t.max_position)}</td>
@@ -474,7 +475,7 @@ function TradeTable({ trades, sort, onSortChange, onOpenTrade, onSelectStock, on
   );
 }
 
-function TradeDetail({ trade, onSaved, allTags, allMistakes = [], onToggleIgnore, onSelectStock, onOpenCalculator }) {
+function TradeDetail({ trade, onSaved, allTags, allMistakes = [], onToggleIgnore, onSelectStock, onOpenCalculator, accountNames = {} }) {
   const [notes, setNotes] = useState(trade.notes || '');
   const [mistakes, setMistakes] = useState(trade.mistakes || '');
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -701,7 +702,11 @@ function TradeDetail({ trade, onSaved, allTags, allMistakes = [], onToggleIgnore
                 Execution Logs <span className="jr-muted">({combinedExecutions.length})</span>
               </div>
               <div className="jr-exec-header-summary">
-                {trade.account_id ? <span>Account: <b>{trade.account_id}</b></span> : null}
+                {trade.account_id ? (
+                  <span>
+                    Account: <b>{accountNames?.[trade.account_id] ? `${accountNames[trade.account_id]} (${trade.account_id})` : trade.account_id}</b>
+                  </span>
+                ) : null}
                 <span>Entry: <b>${fmtNum(trade.avg_entry)}</b></span>
                 {trade.avg_exit ? <span>Exit: <b>${fmtNum(trade.avg_exit)}</b></span> : null}
                 <span>Max Qty: <b>{fmtQty(trade.max_position)}</b></span>
@@ -776,7 +781,7 @@ function TradeDetail({ trade, onSaved, allTags, allMistakes = [], onToggleIgnore
                 </span>
                 {trade.account_id && (
                   <span className="pill pill-secondary" style={{ marginLeft: '4px' }} title={`IBKR Account: ${trade.account_id}`}>
-                    Account: {trade.account_id}
+                    Account: {accountNames?.[trade.account_id] ? `${accountNames[trade.account_id]} (${trade.account_id})` : trade.account_id}
                   </span>
                 )}
                 {trade.is_ignored ? (
@@ -784,6 +789,11 @@ function TradeDetail({ trade, onSaved, allTags, allMistakes = [], onToggleIgnore
                 ) : trade.status === 'OPEN' ? (
                   <span className="pill pill-warning" style={{ marginLeft: '4px' }}>OPEN</span>
                 ) : null}
+                {trade.split_adjusted && (
+                  <span className="pill pill-secondary" style={{ marginLeft: '4px' }} title={`Executions adjusted for ${trade.split_ratio}:1 stock split`}>
+                    🔀 {trade.split_ratio}:1 Split
+                  </span>
+                )}
               </div>
               <div className="jr-overview-header-metrics">
                 <span>
@@ -1054,7 +1064,245 @@ function TradeDetail({ trade, onSaved, allTags, allMistakes = [], onToggleIgnore
   );
 }
 
-function FlexSettings({ config, onSaved }) {
+function StockSplitsManager({ splits = [], onSplitsChanged }) {
+  const [symbol, setSymbol] = useState('');
+  const [splitDate, setSplitDate] = useState('');
+  const [ratio, setRatio] = useState('');
+  const [notes, setNotes] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    if (!symbol || !splitDate || !ratio) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/journal/splits`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol: symbol.trim().toUpperCase(),
+          split_date: splitDate.trim(),
+          ratio: parseFloat(ratio),
+          notes: notes.trim(),
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).detail || 'Failed to add stock split');
+      setSymbol('');
+      setSplitDate('');
+      setRatio('');
+      setNotes('');
+      onSplitsChanged?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (sym, sDate) => {
+    if (!window.confirm(`Delete split adjustment for ${sym} on ${sDate}?`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/journal/splits/${encodeURIComponent(sym)}/${encodeURIComponent(sDate)}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) throw new Error('Failed to delete split');
+      onSplitsChanged?.();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  return (
+    <div className="jr-splits-section" style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
+      <div className="stat-label" style={{ marginBottom: '4px', fontSize: '13px', fontWeight: '600' }}>
+        📈 Stock Splits &amp; Corporate Actions ({splits.length})
+      </div>
+      <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginBottom: '10px' }}>
+        Forward or reverse splits back-adjust historical executions so position quantities, cost basis, and chart price lines match current market prices.
+      </div>
+
+      {splits.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
+          {splits.map((s) => (
+            <div
+              key={`${s.symbol}-${s.split_date}`}
+              className="jr-split-item"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '6px 10px',
+                background: 'rgba(255,255,255,0.04)',
+                borderRadius: '6px',
+                fontSize: '12px',
+                border: '1px solid var(--border-color)',
+              }}
+            >
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <b style={{ color: 'var(--accent-color)' }}>{s.symbol}</b>
+                <span className="pill pill-secondary" style={{ padding: '1px 5px', fontSize: '10.5px' }}>
+                  {s.ratio}:1 Split
+                </span>
+                <span style={{ color: 'var(--text-muted)' }}>Effective: {s.split_date}</span>
+                {s.notes && <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>({s.notes})</span>}
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ color: '#fb7185', padding: '2px 6px', fontSize: '11px' }}
+                onClick={() => handleDelete(s.symbol, s.split_date)}
+                title="Remove this split adjustment"
+              >
+                ✕ Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginBottom: '12px', fontStyle: 'italic' }}>
+          No corporate action splits configured yet.
+        </div>
+      )}
+
+      {/* Add Split Form */}
+      <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '6px', border: '1px dashed var(--border-color)' }}>
+        <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '6px' }}>
+          + Add Stock Split Adjustment
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1.5fr auto', gap: '8px', alignItems: 'center' }}>
+          <input
+            className="jr-input"
+            style={{ fontSize: '12px', padding: '4px 8px' }}
+            placeholder="Symbol (e.g. SOXX)"
+            value={symbol}
+            onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+          />
+          <input
+            className="jr-input"
+            type="date"
+            style={{ fontSize: '12px', padding: '4px 8px' }}
+            placeholder="Split Date"
+            value={splitDate}
+            onChange={(e) => setSplitDate(e.target.value)}
+          />
+          <input
+            className="jr-input"
+            type="number"
+            step="any"
+            style={{ fontSize: '12px', padding: '4px 8px' }}
+            placeholder="Ratio (e.g. 3 for 3:1)"
+            value={ratio}
+            onChange={(e) => setRatio(e.target.value)}
+          />
+          <input
+            className="jr-input"
+            style={{ fontSize: '12px', padding: '4px 8px' }}
+            placeholder="Notes (optional)"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            style={{ fontSize: '11.5px', whiteSpace: 'nowrap' }}
+            onClick={handleAdd}
+            disabled={loading || !symbol || !splitDate || !ratio}
+          >
+            {loading ? 'Adding…' : 'Add Split'}
+          </button>
+        </div>
+        {error && <div className="jr-neg" style={{ fontSize: '11px', marginTop: '4px' }}>{error}</div>}
+      </div>
+    </div>
+  );
+}
+
+function HistoricalSyncSection({ onSync, syncing }) {
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [showCustom, setShowCustom] = useState(false);
+
+  const handleYearSync = (year) => {
+    onSync?.({
+      from_date: `${year}0101`,
+      to_date: `${year}1231`,
+    });
+  };
+
+  const handleCustomSync = (e) => {
+    e.preventDefault();
+    if (!customFrom || !customTo) return;
+    onSync?.({
+      from_date: customFrom.replace(/-/g, ''),
+      to_date: customTo.replace(/-/g, ''),
+    });
+  };
+
+  return (
+    <div className="jr-historical-sync-section" style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
+      <div className="stat-label" style={{ marginBottom: '4px', fontSize: '13px', fontWeight: '600' }}>
+        📅 Historical Year Sync (Bypasses 365-Day Window)
+      </div>
+      <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginBottom: '10px' }}>
+        IBKR's web portal only offers rolling periods (like "Last 365 Days") in its query template dropdown. You can pull complete prior calendar years (up to 5 years back) directly into PivotTrader without changing your IBKR settings.
+      </div>
+
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '8px' }}>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => handleYearSync('2025')}
+          disabled={syncing}
+        >
+          {syncing ? 'Syncing…' : '🔄 Sync Full Year 2025 (2025-01-01 to 2025-12-31)'}
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          style={{ fontSize: '11px', textDecoration: 'underline' }}
+          onClick={() => setShowCustom(!showCustom)}
+        >
+          {showCustom ? 'Hide custom range' : 'Custom date range…'}
+        </button>
+      </div>
+
+      {showCustom && (
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px' }}>
+          <input
+            type="date"
+            className="jr-input"
+            style={{ fontSize: '12px', padding: '4px 8px' }}
+            value={customFrom}
+            onChange={(e) => setCustomFrom(e.target.value)}
+            placeholder="From Date"
+          />
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>to</span>
+          <input
+            type="date"
+            className="jr-input"
+            style={{ fontSize: '12px', padding: '4px 8px' }}
+            value={customTo}
+            onChange={(e) => setCustomTo(e.target.value)}
+            placeholder="To Date"
+          />
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            style={{ fontSize: '11.5px' }}
+            onClick={handleCustomSync}
+            disabled={syncing || !customFrom || !customTo}
+          >
+            Sync Range
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FlexSettings({ config, onSaved, splits = [], onSplitsChanged, onHistoricalSync, syncing }) {
   const [token, setToken] = useState('');
   const [queries, setQueries] = useState(() => {
     if (config?.queries && config.queries.length > 0) {
@@ -1223,6 +1471,11 @@ function FlexSettings({ config, onSaved }) {
           {saving ? 'Saving…' : 'Save Settings'}
         </button>
       </div>
+
+      <HistoricalSyncSection onSync={onHistoricalSync} syncing={syncing} />
+
+      <StockSplitsManager splits={splits} onSplitsChanged={onSplitsChanged} />
+
       <details className="jr-details" open={!config?.has_token}>
         <summary>How to configure multiple accounts &amp; Flex queries in IBKR</summary>
         <FlexSetupGuide />
@@ -1237,6 +1490,7 @@ function AccountBalancesSection({
   onSelectAccount,
   onOpenCalculator,
   onEditBalance,
+  onOpenSettings,
 }) {
   const accounts = balances?.accounts || [];
   if (!accounts.length) return null;
@@ -1269,18 +1523,29 @@ function AccountBalancesSection({
 
       <div className="jr-accounts-grid">
         {accounts.map((acct) => {
-          const isFiltered = selectedAccount === acct.account_id;
+          const isFiltered = selectedAccount === acct.account_id || selectedAccount === acct.name;
           return (
             <div
               key={acct.account_id}
-              className={`jr-account-card ${isFiltered ? 'jr-account-card-active' : ''}`}
+              className={`jr-account-card ${hasMultiple ? 'jr-account-card-clickable' : ''} ${isFiltered ? 'jr-account-card-active' : ''}`}
+              onClick={() => {
+                if (hasMultiple) {
+                  onSelectAccount?.(isFiltered ? '' : acct.account_id);
+                }
+              }}
+              title={hasMultiple ? (isFiltered ? 'Click to show all accounts' : `Click to switch view to ${acct.name || acct.account_id}`) : undefined}
             >
               <div className="jr-account-card-header">
                 <div className="jr-account-name-group">
                   <span className="jr-account-badge-id">{acct.account_id}</span>
                   <span className="jr-account-name">{acct.name || 'Account'}</span>
+                  {isFiltered && (
+                    <span className="pill pill-success" style={{ fontSize: '10px', padding: '1px 5px', fontWeight: '700' }}>
+                      ACTIVE
+                    </span>
+                  )}
                 </div>
-                <div className="jr-account-actions">
+                <div className="jr-account-actions" onClick={(e) => e.stopPropagation()}>
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
@@ -1296,17 +1561,35 @@ function AccountBalancesSection({
                       className={`btn btn-sm ${isFiltered ? 'btn-primary' : 'btn-secondary'}`}
                       style={{ padding: '3px 8px', fontSize: '11px' }}
                       onClick={() => onSelectAccount?.(isFiltered ? '' : acct.account_id)}
-                      title={isFiltered ? 'Clear account filter' : `Filter trades to ${acct.account_id}`}
+                      title={isFiltered ? 'Clear account filter' : `Switch view to ${acct.name || acct.account_id}`}
                     >
-                      {isFiltered ? '✓ Filtered' : 'Filter'}
+                      {isFiltered ? '✓ Active' : 'Switch'}
                     </button>
                   )}
                 </div>
               </div>
 
+              {acct.sync_status === 'error' && (
+                <div className="jr-account-card-error" onClick={(e) => e.stopPropagation()}>
+                  <span title={acct.sync_error || 'Sync error'}>
+                    ⚠️ Sync error: {acct.sync_error || 'Statement request failed'}
+                  </span>
+                  {onOpenSettings && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ padding: '1px 6px', fontSize: '11px', color: '#f59e0b', textDecoration: 'underline' }}
+                      onClick={() => onOpenSettings()}
+                    >
+                      Fix in Settings
+                    </button>
+                  )}
+                </div>
+              )}
+
               <div className="jr-account-balances-row">
                 <div className="jr-balance-primary">
-                  <div className="stat-label">Total USD Equity (1R Risk Base)</div>
+                  <div className="stat-label">Total USD Equity</div>
                   <div className="jr-balance-usd">
                     {fmtMoney(acct.total_usd_equity ?? acct.usd_balance, { sign: false })}
                   </div>
@@ -1333,7 +1616,10 @@ function AccountBalancesSection({
                   type="button"
                   className="btn btn-ghost btn-sm"
                   style={{ color: '#38bdf8', fontSize: '11.5px', fontWeight: '600', padding: '0 4px' }}
-                  onClick={() => onOpenCalculator?.({ account_id: acct.account_id })}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenCalculator?.({ account_id: acct.account_id });
+                  }}
                 >
                   🧮 Calculate Size
                 </button>
@@ -1350,11 +1636,32 @@ function AccountBalancesSection({
         })}
 
         {hasMultiple && (
-          <div className="jr-account-card" style={{ background: 'linear-gradient(145deg, rgba(16, 185, 129, 0.04), var(--card-bg))' }}>
+          <div
+            className={`jr-account-card jr-account-card-clickable ${!selectedAccount ? 'jr-account-card-active' : ''}`}
+            style={{ background: 'linear-gradient(145deg, rgba(16, 185, 129, 0.04), var(--card-bg))' }}
+            onClick={() => onSelectAccount?.('')}
+            title={!selectedAccount ? 'Currently viewing all accounts' : 'Click to view all accounts combined'}
+          >
             <div className="jr-account-card-header">
               <div className="jr-account-name-group">
                 <span className="pill pill-success" style={{ fontWeight: '700' }}>PORTFOLIO TOTAL</span>
                 <span className="jr-account-name">{accounts.length} Accounts</span>
+                {!selectedAccount && (
+                  <span className="pill pill-success" style={{ fontSize: '10px', padding: '1px 5px', fontWeight: '700' }}>
+                    ACTIVE
+                  </span>
+                )}
+              </div>
+              <div className="jr-account-actions" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${!selectedAccount ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '3px 8px', fontSize: '11px' }}
+                  onClick={() => onSelectAccount?.('')}
+                  title={!selectedAccount ? 'Currently viewing all accounts' : 'Switch view to all accounts'}
+                >
+                  {!selectedAccount ? '✓ Active' : 'View All'}
+                </button>
               </div>
             </div>
 
@@ -1387,7 +1694,10 @@ function AccountBalancesSection({
                 type="button"
                 className="btn btn-ghost btn-sm"
                 style={{ color: '#38bdf8', fontSize: '11.5px', fontWeight: '600', padding: '0 4px' }}
-                onClick={() => onOpenCalculator?.({ account_id: 'all' })}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenCalculator?.({ account_id: 'all' });
+                }}
               >
                 🧮 Calculate Size
               </button>
@@ -1450,10 +1760,14 @@ export default function JournalTab({ onSelectStock }) {
   }, []);
 
   useEffect(() => {
-    if (account && data?.accounts && data.accounts.length > 0 && !data.accounts.includes(account)) {
-      handleAccountChange('');
+    if (account && data?.accounts && data.accounts.length > 0) {
+      const knownAccounts = data.accounts;
+      const knownNames = (data.balances?.accounts || []).map((a) => a.name).filter(Boolean);
+      if (!knownAccounts.includes(account) && !knownNames.includes(account)) {
+        handleAccountChange('');
+      }
     }
-  }, [data?.accounts, account, handleAccountChange]);
+  }, [data?.accounts, data?.balances?.accounts, account, handleAccountChange]);
 
   useEffect(() => {
     const id = setTimeout(() => setSymbol(symbolInput.trim()), 350);
@@ -1492,11 +1806,16 @@ export default function JournalTab({ onSelectStock }) {
   useEffect(() => { loadJournal(); }, [loadJournal]);
   useEffect(() => { setPeriodFilter(null); setBinFilter(null); }, [preset, symbol, account]);
 
-  const runSync = async () => {
+  const runSync = async (params = null) => {
     setSyncing(true);
     setSyncMsg(null);
     try {
-      const res = await fetch(`${API_BASE}/api/journal/sync`, { method: 'POST' });
+      const opts = { method: 'POST' };
+      if (params && typeof params === 'object' && ('from_date' in params || 'to_date' in params || 'query_id' in params)) {
+        opts.headers = { 'Content-Type': 'application/json' };
+        opts.body = JSON.stringify(params);
+      }
+      const res = await fetch(`${API_BASE}/api/journal/sync`, opts);
       const body = await res.json();
       if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
       const acctList = body.accounts?.length ? ` across ${body.accounts.length} account(s) (${body.accounts.join(', ')})` : '';
@@ -1660,7 +1979,23 @@ export default function JournalTab({ onSelectStock }) {
     { id: '90d', label: '90D' },
     ...(data?.years || []).map((y) => ({ id: y, label: y })),
   ];
-  const noData = data && !trades.length && !symbol && (!data?.years || data.years.length === 0);
+  const accountsList = data?.balances?.accounts || [];
+  const hasMultipleAccounts = accountsList.length > 1;
+
+  const accountNames = useMemo(() => {
+    const map = {};
+    for (const a of accountsList) {
+      if (a.account_id) map[a.account_id] = a.name || a.account_id;
+    }
+    return map;
+  }, [accountsList]);
+
+  const activeAccountObj = useMemo(() => {
+    if (!account) return null;
+    return accountsList.find((a) => a.account_id === account || a.name === account) || null;
+  }, [accountsList, account]);
+
+  const noData = data && !trades.length && !symbol && !account && (!data?.years || data.years.length === 0) && accountsList.length === 0;
 
   return (
     <div className="journal-page">
@@ -1711,13 +2046,41 @@ export default function JournalTab({ onSelectStock }) {
                 <button key={p.id} className={`segmented-item ${preset === p.id ? 'active' : ''}`} onClick={() => setPreset(p.id)}>{p.label}</button>
               ))}
             </div>
-            <input className="jr-input jr-search" placeholder="Filter symbol…" value={symbolInput} onChange={(e) => setSymbolInput(e.target.value)} aria-label="Filter by symbol" />
-            {data?.accounts?.length > 1 && (
-              <select className="jr-select" value={account} onChange={(e) => handleAccountChange(e.target.value)} aria-label="Account">
-                <option value="">All accounts ({data.accounts.length})</option>
-                {data.accounts.map((a) => <option key={a} value={a}>Account {a}</option>)}
-              </select>
+
+            {hasMultipleAccounts && (
+              <div className="jr-account-switcher-wrap">
+                <span className="jr-account-switcher-label">Account:</span>
+                <div className="segmented-control jr-account-segmented">
+                  <button
+                    type="button"
+                    className={`segmented-item ${!account ? 'active' : ''}`}
+                    onClick={() => handleAccountChange('')}
+                    title="View combined portfolio across all accounts"
+                  >
+                    🌐 All ({accountsList.length})
+                  </button>
+                  {accountsList.map((a) => {
+                    const isActive = account === a.account_id || account === a.name;
+                    return (
+                      <button
+                        key={a.account_id}
+                        type="button"
+                        className={`segmented-item ${isActive ? 'active' : ''}`}
+                        onClick={() => handleAccountChange(a.account_id)}
+                        title={a.name && a.name !== a.account_id ? `${a.name} (${a.account_id})` : `Account ${a.account_id}`}
+                      >
+                        💼 {a.name || a.account_id}
+                        {a.sync_status === 'error' && (
+                          <span className="jr-account-warn-dot" title={a.sync_error || 'Flex sync error'}>⚠️</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             )}
+
+            <input className="jr-input jr-search" placeholder="Filter symbol…" value={symbolInput} onChange={(e) => setSymbolInput(e.target.value)} aria-label="Filter by symbol" />
             {loading && <span className="jr-muted"><span className="spin-icon">⟳</span> Loading…</span>}
           </div>
 
@@ -1727,6 +2090,7 @@ export default function JournalTab({ onSelectStock }) {
             onSelectAccount={handleAccountChange}
             onOpenCalculator={handleOpenCalculator}
             onEditBalance={(acct) => setEditBalanceAccount(acct)}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
 
           <StatsGrid stats={data?.stats} />
@@ -1737,6 +2101,31 @@ export default function JournalTab({ onSelectStock }) {
           </div>
 
           <PeriodPnlGrid monthly={data?.monthly || []} yearly={data?.yearly || []} selectedPeriod={periodFilter} onSelectPeriod={setPeriodFilter} />
+
+          {activeAccountObj && filteredTrades.length === 0 && (
+            <div className="glass-card jr-empty-account-banner">
+              <div style={{ fontSize: '15px', fontWeight: '600', marginBottom: '6px' }}>
+                No trades found for {activeAccountObj.name || activeAccountObj.account_id}
+              </div>
+              {activeAccountObj.sync_status === 'error' ? (
+                <p className="jr-muted" style={{ margin: '0 0 12px 0', fontSize: '13px' }}>
+                  ⚠️ Sync warning: {activeAccountObj.sync_error || 'Flex statement request failed'}. Please verify your Flex Web Service token and Query ID in Flex Settings.
+                </p>
+              ) : (
+                <p className="jr-muted" style={{ margin: '0 0 12px 0', fontSize: '13px' }}>
+                  This account has 0 executions recorded yet. Click "🔄 Sync from IBKR" or verify your Flex Query in IBKR Account Management.
+                </p>
+              )}
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSettingsOpen(true)}>
+                  ⚙️ Open Flex Settings
+                </button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleAccountChange('')}>
+                  🌐 View All Accounts
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="jr-history-header">
             <div className="jr-card-title">Trade History <span className="jr-muted">({filteredTrades.length})</span></div>
@@ -1773,7 +2162,11 @@ export default function JournalTab({ onSelectStock }) {
           </div>
           {hasListFilters && (
             <div className="chip-group">
-              {account && <button className="chip-filter active" onClick={() => handleAccountChange('')}>Account: {account} ✕</button>}
+              {account && (
+                <button className="chip-filter active" onClick={() => handleAccountChange('')}>
+                  Account: {activeAccountObj?.name ? `${activeAccountObj.name} (${activeAccountObj.account_id})` : account} ✕
+                </button>
+              )}
               {periodFilter && <button className="chip-filter active" onClick={() => setPeriodFilter(null)}>Period {periodFilter} ✕</button>}
               {binFilter && <button className="chip-filter active" onClick={() => setBinFilter(null)}>{binFilter.label} ✕</button>}
               {tagFilter && <button className="chip-filter active" onClick={() => setTagFilter(null)}>Tag {tagFilter} ✕</button>}
@@ -1790,6 +2183,7 @@ export default function JournalTab({ onSelectStock }) {
             onSelectStock={onSelectStock}
             onToggleIgnore={handleToggleIgnore}
             accounts={data?.accounts || []}
+            accountNames={accountNames}
             onSelectAccount={handleAccountChange}
             onOpenCalculator={handleOpenCalculator}
           />
@@ -1797,7 +2191,14 @@ export default function JournalTab({ onSelectStock }) {
       )}
 
       <Modal open={settingsOpen} onClose={() => setSettingsOpen(false)} title="IBKR Flex Settings">
-        <FlexSettings config={config} onSaved={(cfg) => { setConfig(cfg); setSettingsOpen(false); }} />
+        <FlexSettings
+          config={config}
+          splits={data?.splits || []}
+          onSplitsChanged={loadJournal}
+          onHistoricalSync={runSync}
+          syncing={syncing}
+          onSaved={(cfg) => { setConfig(cfg); setSettingsOpen(false); }}
+        />
       </Modal>
 
       <Modal
@@ -1843,6 +2244,7 @@ export default function JournalTab({ onSelectStock }) {
             onToggleIgnore={handleToggleIgnore}
             onSelectStock={onSelectStock}
             onOpenCalculator={handleOpenCalculator}
+            accountNames={accountNames}
           />
         )}
       </Modal>

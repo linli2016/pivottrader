@@ -19,6 +19,8 @@ const SETUP_COLORS = {
   // Action Setups
   vdu_coils: '#10b981',
   zanger_breakout: '#ec4899',
+  PB: '#8b5cf6',
+  pullback: '#8b5cf6',
   // Study Setups
   high_rvol: '#38bdf8',
   confirmed_staged: '#10b981',
@@ -74,6 +76,8 @@ const SETUP_COLORS = {
 };
 
 const SETUP_CANONICAL_NAMES = {
+  PB: 'Pullback',
+  pullback: 'Pullback',
   power_play: 'Power Play',
   breakout: 'QM Breakouts',
   breakouts: 'QM Breakouts',
@@ -85,7 +89,7 @@ const SETUP_CANONICAL_NAMES = {
   parabolic_short: 'Parabolic Short',
   parabolic_long: 'Parabolic Long',
   weinstein_breakdown: 'Stage 4 Breakdown',
-  weinstein_pullback: 'Pullback to 30W MA',
+  weinstein_pullback: 'Pullback to 200D MA',
   stage4_continuation: 'Stage 4 Continuation',
   gap_breakdown: 'Downside Gap Breakdown',
   cup_and_handle: 'Cup and Handle',
@@ -122,11 +126,11 @@ export default function StudyLabTab({
   fetchWatchlists = () => {},
   setupsConfig = { folders: [], setups: [], filters: {} }
 }) {
-  // Navigation & Screener State
-  const [activeFolderId, setActiveFolderId] = useState('study');
-  const [activeScreenerId, setActiveScreenerId] = useState('high_rvol');
+  // Navigation & Screener State (Defaults to Weekly Top Gainers)
+  const [activeFolderId, setActiveFolderId] = useState('weekly');
+  const [activeScreenerId, setActiveScreenerId] = useState('gainers');
   const [folderMemory, setFolderMemory] = useState({});
-  const [setupType, setSetupType] = useState('high_rvol');
+  const [setupType, setSetupType] = useState('gainers');
 
   // Chart & Row References
   const chartRef = useRef(null);
@@ -134,44 +138,91 @@ export default function StudyLabTab({
   const priceCacheRef = useRef(new Map());
   const pendingRequestsRef = useRef(new Map());
 
-  // Date range presets
-  const currentYear = useMemo(() => new Date().getFullYear(), []);
+  // Date range presets & Month/Year selection
+  const todayObj = useMemo(() => new Date(), []);
+  const currentYear = useMemo(() => todayObj.getFullYear(), [todayObj]);
+  const currentMonth = useMemo(() => todayObj.getMonth() + 1, [todayObj]);
   const todayStr = useMemo(() => getLocalDateStr(), []);
 
-  const datePresets = useMemo(() => {
-    const yearPresets = Array.from({ length: 5 }, (_, i) => {
-      const yr = currentYear - 1 - i;
-      return {
-        id: `year_${yr}`,
-        label: `${yr}`,
-        title: `Full Calendar Year ${yr} (${yr}-01-01 to ${yr}-12-31)`,
-        start: `${yr}-01-01`,
-        end: `${yr}-12-31`
-      };
-    });
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
+  const [showMonthDropdown, setShowMonthDropdown] = useState(false);
+  const [showSavePopup, setShowSavePopup] = useState(false);
 
-    return [
-      {
-        id: 'ytd',
-        label: 'YTD',
-        title: `Year to Date (${currentYear}-01-01 to Present)`,
-        start: `${currentYear}-01-01`,
-        end: todayStr
-      },
-      ...yearPresets,
-      {
-        id: 'all',
-        label: 'ALL',
-        title: `All Available History (${currentYear - 5} to Present)`,
-        start: `${currentYear - 5}-01-01`,
-        end: todayStr
+  // Studied months persistence
+  const [studiedMonths, setStudiedMonths] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pt_study_completed_months');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const isMonthStudied = useCallback((year, month) => {
+    const key = `${year}-${String(month).padStart(2, '0')}`;
+    return studiedMonths.includes(key);
+  }, [studiedMonths]);
+
+  const toggleMonthStudied = useCallback((year, month) => {
+    const key = `${year}-${String(month).padStart(2, '0')}`;
+    setStudiedMonths((prev) => {
+      const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
+      try {
+        localStorage.setItem('pt_study_completed_months', JSON.stringify(next));
+      } catch (err) {
+        console.error('Failed to save studied months:', err);
       }
-    ];
-  }, [currentYear, todayStr]);
+      return next;
+    });
+  }, []);
 
-  const [startDate, setStartDate] = useState(`${currentYear}-01-01`);
-  const [endDate, setEndDate] = useState(todayStr);
-  const [activeDatePreset, setActiveDatePreset] = useState('ytd');
+  const availableYears = useMemo(() => {
+    const years = [];
+    const minYear = 2015;
+    for (let y = currentYear; y >= minYear; y--) {
+      years.push(y);
+    }
+    return years;
+  }, [currentYear]);
+
+  const MONTH_OPTIONS = useMemo(() => [
+    { value: 1, label: '01 - Jan', short: 'Jan' },
+    { value: 2, label: '02 - Feb', short: 'Feb' },
+    { value: 3, label: '03 - Mar', short: 'Mar' },
+    { value: 4, label: '04 - Apr', short: 'Apr' },
+    { value: 5, label: '05 - May', short: 'May' },
+    { value: 6, label: '06 - Jun', short: 'Jun' },
+    { value: 7, label: '07 - Jul', short: 'Jul' },
+    { value: 8, label: '08 - Aug', short: 'Aug' },
+    { value: 9, label: '09 - Sep', short: 'Sep' },
+    { value: 10, label: '10 - Oct', short: 'Oct' },
+    { value: 11, label: '11 - Nov', short: 'Nov' },
+    { value: 12, label: '12 - Dec', short: 'Dec' },
+  ], []);
+
+  const getMonthRange = useCallback((year, month) => {
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10);
+    const startStr = `${y}-${String(m).padStart(2, '0')}-01`;
+    const lastDay = new Date(y, m, 0).getDate();
+    const endStr = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    return { start: startStr, end: endStr };
+  }, []);
+
+  // Default date range is the current month
+  const initialRange = useMemo(() => {
+    const y = new Date().getFullYear();
+    const m = new Date().getMonth() + 1;
+    const startStr = `${y}-${String(m).padStart(2, '0')}-01`;
+    const lastDay = new Date(y, m, 0).getDate();
+    const endStr = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    return { start: startStr, end: endStr };
+  }, []);
+
+  const [startDate, setStartDate] = useState(initialRange.start);
+  const [endDate, setEndDate] = useState(initialRange.end);
+  const [activeDatePreset, setActiveDatePreset] = useState('current_month');
 
   // Execution & Candidates State
   const [loading, setLoading] = useState(false);
@@ -392,39 +443,31 @@ export default function StudyLabTab({
     );
   }, [savedTrades]);
 
-  // 1-Click Save / Remove Candidate from Model Book
-  const handleToggleSaveCandidate = async (cand) => {
-    if (!cand) return;
-    const existing = getSavedTradeForCandidate(cand);
-    if (existing) {
-      if (window.confirm(`Remove ${cand.symbol} (${cand.setup_date || cand.date}) from saved Model Book?`)) {
-        try {
-          const res = await fetch(`${API_BASE}/api/model-book/saved/${existing.id}`, { method: 'DELETE' });
-          if (res.ok) {
-            setSavedTrades(prev => prev.filter(t => t.id !== existing.id));
-          }
-        } catch (e) {
-          console.error('Error deleting from model book:', e);
-        }
-      }
-      return;
+  const availableTags = useMemo(() => {
+    if (setupsConfig?.tags && Object.keys(setupsConfig.tags).length > 0) {
+      return Object.values(setupsConfig.tags);
     }
+    return Object.values(SETUP_TAG_META);
+  }, [setupsConfig]);
 
+  // Save Candidate to Model Book with target tag
+  const handleSaveCandidateWithTag = async (cand, targetTag, targetTagName) => {
+    if (!cand) return;
     setSavingToModelBook(true);
     const date = cand.setup_date || cand.date || cand.screen_date;
-    
-    // Target setup tag associated with the screener (e.g. IPO Base -> IPO)
-    const targetTag = cand.setup_tag || cand.tag || curScreener?.tag || 'Others';
-    const tagDef = (setupsConfig?.tags && setupsConfig.tags[targetTag]) || SETUP_TAG_META[targetTag] || { id: targetTag, name: targetTag, label: targetTag };
-    const targetSetupName = tagDef.name || tagDef.label || targetTag;
+    const existing = getSavedTradeForCandidate(cand);
+
+    const tagDef = availableTags.find(t => t.id === targetTag) || SETUP_TAG_META[targetTag] || { id: targetTag, name: targetTagName || targetTag, label: targetTag };
+    const setupName = targetTagName || tagDef.name || tagDef.label || targetTag;
 
     const payload = {
-      symbol: cand.symbol,
+      ...(existing?.id ? { id: existing.id } : {}),
+      symbol: cand.symbol.toUpperCase(),
       setup_date: date,
       setup_type: targetTag,
-      setup_name: targetSetupName,
+      setup_name: setupName,
       market_regime: cand.market_regime || 'UNKNOWN',
-      notes: '',
+      notes: existing?.notes || '',
       tags: [targetTag]
     };
 
@@ -442,6 +485,38 @@ export default function StudyLabTab({
       console.error('Error saving to model book:', e);
     } finally {
       setSavingToModelBook(false);
+      setShowSavePopup(false);
+    }
+  };
+
+  // Remove Candidate from Model Book
+  const handleRemoveSavedCandidate = async (cand) => {
+    if (!cand) return;
+    const existing = getSavedTradeForCandidate(cand);
+    if (!existing) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/model-book/saved/${existing.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setSavedTrades(prev => prev.filter(t => t.id !== existing.id));
+      }
+    } catch (e) {
+      console.error('Error deleting from model book:', e);
+    } finally {
+      setShowSavePopup(false);
+    }
+  };
+
+  // Quick hotkey toggle for Model Book
+  const handleToggleSaveCandidateQuick = async (cand) => {
+    if (!cand) return;
+    const existing = getSavedTradeForCandidate(cand);
+    if (existing) {
+      await handleRemoveSavedCandidate(cand);
+    } else {
+      const defaultTag = cand.setup_tag || cand.tag || curScreener?.tag || 'BO';
+      const tagDef = availableTags.find(t => t.id === defaultTag) || SETUP_TAG_META[defaultTag];
+      await handleSaveCandidateWithTag(cand, defaultTag, tagDef?.name || defaultTag);
     }
   };
 
@@ -492,27 +567,27 @@ export default function StudyLabTab({
     }
   }, [activeScreenerId, setupType, startDate, endDate, prefetchSymbols]);
 
-  // Initial Scan on Mount (defaults to Study folder & its screener)
+  // Initial Scan on Mount (defaults to Weekly folder & Top Gainers screener)
   const initializedRef = useRef(false);
   useEffect(() => {
     if (initializedRef.current) return;
 
     const folders = setupsConfig?.folders || [];
     const visibleFolders = folders.filter(f => f.visible !== false);
-    const studyFolder = visibleFolders.find(f => f.id === 'study' || f.name?.toLowerCase() === 'study') ||
-                        visibleFolders.find(f => f.id === 'others') ||
-                        (visibleFolders.length > 0 ? visibleFolders[0] : null);
+    const weeklyFolder = visibleFolders.find(f => f.id === 'weekly' || f.name?.toLowerCase() === 'weekly') ||
+                         visibleFolders[0] || null;
 
-    let targetScreenerId = 'high_rvol';
-    let targetFolderId = 'study';
+    let targetScreenerId = 'gainers';
+    let targetFolderId = 'weekly';
 
-    if (studyFolder) {
-      targetFolderId = studyFolder.id;
-      const visibleScreeners = (studyFolder.screeners || []).filter(s => s.visible !== false);
-      const candidateList = visibleScreeners.length > 0 ? visibleScreeners : (studyFolder.screeners || []);
-      targetScreenerId = (candidateList.some(s => s.id === studyFolder.default_screener_id)
-        ? studyFolder.default_screener_id
-        : null) || candidateList[0]?.id || 'high_rvol';
+    if (weeklyFolder) {
+      targetFolderId = weeklyFolder.id;
+      const visibleScreeners = (weeklyFolder.screeners || []).filter(s => s.visible !== false);
+      const candidateList = visibleScreeners.length > 0 ? visibleScreeners : (weeklyFolder.screeners || []);
+      const gainersScreener = candidateList.find(s => s.id === 'gainers') ||
+                              candidateList.find(s => s.id === weeklyFolder.default_screener_id) ||
+                              candidateList[0];
+      targetScreenerId = gainersScreener?.id || 'gainers';
 
       setActiveFolderId(targetFolderId);
       setActiveScreenerId(targetScreenerId);
@@ -539,7 +614,15 @@ export default function StudyLabTab({
   const displayedCandidates = useMemo(() => {
     let list = rawCandidates || [];
 
-    if (selectedIndustry !== 'ALL') {
+    if (selectedIndustry === 'MIN_3') {
+      const validIndustries = new Set(
+        industryCounts.filter(ic => ic.count >= 3).map(ic => ic.industry)
+      );
+      list = list.filter(c => {
+        const ind = (c.industry || c.group_name || '').trim() || 'Unclassified';
+        return validIndustries.has(ind);
+      });
+    } else if (selectedIndustry !== 'ALL') {
       list = list.filter(c => {
         const ind = (c.industry || c.group_name || '').trim() || 'Unclassified';
         return ind === selectedIndustry;
@@ -553,7 +636,7 @@ export default function StudyLabTab({
       if (cmp !== 0) return cmp;
       return (a.symbol || '').localeCompare(b.symbol || '');
     });
-  }, [rawCandidates, selectedIndustry]);
+  }, [rawCandidates, selectedIndustry, industryCounts]);
 
   const currentCandidate = displayedCandidates[browseIndex] || null;
 
@@ -605,11 +688,10 @@ export default function StudyLabTab({
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
-      if (e.key === 'w' || e.key === 'W' || e.key === 's' || e.key === 'S') {
-        const sym = currentCandidate?.symbol;
-        if (sym) {
+      if (e.key === 's' || e.key === 'S') {
+        if (currentCandidate) {
           e.preventDefault();
-          handleToggleWatchlist(sym);
+          handleToggleSaveCandidateQuick(currentCandidate);
         }
         return;
       }
@@ -617,15 +699,17 @@ export default function StudyLabTab({
       if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'k' || e.key === 'K') {
         e.preventDefault();
         setBrowseIndex(prev => Math.max(prev - 1, 0));
+        setShowSavePopup(false);
       } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'j' || e.key === 'J') {
         e.preventDefault();
         setBrowseIndex(prev => Math.min(prev + 1, displayedCandidates.length - 1));
+        setShowSavePopup(false);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [displayedCandidates.length, currentCandidate?.symbol, handleToggleWatchlist]);
+  }, [displayedCandidates.length, currentCandidate, handleToggleSaveCandidateQuick]);
 
   // Handlers for Folder & Screener clicks
   const handleSelectFolder = (folderId) => {
@@ -654,6 +738,27 @@ export default function StudyLabTab({
       [activeFolderId]: screenerId
     }));
     handleRunScan(screenerId, { start: startDate, end: endDate });
+  };
+
+  const handleYearChange = (newYear) => {
+    const yr = parseInt(newYear, 10);
+    setSelectedYear(yr);
+    const range = getMonthRange(yr, selectedMonth);
+    setStartDate(range.start);
+    setEndDate(range.end);
+    setActiveDatePreset(null);
+    handleRunScan(activeScreenerId, { start: range.start, end: range.end });
+  };
+
+  const handleMonthSelect = (newMonth) => {
+    const m = parseInt(newMonth, 10);
+    setSelectedMonth(m);
+    const range = getMonthRange(selectedYear, m);
+    setStartDate(range.start);
+    setEndDate(range.end);
+    setActiveDatePreset(null);
+    setShowMonthDropdown(false);
+    handleRunScan(activeScreenerId, { start: range.start, end: range.end });
   };
 
   const handleDatePresetSelect = (preset) => {
@@ -708,32 +813,182 @@ export default function StudyLabTab({
 
   const renderDateAndScanControls = (compact = false) => (
     <>
-      {/* Presets */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-        {datePresets.map(preset => {
-          const isActive = activeDatePreset === preset.id;
-          return (
-            <button
-              key={preset.id}
-              type="button"
-              onClick={() => handleDatePresetSelect(preset)}
-              title={preset.title}
+      {/* Year & Month Selection with Studied Checkbox */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+        {/* Year Dropdown */}
+        <select
+          value={selectedYear}
+          onChange={e => handleYearChange(e.target.value)}
+          title="Select study year"
+          style={{
+            background: 'rgba(30, 41, 59, 0.9)',
+            color: '#f8fafc',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '6px',
+            padding: compact ? '2px 5px' : '3px 7px',
+            height: compact ? '26px' : '28px',
+            fontSize: compact ? '11px' : '11.5px',
+            fontWeight: '700',
+            cursor: 'pointer',
+            outline: 'none',
+            colorScheme: 'dark'
+          }}
+        >
+          {availableYears.map(yr => (
+            <option key={yr} value={yr}>{yr}</option>
+          ))}
+        </select>
+
+        {/* Month Dropdown Container with Studied Checkbox */}
+        <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              background: 'rgba(30, 41, 59, 0.9)',
+              border: isMonthStudied(selectedYear, selectedMonth)
+                ? '1px solid rgba(16, 185, 129, 0.6)'
+                : '1px solid rgba(255, 255, 255, 0.2)',
+              borderRadius: '6px',
+              height: compact ? '26px' : '28px',
+              padding: '0 6px',
+              gap: '5px',
+              boxSizing: 'border-box'
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={isMonthStudied(selectedYear, selectedMonth)}
+              onChange={(e) => {
+                e.stopPropagation();
+                toggleMonthStudied(selectedYear, selectedMonth);
+              }}
+              title={`Mark ${selectedYear}-${String(selectedMonth).padStart(2, '0')} as studied`}
               style={{
-                padding: compact ? '3px 6px' : '4px 8px',
-                borderRadius: '5px',
-                border: isActive ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.12)',
-                backgroundColor: isActive ? 'rgba(56, 189, 248, 0.2)' : 'rgba(15, 23, 42, 0.45)',
-                color: isActive ? '#38bdf8' : 'var(--text-secondary)',
-                fontSize: compact ? '11px' : '11.5px',
-                fontWeight: isActive ? '700' : '500',
                 cursor: 'pointer',
-                transition: 'all 0.12s ease'
+                accentColor: '#10b981',
+                width: '13px',
+                height: '13px',
+                margin: 0
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowMonthDropdown(prev => !prev)}
+              title="Select Month & View Studied Months"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: isMonthStudied(selectedYear, selectedMonth) ? '#34d399' : '#f8fafc',
+                fontSize: compact ? '11px' : '11.5px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: 0,
+                outline: 'none'
               }}
             >
-              {preset.label}
+              <span>{MONTH_OPTIONS.find(m => m.value === selectedMonth)?.short || selectedMonth}</span>
+              <span style={{ fontSize: '8px', opacity: 0.7 }}>▼</span>
             </button>
-          );
-        })}
+          </div>
+
+          {showMonthDropdown && (
+            <>
+              <div
+                style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
+                onClick={() => setShowMonthDropdown(false)}
+              />
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 5px)',
+                  left: 0,
+                  zIndex: 9999,
+                  background: '#0f172a',
+                  border: '1px solid #334155',
+                  borderRadius: '8px',
+                  padding: '6px',
+                  boxShadow: '0 12px 30px rgba(0, 0, 0, 0.75)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '3px',
+                  minWidth: '175px',
+                  maxHeight: '340px',
+                  overflowY: 'auto'
+                }}
+              >
+                <div style={{
+                  fontSize: '10.5px',
+                  color: '#94a3b8',
+                  padding: '3px 8px 4px',
+                  fontWeight: 700,
+                  borderBottom: '1px solid rgba(255,255,255,0.08)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <span>Months ({selectedYear})</span>
+                  <span style={{ color: '#10b981', fontSize: '10px' }}>
+                    {MONTH_OPTIONS.filter(m => isMonthStudied(selectedYear, m.value)).length}/12 studied
+                  </span>
+                </div>
+
+                {MONTH_OPTIONS.map((m) => {
+                  const isSelected = selectedMonth === m.value;
+                  const isStudied = isMonthStudied(selectedYear, m.value);
+                  return (
+                    <div
+                      key={m.value}
+                      onClick={() => handleMonthSelect(m.value)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '4px 8px',
+                        background: isSelected ? 'rgba(56, 189, 248, 0.18)' : 'transparent',
+                        border: isSelected ? '1px solid rgba(56, 189, 248, 0.4)' : '1px solid transparent',
+                        borderRadius: '5px',
+                        cursor: 'pointer',
+                        transition: 'background 0.12s ease',
+                        color: isSelected ? '#38bdf8' : (isStudied ? '#34d399' : 'var(--text-secondary, #cbd5e1)'),
+                        fontSize: '11px',
+                        fontWeight: isSelected ? 700 : (isStudied ? 600 : 500)
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isSelected) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isSelected) e.currentTarget.style.background = 'transparent';
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isStudied}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          toggleMonthStudied(selectedYear, m.value);
+                        }}
+                        title={`Check up ${selectedYear} ${m.label} as studied`}
+                        style={{
+                          cursor: 'pointer',
+                          accentColor: '#10b981',
+                          width: '13px',
+                          height: '13px',
+                          margin: 0
+                        }}
+                      />
+                      <span style={{ flex: 1 }}>{m.label}</span>
+                      {isSelected && <span style={{ fontSize: '10px', color: '#38bdf8' }}>●</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Start Date & End Date Pickers */}
@@ -1045,7 +1300,6 @@ export default function StudyLabTab({
             marketRegime={currentCandidate?.market_regime}
             showEarningsBadge={false}
             watchlistSymbols={activeWatchlistSymbols}
-            onToggleWatchlist={handleToggleWatchlist}
             onSelectGroup={(type, name) => setPreviewGroupModal({ groupType: type, groupName: name })}
             onSelectStock={(stk) => {
               if (!stk?.symbol) return;
@@ -1057,33 +1311,148 @@ export default function StudyLabTab({
               }
             }}
             headerExtra={(() => {
-              const isSaved = isCandidateSaved(currentCandidate);
+              const savedTrade = getSavedTradeForCandidate(currentCandidate);
+              const isSaved = Boolean(savedTrade);
+              const savedTagId = savedTrade ? (savedTrade.setup_type || (savedTrade.tags && savedTrade.tags[0]) || 'BO') : null;
+              const savedTagDef = savedTagId ? (availableTags.find(t => t.id?.toUpperCase() === savedTagId?.toUpperCase()) || SETUP_TAG_META[savedTagId] || { id: savedTagId, label: savedTagId, name: savedTagId, color: '#34d399' }) : null;
+              const tagColor = savedTagDef?.color || '#34d399';
+
               return (
-                <button
-                  type="button"
-                  className={`btn ${isSaved ? 'btn-secondary' : 'btn-primary'} btn-sm`}
-                  onClick={() => handleToggleSaveCandidate(currentCandidate)}
-                  disabled={!currentCandidate || savingToModelBook}
-                  title={isSaved ? "Saved in Model Book (Click to remove)" : "Save candidate to Model Book"}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    height: '28px',
-                    padding: '0 10px',
-                    borderRadius: '6px',
-                    fontSize: '11.5px',
-                    fontWeight: 700,
-                    background: isSaved ? 'rgba(16, 185, 129, 0.25)' : 'rgba(56, 189, 248, 0.2)',
-                    color: isSaved ? '#34d399' : '#38bdf8',
-                    border: isSaved ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(56, 189, 248, 0.45)',
-                    cursor: currentCandidate ? 'pointer' : 'not-allowed',
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  <span>{isSaved ? '★' : '☆'}</span>
-                  <span>{savingToModelBook ? 'Saving...' : (isSaved ? 'Saved' : 'Save')}</span>
-                </button>
+                <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowSavePopup(prev => !prev)}
+                    disabled={!currentCandidate || savingToModelBook}
+                    title={
+                      isSaved
+                        ? `Saved in Model Book (${savedTagDef?.name || savedTagId}) - Click to change tag or remove (Hotkey: S)`
+                        : `Save ${currentCandidate?.symbol || 'candidate'} to Model Book with tag (Hotkey: S)`
+                    }
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '5px',
+                      height: '28px',
+                      padding: isSaved ? '0 9px' : '0 8px',
+                      borderRadius: '5px',
+                      boxSizing: 'border-box',
+                      transition: 'all 0.15s ease',
+                      background: isSaved ? `${tagColor}25` : 'rgba(255, 255, 255, 0.05)',
+                      color: isSaved ? tagColor : 'var(--text-secondary, #94a3b8)',
+                      border: isSaved ? `1px solid ${tagColor}80` : '1px solid var(--border-color, #1e293b)',
+                      cursor: currentCandidate ? 'pointer' : 'not-allowed',
+                      flexShrink: 0,
+                      fontWeight: isSaved ? 700 : 600,
+                      fontSize: '11px'
+                    }}
+                  >
+                    <span>{isSaved ? '★' : '☆'}</span>
+                    <span>{savingToModelBook ? 'Saving...' : (isSaved ? (savedTagDef?.label || savedTagDef?.name || 'Saved') : 'Save')}</span>
+                    <span style={{ fontSize: '8px', opacity: 0.7, marginLeft: '1px' }}>▼</span>
+                  </button>
+
+                  {showSavePopup && currentCandidate && (
+                    <>
+                      <div
+                        style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
+                        onClick={() => setShowSavePopup(false)}
+                      />
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: 'calc(100% + 5px)',
+                          right: 0,
+                          zIndex: 9999,
+                          background: '#0f172a',
+                          border: '1px solid #334155',
+                          borderRadius: '8px',
+                          padding: '6px',
+                          boxShadow: '0 12px 30px rgba(0, 0, 0, 0.75)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4px',
+                          minWidth: '185px',
+                          pointerEvents: 'auto'
+                        }}
+                      >
+                        <div style={{ fontSize: '10px', color: '#94a3b8', padding: '3px 8px 4px', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                          Select Target Tag:
+                        </div>
+
+                        {availableTags.map((tag) => {
+                          const isCurrent = isSaved && savedTagId?.toUpperCase() === tag.id?.toUpperCase();
+                          const color = tag.color || '#38bdf8';
+                          return (
+                            <button
+                              key={tag.id}
+                              type="button"
+                              onClick={() => handleSaveCandidateWithTag(currentCandidate, tag.id, tag.name || tag.label)}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                padding: '5px 8px',
+                                background: isCurrent ? `${color}25` : 'transparent',
+                                border: isCurrent ? `1px solid ${color}60` : '1px solid transparent',
+                                borderRadius: '5px',
+                                color: isCurrent ? '#ffffff' : 'var(--text-secondary, #cbd5e1)',
+                                fontSize: '11px',
+                                fontWeight: isCurrent ? 700 : 500,
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                                width: '100%',
+                                transition: 'background 0.12s ease'
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isCurrent) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isCurrent) e.currentTarget.style.background = 'transparent';
+                              }}
+                            >
+                              <span style={{ fontSize: '12px' }}>{tag.icon || '🏷️'}</span>
+                              <span style={{ flex: 1, whiteSpace: 'nowrap' }}>
+                                {tag.name || tag.label} <span style={{ opacity: 0.6, fontSize: '10px' }}>({tag.id})</span>
+                              </span>
+                              {isCurrent && <span style={{ color: color, fontSize: '11px', fontWeight: 700 }}>✓</span>}
+                            </button>
+                          );
+                        })}
+
+                        {isSaved && (
+                          <>
+                            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', margin: '2px 0' }} />
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSavedCandidate(currentCandidate)}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                padding: '5px 8px',
+                                background: 'transparent',
+                                border: '1px solid transparent',
+                                borderRadius: '5px',
+                                color: '#fb7185',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                                width: '100%'
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(244, 63, 94, 0.15)')}
+                              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                            >
+                              <span style={{ fontSize: '11px' }}>🗑️</span>
+                              <span>Remove from Model Book</span>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               );
             })()}
           />
@@ -1213,13 +1582,18 @@ export default function StudyLabTab({
               totalCount={rawCandidates.length}
               renderCell={(colKey, cand) => {
                 if (colKey === 'symbol') {
-                  const isSaved = isCandidateSaved(cand);
+                  const savedTrade = getSavedTradeForCandidate(cand);
+                  const isSaved = Boolean(savedTrade);
+                  const tagId = savedTrade ? (savedTrade.setup_type || (savedTrade.tags && savedTrade.tags[0]) || 'BO') : null;
+                  const tagDef = tagId ? (availableTags.find(t => t.id?.toUpperCase() === tagId?.toUpperCase()) || SETUP_TAG_META[tagId]) : null;
+                  const tagColor = tagDef?.color || '#34d399';
+
                   return (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                       <StockBrandIcon symbol={cand.symbol} size={18} />
                       <span style={{ fontWeight: 800, color: '#ffffff', fontSize: '11.5px' }}>{cand.symbol}</span>
                       {isSaved && (
-                        <span style={{ fontSize: '11px', color: '#34d399', fontWeight: 700 }} title="Saved in Model Book">
+                        <span style={{ fontSize: '11px', color: tagColor, fontWeight: 700 }} title={`Saved in Model Book (${tagDef?.name || tagId || 'Saved'})`}>
                           ★
                         </span>
                       )}

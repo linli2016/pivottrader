@@ -267,14 +267,14 @@ Amateurs ask: *"How many shares can I buy with my cash?"*
 Professionals ask: *"How many dollars am I risking if my stop loss is hit?"*
 
 #### The Exact Formula:
-$$\\text{Total Risk Dollars} = \\text{Account Equity} \\times \\text{Risk \\% (0.25\\% - 0.50\\%)}$$
-
-$$\\text{Position Shares} = \\frac{\\text{Total Risk Dollars}}{\\text{Entry Price} - \\text{LoD Stop Price}}$$
+> **Total Risk Dollars = Account Equity × Risk % (0.25% – 0.50%)**
+>
+> **Position Shares = Total Risk Dollars ÷ (Entry Price − LoD Stop Price)**
 
 #### Why Tight Entries Allow Massive Position Sizing:
-Because your entry is tight to the LoD ($<60\\%$ ATR), your stop distance might be only **1.5% to 2.5%**.
-* With a **2.0% stop distance** and a **0.5% equity risk**, your total position size is **25% of your portfolio** ($0.5\\% / 2\\% = 25\\%$).
-* If the trade moves $+6\\%$, you make **+3R (+1.5% to your total account)** in 2 days.
+Because your entry is tight to the LoD (**< 60% ATR**), your stop distance might be only **1.5% to 2.5%**.
+* With a **2.0% stop distance** and a **0.5% equity risk**, your total position size is **25% of your portfolio** (**0.5% ÷ 2% = 25%**).
+* If the trade moves **+6%**, you make **+3R (+1.5% to your total account)** in 2 days.
 `
     },
     {

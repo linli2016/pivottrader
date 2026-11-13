@@ -67,7 +67,7 @@ By executing this framework consistently on live Twitch streams from 2017 to 202
 ---
 
 #### The Core Mathematical Formula of Qullamaggie's Edge
-$$\text{Expected Value (EV)} = (\text{Win Rate} \times \text{Avg Win}) - (\text{Loss Rate} \times \text{Avg Loss})$$
+> **Expected Value (EV) = (Win Rate × Avg Win) − (Loss Rate × Avg Loss)**
 
 | Parameter | Retail Trader Perception | Qullamaggie Reality |
 | :--- | :--- | :--- |
@@ -183,7 +183,7 @@ A High Tight Flag (HTF) is the single most explosive pattern in financial market
 
 \`\`\`
        Peak High
-          /\
+          /\\
          /  \\  Orderly Flag (-15% to -20%)
         /    \\---/\\---/\\  ← Volume Dries Up (VDU)
 Explosive    -------------  ← Pivot Trigger Line (ORH)
@@ -381,8 +381,8 @@ The exact inverse setup: a stock down 3 to 5 consecutive red days, dropping -30%
           users: "Non-Negotiable Risk Filter",
           desc: "The distance from your entry price to the Low of the Day (LoD) MUST be ≤ 60% of the stock's Average True Range (ATR).",
           bullets: [
-            "$$\\text{Risk Distance} = \\text{Entry Price} - \\text{LoD Stop Price}$$",
-            "$$\\text{Risk \\% of ATR} = \\frac{\\text{Risk Distance}}{\\text{Daily ATR (14)}} \\times 100 \\le 60\\%$$",
+            "Risk Distance = Entry Price − LoD Stop Price",
+            "Risk % of ATR = (Risk Distance ÷ Daily ATR (14)) × 100 ≤ 60%",
             "If the stop distance exceeds 60% of ATR, the trade is mathematically INVALID—wait for a tighter intraday pause or pass."
           ]
         }

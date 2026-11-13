@@ -60,5 +60,14 @@ class TestStageDistribution(unittest.TestCase):
         self.assertIn("stage4_pct", row)
         self.assertIn("stage_net_pct", row)
 
+    def test_weinstein_stage_metadata_references_200d_ma(self):
+        res = db_service.get_stage_distribution(limit=1)
+        summary = res.get("summary", {})
+        self.assertIn("stage2", summary)
+        self.assertIn("200D MA", summary["stage2"]["desc"])
+        self.assertIn("200D MA", summary["stage1"]["desc"])
+        self.assertIn("200D MA", summary["stage3"]["desc"])
+        self.assertIn("200D MA", summary["stage4"]["desc"])
+
 if __name__ == "__main__":
     unittest.main()

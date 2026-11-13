@@ -33,9 +33,17 @@ class JournalIgnoreSchema(BaseModel):
     reason: Optional[str] = ""
 
 
+class StockSplitSchema(BaseModel):
+    symbol: str
+    split_date: str
+    ratio: float
+    notes: Optional[str] = ""
+
+
 class AccountBalanceUpdateSchema(BaseModel):
     usd_balance: Optional[float] = None
     cad_balance: Optional[float] = None
+    name: Optional[str] = None
 
 
 @router.get("/api/journal/accounts")
@@ -46,12 +54,13 @@ def get_journal_accounts():
 
 @router.put("/api/journal/accounts/{account_id}/balance")
 def update_journal_account_balance(account_id: str, payload: AccountBalanceUpdateSchema):
-    """Update USD and CAD cash balance for an account."""
+    """Update USD and CAD cash balance and optional name/alias for an account."""
     try:
         return journal_service.update_account_balance(
             account_id=account_id,
             usd_balance=payload.usd_balance,
             cad_balance=payload.cad_balance,
+            name=payload.name,
         )
     except Exception as e:
         logger.error(f"Error in update_journal_account_balance: {e}", exc_info=True)
@@ -79,11 +88,20 @@ def update_journal_config(payload: JournalFlexConfigSchema):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class JournalSyncSchema(BaseModel):
+    query_id: Optional[str] = None
+    from_date: Optional[str] = None
+    to_date: Optional[str] = None
+
+
 @router.post("/api/journal/sync")
-def sync_journal(query_id: Optional[str] = None):
-    """Fetch the Activity Flex statement(s) from IBKR and upsert executions."""
+def sync_journal(query_id: Optional[str] = None, payload: Optional[JournalSyncSchema] = None):
+    """Fetch the Activity Flex statement(s) from IBKR and upsert executions with optional date range overrides."""
     try:
-        return journal_service.sync_from_flex(target_query_id=query_id)
+        qid = (payload.query_id if payload and payload.query_id else query_id)
+        fd = payload.from_date if payload else None
+        td = payload.to_date if payload else None
+        return journal_service.sync_from_flex(target_query_id=qid, from_date=fd, to_date=td)
     except FlexError as fe:
         raise HTTPException(status_code=400, detail=str(fe))
     except Exception as e:
@@ -158,3 +176,42 @@ def unignore_journal_trade(trade_id: str):
     except Exception as e:
         logger.error(f"Error in unignore_journal_trade: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/journal/splits")
+def get_journal_stock_splits(symbol: Optional[str] = None):
+    """List registered stock splits applied to trading history."""
+    try:
+        return journal_service.get_stock_splits(symbol=symbol)
+    except Exception as e:
+        logger.error(f"Error fetching stock splits: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/journal/splits")
+def add_journal_stock_split(payload: StockSplitSchema):
+    """Register a forward or reverse stock split to back-adjust historical executions."""
+    try:
+        return journal_service.add_stock_split(
+            symbol=payload.symbol,
+            split_date=payload.split_date,
+            ratio=payload.ratio,
+            notes=payload.notes or "",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error adding stock split: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/api/journal/splits/{symbol}/{split_date}")
+def delete_journal_stock_split(symbol: str, split_date: str):
+    """Delete a registered stock split."""
+    try:
+        deleted = journal_service.delete_stock_split(symbol=symbol, split_date=split_date)
+        return {"deleted": deleted}
+    except Exception as e:
+        logger.error(f"Error deleting stock split: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+

@@ -174,7 +174,7 @@ def main():
     parser = argparse.ArgumentParser(description="Download YouTube videos or audio.")
     parser.add_argument("urls", nargs='*', help="YouTube URLs to download")
     parser.add_argument("--audio", action="store_true", help="Download audio only")
-    parser.add_argument("-o", "--output", default="downloads", help="Output directory path (default: downloads)")
+    parser.add_argument("-o", "--output", default="~/Downloads", help="Output directory path (default: downloads)")
     parser.add_argument("--cookies-from-browser", help="Browser to load cookies from (e.g. chrome, firefox, safari)")
     parser.add_argument("--cookies", help="Path to cookies file (e.g. cookies.txt)")
     parser.add_argument("--oauth", action="store_true", help="Use OAuth2 login (deprecated)")
@@ -184,7 +184,7 @@ def main():
     if not urls:
         # Fallback to hardcoded list if no args provided (preserving original behavior for manual run without args)
         urls = [
-            "https://www.youtube.com/watch?v=gNM4lWEgBZw&t=2087s"
+            "https://www.youtube.com/watch?v=Zit5Bzbx6oQ"
         ]
 
     # Download each video

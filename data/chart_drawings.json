@@ -94,5 +94,74 @@
       "color": "#ffffff",
       "width": 1
     }
+  ],
+  "CRWD": [
+    {
+      "id": "line_1794074071012_nd0dl",
+      "type": "line",
+      "p1": {
+        "logical": 1757,
+        "price": 153.4346158403635,
+        "time": "2026-06-09",
+        "offsetFromBar": 0
+      },
+      "p2": {
+        "logical": 1880,
+        "price": 224.89829130691487,
+        "time": "2026-11-06",
+        "offsetFromBar": 18
+      },
+      "color": "#ffffff",
+      "width": 1
+    }
+  ],
+  "APPS": [
+    {
+      "id": "avwap_1794267866993",
+      "type": "avwap",
+      "anchorTime": "2026-08-05",
+      "color": "#f59e0b",
+      "width": 2
+    }
+  ],
+  "ABSI": [
+    {
+      "id": "line_1794435878149_062q1",
+      "type": "line",
+      "p1": {
+        "logical": 1238,
+        "price": 12.047516919700179,
+        "time": "2026-06-29",
+        "offsetFromBar": 0
+      },
+      "p2": {
+        "logical": 1349,
+        "price": 11.890629351072695,
+        "time": "2026-11-11",
+        "offsetFromBar": 16
+      },
+      "color": "#ffffff",
+      "width": 1
+    }
+  ],
+  "MYGN": [
+    {
+      "id": "line_1794535578988_swt7c",
+      "type": "line",
+      "p1": {
+        "logical": 3238,
+        "price": 8.360878497019568,
+        "time": "2025-10-29",
+        "offsetFromBar": 0
+      },
+      "p2": {
+        "logical": 3657,
+        "price": 4.445532673797673,
+        "time": "2026-11-12",
+        "offsetFromBar": 158
+      },
+      "color": "#ffffff",
+      "width": 1
+    }
   ]
 }

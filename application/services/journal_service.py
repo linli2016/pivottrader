@@ -155,6 +155,7 @@ class _TradeBuilder:
             "net_cash": nc,
             "fraction": round(frac, 6),
             "action": "ENTRY" if is_entry else "EXIT",
+            "split_ratio": e.get("split_ratio"),
         })
 
     def finalize(self, closed: bool) -> Dict[str, Any]:
@@ -180,6 +181,8 @@ class _TradeBuilder:
         open_date = self.open_dt[:10]
         close_date = self.close_dt[:10] if self.close_dt else None
         combined_execs = _combine_same_datetime_executions(self.executions)
+        has_split = any(bool(e.get("split_ratio")) for e in self.executions)
+        split_ratios = [e["split_ratio"] for e in self.executions if e.get("split_ratio")]
         return {
             "id": self.id,
             "account_id": self.account_id,
@@ -191,6 +194,8 @@ class _TradeBuilder:
             "direction": "LONG" if self.direction > 0 else "SHORT",
             "status": "CLOSED" if closed else "OPEN",
             "incomplete": self.incomplete,
+            "split_adjusted": has_split,
+            "split_ratio": split_ratios[0] if split_ratios else None,
             "open_datetime": self.open_dt,
             "close_datetime": self.close_dt,
             "open_date": open_date,
@@ -510,6 +515,14 @@ class JournalService:
                     updated_at TEXT,
                     PRIMARY KEY (account_id, currency)
                 );
+                CREATE TABLE IF NOT EXISTS stock_splits (
+                    symbol TEXT NOT NULL,
+                    split_date TEXT NOT NULL,
+                    ratio REAL NOT NULL,
+                    notes TEXT DEFAULT '',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (symbol, split_date)
+                );
                 CREATE TABLE IF NOT EXISTS journal_meta (key TEXT PRIMARY KEY, value TEXT);
             """)
             # Migration check: add initial_stop and mistakes columns if missing in older schema
@@ -584,7 +597,11 @@ class JournalService:
         queries: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         cfg = self._load_flex_config()
-        existing_queries = {str(q.get("query_id")): q for q in (cfg.get("queries") or [])}
+        existing_queries_by_key = {
+            (str(q.get("query_id") or "").strip(), str(q.get("name") or "").strip()): q
+            for q in (cfg.get("queries") or [])
+        }
+        existing_queries_by_qid = {str(q.get("query_id") or "").strip(): q for q in (cfg.get("queries") or [])}
 
         if token is not None and token.strip() and not set(token.strip()).issubset({"•", "*"}):
             cfg["token"] = token.strip()
@@ -597,14 +614,16 @@ class JournalService:
                 qid = str(q.get("query_id") or "").strip()
                 if not qid:
                     continue
+                q_name = str(q.get("name") or f"Query {qid}").strip()
                 q_tok = q.get("token")
                 # Preserve existing custom token if left blank or masked
                 if not q_tok or set(str(q_tok).strip()).issubset({"•", "*"}):
-                    q_tok = existing_queries.get(qid, {}).get("token") or ""
+                    match_old = existing_queries_by_key.get((qid, q_name)) or existing_queries_by_qid.get(qid, {})
+                    q_tok = match_old.get("token") or ""
                 else:
                     q_tok = str(q_tok).strip()
                 updated_queries.append({
-                    "name": str(q.get("name") or f"Query {qid}").strip(),
+                    "name": q_name,
                     "query_id": qid,
                     "token": q_tok,
                 })
@@ -663,7 +682,9 @@ class JournalService:
             )
         return result
 
-    def sync_from_flex(self, target_query_id: Optional[str] = None) -> Dict[str, Any]:
+    def sync_from_flex(self, target_query_id: Optional[str] = None,
+                       from_date: Optional[str] = None,
+                       to_date: Optional[str] = None) -> Dict[str, Any]:
         cfg = self._load_flex_config()
         default_token = cfg.get("token") or ""
         raw_queries = cfg.get("queries") or []
@@ -713,7 +734,7 @@ class JournalService:
                 continue
 
             try:
-                content = IBKRFlexClient(tok, qid).fetch_statement()
+                content = IBKRFlexClient(tok, qid).fetch_statement(from_date=from_date, to_date=to_date)
                 parsed = parse_flex_trades(content)
                 execs = parsed["executions"]
                 all_executions.extend(execs)
@@ -786,7 +807,87 @@ class JournalService:
     def load_executions(self) -> List[Dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute(f"SELECT {','.join(EXEC_COLUMNS)} FROM executions").fetchall()
+            splits = conn.execute(
+                "SELECT symbol, split_date, ratio, notes FROM stock_splits ORDER BY split_date ASC"
+            ).fetchall()
+
+        execs = [dict(r) for r in rows]
+        if not splits:
+            return execs
+
+        # Map splits by uppercase symbol
+        split_map: Dict[str, List[Dict[str, Any]]] = {}
+        for s in splits:
+            sym = str(s["symbol"]).strip().upper()
+            ratio = float(s["ratio"])
+            if ratio > 0 and abs(ratio - 1.0) > 1e-6:
+                split_map.setdefault(sym, []).append({
+                    "split_date": str(s["split_date"])[:10],
+                    "ratio": ratio,
+                    "notes": s["notes"] or "",
+                })
+
+        if not split_map:
+            return execs
+
+        for e in execs:
+            sym = (e.get("symbol") or "").strip().upper()
+            if sym not in split_map:
+                continue
+            exec_dt = (e.get("date_time") or e.get("trade_date") or "")[:10]
+            if not exec_dt:
+                continue
+            for sp in split_map[sym]:
+                split_date = sp["split_date"]
+                ratio = sp["ratio"]
+                # Pre-split execution: adjust quantity and per-share price
+                if exec_dt < split_date:
+                    qty = e.get("quantity")
+                    if qty is not None:
+                        e["quantity"] = round(float(qty) * ratio, 6)
+                    price = e.get("price")
+                    if price is not None and abs(ratio) > 1e-9:
+                        e["price"] = round(float(price) / ratio, 4)
+                    e["split_ratio"] = ratio
+
+        return execs
+
+    def get_stock_splits(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+        query = "SELECT symbol, split_date, ratio, notes, created_at FROM stock_splits"
+        params = []
+        if symbol:
+            query += " WHERE symbol = ?"
+            params.append(symbol.strip().upper())
+        query += " ORDER BY split_date ASC, symbol ASC"
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
         return [dict(r) for r in rows]
+
+    def add_stock_split(self, symbol: str, split_date: str, ratio: float, notes: str = "") -> Dict[str, Any]:
+        sym = symbol.strip().upper()
+        if not sym:
+            raise ValueError("Symbol is required")
+        if ratio <= 0:
+            raise ValueError("Split ratio must be positive")
+        s_date = split_date.strip()[:10]
+        now = datetime.now().isoformat(timespec="seconds")
+        with self._write_lock, self._connect() as conn:
+            conn.execute(
+                """INSERT OR REPLACE INTO stock_splits (symbol, split_date, ratio, notes, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                [sym, s_date, float(ratio), notes.strip(), now],
+            )
+        return {"symbol": sym, "split_date": s_date, "ratio": float(ratio), "notes": notes.strip(), "created_at": now}
+
+    def delete_stock_split(self, symbol: str, split_date: str) -> bool:
+        sym = symbol.strip().upper()
+        s_date = split_date.strip()[:10]
+        with self._write_lock, self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM stock_splits WHERE symbol = ? AND split_date = ?",
+                [sym, s_date],
+            )
+            return cur.rowcount > 0
 
     def load_notes(self) -> Dict[str, Dict[str, Any]]:
         with self._connect() as conn:
@@ -1161,6 +1262,28 @@ class JournalService:
             t["mfe_price"] = round(best_price, 4) if best_price is not None else None
             t["mfe_date"] = best_date
 
+    def _get_account_name_map(self) -> Dict[str, str]:
+        """Map account_id -> human-friendly name (e.g. 'U16814594' -> 'RRSP')."""
+        last_sync = self.get_last_sync() or {}
+        out = {}
+        for qr in last_sync.get("query_results") or []:
+            name = qr.get("name")
+            for acct in qr.get("accounts") or []:
+                if name:
+                    out[acct] = name
+        cfg = self._load_flex_config()
+        queries = cfg.get("queries") or []
+        if len(queries) == 1 and not out:
+            with self._connect() as conn:
+                accts = conn.execute("SELECT DISTINCT account_id FROM executions WHERE account_id IS NOT NULL").fetchall()
+                if len(accts) == 1:
+                    out[accts[0][0]] = queries[0].get("name") or "Primary Account"
+        aliases = cfg.get("account_aliases") or {}
+        for acct, alias in aliases.items():
+            if alias:
+                out[acct] = alias
+        return out
+
     def get_trades(self, start: Optional[str] = None, end: Optional[str] = None,
                    symbol: Optional[str] = None, account: Optional[str] = None,
                    include_ignored: bool = False,
@@ -1180,20 +1303,43 @@ class JournalService:
 
         self._populate_open_trade_metrics(trades, price_map=price_map)
 
+        acct_name_map = self._get_account_name_map() if account else {}
+        acct_filter_clean = account.strip().lower() if account else None
+
         sym = (symbol or "").strip().upper()
         out = []
         for t in trades:
             if t.get("is_ignored") and not include_ignored:
                 continue
-            ref_date = t["open_date"] or t["close_date"]
-            if start and ref_date < start:
-                continue
-            if end and ref_date > end:
-                continue
+            is_open = t.get("status") == "OPEN"
+            if is_open:
+                open_d = t.get("open_date") or ""
+                if end and open_d and open_d > end:
+                    continue
+                if start:
+                    opened_in_window = bool(open_d and open_d >= start)
+                    has_exec_in_window = any(
+                        start <= (e.get("date_time") or e.get("trade_date") or "")[:10] <= (end or "9999-99-99")
+                        for e in t.get("executions", [])
+                        if (e.get("date_time") or e.get("trade_date"))
+                    )
+                    today_str = date.today().isoformat()
+                    is_current_holding = (end is None or end >= today_str)
+                    if not (opened_in_window or has_exec_in_window or is_current_holding):
+                        continue
+            else:
+                ref_date = t.get("close_date") or t.get("open_date")
+                if start and ref_date and ref_date < start:
+                    continue
+                if end and ref_date and ref_date > end:
+                    continue
             if sym and sym not in t["symbol"].upper():
                 continue
-            if account and t["account_id"] != account:
-                continue
+            if acct_filter_clean:
+                t_acct = (t.get("account_id") or "").strip().lower()
+                t_name = (acct_name_map.get(t.get("account_id")) or "").strip().lower()
+                if acct_filter_clean not in (t_acct, t_name):
+                    continue
             n = notes.get(t["id"], {})
             t["notes"] = n.get("notes", "")
             t["mistakes"] = n.get("mistakes", "")
@@ -1238,27 +1384,35 @@ class JournalService:
         active_trades = [t for t in trades if not t.get("is_ignored")]
         all_execs = self.load_executions()
         ignored_map = self.load_ignored_trade_ids()
+        balances = self.get_account_balances()
+
+        # Unified accounts list from all known accounts in balances
+        all_acct_ids = [a["account_id"] for a in balances.get("accounts", [])]
+        if not all_acct_ids:
+            all_acct_ids = sorted({e["account_id"] for e in all_execs if e.get("account_id")})
+
         ignored_count = (
             sum(1 for tid in ignored_map if tid.startswith(f"{account}:"))
             if account else len(ignored_map)
         )
-        balances = self.get_account_balances(trades=active_trades)
         return {
             "trades": trades,
             "stats": compute_statistics(active_trades),
             "monthly": compute_period_pnl(active_trades, "month"),
             "yearly": compute_period_pnl(active_trades, "year"),
             "equity_curve": compute_equity_curve(active_trades),
-            "accounts": sorted({e["account_id"] for e in all_execs if e.get("account_id")}),
+            "accounts": all_acct_ids,
             "years": sorted({e["trade_date"][:4] for e in all_execs if e.get("trade_date")}, reverse=True),
             "ignored_count": ignored_count,
             "last_sync": self.get_last_sync(),
             "balances": balances,
+            "splits": self.get_stock_splits(),
         }
 
     def get_account_balances(self, trades: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         """Return all known accounts with their USD and CAD cash balances, open positions value,
-        Total Equity (Cash + Open Trades in USD, excluding ignored trades), and 1% risk budget."""
+        Total Equity (Cash + Open Trades in USD, excluding ignored trades), and 1% risk budget.
+        Accounts include synced IBKR accounts, configured Flex Query accounts, and manually edited accounts."""
         with self._connect() as conn:
             exec_accounts = {
                 r[0]
@@ -1272,8 +1426,6 @@ class JournalService:
                     "SELECT DISTINCT account_id FROM account_balances WHERE account_id IS NOT NULL AND account_id != ''"
                 ).fetchall()
             }
-            all_accounts = sorted(exec_accounts | balance_accounts)
-
             rows = conn.execute(
                 "SELECT account_id, currency, cash_balance, updated_at FROM account_balances"
             ).fetchall()
@@ -1284,16 +1436,44 @@ class JournalService:
 
         cfg = self._load_flex_config()
         queries = cfg.get("queries") or []
-        account_names: Dict[str, str] = {}
-        if len(queries) == 1 and len(all_accounts) == 1:
-            account_names[all_accounts[0]] = queries[0].get("name") or "Primary Account"
-        else:
-            last_sync = self.get_last_sync() or {}
-            for qr in last_sync.get("query_results") or []:
-                q_name = qr.get("name")
-                for acct in qr.get("accounts") or []:
-                    if q_name:
-                        account_names[acct] = q_name
+        last_sync = self.get_last_sync() or {}
+        query_results = last_sync.get("query_results") or []
+
+        # Map queries to accounts based on last sync results
+        acct_to_query_name: Dict[str, str] = {}
+        query_status_map: Dict[str, Dict[str, Any]] = {}
+        for qr in query_results:
+            q_name = qr.get("name")
+            if q_name:
+                query_status_map[q_name] = qr
+            for acct in qr.get("accounts") or []:
+                if q_name:
+                    acct_to_query_name[acct] = q_name
+
+        account_names: Dict[str, str] = dict(acct_to_query_name)
+        if len(queries) == 1 and len(exec_accounts | balance_accounts) == 1:
+            only_acct = list(exec_accounts | balance_accounts)[0]
+            if only_acct not in account_names:
+                account_names[only_acct] = queries[0].get("name") or "Primary Account"
+
+        # Apply user-defined custom aliases if present
+        account_aliases = cfg.get("account_aliases") or {}
+        for acct_id, alias in account_aliases.items():
+            if alias:
+                account_names[acct_id] = alias
+
+        # Discover configured queries that have not mapped to an IBKR account ID yet
+        configured_unmapped: List[Dict[str, Any]] = []
+        for q in queries:
+            q_name = str(q.get("name") or f"Query {q.get('query_id')}").strip()
+            # Has this query been associated with an account in exec_accounts or balance_accounts?
+            mapped = any(name == q_name for acct, name in account_names.items() if acct in (exec_accounts | balance_accounts))
+            if not mapped and q_name not in exec_accounts and q_name not in balance_accounts:
+                configured_unmapped.append({
+                    "account_id": q_name,
+                    "name": q_name,
+                    "query_id": q.get("query_id"),
+                })
 
         # Calculate Open Positions Value per account (Total Equity method)
         # Note: excludes ignored trades and counts USD only
@@ -1302,12 +1482,14 @@ class JournalService:
 
         open_positions_value_by_account: Dict[str, float] = {}
         open_trades_count_by_account: Dict[str, int] = {}
+        trades_count_by_account: Dict[str, int] = {}
         for t in trades:
+            acct = t.get("account_id") or ""
+            trades_count_by_account[acct] = trades_count_by_account.get(acct, 0) + 1
             if t.get("status") == "OPEN" and not t.get("is_ignored"):
                 curr = (t.get("currency") or "USD").upper()
                 if curr != "USD":
                     continue  # Only USD trades counted for equity
-                acct = t.get("account_id") or ""
                 qty = abs(t.get("open_qty") or 0.0)
                 price = t.get("current_price")
                 if price is None:
@@ -1318,6 +1500,7 @@ class JournalService:
                 open_positions_value_by_account[acct] = open_positions_value_by_account.get(acct, 0.0) + val
                 open_trades_count_by_account[acct] = open_trades_count_by_account.get(acct, 0) + 1
 
+        all_accounts = sorted(exec_accounts | balance_accounts | {c["account_id"] for c in configured_unmapped})
         accounts_data = []
         for acct in all_accounts:
             usd_tuple = balance_map.get((acct, "USD"))
@@ -1329,11 +1512,33 @@ class JournalService:
             cad_updated = cad_tuple[1] if cad_tuple is not None else None
             updated_at = usd_updated or cad_updated
 
-            name = account_names.get(acct) or ("TFSA" if "TFSA" in str(cfg) else f"Account {acct}")
+            name = account_names.get(acct)
+            if not name:
+                matching_query = next((q for q in queries if q.get("name") == acct), None)
+                if matching_query:
+                    name = matching_query.get("name")
+                else:
+                    name = f"Account {acct}"
+
+            # Sync status & error tracking
+            sync_info = None
+            if acct in acct_to_query_name and acct_to_query_name[acct] in query_status_map:
+                sync_info = query_status_map[acct_to_query_name[acct]]
+            elif name in query_status_map:
+                sync_info = query_status_map[name]
+
+            sync_status = sync_info.get("status") if sync_info else None
+            sync_error = sync_info.get("error") if sync_info else None
+            query_id = sync_info.get("query_id") if sync_info else None
+            if not query_id:
+                matching_q = next((q for q in queries if q.get("name") in (name, acct)), None)
+                if matching_q:
+                    query_id = matching_q.get("query_id")
 
             usd_cash = round(usd_bal, 2)
             open_pos_val = round(open_positions_value_by_account.get(acct, 0.0), 2)
             open_count = open_trades_count_by_account.get(acct, 0)
+            trades_count = trades_count_by_account.get(acct, 0)
 
             # Total Equity Method: Cash + Open Trades Market Value (USD)
             total_usd_equity = round(usd_cash + open_pos_val, 2)
@@ -1342,10 +1547,14 @@ class JournalService:
             accounts_data.append({
                 "account_id": acct,
                 "name": name,
+                "query_id": query_id,
+                "sync_status": sync_status,
+                "sync_error": sync_error,
                 "usd_balance": usd_cash,
                 "cad_balance": round(cad_bal, 2),
                 "open_positions_value": open_pos_val,
                 "open_trades_count": open_count,
+                "trades_count": trades_count,
                 "total_usd_equity": total_usd_equity,
                 "risk_1pct_usd": risk_1pct_usd,
                 "updated_at": updated_at,
@@ -1367,11 +1576,25 @@ class JournalService:
         }
 
     def update_account_balance(self, account_id: str, usd_balance: Optional[float] = None,
-                               cad_balance: Optional[float] = None) -> Dict[str, Any]:
-        """Update or insert USD and/or CAD cash balances for an account."""
+                               cad_balance: Optional[float] = None,
+                               name: Optional[str] = None) -> Dict[str, Any]:
+        """Update or insert USD and/or CAD cash balances, and optional friendly name for an account."""
         account_id = str(account_id).strip()
         if not account_id:
             raise ValueError("Account ID is required")
+        if name is not None:
+            cfg = self._load_flex_config()
+            aliases = cfg.get("account_aliases") or {}
+            cleaned_name = name.strip()
+            if cleaned_name:
+                aliases[account_id] = cleaned_name
+            else:
+                aliases.pop(account_id, None)
+            cfg["account_aliases"] = aliases
+            os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, indent=2)
+
         now = datetime.now().isoformat(timespec="seconds")
         with self._write_lock, self._connect() as conn:
             if usd_balance is not None:

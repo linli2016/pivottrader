@@ -1,6 +1,8 @@
+import json
 import os
 import tempfile
 import unittest
+from datetime import datetime
 
 from unittest.mock import MagicMock, patch
 
@@ -432,6 +434,92 @@ class TestJournalService(unittest.TestCase):
         self.assertTrue(all(t["account_id"] == "U2" for t in j_u2["trades"]))
         self.assertAlmostEqual(j_u2["stats"]["total_pnl"], 298.0)
 
+    def test_cross_year_and_open_trade_date_filtering(self):
+        trades_xml = [
+            # TSLA: Open trade started late 2025 with accumulation in 2026
+            _trade_xml("101", "TSLA", "20251229;141844", 15, 460.0, conid="101", account_id="U1"),
+            _trade_xml("102", "TSLA", "20260105;101138", 10, 450.0, conid="101", account_id="U1"),
+
+            # NVDA: Opened Dec 2025, closed Jan 2026
+            _trade_xml("103", "NVDA", "20251217;100000", 10, 130.0, conid="102", account_id="U1"),
+            _trade_xml("104", "NVDA", "20260108;153000", -10, 140.0, oc="C", fifo=98.0, conid="102", account_id="U1"),
+
+            # MSFT: Opened Dec 2025, closed Dec 2025
+            _trade_xml("105", "MSFT", "20251203;100000", 10, 400.0, conid="103", account_id="U1"),
+            _trade_xml("106", "MSFT", "20251220;150000", -10, 410.0, oc="C", fifo=98.0, conid="103", account_id="U1"),
+
+            # AAPL: Opened 2026, still OPEN
+            _trade_xml("107", "AAPL", "20260201;100000", 20, 230.0, conid="104", account_id="U1"),
+        ]
+        xml = _statement(*trades_xml)
+        self.svc.import_statement(xml)
+
+        # 1. YTD query (start="2026-01-01"):
+        # TSLA (open with 2026 fill), NVDA (closed in 2026), AAPL (open in 2026) must appear.
+        # MSFT (closed in 2025) must NOT appear.
+        j_ytd = self.svc.get_journal(start="2026-01-01")
+        ytd_symbols = {t["symbol"] for t in j_ytd["trades"]}
+        self.assertIn("TSLA", ytd_symbols)
+        self.assertIn("NVDA", ytd_symbols)
+        self.assertIn("AAPL", ytd_symbols)
+        self.assertNotIn("MSFT", ytd_symbols)
+        self.assertEqual(j_ytd["stats"]["open_trades"], 2)  # TSLA and AAPL
+
+        # 2. Historical year 2025 query (start="2025-01-01", end="2025-12-31"):
+        # MSFT (closed 2025) and TSLA (opened 2025) appear; NVDA (closed 2026) and AAPL (opened 2026) do not.
+        j_2025 = self.svc.get_journal(start="2025-01-01", end="2025-12-31")
+        y2025_symbols = {t["symbol"] for t in j_2025["trades"]}
+        self.assertIn("MSFT", y2025_symbols)
+        self.assertIn("TSLA", y2025_symbols)
+        self.assertNotIn("NVDA", y2025_symbols)
+        self.assertNotIn("AAPL", y2025_symbols)
+
+    def test_stock_split_adjustment(self):
+        # 1. Initially no splits
+        self.assertEqual(self.svc.get_stock_splits(), [])
+
+        # 2. Add a pre-split execution: Bought 2 shares of SOXX @ 503.04 on 2026-10-16
+        xml = _statement(_trade_xml("501", "SOXX", "20261016;095913", 2, 503.04, account_id="U1"))
+        self.svc.import_statement(xml)
+
+        trades_before = self.svc.get_trades(symbol="SOXX")
+        self.assertEqual(len(trades_before), 1)
+        self.assertEqual(trades_before[0]["open_qty"], 2.0)
+        self.assertAlmostEqual(trades_before[0]["avg_entry"], 503.04)
+        self.assertFalse(trades_before[0].get("split_adjusted"))
+
+        # 3. Register a 3-for-1 forward stock split on 2026-11-05
+        split = self.svc.add_stock_split("SOXX", "2026-11-05", 3.0, notes="3-for-1 forward split")
+        self.assertEqual(split["symbol"], "SOXX")
+        self.assertEqual(split["ratio"], 3.0)
+        self.assertEqual(len(self.svc.get_stock_splits("SOXX")), 1)
+
+        # 4. Verify trades are dynamically split-adjusted
+        trades_after = self.svc.get_trades(symbol="SOXX")
+        self.assertEqual(len(trades_after), 1)
+        self.assertEqual(trades_after[0]["open_qty"], 6.0)
+        self.assertAlmostEqual(trades_after[0]["avg_entry"], 167.68)
+        self.assertTrue(trades_after[0]["split_adjusted"])
+        self.assertEqual(trades_after[0]["split_ratio"], 3.0)
+        self.assertAlmostEqual(trades_after[0]["entry_notional"], 1006.08)
+
+        # 5. Add post-split exit: Sold 6 shares of SOXX @ 175.0 on 2026-11-10
+        xml_close = _statement(_trade_xml("502", "SOXX", "20261110;140000", -6, 175.0, oc="C", fifo=43.92, account_id="U1"))
+        self.svc.import_statement(xml_close)
+
+        closed_trades = self.svc.get_trades(symbol="SOXX")
+        self.assertEqual(len(closed_trades), 1)
+        self.assertEqual(closed_trades[0]["status"], "CLOSED")
+        self.assertEqual(closed_trades[0]["entry_qty"], 6.0)
+        self.assertEqual(closed_trades[0]["exit_qty"], 6.0)
+        self.assertAlmostEqual(closed_trades[0]["avg_entry"], 167.68)
+        self.assertAlmostEqual(closed_trades[0]["avg_exit"], 175.0)
+
+        # 6. Delete split and verify reversion
+        deleted = self.svc.delete_stock_split("SOXX", "2026-11-05")
+        self.assertTrue(deleted)
+        self.assertEqual(len(self.svc.get_stock_splits("SOXX")), 0)
+
     def test_multi_query_config_and_sync(self):
         # Configure multiple queries
         cfg = self.svc.update_flex_config(
@@ -458,7 +546,7 @@ class TestJournalService(unittest.TestCase):
             _trade_xml("202", "AMZN", "20240122;100000", -20, 160.0, oc="C", fifo=198.0, account_id="U20"),
         )
 
-        def mock_fetch(self_client):
+        def mock_fetch(self_client, from_date=None, to_date=None):
             if self_client.query_id == "111111":
                 return xml_q1
             elif self_client.query_id == "222222":
@@ -476,13 +564,90 @@ class TestJournalService(unittest.TestCase):
         self.assertEqual(j["accounts"], ["U10", "U20"])
         self.assertEqual(len(j["trades"]), 2)
 
+    def test_flex_sync_with_date_range_override(self):
+        self.svc.update_flex_config(
+            token="test_tok",
+            queries=[{"name": "Taxable", "query_id": "123456"}]
+        )
+        xml = _statement(_trade_xml("999", "NVDA", "20250615;100000", 10, 120.0, account_id="U1"))
+
+        captured_args = {}
+        def mock_fetch(self_client, from_date=None, to_date=None):
+            captured_args["from_date"] = from_date
+            captured_args["to_date"] = to_date
+            return xml
+
+        with patch.object(IBKRFlexClient, "fetch_statement", autospec=True, side_effect=mock_fetch):
+            res = self.svc.sync_from_flex(from_date="20250101", to_date="20251231")
+            self.assertEqual(res["status"], "success")
+            self.assertEqual(captured_args["from_date"], "20250101")
+            self.assertEqual(captured_args["to_date"], "20251231")
+            self.assertEqual(res["fetched"], 1)
+
+    def test_configured_queries_unmapped_account_switching(self):
+        # Configure two accounts: TFSA (not yet synced or error) and RRSP (synced U10)
+        self.svc.update_flex_config(
+            token="default_tok",
+            queries=[
+                {"name": "TFSA", "query_id": "1667940"},
+                {"name": "RRSP", "query_id": "1667940", "token": "custom_tok"},
+            ]
+        )
+        xml = _statement(
+            _trade_xml("501", "AAPL", "20240115;093512", 10, 100.0, account_id="U10"),
+            _trade_xml("502", "AAPL", "20240120;100000", -10, 120.0, oc="C", fifo=200.0, account_id="U10"),
+        )
+        # Simulate last_sync where RRSP synced U10, but TFSA had an error
+        now = datetime.now().isoformat(timespec="seconds")
+        sync_meta = {
+            "status": "partial",
+            "fetched": 2,
+            "new_executions": 2,
+            "total_executions": 2,
+            "skipped_non_stock": 0,
+            "accounts": ["U10"],
+            "has_fifo_pnl": True,
+            "synced_at": now,
+            "query_results": [
+                {"name": "TFSA", "query_id": "1667940", "status": "error", "error": "Token is invalid."},
+                {"name": "RRSP", "query_id": "1667940", "status": "success", "fetched": 2, "accounts": ["U10"]},
+            ],
+            "errors": ["TFSA (1667940): Token is invalid."]
+        }
+        self.svc.import_statement(xml)
+        with self.svc._write_lock, self.svc._connect() as conn:
+            conn.execute("INSERT OR REPLACE INTO journal_meta (key, value) VALUES ('last_sync', ?)", [json.dumps(sync_meta)])
+
+        bals = self.svc.get_account_balances()
+        acct_names = [a["name"] for a in bals["accounts"]]
+        self.assertIn("TFSA", acct_names)
+        self.assertIn("RRSP", acct_names)
+
+        tfsa_acct = next(a for a in bals["accounts"] if a["name"] == "TFSA")
+        self.assertEqual(tfsa_acct["sync_status"], "error")
+        self.assertEqual(tfsa_acct["trades_count"], 0)
+
+        rrsp_acct = next(a for a in bals["accounts"] if a["name"] == "RRSP")
+        self.assertEqual(rrsp_acct["account_id"], "U10")
+        self.assertEqual(rrsp_acct["sync_status"], "success")
+
+        # Switching to TFSA returns 0 trades
+        j_tfsa = self.svc.get_journal(account="TFSA")
+        self.assertEqual(len(j_tfsa["trades"]), 0)
+
+        # Switching to RRSP (by account_id or name) returns RRSP trades
+        j_rrsp_id = self.svc.get_journal(account="U10")
+        self.assertEqual(len(j_rrsp_id["trades"]), 1)
+        j_rrsp_name = self.svc.get_journal(account="RRSP")
+        self.assertEqual(len(j_rrsp_name["trades"]), 1)
+
     def test_account_balances_and_van_tharp_risk(self):
         # 1. Initially balances are retrieved
         bals = self.svc.get_account_balances()
         self.assertIn("accounts", bals)
 
-        # 2. Update USD and CAD balances for an account
-        updated = self.svc.update_account_balance("U1", usd_balance=100000.0, cad_balance=25000.0)
+        # 2. Update USD and CAD balances and friendly label for an account
+        updated = self.svc.update_account_balance("U1", usd_balance=100000.0, cad_balance=25000.0, name="Taxable Account")
         self.assertEqual(updated["total_usd_balance"], 100000.0)
         self.assertEqual(updated["total_cad_balance"], 25000.0)
         self.assertEqual(updated["total_risk_1pct_usd"], 1000.0)  # 1% of USD equity
@@ -491,6 +656,7 @@ class TestJournalService(unittest.TestCase):
         self.assertEqual(acct1["usd_balance"], 100000.0)
         self.assertEqual(acct1["cad_balance"], 25000.0)
         self.assertEqual(acct1["risk_1pct_usd"], 1000.0)
+        self.assertEqual(acct1["name"], "Taxable Account")
 
         # 3. Add second account
         updated2 = self.svc.update_account_balance("U2", usd_balance=50000.0, cad_balance=10000.0)

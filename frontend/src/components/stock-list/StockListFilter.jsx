@@ -19,6 +19,10 @@ export default function StockListFilter({
     ? filterExtra({ isSelectMode, toggleSelectMode })
     : filterExtra;
 
+  const min3Count = industryCounts
+    .filter(({ count }) => count >= 3)
+    .reduce((sum, { count }) => sum + count, 0);
+
   return (
     <div className="stock-list-filter-bar">
       {showIndustryFilter && (
@@ -41,6 +45,9 @@ export default function StockListFilter({
         >
           <option value="ALL">
             {industryLabel} ({totalCount})
+          </option>
+          <option value="MIN_3">
+            Industry Groups (≥ 3) ({min3Count})
           </option>
           {industryCounts.map(({ industry, count }) => (
             <option key={industry} value={industry}>

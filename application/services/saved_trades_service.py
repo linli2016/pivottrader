@@ -81,7 +81,7 @@ class SavedTradesService:
 
     def resolve_setup_tag(self, s_type: str, s_name: Optional[str] = None) -> tuple[str, str]:
         """
-        Resolves setup_type to a canonical setup tag (e.g. 'IPO', 'BO', 'VCP', 'EP', 'SHORT', 'Others').
+        Resolves setup_type to a canonical setup tag (e.g. 'BO', 'PB', 'VCP', 'IPO', 'EP', 'SHORT', 'Others').
         If s_type is a screener ID (e.g. 'ipo_base', 'episodic_pivot'), maps it to the screener's tag.
         """
         try:
@@ -89,9 +89,13 @@ class SavedTradesService:
             tags = setup_service.get_tags()
             cleaned = str(s_type).strip() if s_type else ""
 
-            # 1. Match tag keys case-insensitively (e.g. 'IPO', 'ipo', 'BO', 'bo')
+            # 1. Match tag keys, names, or labels case-insensitively (e.g. 'PB', 'Pullback', 'BO', 'Breakout')
             for t_key, t_def in tags.items():
-                if cleaned.upper() == t_key.upper():
+                if (
+                    cleaned.upper() == t_key.upper()
+                    or cleaned.upper() == (t_def.get("name") or "").upper()
+                    or cleaned.upper() == (t_def.get("label") or "").upper()
+                ):
                     name = s_name or t_def.get("name") or t_def.get("label") or t_key
                     return t_key, name
 

@@ -12,7 +12,7 @@ export const STAGE_META = {
     bg: 'rgba(56, 189, 248, 0.12)',
     border: 'rgba(56, 189, 248, 0.35)',
     bias: 'Neutral • Base Accumulation',
-    desc: '30W MA flat. Price oscillating in trading range after prior decline.'
+    desc: '200D MA flat. Price oscillating in trading range with 50D/150D convergence.'
   },
   2: {
     stage: 2,
@@ -23,7 +23,7 @@ export const STAGE_META = {
     bg: 'rgba(16, 185, 129, 0.12)',
     border: 'rgba(16, 185, 129, 0.35)',
     bias: 'Bullish • Markup & Expansion',
-    desc: 'Price > rising 30W MA. Higher highs & higher lows. Prime buying zone.'
+    desc: 'Price > rising 200D MA (confirmed by 50D & 150D). Higher highs & higher lows.'
   },
   3: {
     stage: 3,
@@ -34,7 +34,7 @@ export const STAGE_META = {
     bg: 'rgba(245, 158, 11, 0.12)',
     border: 'rgba(245, 158, 11, 0.35)',
     bias: 'Caution • Top Distribution',
-    desc: '30W MA flattens/rolls. Volatile churning near highs. Take profits.'
+    desc: '200D MA flattens; 50D/150D roll over. Volatile churning near highs. Take profits.'
   },
   4: {
     stage: 4,
@@ -45,7 +45,7 @@ export const STAGE_META = {
     bg: 'rgba(244, 63, 94, 0.12)',
     border: 'rgba(244, 63, 94, 0.35)',
     bias: 'Bearish • Markdown & Defense',
-    desc: 'Price < falling 30W MA. Lower highs & lower lows. Cash & capital preservation.'
+    desc: 'Price < declining 200D MA. Full bearish MA alignment (50 < 150 < 200). Avoid / short.'
   }
 };
 

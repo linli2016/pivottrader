@@ -9,6 +9,7 @@ export default function AccountBalanceModal({
   onSaved,
 }) {
   const dialogRef = useRef(null);
+  const [accountName, setAccountName] = useState('');
   const [usdBalance, setUsdBalance] = useState('');
   const [cadBalance, setCadBalance] = useState('');
   const [saving, setSaving] = useState(false);
@@ -16,6 +17,7 @@ export default function AccountBalanceModal({
 
   useEffect(() => {
     if (account) {
+      setAccountName(account.name && account.name !== `Account ${account.account_id}` ? account.name : '');
       setUsdBalance(account.usd_balance !== undefined && account.usd_balance !== null ? String(account.usd_balance) : '0');
       setCadBalance(account.cad_balance !== undefined && account.cad_balance !== null ? String(account.cad_balance) : '0');
       setError(null);
@@ -47,6 +49,7 @@ export default function AccountBalanceModal({
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          name: accountName.trim() || null,
           usd_balance: parseFloat(usdBalance) || 0,
           cad_balance: parseFloat(cadBalance) || 0,
         }),
@@ -87,6 +90,23 @@ export default function AccountBalanceModal({
                 <b>Van Tharp Position Sizing:</b> PivotTrader calculates trade risk and position size using <b>USD cash balance only</b>.
                 CAD balance is tracked alongside for total portfolio accounting.
               </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label className="vt-label">
+                Account Label / Nickname <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>— e.g. TFSA, RRSP, Margin</span>
+              </label>
+              <input
+                type="text"
+                className="jr-input"
+                style={{ fontSize: '14px', fontWeight: '500' }}
+                value={accountName}
+                onChange={(e) => setAccountName(e.target.value)}
+                placeholder="e.g. TFSA, RRSP, Taxable Margin"
+              />
+              <span className="jr-muted">
+                Friendly display name shown in the account switcher, cards, and trade table.
+              </span>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>

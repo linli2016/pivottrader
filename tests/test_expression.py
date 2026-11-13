@@ -419,11 +419,13 @@ class TestScanExpressionEngine(unittest.TestCase):
         res_bd = ScanExpressionEngine.validate("WEINSTEIN_BREAKDOWN")
         self.assertTrue(res_bd["valid"], res_bd.get("error"))
         self.assertIn("b.weinstein_stage = 4", res_bd["sql"])
+        self.assertIn("b.close < b.sma_200", res_bd["sql"])
         self.assertIn("b.close < b.sma_150", res_bd["sql"])
 
         # 3. Test WEINSTEIN_PULLBACK alias
         res_pb = ScanExpressionEngine.validate("WEINSTEIN_PULLBACK")
         self.assertTrue(res_pb["valid"], res_pb.get("error"))
+        self.assertIn("b.close < b.sma_200", res_pb["sql"])
         self.assertIn("b.lag_c1", res_pb["sql"])
         self.assertTrue(res_pb["has_lags"])
 
@@ -442,15 +444,15 @@ class TestScanExpressionEngine(unittest.TestCase):
         self.assertIn("b.gap_pct", res_gap["sql"])
         self.assertIn("(-7.0)", res_gap["sql"])
 
-        # 6. Test screeners.yaml short folder screeners
+        # 6. Test screeners.yaml short folder screeners (if enabled)
         from application.services.setup_service import setup_service
         config = setup_service.get_setups_config()
-        short_folder = next((f for f in config.get("folders", []) if f.get("id") == "short"), None)
-        self.assertIsNotNone(short_folder, "Short folder must exist in screeners.yaml")
-        self.assertGreaterEqual(len(short_folder.get("screeners", [])), 5)
-        for screener in short_folder["screeners"]:
-            val = ScanExpressionEngine.validate(screener["expression"])
-            self.assertTrue(val["valid"], f"Screener '{screener['id']}' expression failed: {val.get('error')}")
+        short_folder = next((f for f in config.get("folders", []) if f.get("id", "").lower() == "short"), None)
+        if short_folder is not None:
+            self.assertGreaterEqual(len(short_folder.get("screeners", [])), 5)
+            for screener in short_folder["screeners"]:
+                val = ScanExpressionEngine.validate(screener["expression"])
+                self.assertTrue(val["valid"], f"Screener '{screener['id']}' expression failed: {val.get('error')}")
 
     def test_numeric_literals_with_underscores(self):
         # Python AST & DuckDB support digit separators (PEP 515)

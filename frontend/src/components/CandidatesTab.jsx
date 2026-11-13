@@ -437,7 +437,15 @@ export default function CandidatesTab({
 
   const displayedCandidates = React.useMemo(() => {
     let list = baseCandidates;
-    if (selectedIndustry && selectedIndustry !== 'ALL') {
+    if (selectedIndustry === 'MIN_3') {
+      const validIndustries = new Set(
+        industryCounts.filter((ic) => ic.count >= 3).map((ic) => ic.industry)
+      );
+      list = list.filter((c) => {
+        const ind = (c.industry || c.group_name || '').trim() || 'Unclassified';
+        return validIndustries.has(ind);
+      });
+    } else if (selectedIndustry && selectedIndustry !== 'ALL') {
       list = list.filter((c) => {
         const ind = (c.industry || c.group_name || '').trim() || 'Unclassified';
         return ind === selectedIndustry;
@@ -488,11 +496,11 @@ export default function CandidatesTab({
       default:
         return copy;
     }
-  }, [baseCandidates, selectedIndustry, sortBy]);
+  }, [baseCandidates, selectedIndustry, industryCounts, sortBy]);
 
   // Reset selected industry if no longer present in candidates list
   React.useEffect(() => {
-    if (selectedIndustry !== 'ALL' && !industryCounts.some(ic => ic.industry === selectedIndustry)) {
+    if (selectedIndustry !== 'ALL' && selectedIndustry !== 'MIN_3' && !industryCounts.some(ic => ic.industry === selectedIndustry)) {
       setSelectedIndustry('ALL');
     }
   }, [industryCounts, selectedIndustry]);
@@ -1735,7 +1743,11 @@ export default function CandidatesTab({
         </div>
       ) : displayedCandidates.length === 0 ? (
         <div className="glass-card" style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-secondary)', marginTop: '20px' }}>
-          <p>No candidates found in industry/group <strong>"{selectedIndustry}"</strong>.</p>
+          <p>
+            {selectedIndustry === 'MIN_3'
+              ? 'No industry/group has at least 3 candidates in this scan.'
+              : <>No candidates found in industry/group <strong>"{selectedIndustry}"</strong>.</>}
+          </p>
           <button className="btn btn-secondary btn-sm" onClick={() => setSelectedIndustry('ALL')} style={{ marginTop: '10px' }}>
             Show All Industry Groups ({baseCandidates.length})
           </button>
@@ -1925,6 +1937,7 @@ export default function CandidatesTab({
                 setBrowseIndex(0);
               }}
               industryCounts={industryCounts}
+              totalCount={baseCandidates.length}
               hideHeaderSelectButton={true}
               filterExtra={({ isSelectMode, toggleSelectMode }) => (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'nowrap', width: '100%' }}>

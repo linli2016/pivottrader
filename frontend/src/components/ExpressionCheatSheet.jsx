@@ -55,6 +55,20 @@ const CHEAT_SHEET_CATEGORIES = [
         desc: 'Consecutive trading days in Stage 2 MA stack (50 > 150 > 200 SMA)',
       },
       {
+        sym: 'STAGE2A_BREAKOUT',
+        label: 'Stage 2A Breakout',
+        desc: 'Stan Weinstein Stage 2A early base volume breakout',
+        is_alias: true,
+        expr: 'C >= 5.0 AND DOLLAR_VOL >= 5000000 AND C > SMA_200 AND C > SMA_50 AND (SMA_200_20D_AGO IS NULL OR SMA_200 >= SMA_200_20D_AGO) AND STAGE2_DAYS <= 15 AND (PROJ_RVOL >= 1.5 OR RVOL >= 2.0 OR HIGHEST_VOL_1Y) AND C > C1 AND CLOSE_RANGE >= 0.70 AND RS_RANK >= 70'
+      },
+      {
+        sym: 'STAGE2A_RETEST',
+        label: 'Stage 2A Retest',
+        desc: "Stan Weinstein Stage 2A low-volume pullback retest ('obedient child')",
+        is_alias: true,
+        expr: 'C >= 5.0 AND DOLLAR_VOL >= 5000000 AND C > SMA_200 AND C >= SMA_50 AND STAGE2_DAYS >= 3 AND STAGE2_DAYS <= 25 AND PULLBACK <= 12.0 AND EXT_ATR_50 <= 2.5 AND RVOL <= 0.85 AND RS_RANK >= 70'
+      },
+      {
         sym: 'LOW_CHEAT',
         label: 'Low Cheat',
         desc: 'Stage 2 template without C > 50 SMA (early base setup)',

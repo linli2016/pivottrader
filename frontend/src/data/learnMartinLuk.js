@@ -10,13 +10,14 @@ export const MARTIN_LUK_CONTENT = {
     title: "Stop-Loss Compression, 9/21 EMA Pullbacks & Anchored VWAP",
     subtitle: "How a 22-Year-Old Scored +283.1% (2024) and +969.8% (2025) in the U.S. Investing Championship",
     author: "By Martin Luk (@MartinLuk · USIC Champion)",
-    description: "Capital preservation over prediction. A mathematical masterclass in turning a 20%–25% win rate into quadruple-digit compounding. Master compressed micro-stops (≤1.5%–2.5%), the math of exponential R-multiples, 9 & 21 EMA pullback confluences, Anchored VWAP (AVWAP) institutional support shelves, and equity-curve-driven risk modulation.",
+    description: "Capital preservation over prediction. A mathematical masterclass in turning a 20%–25% win rate into quadruple-digit compounding. Master compressed micro-stops (≤1.2%–2.0%), the math of exponential R-multiples, 9 & 21 EMA pullback confluences, Anchored VWAP (AVWAP) institutional support shelves, Undercut & Reclaim shakeout snipes, and equity-curve-driven risk modulation.",
     tags: [
       "+283% (2024) & +969% (2025) USIC",
       "Stop-Loss Compression",
       "Exponential R-Multiples",
       "9 & 21 EMA Pullbacks",
       "Anchored VWAP (AVWAP)",
+      "Undercut & Reclaim",
       "Inside Day Compressions",
       "Equity Curve Feedback",
       "High ADR% Momentum"
@@ -58,7 +59,7 @@ In 2020, at age 18, **Martin Luk** opened his first brokerage account. Lacking a
 
 Rather than quitting, Luk immersed himself in the principles of elite momentum practitioners—studying **Kristjan Qullamaggie**, **Mark Minervini**, **William O'Neil**, and **Jesse Livermore**. He realized that conventional trading advice (e.g. standard 5%–8% stop losses) created mediocre risk-reward profiles that struggled to survive inevitable choppy whipsaws.
 
-By rebuilding his methodology around **micro-stop precision (1%–2.5%)**, **Anchored VWAP confluence**, and **orderly pullback timing**, he achieved verified, audited world-class milestones in the prestigious **U.S. Investing Championship (USIC)**:
+By rebuilding his methodology around **micro-stop precision (1.0%–2.0%)**, **Anchored VWAP confluence**, and **orderly pullback timing**, he achieved verified, audited world-class milestones in the prestigious **U.S. Investing Championship (USIC)**:
 - **2024 USIC:** Finished with **+283.1% return** (Top of Stock Division).
 - **2025 USIC:** Crowned champion with an astonishing **+969.8% return** (Scaling over 10x in 12 months).
 
@@ -111,7 +112,7 @@ Consider an identical market leader making a **+30% swing advance**:
           points: [
             "Never trade an isolated, lone runner in an obscure industry.",
             "Demand institutional 'clustering': 3 to 6 stocks from the same industry group appearing on gainers scans simultaneously.",
-            "When institutions accumulate an entire theme (e.g. AI power, cybersecurity, biotech, nuclear energy), the tailwind lifts all leaders."
+            "When institutions accumulate an entire theme (e.g. AI power, cybersecurity, biotech, nuclear energy, space tech), the tailwind lifts all leaders."
           ]
         },
         {
@@ -149,125 +150,328 @@ Conversely, on a stock with **6.0% ADR**, a 1.5% stop loss represents only **25%
     {
       id: "ml_indicators",
       number: "02",
-      title: "Technical Arsenal: The 9 & 21 EMA Ribbon and Anchored VWAP",
+      title: "Technical Arsenal: The Moving Average Stack & Anchored VWAP",
       shortTitle: "2. Technical Arsenal",
       icon: "📊",
-      summary: "Deconstructing Luk's chart template: why the 9 EMA and 21 EMA define dynamic trend momentum and how Anchored VWAP (AVWAP) reveals true institutional cost basis.",
+      summary: "Deconstructing Luk's multi-timeframe chart template: why the 9 & 21 EMA ribbon, 50 EMA, 200 SMA, 1-Hour EMA, and Anchored VWAP define institutional cost bases.",
       indicators: [
         {
           name: "1. 9-Day Exponential Moving Average (9 EMA)",
           users: "Fast Momentum Guide",
-          desc: "Measures immediate short-term momentum and price velocity.",
+          desc: "Measures immediate short-term momentum and price velocity on the daily and hourly charts.",
           bullets: [
             "In high-powered momentum runners, price hugs the rising 9 EMA without violating it for days.",
             "A shallow pullback that touches the rising 9 EMA and prints a reversal wick is the earliest low-risk entry opportunity.",
-            "Slope is paramount: only buy pullbacks when the 9 EMA is steeply curling upward."
+            "Trailing rule: aggressive partial positions or fast climax runners are trailed on a daily close below the 9 EMA."
           ]
         },
         {
           name: "2. 21-Day Exponential Moving Average (21 EMA)",
           users: "Core Swing Trendline",
-          desc: "The primary intermediate trend guardrail and swing trailing line.",
+          desc: "The primary intermediate trend guardrail and core swing trailing line.",
           bullets: [
             "Acts as major dynamic support during multi-week consolidations and orderly base digestion.",
-            "Represents the core trailing stop: remaining position is held as long as daily candles close above the rising 21 EMA.",
-            "A stock breaking below a flat or declining 21 EMA on heavy volume is disqualified from buying."
+            "Represents the core trailing stop: remaining runner position (65%–75%) is held as long as daily candles close above the rising 21 EMA.",
+            "Slope is mandatory: only buy pullbacks when the 21 EMA is curled upward and trading above the 50 EMA."
           ]
         },
         {
-          name: "3. Anchored VWAP (AVWAP)",
-          users: "Institutional Cost Basis",
-          desc: "Calculates the Volume Weighted Average Price anchored to a specific catalytic event.",
+          name: "3. 50-Day Exponential Moving Average (50 EMA) & 200-Day SMA",
+          users: "Structural & Macro Trend Filters",
+          desc: "Medium and long-term institutional trend filters.",
           bullets: [
-            "Anchor #1: Breakout Day (start of the current impulsive move).",
-            "Anchor #2: Episodic Pivot / Earnings Gap-Up bar.",
-            "Anchor #3: Major Structural Swing Low (market cycle pivot).",
+            "50 EMA: Defines the deeper structural boundary of Stage 2 uptrends. A healthy leader should never stay below its 50 EMA for more than a few days.",
+            "200 SMA: Macro regime gatekeeper. Only long trades are taken in stocks trading comfortably above their rising 200 SMA.",
+            "A stock breaking below a declining 50 EMA or 200 SMA on volume is instantly disqualified from long watchlists."
+          ]
+        },
+        {
+          name: "4. 1-Hour Chart EMA (1H 9/21 EMA)",
+          users: "Intraday Bridge & Timing",
+          desc: "Connects the daily swing structure to intraday 1-minute and 5-minute execution.",
+          bullets: [
+            "When the daily chart is pulling back, look for the 1-Hour chart to test its own 21 EMA or hourly VWAP.",
+            "Pullbacks that form a tight shelf on the 1-hour chart give an early, micro-risk entry before the daily candle even finishes.",
+            "Helps avoid being shaken out by morning intraday wicks when the 1-hour trend remains firmly intact."
+          ]
+        },
+        {
+          name: "5. Anchored VWAP (AVWAP)",
+          users: "Institutional Cost Basis",
+          desc: "Calculates the Volume Weighted Average Price anchored to significant market catalysts and turns.",
+          bullets: [
+            "Anchor #1 (Breakout Day): Measures average price paid by institutional participants driving the new stage of the move.",
+            "Anchor #2 (Episodic Pivot / Earnings Gap): The definitive cost basis of catalyst-driven institutional accumulation.",
+            "Anchor #3 (Recent Swing High / Low): Gauges who is trapped and where overhead supply transforms into support.",
             "Confluence Power: When AVWAP converges with the rising 9 or 21 EMA, it creates an impenetrable institutional defense line."
           ]
         }
       ],
       body: `
-### The Power of Indicator Confluence
-Martin Luk avoids cluttering his screen with oscillators, MACD, or RSI. He relies on **price, volume, moving averages, and Anchored VWAP**.
+### The Power of Indicator Confluence: The 3-Way "Handshake"
+Martin Luk avoids cluttering his screen with oscillators, MACD, or RSI. He relies strictly on **price action, volume, moving averages, and Anchored VWAP**.
+
+When an impulsive leader pulls back, the highest-probability entry occurs where multiple independent technical levels converge at the exact same price zone:
 
 \`\`\`
 Price Advance ↗
-              \
-               \   Pullback into Confluence Zone
-                \
-═════════════════●═══════════════════  ← Rising 9 EMA
+              \\
+               \\   Orderly Pullback on Drying Volume
+                \\
+═════════════════●═══════════════════  ← Rising Daily 9 EMA
                  |
------------------●-------------------  ← Anchored VWAP (from Breakout)
+-----------------●-------------------  ← Anchored VWAP (from Breakout / EP Gap)
                  |
-~~~~~~~~~~~~~~~~~●~~~~~~~~~~~~~~~~~~~  ← Rising 21 EMA
+─────────────────●───────────────────  ← Prior Resistance Shelf (Now Support)
+                 |
+~~~~~~~~~~~~~~~~~●~~~~~~~~~~~~~~~~~~~  ← Rising Daily 21 EMA
 \`\`\`
 
 #### Why Anchored VWAP Is an Unfair Advantage
 Standard moving averages weight only time and price. **Anchored VWAP incorporates institutional share volume**. 
 
-When a stock gaps up on massive volume after earnings, the Anchored VWAP from that gap session represents the **exact average price paid by all institutional buyers** since the catalyst occurred. When the stock pulls back to that line weeks later, institutions actively protect their entry price, creating explosive bounces with minimal downside risk.
+When a stock gaps up on massive volume after earnings or an explosive catalyst, the Anchored VWAP from that gap session represents the **exact average price paid by all institutional buyers** since the catalyst occurred. 
+
+When the stock pulls back to that line days or weeks later:
+1. Institutions actively protect their cost basis, bidding up the shares before their positions turn red.
+2. Short sellers who were trapped on the gap use the retest to cover their underwater positions.
+3. Astute swing traders identify the confluence and enter with a razor-thin stop (1.0%–1.5%), unlocking asymmetric +10R to +30R upside.
 `
     },
     {
       id: "ml_setups",
       number: "03",
-      title: "The 3 Signature Setups: EMA Pullbacks, Inside Days & EP Shelves",
+      title: "The 6 Signature Setups: Pullbacks, Undercuts, Inside Days & EP Shelves",
       shortTitle: "3. Signature Setups",
       icon: "🎯",
-      summary: "Mastering Martin Luk's three core patterns: the 9/21 EMA & AVWAP Pullback, the Inside Day Compression, and the Episodic Pivot 2–5 Day Shelf.",
+      summary: "Mastering Martin Luk's complete USIC Championship playbook: the 9/21 EMA Handshake Pullback, the Undercut & Reclaim, Inside Day Compressions, Episodic Pivot Shelves, Oversold Panics, and Short-Side EMA Rejections.",
+      patterns: [
+        {
+          num: "ML-01",
+          name: "The 'Handshake' Confluence Pullback",
+          headline: "9/21 EMA & Breakout AVWAP Retest with Drying Volume",
+          badge: "Primary Bread & Butter",
+          sentiment: "bullish",
+          patternType: "ema_avwap_pullback",
+          quoteHeader: "Martin Luk's USIC Championship Playbook",
+          originalText: [
+            "Instead of chasing extended breakouts where stops must be wide, wait for the first orderly pullback to test the rising 9 or 21 EMA and the Breakout Anchored VWAP.",
+            "The volume must dry up dramatically as price pulls back into the confluence zone. This proves sellers are exhausted and institutions are quietly accumulating shares.",
+            "Enter intraday as soon as the stock prints a reversal wick off the EMA/AVWAP or reclaims the 5-minute session VWAP with a tight stop right under the pivot low."
+          ],
+          specs: "Explosive prior run (+30% to +60%+), followed by a 3 to 7-day pullback into rising 9/21 EMA & Breakout AVWAP",
+          pivot: "Intraday reversal candle / 5m ORH reclaim off the EMA/AVWAP support confluence",
+          volume: "Severe volume drying (VDU) on pullback; surging volume on the reversal bounce",
+          rule: "Stop placed directly below the pullback pivot low (1.0%–2.0% risk). Trim 25%–35% at +3R to +5R and trail remainder on 21 EMA."
+        },
+        {
+          num: "ML-02",
+          name: "The Undercut & Reclaim ('Shakeout Snipe')",
+          headline: "Trapping Breakout Faders & Algorithmic Shakeouts for Explosive R",
+          badge: "2024–2025 Evolution",
+          sentiment: "bullish",
+          patternType: "undercut_reclaim",
+          quoteHeader: "Martin Luk's USIC Championship Playbook",
+          originalText: [
+            "In modern algorithmic markets, obvious support levels and moving averages get undercut deliberately to flush retail stop-loss orders.",
+            "When a leading stock briefly undercuts its rising 21 EMA or prior swing low and immediately snaps back above it with strong volume, it creates an enormous short squeeze and trapped-seller rally.",
+            "This setup allows the absolute tightest stop possible (1.0%–1.5%) placed just below the shakeout flush low, generating massive R-multiples upon recovery."
+          ],
+          specs: "Stock briefly dips below prior swing low or 21 EMA for 1 to 2 sessions, followed by an aggressive intraday volume reclaim",
+          pivot: "Intraday reclaim of the undercut level or break above the 1-hour / 5m candle high",
+          volume: "High volume on the undercut flush, followed by surging buy volume on the recovery candle",
+          rule: "Stop placed 1 tick below the undercut low of the day. If price falls back below the undercut level, exit instantly."
+        },
+        {
+          num: "ML-03",
+          name: "Inside Day Compression ('Early Coiling Entry')",
+          headline: "Pre-Breakout Volatility Pinch Right at the Rising 9 EMA",
+          badge: "Volatility Spring",
+          sentiment: "bullish",
+          patternType: "inside_day_compression",
+          quoteHeader: "Martin Luk's USIC Championship Playbook",
+          originalText: [
+            "After an impulsive leg up, the stock forms 1 or 2 consecutive Inside Days (Day 2 High < Day 1 High and Day 2 Low > Day 1 Low).",
+            "This compresses daily trading volatility to a fine point right at or slightly above the rising 9 EMA, signaling an impending explosive expansion.",
+            "By buying the breakout of the Inside Day High rather than waiting for the larger all-time-high pivot, you enter early with a micro-stop under the Inside Day Low."
+          ],
+          specs: "1 to 2 consecutive Inside Days formed directly on top of the rising 9 EMA after an impulsive advance",
+          pivot: "Break above the Inside Day High (IDH) on expanding morning opening volume",
+          volume: "Sharp volume contraction during the inside day; 2x–3x projected volume on the IDH trigger",
+          rule: "Stop placed at the Inside Day Low (IDL) or morning Low of Day (typically 1.0%–1.8% risk). Move stop to breakeven after +2R."
+        },
+        {
+          num: "ML-04",
+          name: "Episodic Pivot (EP) — Day-1 & 2–5 Day Shelf",
+          headline: "Trading Institutional Catalyst Gaps on High ADR% Leaders",
+          badge: "Catalyst Engine",
+          sentiment: "bullish",
+          patternType: "episodic_pivot",
+          quoteHeader: "Martin Luk's USIC Championship Playbook",
+          originalText: [
+            "Episodic Pivots represent structural shifts: monster earnings beats, major guidance raises, or transformative contract/regulatory approvals.",
+            "Day 1 Execution: If the stock opens with high volume and tight pre-market range, buy the 1-minute or 5-minute Opening Range High (ORH) with stop at the morning low.",
+            "Day 2–5 Secondary Shelf: If Day 1 is too wide or volatile to achieve a tight stop, wait for 2 to 5 days of horizontal coiling along the Earnings AVWAP. Enter when the shelf breaks out."
+          ],
+          specs: "High ADR% leader (ADR ≥ 5%) gapping up +8% to +25%+ on huge volume (>3x–10x average)",
+          pivot: "Day 1: 1m or 5m ORH trigger. Day 2–5: Breakout above the horizontal consolidation shelf",
+          volume: "Massive institutional accumulation volume (>300%–1000% of 50-day average)",
+          rule: "Stop placed at Day 1 morning low or shelf low. Never let a stop exceed 50% of the stock's 20-day ADR."
+        },
+        {
+          num: "ML-05",
+          name: "Oversold Extreme / 3-Day Panic Reversal",
+          headline: "Mean-Reversion Snap-Back on Overstretched Momentum Leaders",
+          badge: "Mean Reversion",
+          sentiment: "bullish",
+          patternType: "oversold_panic_bounce",
+          quoteHeader: "Martin Luk's USIC Championship Playbook",
+          originalText: [
+            "In volatile bull markets, top momentum leaders occasionally suffer severe 3-day panic flushes or gap-downs due to broad market sell-offs.",
+            "When a fundamentally sound market leader is stretched far below its 1-hour and 9 EMA, selling pressure becomes mathematically exhausted.",
+            "Luk monitors the 1-minute and 5-minute chart for an intraday capitulation spike, waiting for an intraday double bottom or 5m ORH reclaim to snipe a quick +5R to +10R bounce back to the 9/21 EMA."
+          ],
+          specs: "Leading stock drops 3 consecutive sessions, trading significantly below its rising 50 EMA or anchored AVWAP",
+          pivot: "Intraday 5m ORH reclaim or higher-low reversal wick during morning panic flush",
+          volume: "Climactic panic selling volume followed by sudden buying surge on the reclaim candle",
+          rule: "Stop placed directly beneath the panic low of the day. Take fast profits (50%+) into the first snap-back test of the 9 EMA."
+        },
+        {
+          num: "ML-06",
+          name: "Short-Side Playbook: Weak Bounce into Declining 9/21 EMA",
+          headline: "Capitalizing on Broken High-Flyers in Market Corrections",
+          badge: "Short Strategy",
+          sentiment: "bearish",
+          patternType: "weak_ema_short_bounce",
+          quoteHeader: "Martin Luk's USIC Championship Playbook",
+          originalText: [
+            "While Martin Luk is predominantly long, in bear markets or severe corrections, he selectively shorts broken parabolic leaders that have violated their 21 EMA.",
+            "When a broken stock attempts a weak, low-volume bounce into its declining 9 EMA or 21 EMA and stalls out, sellers resume aggressive control.",
+            "Short entry is taken as price prints an upper rejection wick at the declining EMA and breaks below the prior hour's low, risking ≤ 2.0%."
+          ],
+          specs: "Former momentum leader trading below a downward-sloping 9 and 21 EMA making a feeble, low-volume counter-trend bounce",
+          pivot: "Breakdown below the 1-hour consolidation low or loss of the daily session VWAP",
+          volume: "Weak, drying volume on the bounce upward; expanding volume as price rejects downward",
+          rule: "Stop placed 1 tick above the bounce rejection high. Cover into heavy capitulation flushes or tests of the 200 SMA."
+        }
+      ],
       matrix: [
         {
-          dimension: "Setup 1: The 9/21 EMA & AVWAP Pullback",
-          badge: "Break-and-Retest",
+          dimension: "Setup 1: The 9/21 EMA & AVWAP Retest",
+          badge: "Primary Bread & Butter",
           points: [
-            "Prior Move: Stock makes an explosive impulsive surge (+30% to +60%+) out of a sound base.",
-            "The Retest: Price pulls back quietly for 3 to 7 sessions on light, drying volume (VDU).",
-            "Support Test: Price gently tests the rising 9 EMA or 21 EMA and the Breakout Anchored VWAP.",
-            "Entry: Buy as price prints an intraday reversal wick off the EMA/AVWAP or reclaims the prior day's high.",
-            "Stop Loss: Placed directly beneath the pullback pivot low (typically 1.0% to 2.5% risk)."
+            "Prior Move: Explosive impulsive rally (+30% to +60%+) out of a clean Stage 2 base.",
+            "The Retest: 3 to 7 sessions of quiet pullback on declining, dry volume (VDU).",
+            "Support Test: Price gently kisses the rising 9 EMA or 21 EMA and the Breakout AVWAP.",
+            "Entry: Intraday reversal wick off the EMA/AVWAP or 5m session VWAP reclaim.",
+            "Stop Loss: Directly beneath the pullback pivot low (1.0% to 2.0% risk)."
           ]
         },
         {
-          dimension: "Setup 2: Inside Day Compression Breakout",
+          dimension: "Setup 2: The Undercut & Reclaim ('Shakeout Snipe')",
+          badge: "2024–2025 Evolution",
+          points: [
+            "Pattern: Stock briefly dips below a prior swing low or 21 EMA to flush stops.",
+            "Reclaim: Within 1 to 2 sessions, aggressive buyers step in and push price back above the level.",
+            "Significance: Traps short sellers and eliminates weak hands, creating high-velocity upside.",
+            "Entry: Reclaim of the undercut support level on heavy intraday volume.",
+            "Stop Loss: 1 tick below the flush low (often < 1.5% risk)."
+          ]
+        },
+        {
+          dimension: "Setup 3: Inside Day Compression Breakout",
           badge: "Volatility Spring",
           points: [
-            "Pattern: After an impulsive thrust, the stock forms 1 or 2 consecutive Inside Days (Day 2 High < Day 1 High and Day 2 Low > Day 1 Low).",
-            "Significance: Daily volatility contracts to a fine point right at or slightly above the rising 9 EMA.",
-            "Entry: Buy on the breakout above the Inside Day High (IDH) on expanding morning volume.",
-            "Stop Loss: Placed at the Inside Day Low (IDL) or morning Low of Day (risk often < 1.5%)."
+            "Pattern: 1 or 2 consecutive Inside Days (Day 2 High < Day 1 High and Day 2 Low > Day 1 Low).",
+            "Significance: Daily volatility contracts tightly against the rising 9 EMA.",
+            "Early Entry: Buy on breakout above the Inside Day High (IDH) before the major pivot.",
+            "Stop Loss: Placed at Inside Day Low (IDL) or morning LoD (risk ≤ 1.5%)."
           ]
         },
         {
-          dimension: "Setup 3: Episodic Pivot (EP) 2–5 Day Shelf",
-          badge: "Delayed Catalyst",
+          dimension: "Setup 4: Episodic Pivot (EP) 2–5 Day Shelf",
+          badge: "Catalyst Engine",
           points: [
-            "Catalyst: Massive 10%+ earnings gap-up on huge volume buzz.",
-            "The Pause: If Day 1 was too volatile or wide to enter with a tight stop, wait for Day 2 to 5.",
-            "The Shelf: Stock trades sideways in a tight 2%–4% range along the Earnings AVWAP without filling the gap.",
-            "Entry: Buy the secondary breakout of the shelf resistance with a stop at the shelf low."
+            "Catalyst: Monster 10%+ earnings or guidance gap-up on huge institutional volume.",
+            "The Shelf: Stock digests the gap in a tight 2%–4% range along the Earnings AVWAP.",
+            "Secondary Entry: Buy breakout of the shelf resistance with stop at shelf low.",
+            "Advantage: Bypasses Day-1 opening volatility while capturing the multi-week continuation."
           ]
         }
       ],
       body: `
-### Setup 1 Detailed Mechanics: The 9/21 EMA & AVWAP Retest
-Instead of chasing a stock on the day it breaks out (which often requires a wide 4%–6% stop to survive opening noise), Luk lets the eager buyers do the heavy lifting. He waits for the **first orderly pullback**:
+### The Paradigm Shift: Why Martin Luk Evolved from Breakouts to Pullbacks & Undercuts
+
+During his early career and initial 2021 drawdown, Luk attempted to buy traditional horizontal breakouts (buying at 52-week highs or base breakout points). In the choppy, algorithmic markets of 2024 and 2025, he discovered a critical flaw:
+
+| Feature | Conventional Breakout Buying | Martin Luk Pullback & Undercut Reclaim |
+| :--- | :--- | :--- |
+| **Crowdedness** | Highly crowded; target of institutional algorithms | Stealthy; entered while retail traders are fearful |
+| **Stop Distance** | Typically 4.0% to 7.0% below the base rim | **Ultra-tight: 1.0% to 2.0% below intraday pivot** |
+| **Whipsaw Risk** | High (false breakouts, opening morning gap fades) | Low (entered *after* the shakeout has completed) |
+| **R-Multiple Potential** | +3R to +5R on a standard swing move | **+10R to +30R on the exact same price move!** |
+| **Day-1 Feedback** | Frequent opening chop and midday reversals | Immediate resolution (holds EMA/AVWAP or cuts quickly) |
+
+---
+
+### Setup 1: Anatomical Breakdown of the 9/21 EMA & AVWAP Retest
 
 \`\`\`
-      Peak High
-         /\
-        /  \   Orderly Pullback (Volume Dries Up)
-       /    \
-      /      \
-Breakout      ● ← Entry Point (Reversal Wick off 9/21 EMA + AVWAP)
- Pivot       / \
-    ────────+   \── Stop Loss (Tight: ≤ 1.5% - 2.0%)
+       Peak High
+          /\\
+         /  \\   Quiet Orderly Pullback (Volume Dries Up)
+        /    \\
+       /      \\
+Breakout       ● ← ENTRY POINT: Reversal Wick off Confluence
+ Pivot        / \\   (9/21 EMA + Breakout AVWAP + Prior Base Rim)
+    ─────────+   \\── STOP LOSS: Ultra-Tight (1.0% - 2.0%)
 \`\`\`
 
-#### Verification Checklist for a Valid Retest:
-1. **Volume Contraction:** Volume on each down day must be significantly lower than volume on the breakout up days.
-2. **Candle Behavior:** Candles must become smaller (narrow range bars, dojis, hammers with lower wicks).
-3. **No Overhead Damage:** The pullback should not retrace more than 38% to 50% of the prior impulsive leg.
-4. **Immediate Response:** Once the EMA/AVWAP is touched, buyers should step in within 1 to 2 sessions. If price chops sideways below the 21 EMA for more than 3 days, abort.
+#### Verification Checklist for Setup 1:
+1. **Prior Thrust:** Stock must have demonstrated true market leadership (+30% to +60%+ impulsive thrust over the preceding 2 to 6 weeks).
+2. **Volume Drying Up (VDU):** Pullback candles must exhibit declining daily volume. Selling must be orderly and unforced.
+3. **No Structural Damage:** Pullback should not retrace more than 38% to 50% of the prior leg and must respect the rising 21 EMA.
+4. **Intraday Confirmation:** Do not blindly buy a falling knife. Wait for the stock to touch the confluence zone and confirm buyers via a 5-minute ORH or session VWAP reclaim.
+
+---
+
+### Setup 2: Anatomical Breakdown of the Undercut & Reclaim ("Shakeout Snipe")
+
+\`\`\`
+Prior Swing Low / Support Level
+──────────────┬───────────────────────────────● ← BUY TRIGGER (Reclaim with Volume)
+              │       Undercut Shakeout      /
+              │       (Flushes Retail Stops)/
+              └───────────────▼────────────┘
+                              ▲
+                       STOP LOSS (< 1.5%)
+\`\`\`
+
+#### Execution Rules for the Undercut & Reclaim:
+1. **The Trap:** The stock dips 0.5%–2% below a prominent swing low, horizontal shelf, or the rising 21 EMA. Stop-loss orders from breakout buyers are triggered.
+2. **The Absorption:** Instead of plunging, buyers step in aggressively. Volume spikes as institutions absorb the sell orders.
+3. **The Trigger:** As soon as price climbs back *above* the broken support level, Luk hits the buy button.
+4. **The Stop:** Placed 1 tick below the lowest point of the flush. Because the shakeout is already finished, if price re-breaks the low, the thesis is immediately invalidated.
+
+---
+
+### Real USIC Championship Case Studies
+
+#### 1. GME (+54R Episodic Pivot — May 2024)
+- **Context:** Roaring Kitty returned to social media, triggering an unprecedented speculative volume surge.
+- **Luk's Execution:** Instead of chasing options or buying blindly, Luk waited for the Day-1 market open. He observed massive liquidity turnover and identified a tight 1-minute and 5-minute opening range.
+- **Risk Management:** He executed with a compressed **1.5% stop** at the morning low.
+- **Outcome:** The stock exploded upwards for multiple consecutive sessions. By scaling out into strength (+5R, +10R, +25R) and letting the final runner ride, the trade generated **over +54R** on a single campaign.
+
+#### 2. IONQ (+25R Handshake Confluence & 21 EMA Trend — Autumn 2024)
+- **Context:** Quantum computing emerged as an institutional theme cluster alongside RGTI and QBTS.
+- **Luk's Execution:** After an initial +50% thrust, IONQ pulled back quietly for 4 days into its rising 21 EMA and Breakout AVWAP. Daily volume contracted to the lowest level in a month.
+- **Risk Management:** Luk sniped the 5m session VWAP reclaim with a **1.4% stop**.
+- **Outcome:** IONQ resumed its advance, never closing below the daily 21 EMA for over 3 weeks. Luk trimmed 30% at +4R, raised the stop to breakeven, and trailed the core runner to lock in **+25R**.
+
+#### 3. RKLB & PLTR (Institutional 21 EMA Surfing)
+- Both names served as core compounding pillars during Luk's 2025 +969.8% USIC championship run.
+- By continuously recycling profits: buying 9/21 EMA pullbacks and inside day compressions, trimming at +3R to +5R, and trailing the remainder along the 21 EMA, Luk multiplied his equity curve with virtually zero overnight catastrophic risk.
 `
     },
     {
@@ -276,26 +480,26 @@ Breakout      ● ← Entry Point (Reversal Wick off 9/21 EMA + AVWAP)
       title: "Precision Execution: Intraday Timing, Micro-Stops & The Half-ADR Rule",
       shortTitle: "4. Precision Execution",
       icon: "⚡",
-      summary: "Executing with razor-sharp precision: 5-minute Opening Range Highs (ORH), intraday AVWAP reclaims, and the non-negotiable Half-ADR (≤50% ADR) stop limit.",
+      summary: "Executing with razor-sharp precision: 1-minute and 5-minute Opening Range Highs (ORH), intraday AVWAP reclaims, and the non-negotiable Half-ADR (≤50% ADR) stop limit.",
       indicators: [
         {
-          name: "5-Minute Opening Range High (5m ORH)",
-          users: "Primary Trigger",
-          desc: "High of the first 5-minute bar (9:30–9:35 AM EST).",
+          name: "1-Minute & 5-Minute Opening Range High (1m / 5m ORH)",
+          users: "Primary Intraday Trigger",
+          desc: "High of the first 1-minute or 5-minute bar (9:30–9:35 AM EST).",
           bullets: [
             "Filters early opening spread volatility while capturing rapid institutional demand.",
             "Enter immediately as price crosses the 5m high with projected volume surging above average.",
-            "Stop loss is placed at the 5-minute Low of the Day (LoD)."
+            "Stop loss is placed at the 5-minute Low of the Day (LoD), locking in a 1.0%–1.8% initial risk."
           ]
         },
         {
-          name: "Intraday AVWAP Reclaim",
+          name: "Intraday Session VWAP Reclaim",
           users: "Pullback Confirmation",
-          desc: "Timing entries on the 5-minute intraday chart as price reclaims the daily session AVWAP.",
+          desc: "Timing entries on the 5-minute intraday chart as price reclaims the daily session VWAP.",
           bullets: [
-            "If a stock opens soft and dips below session AVWAP, wait for buyers to push it back above.",
-            "Enter on the 5-minute candle close back above the session AVWAP with stop at the morning low.",
-            "Confirms that sellers have exhausted intraday supply and buyers have resumed control."
+            "If a stock opens soft and dips below session VWAP, wait for buyers to push it back above.",
+            "Enter on the 5-minute candle close back above session VWAP with stop at the morning low.",
+            "Confirms that sellers have exhausted intraday supply and institutional buyers have resumed control."
           ]
         },
         {
@@ -303,19 +507,29 @@ Breakout      ● ← Entry Point (Reversal Wick off 9/21 EMA + AVWAP)
           users: "Non-Negotiable Risk Limit",
           desc: "The absolute dollar distance from entry to stop-loss must never exceed 50% of the stock's 20-day ADR.",
           bullets: [
-            "$$\\text{Stop Distance} = \\text{Entry Price} - \\text{Stop Price}$$",
-            "$$\\text{Stop Distance \\% of ADR} = \\frac{\\text{Stop Distance}}{\\text{Daily ADR (\\$)}} \\times 100 \\le 50\\%$$",
+            "Stop Distance = Entry Price − Stop Price",
+            "Stop Distance % of ADR = (Stop Distance ÷ Daily ADR ($)) × 100 ≤ 50%",
             "If the required structural stop exceeds 50% of ADR, the trade is rejected—wait for tighter consolidation or pass."
+          ]
+        },
+        {
+          name: "The 'Day-1 Validation' Phenomenon",
+          users: "Fast Failure Principle",
+          desc: "Great momentum trades work almost immediately; bad trades linger and chop.",
+          bullets: [
+            "Over 80% of Luk's losing trades stop out within the first 15 to 90 minutes of entry.",
+            "If a trade does not demonstrate profit cushion or upside momentum by midday on Day 1, risk is elevated.",
+            "Never widen a stop or hold a failing trade overnight hoping for an opening miracle."
           ]
         }
       ],
       body: `
 ### The Half-ADR Rule: Mathematical Validation
-Why is the **$\le 50\%$ ADR rule** critical to Martin Luk's world-record performance?
+Why is the **≤ 50% ADR rule** critical to Martin Luk's world-record performance?
 
 Let's look at the statistics:
-- If your stop is **1.0x ADR ($100\%$ of ADR)**, normal random daily volatility will stop you out 50% of the time, and reaching a $+3R$ gain requires an extreme $3.0\text{x ADR}$ move that occurs in less than 5% of trading days.
-- If your stop is **$\le 0.33\text{x to }0.50\text{x ADR}$**, reaching a $+3R$ gain requires only a normal **$1.0\text{x to }1.5\text{x ADR}$** expansion!
+- If your stop is **1.0x ADR (100% of ADR)**, normal random daily volatility will stop you out 50% of the time, and reaching a **+3R** gain requires an extreme **3.0x ADR** move that occurs in less than 5% of trading days.
+- If your stop is **≤ 0.33x to 0.50x ADR**, reaching a **+3R** gain requires only a normal **1.0x to 1.5x ADR** expansion!
 
 \`\`\`
 Normal Daily Trading Range (1.0x ADR)
@@ -349,7 +563,7 @@ Never chase a stock more than **0.5% to 1.0% past your planned pivot price**. Ch
           tranche: "STEP 2: ADJUST STOP TO BREAKEVEN",
           size: "Risk Slashed to Exactly $0",
           trigger: "Immediately Following Partial Trim",
-          desc: "Raise the stop-loss on the remaining 65%–75% position to your exact entry price (breakeven). The trade is now mathematically risk-free."
+          desc: "Raise the stop-loss on the remaining 65%–75% position to your exact entry price (breakeven). The trade is now mathematically risk-free ('Free Roll')."
         },
         {
           tranche: "STEP 3: 21 EMA / AVWAP DAILY TRAIL",
@@ -360,26 +574,26 @@ Never chase a stock more than **0.5% to 1.0% past your planned pivot price**. Ch
       ],
       body: `
 ### The 3-Step Scaling Architecture
-Managing winning trades is where the outsized returns are made. Martin Luk separates his position into two components:
-1. **The Tactical Tranche (25%–35%)**: Sold into the first multi-day push at $+3R\text{ to }+5R$ to bank profits.
+Managing winning trades is where outsized returns are forged. Martin Luk separates his position into two distinct components:
+1. **The Tactical Tranche (25%–35%)**: Sold into the first multi-day push at **+3R to +5R** to bank profits.
 2. **The Core Runner (65%–75%)**: Held to capture multi-week institutional trend expansion along the rising 21 EMA.
 
 \`\`\`
-Entry: Risk = 1R (Stop ≤ 1.5%–2.5%)
+Entry: Risk = 1R (Stop ≤ 1.2%–2.0%)
   ↓
 Day 2 to 4: Explosive thrust higher (+3R to +5R)
   → SELL 25% to 35% to lock in profit cushion!
   → Move stop on remainder to Breakeven ($0 Risk).
   ↓
 Day 5+: Full trend surfing mode
-  → Trail with the rising 21-day EMA.
+  → Trail with the rising 21-day EMA (or 9 EMA for climax runners).
   → Exit remaining shares ONLY on the first daily close below 21 EMA.
 \`\`\`
 
 ---
 
 #### The Psychology of the Breakeven Stop
-Once a trade hits $+3R$ and you trim 30% while raising your stop to breakeven, **the worst possible outcome is a guaranteed winning trade**. 
+Once a trade hits **+3R** and you trim 30% while raising your stop to breakeven, **the worst possible outcome is a guaranteed winning trade**. 
 
 This psychological milestone frees your mind from fear and greed. You no longer obsessively watch every intraday tick. You can comfortably let the stock pull back and test the 21 EMA without feeling compelled to sell prematurely.
 `

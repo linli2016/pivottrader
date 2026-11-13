@@ -4,6 +4,7 @@ import { FLAG_COLORS } from '../../utils/flagConstants';
 
 export const SETUP_TAG_META = {
   BO: { id: 'BO', label: 'BO', name: 'Breakout', icon: '⚡', color: '#f59e0b' },
+  PB: { id: 'PB', label: 'PB', name: 'Pullback', icon: '🎯', color: '#8b5cf6' },
   VCP: { id: 'VCP', label: 'VCP', name: 'VCP Base', icon: '📐', color: '#10b981' },
   IPO: { id: 'IPO', label: 'IPO', name: 'IPO Base', icon: '🐣', color: '#06b6d4' },
   EP: { id: 'EP', label: 'EP', name: 'Post EP', icon: '💥', color: '#ec4899' },

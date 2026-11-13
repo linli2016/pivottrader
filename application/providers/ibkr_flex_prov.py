@@ -77,10 +77,14 @@ class IBKRFlexClient:
             raise last_exc
         raise FlexError("Failed to fetch data from IBKR Flex Web Service")
 
-    def send_request(self) -> Tuple[str, str]:
+    def send_request(self, from_date: Optional[str] = None, to_date: Optional[str] = None) -> Tuple[str, str]:
+        params = {"t": self.token, "q": self.query_id, "v": FLEX_VERSION}
+        if from_date and to_date:
+            params["fd"] = str(from_date).replace("-", "").strip()
+            params["td"] = str(to_date).replace("-", "").strip()
         content = self._get(
             f"{self.base_url}/SendRequest",
-            {"t": self.token, "q": self.query_id, "v": FLEX_VERSION},
+            params,
         )
         root = _parse_xml(content)
         status = (root.findtext("Status") or "").strip()
@@ -121,8 +125,8 @@ class IBKRFlexClient:
                 continue
             raise FlexError(f"Flex GetStatement failed ({code}): {msg}", code=code)
 
-    def fetch_statement(self) -> bytes:
-        ref_code, url = self.send_request()
+    def fetch_statement(self, from_date: Optional[str] = None, to_date: Optional[str] = None) -> bytes:
+        ref_code, url = self.send_request(from_date=from_date, to_date=to_date)
         return self.get_statement(ref_code, url)
 
 

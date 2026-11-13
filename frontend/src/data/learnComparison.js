@@ -1,22 +1,23 @@
 // Master System Comparison & Synthesis
-// Cross-Analysis of the 5 Elite Trading Methodologies in PivotTrader:
-// Kristjan Qullamaggie, Martin Luk, KovaView, Jeff Sun, CFTe, and Dan Zanger
+// Cross-Analysis of the 7 Elite Trading Methodologies in PivotTrader:
+// Kristjan Qullamaggie, Martin Luk, Brian Shannon, CMT, Felipe Guirao, CMT, KovaView, Jeff Sun, CFTe, and Dan Zanger
 
 export const COMPARISON_CONTENT = {
   hero: {
     badge: "MASTER SYSTEM COMPARISON · SUPER TRADER SYNTHESIS",
     title: "The Grand Unified Theory of Momentum Swing Trading",
-    subtitle: "Cross-Comparative Analysis of 5 Legendary Systems & The Universal DNA of Asymmetric Alpha",
+    subtitle: "Cross-Comparative Analysis of 7 Legendary Systems & The Universal DNA of Asymmetric Alpha",
     author: "By PivotTrader Research & Master Trader Synthesis",
-    description: "What happens when you dissect the world's most lucrative momentum strategies side-by-side? Compare Kristjan Qullamaggie, Martin Luk, KovaView, Jeff Sun, and Dan Zanger across 10 critical dimensions. Discover the 8 Universal Pillars of Super Trading, master stop-loss compression math, and execute with unified institutional discipline.",
+    description: "What happens when you dissect the world's most lucrative momentum strategies side-by-side? Compare Kristjan Qullamaggie, Martin Luk, Brian Shannon, Felipe Guirao, KovaView, Jeff Sun, and Dan Zanger across 10 critical dimensions. Discover the 8 Universal Pillars of Super Trading, master stop-loss compression math, and execute with unified institutional discipline.",
     tags: [
-      "5 Elite Systems Compared",
+      "7 Elite Systems Compared",
       "The 8 Universal Pillars",
       "Stop Compression Math",
+      "Anchored VWAP & MTFA",
+      "End-of-Day Systematic Swing",
       "Volume as Hard Data",
       "LoD & Half-ADR Stops",
       "Multi-Tiered Scaling",
-      "10/20/21 EMA Discipline",
       "Master Pre-Flight Checklist"
     ]
   },
@@ -27,27 +28,27 @@ export const COMPARISON_CONTENT = {
       title: "The 10-Dimension Comparative Matrix: Side-by-Side Analysis",
       shortTitle: "0. Comparison Matrix",
       icon: "⚖️",
-      summary: "A rigorous, side-by-side technical comparison of Qullamaggie, Martin Luk, KovaView, Jeff Sun, and Dan Zanger across all 10 critical execution parameters.",
+      summary: "A rigorous, side-by-side technical comparison of Qullamaggie, Martin Luk, Brian Shannon, Felipe Guirao, KovaView, Jeff Sun, and Dan Zanger across all 10 critical execution parameters.",
       rules: [
         {
           title: "Execution Diversity, Conceptual Unity",
           badge: "Shared Core",
-          desc: "While their setups vary from high tight flags and AVWAP pullbacks to classic cup-and-handles, all 5 traders share the identical core: buying high relative strength on institutional volume with asymmetrical downside protection."
+          desc: "While their setups vary from high tight flags and AVWAP Pinches to 8 EMA consolidations and classic cup-and-handles, all 7 traders share the identical core: buying high relative strength on institutional volume with asymmetrical downside protection."
         },
         {
           title: "Stop Precision Dictates R-Multiples",
           badge: "Stop Compression",
-          desc: "Traders using micro-stops (Martin Luk at ≤1.5%–2.5%, Qullamaggie at LoD ≤60% ATR, Zanger at $1 sub-pivot) extract 15R to 40R+ from standard 25% moves, dramatically lowering their required win rate."
+          desc: "Traders using micro-stops (Martin Luk at ≤1.5%–2.5%, Qullamaggie at LoD ≤60% ATR, Shannon at Right-Side Higher Low, Guirao at Signal Candle Low, Zanger at $1 sub-pivot) extract 15R to 40R+ from standard 25% moves, dramatically lowering their required win rate."
         },
         {
           title: "Volume Is the Only Hard Data",
           badge: "Institutional Footprint",
-          desc: "Every system demands volume dry-up (VDU) during base consolidation, followed by violent volume expansion (ZVR, RVOL, or Volume Buzz) on the trigger day to confirm institutional buying."
+          desc: "Every system demands volume dry-up (VDU) during base consolidation, followed by violent volume expansion (ZVR, RVOL, Volume Buzz, or AVWAP defense) on the trigger day to confirm institutional buying."
         },
         {
           title: "Daily Close Trailing Invariance",
           badge: "The Non-Negotiable",
-          desc: "All 5 systems strictly trail moving averages (10 EMA, 20/21 EMA, or 10 SMA) based exclusively on the 4:00 PM daily close. None of them exit based on midday emotional wicks."
+          desc: "All 7 systems strictly trail moving averages and structure (10 EMA, 20/21 EMA, 8 EMA, 5-Day SMA, or 10 SMA) rather than exiting based on midday emotional wicks."
         }
       ],
       body: `
@@ -55,18 +56,18 @@ export const COMPARISON_CONTENT = {
 
 The table below breaks down the exact operational parameters used by each super trader:
 
-| Execution Dimension | Kristjan Qullamaggie | Martin Luk | KovaView | Jeff Sun, CFTe | Dan Zanger |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **1. Origin & Verified Milestone** | Swedish swing trader; compounded five-figures into **\$100M+** on live streams | Hong Kong/UK trader; **+283.1%** (2024) & **+969.8%** (2025) USIC | Six-year systematic process; Minervini & O'Neil disciple | 16-year multi-asset swing manager; systematic trading | World Record: **\$10.7k into \$18M** (+29,233%) in 18 months |
-| **2. Core Philosophy** | Asymmetric law of large numbers; alpha leaders; 10/20 EMA surfing | Stop-loss compression; exponential R-multiples; pullback retests | 4-dimension filtering (Fundamentals, RS, Base, Regime); VCP | Quantitative threshold execution; zero feeling; statistical profit zones | Pure price & volume tape reading; zero indicators; breakout velocity |
-| **3. Stock Selection & Volatility** | 1M/3M/6M Gainers; $\\text{ADR\\%} \\ge 4.5\\%\\text{--}5\\%$; Price $\\ge \\$2\\text{--}\\$5$ | Top 1%–2% RS leaders; $\\text{ADR\\%} \\ge 4.5\\%\\text{--}5\\%$; Sector clusters | CAN SLIM (EPS $\\ge 25\\%$, Sales $\\ge 20\\%$); RS Rank $\\ge 80\\text{--}90$ | High ADR% ($\\ge 4\\%\\text{--}6\\%$); liquid Leveraged ETFs & growth; $\\$100\\text{M}+$ Vol | "Frisky movers" ($\\$30\\text{--}\\$150+$); 40%–400% EPS/Sales; Float squeeze |
-| **4. Technical Toolset** | 10 EMA, 20 EMA, 50 SMA, 200 SMA | 9 EMA, 21 EMA, 50 SMA, Anchored VWAP (AVWAP) | 10 EMA, 20 EMA, 50 SMA, Volume dry-up (VDU) | Swing Data (ADR%/RVOL), 50-MA ATR Multiple, VARS Histogram | Zero oscillators/indicators; Trendlines, Horizontal Pivots, Volume Bars |
-| **5. Signature Setups** | High Tight Flag (HTF), Episodic Pivot (EP), Parabolic Short/Long | 9/21 EMA & AVWAP Retest, Inside Day Compression, EP Shelf | Minervini VCP, Cup & Handle, Low Cheat, Pocket Pivot | RVOL Breakouts from Focus List, Spring-Coil Consolidations | 11 Classic Patterns (Cup & Handle, Bull Flags, Wedges, Channels) |
-| **6. Entry Timing Tactic** | 1m, 5m, or 60m Opening Range High (ORH) | 5m ORH or Intraday AVWAP Reclaim | Break of pivot handle / pocket pivot volume expansion | Live RVOL breakout run-rate above pivot | Buy-Stop right on pivot breakout line (strictly within +5%) |
-| **7. Stop-Loss Guardrail** | Low of Day (LoD) strictly $\\le 60\\%\\text{ ATR}$ | Local swing low / AVWAP shelf strictly $\\le 50\\%\\text{ ADR}$ ($\\le 1.5\\%\\text{--}2.5\\%$) | Base pivot low or 10 EMA (Strictly $\\le 7\\%\\text{--}8\\%$) | Low of Day (LoD) strictly $\\le 60\\%\\text{ ATR}$ | Tightly tucked $\\approx \\$0.50\\text{--}\\$1.00$ beneath breakout pivot |
-| **8. Position Sizing Model** | $\\frac{\\text{Equity} \\times \\text{Risk\\%}}{\\text{Entry} - \\text{LoD}}$; 0.25%–1.0% risk; max 25% pos | Compressed risk: 0.5%–1.0% equity risk; 4–6 positions (15%–25% each) | Pyramid 50% initial, 30% add at +2.5%, 20% add at +5.0%; max 5 pos | 0.25%–0.5% equity risk; position sized to dollar risk vs LoD | 1.0% equity risk; heavy concentration in 3–6 top leaders |
-| **9. Scaling & Exit Plan** | Sell 1/3–1/2 on Days 3–5; stop to BE; trail remainder on 10/20 EMA | Sell 25%–35% at +3R to +5R; stop to BE; trail core on 21 EMA | Offensive sell at +20%–25% or 3x stop; defensive sell on 20 EMA break | Trim at +2.5R to +3.0R; target extension at 6x–8x ATR from 50-MA | Sell 20%–30% at +15% to +20% above pivot; trail 50% on 10 SMA |
-| **10. Trailing Stop Rule** | Sell remainder ONLY on first daily **CLOSE below 10 or 20 EMA** | Sell remainder ONLY on first daily **CLOSE below 21 EMA or AVWAP** | Move to BE after tranche 2; sell on moving average violation | Partial trailing stops; exit if price rejects 10x ATR extension | Trail rising 10-day SMA; liquidate into parabolic blow-off euphoria |
+| Execution Dimension | Kristjan Qullamaggie | Martin Luk | Brian Shannon, CMT | Felipe Guirao, CMT | KovaView | Jeff Sun, CFTe | Dan Zanger |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **1. Origin & Verified Milestone** | Swedish swing trader; compounded five-figures into **$100M+** on live streams | Hong Kong/UK trader; **+283.1%** (2024) & **+969.8%** (2025) USIC | Pioneer of **Anchored VWAP**; 30+ yrs experience; Author of *AVWAP* & *MTFA* | Founder of **Liberty Signal**; **Avg 100%+** Ann. (7 yrs), **65% win rate**, **13% max DD** | Six-year systematic process; Minervini & O'Neil disciple | 16-year multi-asset swing manager; systematic trading | World Record: **$10.7k into $18M** (+29,233%) in 18 months |
+| **2. Core Philosophy** | Asymmetric law of large numbers; alpha leaders; 10/20 EMA surfing | Stop-loss compression; exponential R-multiples; pullback retests | **"Only Price Pays"**; Multiple Timeframe Alignment; Right-Side confirmation | **"No Discretion, No Stress"**; Systematic EOD (3:58 PM); <30 mins/day; 5-Day cycles | 4-dimension filtering (Fundamentals, RS, Base, Regime); VCP | Quantitative threshold execution; zero feeling; statistical profit zones | Pure price & volume tape reading; zero indicators; breakout velocity |
+| **3. Stock Selection & Volatility** | 1M/3M/6M Gainers; ADR% ≥ 4.5%–5%; Price ≥ $2–$5 | Top 1%–2% RS leaders; ADR% ≥ 4.5%–5%; Sector clusters | Stage 2 Markup leaders above rising 20d/50d SMA, YTD AVWAP & 5-Day SMA | Liquid US stocks (Price ≥ $10, Vol ≥ 500k); Young trend out of Stage 1 base; high linearity | CAN SLIM (EPS ≥ 25%, Sales ≥ 20%); RS Rank ≥ 80–90 | High ADR% (≥ 4%–6%); liquid Leveraged ETFs & growth; $100M+ Vol | "Frisky movers" ($30–$150+); 40%–400% EPS/Sales; Float squeeze |
+| **4. Technical Toolset** | 10 EMA, 20 EMA, 50 SMA, 200 SMA | 9 EMA, 21 EMA, 50 SMA, Anchored VWAP (AVWAP) | **Anchored VWAP (AVWAP)**, 30m **5-Day SMA** (65 SMA), 20/50/200 SMA | **8 EMA, 20 EMA, 50 EMA**, CML (Custom Momentum & Linearity) Indicator | 10 EMA, 20 EMA, 50 SMA, Volume dry-up (VDU) | Swing Data (ADR%/RVOL), 50-MA ATR Multiple, VARS Histogram | Zero oscillators/indicators; Trendlines, Horizontal Pivots, Volume Bars |
+| **5. Signature Setups** | High Tight Flag (HTF), Episodic Pivot (EP), Parabolic Short/Long | 9/21 EMA & AVWAP Retest, Inside Day Compression, EP Shelf | **AVWAP Bounce, AVWAP Pinch, AVWAP Handoff, Under-and-Back-Over Reclaim** | **First Valid Consolidation (FVC / 7-Day Flag), Bearish Flag Breakdown, 5-Day Cycle** | Minervini VCP, Cup & Handle, Low Cheat, Pocket Pivot | RVOL Breakouts from Focus List, Spring-Coil Consolidations | 11 Classic Patterns (Cup & Handle, Bull Flags, Wedges, Channels) |
+| **6. Entry Timing Tactic** | 1m, 5m, or 60m Opening Range High (ORH) | 5m ORH or Intraday AVWAP Reclaim | **Right-Side Higher Low** + break of short-term resistance above rising 5d SMA | **EOD Entry at Market Close (3:58 PM EST / MOC)** on confirmed range expansion | Break of pivot handle / pocket pivot volume expansion | Live RVOL breakout run-rate above pivot | Buy-Stop right on pivot breakout line (strictly within +5%) |
+| **7. Stop-Loss Guardrail** | Low of Day (LoD) strictly ≤ 60% ATR | Local swing low / AVWAP shelf strictly ≤ 50% ADR (≤ 1.5%–2.5%) | Directly beneath **Right-Side Higher Low**, Pinch apex, or Shakeout low | Strictly 1 tick beneath the **Low of Day (LOD)** of Breakout Candle | Base pivot low or 10 EMA (Strictly ≤ 7%–8%) | Low of Day (LoD) strictly ≤ 60% ATR | Tightly tucked ~$0.50–$1.00 beneath breakout pivot |
+| **8. Position Sizing Model** | (Equity × Risk%) ÷ (Entry − LoD); 0.25%–1.0% risk; max 25% pos | Compressed risk: 0.5%–1.0% equity risk; 4–6 positions (15%–25% each) | (Equity × Risk%) ÷ (Entry − Stop); 0.5%–1.0% risk; chart stop dictates shares | **Strict 1.0% Fixed Account Risk**: (Equity × 1.0%) ÷ (Entry − Signal Low) | Pyramid 50% initial, 30% add at +2.5%, 20% add at +5.0%; max 5 pos | 0.25%–0.5% equity risk; position sized to dollar risk vs LoD | 1.0% equity risk; heavy concentration in 3–6 top leaders |
+| **9. Scaling & Exit Plan** | Sell 1/3–1/2 on Days 3–5; stop to BE; trail remainder on 10/20 EMA | Sell 25%–35% at +3R to +5R; stop to BE; trail core on 21 EMA | **"Sell 1/3 on the way up"** (+2R to +3R); stop to BE; trail 2/3 on Higher Lows | Stop to Breakeven at **1:1 RR**; **Close 100% at Day 5 Close** (3:50 PM) | Offensive sell at +20%–25% or 3x stop; defensive sell on 20 EMA break | Trim at +2.5R to +3.0R; target extension at 6x–8x ATR from 50-MA | Sell 20%–30% at +15% to +20% above pivot; trail 50% on 10 SMA |
+| **10. Trailing Stop Rule** | Sell remainder ONLY on first daily **CLOSE below 10 or 20 EMA** | Sell remainder ONLY on first daily **CLOSE below 21 EMA or AVWAP** | Ratchet stop under successive **30m Higher Lows, 5-Day SMA & Handoff AVWAP** | **Strict 5-Day Time Exit Horizon**; Systematic close at Day 5; Zero bag-holding | Move to BE after tranche 2; sell on moving average violation | Partial trailing stops; exit if price rejects 10x ATR extension | Trail rising 10-day SMA; liquidate into parabolic blow-off euphoria |
 
 ---
 
@@ -190,9 +191,9 @@ The architecture operates across two synchronized engines: **Part I: Edge, Selec
 > **The Immutable Law:** Professional trading is not about being right often; it is about making an astronomical return when you are right and losing a pittance when you are wrong.
 
 * **Quantitative Hurdle:** System average profit must target **+5R to +20R+**, while losses are capped strictly at **-0.5R to -1.0R**.
-* **The Mathematical Edge:** A trader with a **30% win rate** who averages +10R on winners and -1R on losers achieves an astonishing Expected Value ($EV = 0.30 \times 10 - 0.70 \times 1 = +2.3R$ per trade).
+* **The Mathematical Edge:** A trader with a **30% win rate** who averages +10R on winners and -1R on losers achieves an astonishing Expected Value (**EV = (0.30 × 10) − (0.70 × 1) = +2.3R per trade**).
 * **Master Consensus:**
-  * **All 5 Masters:** Unanimously agree that seeking a 70%–80% win rate forces traders into taking premature small profits and holding onto losers. Super-performance is powered by fat-tailed, right-skewed payoffs.
+  * **All 6 Masters:** Unanimously agree that seeking a 70%–80% win rate forces traders into taking premature small profits and holding onto losers. Super-performance is powered by fat-tailed, right-skewed payoffs.
 
 #### 4. Hard Structural Stops Before Entry (Quantifiable Invalidation)
 > **The Immutable Law:** Never enter an order without an exact, non-negotiable price invalidation level anchored to chart structure. Mental stops and arbitrary percentage stops are strictly forbidden.
@@ -278,7 +279,7 @@ If you lose \$500 on 7 trades (-\$3,500) and win \$6,000 on 3 trades (+\$18,000)
       title: "Trader Profiles & Unique Edges: What Each Master Does Best",
       shortTitle: "2. Master Profiles",
       icon: "🎖️",
-      summary: "Deep-dive analysis of what separates each of the 5 traders: the specific edge that powered their world records and championship wins.",
+      summary: "Deep-dive analysis of what separates each of the 6 traders: the specific edge that powered their world records, institutional mastery, and championship wins.",
       indicators: [
         {
           name: "1. Kristjan Qullamaggie (@Qullamaggie)",
@@ -301,7 +302,27 @@ If you lose \$500 on 7 trades (-\$3,500) and win \$6,000 on 3 trades (+\$18,000)
           ]
         },
         {
-          name: "3. KovaView (@MichaelZTrading)",
+          name: "3. Brian Shannon, CMT (@alphatrends)",
+          users: "Anchored VWAP & 5-Day SMA Alignment",
+          desc: "Pioneer of Anchored VWAP (AVWAP) and Multiple Timeframe Alignment (MTFA).",
+          bullets: [
+            "Signature Setup: AVWAP Bounce, AVWAP Pinch, AVWAP Handoff, and 'Under-and-Back-Over' Reclaim.",
+            "Unique Edge: Aligning Daily Stage 2 structure with the 30-minute 5-Day SMA (65 SMA) and buying only on the Right-Side Higher Low.",
+            "Famous Dictum: 'Only Price Pays. Never buy a stock below a declining 5-day moving average.'"
+          ]
+        },
+        {
+          name: "4. Felipe Guirao, CMT (@FelipeGuirao)",
+          users: "Systematic EOD, 8/20/50 EMAs & 5-Day Cycles",
+          desc: "Founder of Liberty Signal; 7-year track record averaging triple-digit returns (~100%+) in <30 min/day with a 65% win rate and 13% max drawdown.",
+          bullets: [
+            "Signature Setup: First Valid Consolidation (FVC / VCP: ≥7 days from high, converging lines, 8/20 EMA touch, no close below 20 EMA) riding the 2nd leg.",
+            "Unique Edge: 95% hard rule-based EOD system, entering at 3:58 PM EST, stop below LOD, 1:1 RR to Breakeven, and strict 5-day time stop exit.",
+            "Famous Dictum: 'Stock trading is not an art, but hard data and statistical distribution. The past 100 trades are traded EXACTLY the same as the next 100.'"
+          ]
+        },
+        {
+          name: "5. KovaView (@MichaelZTrading)",
           users: "4-Dimension Filter & Pyramiding",
           desc: "Master of institutional CAN SLIM quality funnels and progressive scaling.",
           bullets: [
@@ -311,7 +332,7 @@ If you lose \$500 on 7 trades (-\$3,500) and win \$6,000 on 3 trades (+\$18,000)
           ]
         },
         {
-          name: "4. Jeff Sun, CFTe (@jfsrev)",
+          name: "6. Jeff Sun, CFTe (@jfsrev)",
           users: "Statistical ATR Multiples & Focus List",
           desc: "16-year quantitative swing practitioner and multi-asset compounding fund manager.",
           bullets: [
@@ -321,7 +342,7 @@ If you lose \$500 on 7 trades (-\$3,500) and win \$6,000 on 3 trades (+\$18,000)
           ]
         },
         {
-          name: "5. Dan Zanger (Chartpattern.com)",
+          name: "7. Dan Zanger (Chartpattern.com)",
           users: "Tape Reading & ZVR Surges",
           desc: "Audited world-record holder (+29,233% in 18 months, $10.7k to $42M).",
           bullets: [
@@ -337,11 +358,13 @@ Every trader must align their trading system with their personal psychology, lif
 
 1. **If you have full-time screen access during market open (9:30–10:30 AM EST):**
    - **Kristjan Qullamaggie & Dan Zanger** offer the fastest execution on morning Opening Range Highs (ORH) and volume surges.
-2. **If you prefer entering on quiet pullbacks with micro-stops rather than chasing green breakouts:**
-   - **Martin Luk's** 9/21 EMA and Anchored VWAP break-and-retest setup provides the highest R-multiple asymmetry with zero FOMO.
-3. **If you want institutional fundamental backing and progressive scaling:**
+2. **If you want to master institutional cost basis, AVWAP Pinches, and Multiple Timeframe Alignment:**
+   - **Brian Shannon's** AlphaTrends framework (Daily + 30-minute 5-Day SMA + Right-Side Higher Low) and **Martin Luk's** compressed AVWAP retests provide razor-sharp precision with zero FOMO.
+3. **If you are a working professional seeking low-stress End-of-Day execution in <30 minutes a day:**
+   - **Felipe Guirao's** framework (8/20/50 EMAs, First Valid Consolidation, 3:58 PM market-close entry, 1:1 RR breakeven, and 5-Day Time Exit) delivers systematic consistency (avg 100%+ annually, 65% win rate, 13% max DD) with zero screen fatigue.
+4. **If you want institutional fundamental backing and progressive scaling:**
    - **KovaView's** CAN SLIM + Minervini VCP framework with 50/30/20 pyramiding provides the most structured corporate quality screening.
-4. **If you prefer statistical rules, quantitative ATR targets, and liquid ETFs:**
+5. **If you prefer statistical rules, quantitative ATR targets, and liquid ETFs:**
    - **Jeff Sun's** Focus List upgrade routine and 50-MA ATR extension targets provide objective mathematical clarity.
 `
     },
@@ -358,9 +381,9 @@ Every trader must align their trading system with their personal psychology, lif
 Why did Martin Luk score **+969.8%** in the US Investing Championship while most swing traders struggle to make 20%? The secret lies in the mathematics of **Stop-Loss Compression**.
 
 #### The Core Mathematical Principle:
-$$\\text{Realized R-Multiple} = \\frac{\\text{Stock Percentage Gain}}{\\text{Stop-Loss Percentage Distance}}$$
+> **Realized R-Multiple = Stock Percentage Gain (%) ÷ Stop-Loss Percentage Distance (%)**
 
-Consider a leading growth stock trading at **\$100.00** that breaks out and runs **+30% to \$130.00**:
+Consider a leading growth stock trading at **$100.00** that breaks out and runs **+30% to $130.00**:
 
 | Trader Type | Initial Stop Distance | Stop Price | Shares Bought (\$1,000 Risk) | Dollar Profit on +30% Move | Realized R-Multiple | Portfolio Gain (1% Risk) |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |

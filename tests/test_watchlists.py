@@ -186,6 +186,69 @@ class TestWatchlists(unittest.TestCase):
         finally:
             db_service.delete_watchlist(wl_id)
 
+    def test_watchlist_api_routes_dispatch(self):
+        import asyncio
+        from server import app
+
+        async def make_request(method: str, path: str, body: bytes = b""):
+            response_started = {}
+            response_body = []
+            async def receive():
+                return {"type": "http.request", "body": body, "more_body": False}
+            async def send(message):
+                if message["type"] == "http.response.start":
+                    response_started["status"] = message["status"]
+                    response_started["headers"] = message["headers"]
+                elif message["type"] == "http.response.body":
+                    response_body.append(message.get("body", b""))
+            headers = [(b"content-type", b"application/json")] if body else []
+            scope = {
+                "type": "http",
+                "http_version": "1.1",
+                "method": method,
+                "path": path,
+                "raw_path": path.encode(),
+                "query_string": b"",
+                "headers": headers,
+                "app": app,
+            }
+            await app(scope, receive, send)
+            return response_started.get("status"), b"".join(response_body)
+
+        # 1. Test DELETE /api/watchlists/items (must NOT be intercepted by /{watchlist_id} with 422)
+        status, body = asyncio.run(make_request("DELETE", "/api/watchlists/items"))
+        self.assertEqual(status, 200, f"Expected 200 for clear items, got {status}: {body}")
+
+        # 2. Test lifecycle on a dedicated test watchlist
+        test_wl = db_service.create_watchlist("Test_API_Routes_WL")
+        test_wl_id = test_wl["id"]
+        try:
+            db_service.add_watchlist_items_batch(test_wl_id, ["AAPL", "NVDA", "MSFT"])
+
+            # Test DELETE /api/watchlists/{watchlist_id}/items
+            status, body = asyncio.run(make_request("DELETE", f"/api/watchlists/{test_wl_id}/items"))
+            self.assertEqual(status, 200)
+            self.assertEqual(len(db_service.get_watchlist_items(test_wl_id)), 0)
+
+            # Re-add items
+            db_service.add_watchlist_items_batch(test_wl_id, ["AAPL", "NVDA", "MSFT"])
+
+            # Test DELETE /api/watchlists/{watchlist_id}/items/batch
+            status, body = asyncio.run(make_request("DELETE", f"/api/watchlists/{test_wl_id}/items/batch", b'{"symbols": ["AAPL"]}'))
+            self.assertEqual(status, 200)
+            remaining = [i["symbol"] for i in db_service.get_watchlist_items(test_wl_id)]
+            self.assertNotIn("AAPL", remaining)
+
+            # Test DELETE /api/watchlists/{watchlist_id}/items/{symbol}
+            status, body = asyncio.run(make_request("DELETE", f"/api/watchlists/{test_wl_id}/items/NVDA"))
+            self.assertEqual(status, 200)
+            remaining = [i["symbol"] for i in db_service.get_watchlist_items(test_wl_id)]
+            self.assertNotIn("NVDA", remaining)
+        finally:
+            # Test DELETE /api/watchlists/{watchlist_id}
+            status, body = asyncio.run(make_request("DELETE", f"/api/watchlists/{test_wl_id}"))
+            self.assertEqual(status, 200)
+
 
 if __name__ == "__main__":
     unittest.main()

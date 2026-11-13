@@ -79,28 +79,6 @@ def create_watchlist(payload: WatchlistCreateSchema):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/{watchlist_id}")
-def update_watchlist(watchlist_id: int, payload: WatchlistUpdateSchema):
-    """Rename a watchlist."""
-    try:
-        return db_service.update_watchlist(watchlist_id, payload.name)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error in update_watchlist({watchlist_id}): {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.delete("/{watchlist_id}")
-def delete_watchlist(watchlist_id: int):
-    """Delete a watchlist."""
-    try:
-        return db_service.delete_watchlist(watchlist_id)
-    except Exception as e:
-        logger.error(f"Error in delete_watchlist({watchlist_id}): {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @router.get("/items")
 @router.get("/{watchlist_id}/items")
 def get_watchlist_items(watchlist_id: int = 1):
@@ -210,14 +188,15 @@ def clear_watchlist_items(watchlist_id: int = 1):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/items/{symbol}")
-@router.delete("/{watchlist_id}/items/{symbol}")
-def remove_watchlist_item(symbol: str, watchlist_id: int = 1):
-    """Remove a single stock symbol from the watchlist."""
+@router.delete("/items/batch")
+@router.delete("/{watchlist_id}/items/batch")
+def delete_watchlist_items_batch_endpoint(payload: WatchlistBatchRemoveSchema, watchlist_id: int = 1):
+    """Remove a batch of stock symbols from the watchlist (DELETE endpoint)."""
     try:
-        return db_service.remove_watchlist_item(watchlist_id, symbol)
+        count = db_service.remove_watchlist_items_batch(watchlist_id, payload.symbols)
+        return {"status": "ok", "removed_count": count, "watchlist_id": watchlist_id}
     except Exception as e:
-        logger.error(f"Error in remove_watchlist_item({symbol}): {e}", exc_info=True)
+        logger.error(f"Error in delete_watchlist_items_batch: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -233,13 +212,34 @@ def remove_watchlist_items_batch_endpoint(payload: WatchlistBatchRemoveSchema, w
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/items/batch")
-@router.delete("/{watchlist_id}/items/batch")
-def delete_watchlist_items_batch_endpoint(payload: WatchlistBatchRemoveSchema, watchlist_id: int = 1):
-    """Remove a batch of stock symbols from the watchlist (DELETE endpoint)."""
+@router.delete("/items/{symbol}")
+@router.delete("/{watchlist_id}/items/{symbol}")
+def remove_watchlist_item(symbol: str, watchlist_id: int = 1):
+    """Remove a single stock symbol from the watchlist."""
     try:
-        count = db_service.remove_watchlist_items_batch(watchlist_id, payload.symbols)
-        return {"status": "ok", "removed_count": count, "watchlist_id": watchlist_id}
+        return db_service.remove_watchlist_item(watchlist_id, symbol)
     except Exception as e:
-        logger.error(f"Error in delete_watchlist_items_batch: {e}", exc_info=True)
+        logger.error(f"Error in remove_watchlist_item({symbol}): {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/{watchlist_id}")
+def update_watchlist(watchlist_id: int, payload: WatchlistUpdateSchema):
+    """Rename a watchlist."""
+    try:
+        return db_service.update_watchlist(watchlist_id, payload.name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error in update_watchlist({watchlist_id}): {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{watchlist_id}")
+def delete_watchlist(watchlist_id: int):
+    """Delete a watchlist."""
+    try:
+        return db_service.delete_watchlist(watchlist_id)
+    except Exception as e:
+        logger.error(f"Error in delete_watchlist({watchlist_id}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
