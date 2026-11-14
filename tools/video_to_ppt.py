@@ -27,6 +27,9 @@ Usage Examples:
 
     # Output both PDF and PPTX:
     python tools/video_to_ppt.py lecture.mp4 --format both
+
+    python3 tools/video_to_ppt.py "/mnt/T8/Trading/Trading Videos/Martin Luk/283% Gain in 1 Year - The Story of the 22-Year-Old Swing Trader.mp4" --webcam right
+    python3 tools/video_to_ppt.py "/mnt/T8/Trading/Trading Videos/Martin Luk/+969% Return in 1 Year： The Pullback Strategy of a Trading Champion.mp4" --webcam right
 """
 
 from __future__ import annotations
@@ -138,31 +141,63 @@ def get_webcam_mask(
 
 def preprocess_frame(
     frame: np.ndarray,
-    mask: np.ndarray,
     target_dim: Tuple[int, int] = (640, 360),
 ) -> np.ndarray:
-    """Downscale, convert to grayscale, blur, and mask for fast, robust comparison."""
+    """
+    Downscale, convert to grayscale, and gently blur for fast, robust comparison.
+    Uses a gentle 5x5 blur to suppress video compression artifacts while keeping
+    fine chart lines, numbers, candlesticks, and text sharp.
+    """
     resized = cv2.resize(frame, target_dim, interpolation=cv2.INTER_AREA)
     gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (21, 21), 0)
-
-    # Apply mask
-    if mask.shape != target_dim[::-1]:
-        mask_resized = cv2.resize(mask, target_dim, interpolation=cv2.INTER_NEAREST)
-    else:
-        mask_resized = mask
-
-    masked = cv2.bitwise_and(blurred, blurred, mask=mask_resized)
-    return masked
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    return blurred
 
 
-def compute_similarity(feat1: np.ndarray, feat2: np.ndarray) -> float:
+def compute_similarity(
+    feat1: np.ndarray, feat2: np.ndarray, unmasked: Optional[np.ndarray] = None
+) -> float:
     """
     Compute normalized cross-correlation similarity score in range [-1.0, 1.0].
+    Evaluates only unmasked pixels to prevent zero-padding artifacts from inflating similarity.
     Values close to 1.0 mean virtually identical images.
     """
-    res = cv2.matchTemplate(feat1, feat2, cv2.TM_CCOEFF_NORMED)
-    return float(res[0][0])
+    if unmasked is not None:
+        v1 = feat1[unmasked].astype(np.float32)
+        v2 = feat2[unmasked].astype(np.float32)
+    else:
+        v1 = feat1.astype(np.float32).ravel()
+        v2 = feat2.astype(np.float32).ravel()
+
+    s1 = float(np.std(v1))
+    s2 = float(np.std(v2))
+    if s1 < 1e-4 or s2 < 1e-4:
+        return 1.0 if np.mean(np.abs(v1 - v2)) < 3.0 else 0.0
+
+    m1 = float(np.mean(v1))
+    m2 = float(np.mean(v2))
+    corr = float(np.mean((v1 - m1) * (v2 - m2)) / (s1 * s2))
+    return float(np.clip(corr, -1.0, 1.0))
+
+
+def compute_difference(
+    feat1: np.ndarray, feat2: np.ndarray, unmasked: Optional[np.ndarray] = None
+) -> Tuple[float, float]:
+    """
+    Compute Mean Absolute Error (MAE) and percentage of changed pixels (>25 intensity delta).
+    Essential for detecting changes in charts/software demos where background and chrome are static.
+    """
+    if unmasked is not None:
+        v1 = feat1[unmasked].astype(np.float32)
+        v2 = feat2[unmasked].astype(np.float32)
+    else:
+        v1 = feat1.astype(np.float32).ravel()
+        v2 = feat2.astype(np.float32).ravel()
+
+    diff = np.abs(v1 - v2)
+    mae = float(np.mean(diff))
+    pct = float(np.count_nonzero(diff > 25) / max(1, len(diff)))
+    return mae, pct
 
 
 def jpegs_to_pdf(pages: List[Tuple[int, int, bytes]], output_path: str):
@@ -339,6 +374,8 @@ def extract_slides(
     end_time: Optional[float] = None,
     save_images_dir: Optional[str] = None,
     max_slides: int = 500,
+    min_change_pct: float = 0.04,
+    min_change_mae: float = 6.0,
 ):
     if cv2 is None:
         print("[Error] OpenCV is required. Run: pip install opencv-python")
@@ -387,7 +424,7 @@ def extract_slides(
     print(f" Duration:        {format_time(total_duration)} ({total_duration:.1f}s)")
     print(f" Processing Span: {format_time(start_sec)} -> {format_time(end_sec)}")
     print(f" Sample Interval: {sample_interval:.1f}s")
-    print(f" Sensitivity:     Threshold={similarity_threshold}, MinStable={min_duration}s")
+    print(f" Sensitivity:     Threshold={similarity_threshold}, MinStable={min_duration}s, MinChange={min_change_pct*100:.1f}%")
     if webcam_pos != "none":
         print(f" Webcam Mask:     {webcam_pos} (ignored in comparison)")
     if save_images_dir:
@@ -409,6 +446,7 @@ def extract_slides(
         webcam_w_ratio=cam_w_r,
         custom_roi=custom_roi,
     )
+    unmasked = mask > 0
 
     pdf_builder = PdfDeckBuilder(video_width, video_height) if do_pdf else None
     pptx_builder = PptxDeckBuilder(video_width, video_height) if do_pptx else None
@@ -442,10 +480,20 @@ def extract_slides(
             cv2.imwrite(img_dest, frame)
 
         captured_slides.append((slide_idx, timestamp))
-        last_saved_feature = preprocess_frame(frame, mask)
+        last_saved_feature = preprocess_frame(frame)
         sys.stdout.write(f"\r  [+] Captured Slide #{slide_idx:02d} at {format_time(timestamp)} ({timestamp:.1f}s)\n")
         sys.stdout.flush()
         return True
+
+    def is_different_from_saved(feat: np.ndarray, saved_feat: np.ndarray) -> bool:
+        sim = compute_similarity(feat, saved_feat, unmasked)
+        mae, pct_diff = compute_difference(feat, saved_feat, unmasked)
+        return (sim < similarity_threshold) or (pct_diff > min_change_pct) or (mae > min_change_mae)
+
+    def is_candidate_stable(feat: np.ndarray, cand_feat: np.ndarray) -> bool:
+        sim = compute_similarity(feat, cand_feat, unmasked)
+        mae, pct_diff = compute_difference(feat, cand_feat, unmasked)
+        return (sim >= max(0.95, similarity_threshold)) and (pct_diff < (min_change_pct * 0.75)) and (mae < 4.5)
 
     # Main scan loop
     while current_sec <= end_sec:
@@ -455,7 +503,7 @@ def extract_slides(
         if not ret:
             break
 
-        current_feat = preprocess_frame(frame, mask)
+        current_feat = preprocess_frame(frame)
 
         if last_saved_feature is None:
             # First slide candidate
@@ -465,8 +513,7 @@ def extract_slides(
                 candidate_timestamp = current_sec
                 candidate_stable_sec = 0.0
             else:
-                sim = compute_similarity(current_feat, candidate_feature)
-                if sim >= similarity_threshold:
+                if is_candidate_stable(current_feat, candidate_feature):
                     candidate_stable_sec += sample_interval
                     if candidate_stable_sec >= min_duration:
                         commit_slide(candidate_frame, candidate_timestamp)
@@ -478,9 +525,7 @@ def extract_slides(
                     candidate_timestamp = current_sec
                     candidate_stable_sec = 0.0
         else:
-            sim_with_saved = compute_similarity(current_feat, last_saved_feature)
-
-            if sim_with_saved < similarity_threshold:
+            if is_different_from_saved(current_feat, last_saved_feature):
                 # Frame differs from currently saved slide
                 if candidate_feature is None:
                     candidate_feature = current_feat
@@ -488,8 +533,7 @@ def extract_slides(
                     candidate_timestamp = current_sec
                     candidate_stable_sec = 0.0
                 else:
-                    sim_with_candidate = compute_similarity(current_feat, candidate_feature)
-                    if sim_with_candidate >= similarity_threshold:
+                    if is_candidate_stable(current_feat, candidate_feature):
                         candidate_stable_sec += sample_interval
                         if candidate_stable_sec >= min_duration:
                             if not commit_slide(candidate_frame, candidate_timestamp):
@@ -497,7 +541,7 @@ def extract_slides(
                             candidate_feature = None
                             candidate_frame = None
                     else:
-                        # Frame still animating or changing
+                        # Frame still animating, panning, or transitioning
                         candidate_feature = current_feat
                         candidate_frame = frame.copy()
                         candidate_timestamp = current_sec
@@ -637,6 +681,17 @@ def main():
         help="Optional directory to also save extracted slide images as PNGs",
     )
     parser.add_argument(
+        "--min-change-pct",
+        type=float,
+        default=0.04,
+        help="Fraction of unmasked pixels that must change to trigger a new slide (default: 0.04; set 0.02-0.03 for subtle charts/code)",
+    )
+    parser.add_argument(
+        "--chart-mode",
+        action="store_true",
+        help="Optimized preset for financial stock charts and screen shares: tighter line sensitivity and narrower webcam mask",
+    )
+    parser.add_argument(
         "--max-slides",
         type=int,
         default=500,
@@ -644,6 +699,15 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Apply chart-mode preset adjustments if enabled
+    if args.chart_mode:
+        if args.min_duration == 1.5:
+            args.min_duration = 2.0
+        if args.min_change_pct == 0.04:
+            args.min_change_pct = 0.035
+        if args.webcam == "right" and args.webcam_size == "0.35,0.28":
+            args.webcam_size = "0.35,0.15"
 
     # Determine default output file (saves next to the input video as .pdf by default)
     video_dir = os.path.dirname(os.path.abspath(args.video))
@@ -693,6 +757,7 @@ def main():
         end_time=end_sec,
         save_images_dir=args.save_images,
         max_slides=args.max_slides,
+        min_change_pct=args.min_change_pct,
     )
 
 
