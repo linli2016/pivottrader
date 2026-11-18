@@ -120,6 +120,30 @@ const SETUP_CANONICAL_NAMES = {
   vcp: 'Minervini VCP',
 };
 
+// Deduplicate candidates to show each stock just once, taking the first occurrence chronologically as the date
+export const deduplicateByFirstOccurrence = (candidates) => {
+  if (!Array.isArray(candidates) || candidates.length === 0) return [];
+  const sorted = [...candidates].sort((a, b) => {
+    const dateA = a.setup_date || a.date || a.screen_date || a.added_at || '';
+    const dateB = b.setup_date || b.date || b.screen_date || b.added_at || '';
+    const cmp = String(dateA).localeCompare(String(dateB));
+    if (cmp !== 0) return cmp;
+    return (a.symbol || '').localeCompare(b.symbol || '');
+  });
+
+  const seen = new Set();
+  const unique = [];
+  for (const cand of sorted) {
+    if (!cand?.symbol) continue;
+    const sym = cand.symbol.toUpperCase();
+    if (!seen.has(sym)) {
+      seen.add(sym);
+      unique.push(cand);
+    }
+  }
+  return unique;
+};
+
 export default function StudyLabTab({
   onSelectStock = null,
   watchlists = [],
@@ -550,7 +574,8 @@ export default function StudyLabTab({
       }
 
       const data = await res.json();
-      const candidates = data.candidates || data.trades || data.all_candidates || [];
+      const raw = data.candidates || data.trades || data.all_candidates || [];
+      const candidates = deduplicateByFirstOccurrence(raw);
       setRawCandidates(candidates);
       setBrowseIndex(0);
 
@@ -622,6 +647,14 @@ export default function StudyLabTab({
         const ind = (c.industry || c.group_name || '').trim() || 'Unclassified';
         return validIndustries.has(ind);
       });
+    } else if (selectedIndustry === 'LESS_3') {
+      const validIndustries = new Set(
+        industryCounts.filter(ic => ic.count < 3).map(ic => ic.industry)
+      );
+      list = list.filter(c => {
+        const ind = (c.industry || c.group_name || '').trim() || 'Unclassified';
+        return validIndustries.has(ind);
+      });
     } else if (selectedIndustry !== 'ALL') {
       list = list.filter(c => {
         const ind = (c.industry || c.group_name || '').trim() || 'Unclassified';
@@ -629,7 +662,9 @@ export default function StudyLabTab({
       });
     }
 
-    return [...list].sort((a, b) => {
+    const uniqueList = deduplicateByFirstOccurrence(list);
+
+    return [...uniqueList].sort((a, b) => {
       const dateA = a.setup_date || a.date || a.added_at || '';
       const dateB = b.setup_date || b.date || b.added_at || '';
       const cmp = String(dateA).localeCompare(String(dateB));
@@ -1299,6 +1334,7 @@ export default function StudyLabTab({
             asOfDate={currentCandidate?.setup_date || currentCandidate?.date || null}
             marketRegime={currentCandidate?.market_regime}
             showEarningsBadge={false}
+            defaultShowSpyChart={true}
             watchlistSymbols={activeWatchlistSymbols}
             onSelectGroup={(type, name) => setPreviewGroupModal({ groupType: type, groupName: name })}
             onSelectStock={(stk) => {
@@ -1565,7 +1601,7 @@ export default function StudyLabTab({
               onSelectStock={(cand) => {
                 if (cand?.symbol) {
                   const idx = displayedCandidates.findIndex(
-                    (c) => c === cand || (c.symbol === cand.symbol && (c.setup_date || c.date) === (cand.setup_date || cand.date))
+                    (c) => c === cand || c.symbol?.toUpperCase() === cand.symbol?.toUpperCase()
                   );
                   if (idx !== -1) setBrowseIndex(idx);
                 }

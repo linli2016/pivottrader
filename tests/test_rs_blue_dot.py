@@ -1,8 +1,9 @@
 import unittest
+from tests.test_db_helper import IsolatedDatabaseTestCase
 from application.services import db_service
 
 
-class TestRSBlueDot(unittest.TestCase):
+class TestRSBlueDot(IsolatedDatabaseTestCase):
     def test_stock_prices_has_rs_line_and_blue_dot(self):
         # Fetch NVDA prices
         prices = db_service.get_stock_prices("NVDA", limit=50)

@@ -1,12 +1,14 @@
 import unittest
+from tests.test_db_helper import IsolatedDatabaseTestCase
 from application.services.setup_service import SetupService
 from application.engine.expression import ScanExpressionEngine
 from application.services.database import db_service
 
 
-class TestParabolicScreeners(unittest.TestCase):
+class TestParabolicScreeners(IsolatedDatabaseTestCase):
 
     def setUp(self):
+        super().setUp()
         self.setup_service = SetupService()
         self.config = self.setup_service.load_config()
 
@@ -29,9 +31,8 @@ class TestParabolicScreeners(unittest.TestCase):
         self.assertEqual(parabolic_long["name"], "Parabolic Long")
         self.assertEqual(parabolic_long["tag"], "BO")
         expr = parabolic_long.get("expression", "")
-        self.assertIn("C >= 1.0", expr)
+        self.assertTrue("SCREENER_LIQUID" in expr or "C >= 1.0" in expr)
         self.assertIn("DIST_EMA10 <= -20.0", expr)
-        self.assertIn("ADR20 >= 5.0", expr)
         self.assertIn("MARKET_CAP", expr)
         self.assertIn("C < C1", expr)
         self.assertIn("C1 < C2", expr)

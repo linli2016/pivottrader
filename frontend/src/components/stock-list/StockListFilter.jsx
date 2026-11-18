@@ -23,6 +23,10 @@ export default function StockListFilter({
     .filter(({ count }) => count >= 3)
     .reduce((sum, { count }) => sum + count, 0);
 
+  const less3Count = industryCounts
+    .filter(({ count }) => count < 3)
+    .reduce((sum, { count }) => sum + count, 0);
+
   return (
     <div className="stock-list-filter-bar">
       {showIndustryFilter && (
@@ -48,6 +52,9 @@ export default function StockListFilter({
           </option>
           <option value="MIN_3">
             Industry Groups (≥ 3) ({min3Count})
+          </option>
+          <option value="LESS_3">
+            Industry Groups (&lt; 3) ({less3Count})
           </option>
           {industryCounts.map(({ industry, count }) => (
             <option key={industry} value={industry}>

@@ -218,6 +218,12 @@ class SetupService:
             for sc in f.get("screeners", []):
                 if sc.get("id") == setup_id:
                     return sc
+        if setup_id in ("leaders", "leader"):
+            return self.get_setup_by_id("gainers")
+        if setup_id.startswith("zanger_"):
+            fallback = self.get_setup_by_id(setup_id[7:])
+            if fallback:
+                return fallback
         return {}
 
     def validate_expression(self, expr: str) -> Dict[str, Any]:

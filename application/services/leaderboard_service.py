@@ -8,10 +8,18 @@ logger = logging.getLogger(__name__)
 
 
 class LeaderboardService:
-    def __init__(self, db_path: str = "data.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: Optional[str] = None):
+        if db_path is None:
+            from application.services.database import db_service
+            self.db_path = db_service.get_db_path()
+        else:
+            self.db_path = db_path
+        from application.database import check_database_safety
+        check_database_safety(self.db_path)
 
     def _get_connection(self):
+        from application.database import check_database_safety
+        check_database_safety(self.db_path)
         import time
         max_retries = 35
         for attempt in range(max_retries):

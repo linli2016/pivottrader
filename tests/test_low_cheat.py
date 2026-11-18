@@ -1,11 +1,12 @@
 import unittest
+from tests.test_db_helper import IsolatedDatabaseTestCase
 from application.engine.setups.low_cheat import detect_low_cheat, detect_cheat
 from application.services.config import config_service
 from application.services.model_book_service import ModelBookService
 from application.services.database import db_service
 
 
-class TestMinerviniLowCheat(unittest.TestCase):
+class TestMinerviniLowCheat(IsolatedDatabaseTestCase):
 
     def test_synthetic_valid_low_cheat_trigger(self):
         # 25+ bars simulating prior trend, runup to $100, correction down to $74.5 (25.5% depth),

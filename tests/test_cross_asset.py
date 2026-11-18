@@ -1,10 +1,11 @@
 import unittest
 from unittest.mock import patch
+from tests.test_db_helper import IsolatedDatabaseTestCase
 from application.services.cross_asset_service import cross_asset_service, DEFAULT_BASE_ASSETS
 from application.services import db_service
 
 
-class TestCrossAssetService(unittest.TestCase):
+class TestCrossAssetService(IsolatedDatabaseTestCase):
     def setUp(self):
         # Clear cache before each test
         cross_asset_service.clear_cache()

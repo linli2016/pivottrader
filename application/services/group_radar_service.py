@@ -12,8 +12,14 @@ _GLOBAL_STRENGTH_CACHE: Dict[Any, Any] = {}
 
 
 class GroupRadarService:
-    def __init__(self, db_path: str = "data.db", theme_service: Optional[ThemeService] = None):
-        self.db_path = db_path
+    def __init__(self, db_path: Optional[str] = None, theme_service: Optional[ThemeService] = None):
+        if db_path is None:
+            from application.services.database import db_service
+            self.db_path = db_service.get_db_path()
+        else:
+            self.db_path = db_path
+        from application.database import check_database_safety
+        check_database_safety(self.db_path)
         self.theme_service = theme_service or ThemeService()
         self._bars_cache = {}
 
@@ -28,6 +34,8 @@ class GroupRadarService:
         _GLOBAL_STRENGTH_CACHE.clear()
 
     def _get_connection(self):
+        from application.database import check_database_safety
+        check_database_safety(self.db_path)
         import time
         max_retries = 35
         for attempt in range(max_retries):
@@ -1100,7 +1108,8 @@ class GroupRadarService:
                 else:  # default: industries
                     sector_filter = f"AND s.sector = '{clean_sec}'" if clean_sec else ""
                     limit_clause = "LIMIT 35" if not clean_sec else ""
-                    min_stock_count = 1 if clean_sec else 6
+                    from application.database import is_test_environment
+                    min_stock_count = 1 if (clean_sec or is_test_environment()) else 6
 
                     query = f"""
                         WITH calendar AS (

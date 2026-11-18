@@ -46,7 +46,7 @@ class TestDays52wHigh(unittest.TestCase):
             # Day 3: High 70.0 -> new peak 70.0 (day 0)
             {"symbol": "TEST", "date": "2025-01-03", "open": 59.0, "high": 70.0, "low": 58.0, "close": 68.0, "volume": 15000},
             # Day 4: High 65.0 -> peak remains 70.0 from Day 3 (day 1)
-            {"symbol": "TEST", "date": "2025-01-06", "open": 67.0, "high": 65.0, "low": 63.0, "close": 64.0, "volume": 8000},
+            {"symbol": "TEST", "date": "2025-01-06", "open": 64.5, "high": 65.0, "low": 63.0, "close": 64.0, "volume": 8000},
             # Day 5: High 68.0 -> peak remains 70.0 from Day 3 (day 2)
             {"symbol": "TEST", "date": "2025-01-07", "open": 64.0, "high": 68.0, "low": 63.5, "close": 67.0, "volume": 9000},
             # Day 6: High 70.0 -> ties peak 70.0, should resolve to Day 6 (day 0)

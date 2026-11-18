@@ -10,9 +10,13 @@ from application.engine.setups import (
 
 class MomentumEngine:
     def __init__(self, db_path: str):
+        from application.database import check_database_safety
+        check_database_safety(db_path)
         self.db_path = db_path
 
     def get_connection(self):
+        from application.database import check_database_safety
+        check_database_safety(self.db_path)
         import time
         max_retries = 35
         for attempt in range(max_retries):

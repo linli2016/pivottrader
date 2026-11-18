@@ -30,6 +30,9 @@ export default function StockInfo({
   // Multi-chart toggle
   showMultiCharts = true,
   onToggleMultiCharts = null,
+  // S&P 500 (SPY) overlay panel toggle
+  showSpyChart = false,
+  onToggleSpyChart = null,
   // Inspector drawer toggle
   isDetailCollapsed = true,
   onToggleDetail = null,
@@ -517,6 +520,41 @@ export default function StockInfo({
             </svg>
             <span style={{ fontSize: '11px', fontWeight: 700 }}>Risk</span>
           </button>
+
+          {/* S&P 500 (SPY) Market Panel Toggle Button */}
+          {onToggleSpyChart && symbol?.toUpperCase() !== 'SPY' && (
+            <button
+              type="button"
+              onClick={onToggleSpyChart}
+              title={showSpyChart ? 'Hide S&P 500 (SPY) Market Panel above Daily Chart' : 'Show S&P 500 (SPY) Market Panel above Daily Chart'}
+              aria-label={showSpyChart ? 'Hide SPY Market Panel' : 'Show SPY Market Panel'}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '4px',
+                height: '28px',
+                padding: '0 7px',
+                borderRadius: '5px',
+                boxSizing: 'border-box',
+                background: showSpyChart ? 'rgba(56, 189, 248, 0.22)' : 'rgba(255, 255, 255, 0.05)',
+                border: showSpyChart ? '1px solid #38bdf8' : '1px solid var(--border-color, #1e293b)',
+                color: showSpyChart ? '#38bdf8' : 'var(--text-secondary, #94a3b8)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                flexShrink: 0,
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <line x1="3" y1="9" x2="21" y2="9" />
+                {showSpyChart && (
+                  <rect x="3" y="3" width="18" height="6" rx="1" fill="currentColor" opacity="0.4" />
+                )}
+              </svg>
+              <span style={{ fontSize: '10.5px', fontWeight: 700, letterSpacing: '0.3px' }}>SPY</span>
+            </button>
+          )}
 
           {/* Multi-Chart View (Daily + Monthly + Weekly) Toggle Button */}
           {onToggleMultiCharts && (

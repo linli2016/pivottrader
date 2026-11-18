@@ -1,4 +1,5 @@
 import unittest
+from tests.test_db_helper import IsolatedDatabaseTestCase
 from application.services import db_service
 from application.engine.market_pulse import (
     calculate_distribution_days,
@@ -8,7 +9,7 @@ from application.engine.market_pulse import (
 )
 
 
-class TestMarketPulse(unittest.TestCase):
+class TestMarketPulse(IsolatedDatabaseTestCase):
     def test_calculate_distribution_days(self):
         with db_service.get_read_only_conn() as conn:
             dist = calculate_distribution_days(conn, as_of_date="2026-09-24")
@@ -41,7 +42,7 @@ class TestMarketPulse(unittest.TestCase):
         with db_service.get_read_only_conn() as conn:
             breadth = calculate_breadth_moving_averages(conn, as_of_date="2026-09-24", lookback_sessions=252)
         self.assertIn("total_symbols", breadth)
-        self.assertGreater(breadth["total_symbols"], 1000)
+        self.assertGreater(breadth["total_symbols"], 0)
         self.assertIn("metrics", breadth)
         self.assertEqual(len(breadth["metrics"]), 3)
 

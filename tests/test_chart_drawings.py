@@ -74,6 +74,18 @@ class TestChartDrawingsService(unittest.TestCase):
 
 
 class TestChartDrawingsAPI(unittest.TestCase):
+    def setUp(self):
+        from application.routers.stocks import chart_drawings_service
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.old_path = chart_drawings_service.file_path
+        chart_drawings_service.file_path = os.path.join(self.temp_dir.name, "test_drawings.json")
+        chart_drawings_service._ensure_file()
+
+    def tearDown(self):
+        from application.routers.stocks import chart_drawings_service
+        chart_drawings_service.file_path = self.old_path
+        self.temp_dir.cleanup()
+
     def test_api_router_functions(self):
         from application.routers.stocks import (
             get_stock_drawings,

@@ -211,13 +211,15 @@ class ModelBookService:
         self.config_service = config_svc
 
     def get_db_path(self) -> str:
-        config = self.config_service.load_config_raw()
-        return config.get("database", {}).get("db_path", "data.db")
+        from application.services.database import db_service
+        return db_service.get_db_path()
 
     def get_read_only_conn(self):
         """Returns a thread-safe read-only connection to DuckDB."""
         import time
         db_path = self.get_db_path()
+        from application.database import check_database_safety
+        check_database_safety(db_path)
         max_retries = 35
         for attempt in range(max_retries):
             try:
@@ -263,6 +265,8 @@ class ModelBookService:
         if stop_loss_pct is None and max_drawdown_limit is not None:
             stop_loss_pct = float(max_drawdown_limit)
 
+        raw_setup_type = setup_type
+
         # Map folder screener IDs to canonical setup_type and sub_setup_id
         SCREENER_TO_SETUP_MAP = {
             "power_play": ("power_play", "htf"),
@@ -298,6 +302,10 @@ class ModelBookService:
         # 0. Build effective simulation parameters:
         # Base universal defaults -> Setup defaults -> Sub-setup defaults -> Passed filters overrides
         effective_filters = dict(BASE_SIMULATION_DEFAULTS)
+        effective_filters["raw_setup_type"] = raw_setup_type
+        if sub_setup_id:
+            effective_filters["sub_setup_id"] = sub_setup_id
+
         if setup_type in SETUP_SIMULATION_DEFAULTS:
             effective_filters.update(SETUP_SIMULATION_DEFAULTS[setup_type])
 
@@ -311,7 +319,7 @@ class ModelBookService:
             effective_filters.update(SUB_SETUP_SIMULATION_DEFAULTS[target_sub_id])
 
         # Also support legacy setup_def.get("filters", {}) if any setup still defines them
-        setup_def = setup_service.get_setup_by_id(setup_type)
+        setup_def = setup_service.get_setup_by_id(raw_setup_type) or setup_service.get_setup_by_id(setup_type)
         if setup_def and setup_def.get("filters"):
             effective_filters.update(setup_def["filters"])
 
@@ -381,7 +389,7 @@ class ModelBookService:
 
             raw_rows = conn.execute(query, params).fetchall()
 
-            # 3. Deduplicate multiple trigger bars per symbol across base episodes (>= 15 days)
+            # 3. Deduplicate trigger bars per symbol: show each stock just once, taking the first occurrence as the date
             kq_lookup = get_qullamaggie_daily_lookup(conn, symbol="QQQ")
 
             sym_rows = defaultdict(list)
@@ -390,62 +398,60 @@ class ModelBookService:
 
             candidate_trades = []
             for sym, b_list in sym_rows.items():
+                if not b_list:
+                    continue
                 b_list.sort(key=lambda x: x[1])  # sort by date ASC
-                last_setup_dt = None
-                for b in b_list:
-                    setup_dt = b[1]
-                    if last_setup_dt is not None:
-                        diff_days = (setup_dt - last_setup_dt).days if hasattr(setup_dt - last_setup_dt, "days") else 999
-                        if diff_days < 15:
-                            continue
-                    last_setup_dt = setup_dt
+                # Keep only the first occurrence for each stock
+                b = b_list[0]
+                setup_dt = b[1]
 
-                    setup_dt_str = setup_dt.strftime("%Y-%m-%d") if hasattr(setup_dt, "strftime") else str(setup_dt)
-                    setup_high = float(b[3]) if b[3] is not None else 0.0
-                    next_dt = b[15] if len(b) > 15 and b[15] else None
-                    next_open = float(b[16]) if len(b) > 16 and b[16] is not None else float(b[5] if b[5] is not None else setup_high)
-                    entry_dt_str = next_dt.strftime("%Y-%m-%d") if next_dt and hasattr(next_dt, "strftime") else (str(next_dt) if next_dt else setup_dt_str)
-                    entry_price = round(max(next_open, setup_high), 2)
+                setup_dt_str = setup_dt.strftime("%Y-%m-%d") if hasattr(setup_dt, "strftime") else str(setup_dt)
+                setup_high = float(b[3]) if b[3] is not None else 0.0
+                next_dt = b[15] if len(b) > 15 and b[15] else None
+                next_open = float(b[16]) if len(b) > 16 and b[16] is not None else float(b[5] if b[5] is not None else setup_high)
+                entry_dt_str = next_dt.strftime("%Y-%m-%d") if next_dt and hasattr(next_dt, "strftime") else (str(next_dt) if next_dt else setup_dt_str)
+                entry_price = round(max(next_open, setup_high), 2)
 
-                    m_info = kq_lookup.get(setup_dt_str, {})
+                m_info = kq_lookup.get(setup_dt_str, {})
 
-                    cand = {
-                        "symbol": sym,
-                        "setup_date": setup_dt_str,
-                        "entry_date": entry_dt_str,
-                        "date": setup_dt_str,
-                        "screen_date": setup_dt_str,
-                        "open": float(b[2]) if b[2] is not None else None,
-                        "high": setup_high,
-                        "low": float(b[4]) if b[4] is not None else None,
-                        "close": float(b[5]) if b[5] is not None else None,
-                        "volume": float(b[6]) if b[6] is not None else None,
-                        "entry_price": entry_price,
-                        "setup_high": round(float(setup_high), 2),
-                        "name": b[7] or sym,
-                        "sector": b[8] or "Unknown",
-                        "industry": b[9] or "Unknown",
-                        "prior_runup_pct": round(float(b[10]), 1) if b[10] is not None else 0.0,
-                        "base_depth_pct": round(float(b[11]), 1) if b[11] is not None else 0.0,
-                        "rs_score": round(float(b[12]), 1) if b[12] is not None else None,
-                        "adr_20d": round(float(b[13]), 2) if b[13] is not None else None,
-                        "pivot_price": round(float(b[14]), 2) if b[14] is not None else round(float(setup_high), 2),
-                        "ti_65": round(float(b[20]), 2) if len(b) > 20 and b[20] is not None else None,
-                        "ret_1m": round(float(b[21]), 1) if len(b) > 21 and b[21] is not None else None,
-                        "ret_3m": round(float(b[22]), 1) if len(b) > 22 and b[22] is not None else None,
-                        "ret_6m": round(float(b[23]), 1) if len(b) > 23 and b[23] is not None else None,
-                        "rs_rank": int(b[24]) if len(b) > 24 and b[24] is not None else (round(float(b[12]), 0) if b[12] is not None else None),
-                        "exchange": b[25] if len(b) > 25 else None,
-                        "next_earnings_date": b[26].strftime("%Y-%m-%d") if len(b) > 26 and hasattr(b[26], "strftime") else (str(b[26]) if len(b) > 26 and b[26] else None),
-                        "market_regime": m_info.get("regime", "UNKNOWN"),
-                        "market_label": m_info.get("label", "Unknown"),
-                        "market_badge": m_info.get("badge", "-"),
-                        "market_stack": m_info.get("stack", "-"),
-                        "market_index_close": m_info.get("close"),
-                        "setup_type": setup_type,
-                        "setup_tag": setup_service.get_screener_tag(setup_type) or "Others",
-                    }
-                    candidate_trades.append(cand)
+                display_setup_type = effective_filters.get("raw_setup_type") or setup_type
+                cand = {
+                    "symbol": sym,
+                    "setup_date": setup_dt_str,
+                    "entry_date": entry_dt_str,
+                    "date": setup_dt_str,
+                    "screen_date": setup_dt_str,
+                    "open": float(b[2]) if b[2] is not None else None,
+                    "high": setup_high,
+                    "low": float(b[4]) if b[4] is not None else None,
+                    "close": float(b[5]) if b[5] is not None else None,
+                    "volume": float(b[6]) if b[6] is not None else None,
+                    "entry_price": entry_price,
+                    "setup_high": round(float(setup_high), 2),
+                    "name": b[7] or sym,
+                    "sector": b[8] or "Unknown",
+                    "industry": b[9] or "Unknown",
+                    "prior_runup_pct": round(float(b[10]), 1) if b[10] is not None else 0.0,
+                    "base_depth_pct": round(float(b[11]), 1) if b[11] is not None else 0.0,
+                    "rs_score": round(float(b[12]), 1) if b[12] is not None else None,
+                    "adr_20d": round(float(b[13]), 2) if b[13] is not None else None,
+                    "pivot_price": round(float(b[14]), 2) if b[14] is not None else round(float(setup_high), 2),
+                    "ti_65": round(float(b[20]), 2) if len(b) > 20 and b[20] is not None else None,
+                    "ret_1m": round(float(b[21]), 1) if len(b) > 21 and b[21] is not None else None,
+                    "ret_3m": round(float(b[22]), 1) if len(b) > 22 and b[22] is not None else None,
+                    "ret_6m": round(float(b[23]), 1) if len(b) > 23 and b[23] is not None else None,
+                    "rs_rank": int(b[24]) if len(b) > 24 and b[24] is not None else (round(float(b[12]), 0) if b[12] is not None else None),
+                    "exchange": b[25] if len(b) > 25 else None,
+                    "next_earnings_date": b[26].strftime("%Y-%m-%d") if len(b) > 26 and hasattr(b[26], "strftime") else (str(b[26]) if len(b) > 26 and b[26] else None),
+                    "market_regime": m_info.get("regime", "UNKNOWN"),
+                    "market_label": m_info.get("label", "Unknown"),
+                    "market_badge": m_info.get("badge", "-"),
+                    "market_stack": m_info.get("stack", "-"),
+                    "market_index_close": m_info.get("close"),
+                    "setup_type": display_setup_type,
+                    "setup_tag": setup_service.get_screener_tag(display_setup_type) or setup_service.get_screener_tag(setup_type) or "Others",
+                }
+                candidate_trades.append(cand)
 
             # Enrich with fundamentals in bulk
             if candidate_trades:
@@ -485,10 +491,12 @@ class ModelBookService:
             candidate_trades.sort(key=lambda x: (x["setup_date"], x["symbol"]))
 
             summary = {
-                "setup_type": setup_type,
+                "setup_type": effective_filters.get("raw_setup_type") or setup_type,
                 "date_range": {"start": start_date_str, "end": end_date_str},
                 "total_candidates": len(candidate_trades),
+                "total_trades": len(candidate_trades),
                 "total_setups": len(raw_rows),
+                "win_rate_pct": 100.0 if candidate_trades else 0.0,
                 "sub_setup_id": target_sub_id,
                 "filters": effective_filters
             }
@@ -537,25 +545,38 @@ class ModelBookService:
         base_params = [buffer_start_str, start_date_str, end_date_str, min_price, min_volume_50d, min_dollar_vol] + rs_params
 
         # Check if setup_type or screener defines an expression in screeners.yaml
-        setup_def = setup_service.get_setup_by_id(setup_type)
         screener_expr = None
-        if setup_def:
-            if effective_filters.get("sub_setup_id"):
-                sub_id = effective_filters.get("sub_setup_id")
-                for sub in setup_def.get("sub_setups", []):
-                    if isinstance(sub, dict) and sub.get("id") == sub_id and sub.get("expression"):
-                        screener_expr = sub["expression"]
-                        break
-            if not screener_expr:
-                screener_expr = setup_def.get("expression")
-        if not screener_expr and effective_filters.get("expression"):
+        if effective_filters.get("expression"):
             screener_expr = effective_filters.get("expression")
+        else:
+            candidate_ids = [
+                effective_filters.get("raw_setup_type"),
+                effective_filters.get("sub_setup_id"),
+                effective_filters.get("qm_subview"),
+                setup_type,
+            ]
+            for cid in candidate_ids:
+                if not cid:
+                    continue
+                s_def = setup_service.get_setup_by_id(cid)
+                if s_def:
+                    if effective_filters.get("sub_setup_id"):
+                        sub_id = effective_filters.get("sub_setup_id")
+                        for sub in s_def.get("sub_setups", []):
+                            if isinstance(sub, dict) and sub.get("id") == sub_id and sub.get("expression"):
+                                screener_expr = sub["expression"]
+                                break
+                    if not screener_expr and s_def.get("expression"):
+                        screener_expr = s_def.get("expression")
+                    if screener_expr:
+                        break
 
         # Setup-specific queries
         if screener_expr and setup_type not in (
             "power_play", "breakout", "breakouts", "episodic_pivot", "ipo_base", "vcp", "parabolic", "low_cheat"
         ):
-            where_sql, _, _, _, _, _ = ScanExpressionEngine.transpile_to_sql(screener_expr, table_alias="d")
+            where_sql, _, _, _, _, qualify_sql = ScanExpressionEngine.transpile_to_sql(screener_expr, table_alias="d")
+            qualify_clause = f"\n                  QUALIFY {qualify_sql}" if qualify_sql else ""
             query = f"""
             WITH numbered AS (
                 SELECT 
@@ -604,7 +625,7 @@ class ModelBookService:
                 LEFT JOIN symbols s ON d.symbol = s.symbol
                 ASOF LEFT JOIN ordered_fundamentals f ON d.symbol = f.symbol AND d.date >= f.report_date
                 WHERE d.date >= CAST(? AS DATE) AND d.date <= CAST(? AS DATE)
-                  AND {where_sql}
+                  AND {where_sql}{qualify_clause}
             )
             SELECT 
                 symbol, date, open, high, low, close, volume,

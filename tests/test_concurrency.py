@@ -1,9 +1,10 @@
 import unittest
 import threading
 import time
+from tests.test_db_helper import IsolatedDatabaseTestCase
 from application.services import db_service
 
-class TestDatabaseConcurrency(unittest.TestCase):
+class TestDatabaseConcurrency(IsolatedDatabaseTestCase):
     def test_concurrent_read_write(self):
         """Verifies that in-process concurrent read and write connections do not crash with ConnectionException or lock conflicts."""
         results = []

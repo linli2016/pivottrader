@@ -65,7 +65,7 @@ export default function SyncDataTab({
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: syncPremarket ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '500', color: syncPremarket ? 'var(--text-muted)' : 'var(--text-secondary)', opacity: syncPremarket ? 0.5 : 1 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: syncPremarket ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '500', color: syncPremarket ? 'var(--text-muted)' : 'var(--text-secondary)', opacity: syncPremarket ? 0.5 : 1 }} title="Pulls latest price for all stocks (intraday price if market is open, official close price if market is closed)">
               <input
                 type="checkbox"
                 checked={syncPrices}
@@ -73,7 +73,7 @@ export default function SyncDataTab({
                 disabled={syncStatus.status === 'running' || syncPremarket}
                 style={{ cursor: syncPremarket ? 'not-allowed' : 'pointer', accentColor: 'var(--accent-color)' }}
               />
-              Sync Price Data
+              Sync Price Data (All Stocks)
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: '#ec4899' }}>
               <input
@@ -93,11 +93,11 @@ export default function SyncDataTab({
                 disabled={syncStatus.status === 'running'}
                 style={{ cursor: 'pointer', accentColor: '#ec4899' }}
               />
-              ⚡ Live Market Quotes
+              ⚡ Live Market Quotes (Watchlists)
             </label>
             {syncPremarket && (
               <span style={{ fontSize: '11px', color: '#f472b6', marginTop: '-4px', marginBottom: '2px', lineHeight: '1.2' }}>
-                Real-time quotes for pre-market (04:00–09:30), live trading session (09:30–16:00), and post-market (16:00–20:00 ET).
+                Real-time quotes for all stocks in your Watchlists / waiting list (pre-market, live trading session, and post-market).
               </span>
             )}
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: syncPremarket ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '500', color: syncPremarket ? 'var(--text-muted)' : 'var(--text-secondary)', opacity: syncPremarket ? 0.5 : 1 }}>
@@ -147,12 +147,23 @@ export default function SyncDataTab({
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '1px solid var(--border-color)', paddingLeft: '16px', opacity: syncPremarket ? 0.5 : 1 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: '500', color: syncPremarket ? 'var(--text-muted)' : 'var(--text-secondary)' }}>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '13px',
+                fontWeight: '500',
+                color: (syncPremarket || !syncForceFull) ? 'var(--text-muted)' : 'var(--text-secondary)',
+                opacity: (!syncForceFull && !syncPremarket) ? 0.6 : 1
+              }}
+              title="Applies when 'Force Full Backfill History' is checked (or for brand-new tickers not yet in the database)"
+            >
               <span>Lookback History:</span>
               <select
                 value={syncHistoryYears}
                 onChange={(e) => setSyncHistoryYears(parseInt(e.target.value, 10))}
-                disabled={syncStatus.status === 'running' || syncPremarket}
+                disabled={syncStatus.status === 'running' || syncPremarket || !syncForceFull}
                 style={{
                   background: 'var(--bg-card)',
                   color: 'var(--text-primary)',
@@ -160,7 +171,7 @@ export default function SyncDataTab({
                   borderRadius: '6px',
                   padding: '3px 8px',
                   fontSize: '12px',
-                  cursor: syncPremarket ? 'not-allowed' : 'pointer'
+                  cursor: (syncPremarket || !syncForceFull) ? 'not-allowed' : 'pointer'
                 }}
               >
                 <option value={2}>2 Years (~500 Days)</option>
@@ -213,7 +224,7 @@ export default function SyncDataTab({
             >
               {syncStatus.status === 'running'
                 ? 'Running Sync...'
-                : (syncPremarket ? '⚡ Sync Live Market Quotes' : 'Sync Database Tickers')}
+                : (syncPremarket ? '⚡ Sync Watchlist Live Quotes' : 'Sync Database Tickers')}
             </button>
           </div>
         </div>

@@ -1,8 +1,9 @@
 import unittest
+from tests.test_db_helper import IsolatedDatabaseTestCase
 from application.services import db_service
 from application.router import get_stock_peers
 
-class TestWatchlists(unittest.TestCase):
+class TestWatchlists(IsolatedDatabaseTestCase):
     def test_get_watchlists(self):
         watchlists = db_service.get_watchlists()
         self.assertIsInstance(watchlists, list)
@@ -215,19 +216,15 @@ class TestWatchlists(unittest.TestCase):
             await app(scope, receive, send)
             return response_started.get("status"), b"".join(response_body)
 
-        # 1. Test DELETE /api/watchlists/items (must NOT be intercepted by /{watchlist_id} with 422)
-        status, body = asyncio.run(make_request("DELETE", "/api/watchlists/items"))
-        self.assertEqual(status, 200, f"Expected 200 for clear items, got {status}: {body}")
-
-        # 2. Test lifecycle on a dedicated test watchlist
+        # 1. Test lifecycle on a dedicated test watchlist
         test_wl = db_service.create_watchlist("Test_API_Routes_WL")
         test_wl_id = test_wl["id"]
         try:
             db_service.add_watchlist_items_batch(test_wl_id, ["AAPL", "NVDA", "MSFT"])
 
-            # Test DELETE /api/watchlists/{watchlist_id}/items
+            # Test DELETE /api/watchlists/{watchlist_id}/items (must NOT be intercepted by /{watchlist_id} with 422)
             status, body = asyncio.run(make_request("DELETE", f"/api/watchlists/{test_wl_id}/items"))
-            self.assertEqual(status, 200)
+            self.assertEqual(status, 200, f"Expected 200 for clear items, got {status}: {body}")
             self.assertEqual(len(db_service.get_watchlist_items(test_wl_id)), 0)
 
             # Re-add items

@@ -46,3 +46,4 @@
 ** Hard Rules
 
 * Do not enter a trade if Risk of LoD > 60% ATR.
+* Skip trades when the extension in ADR < 25%. Measure extension in ADR before buy, not to find a ceiling but to stop myself buying too early: under a quarter ADR off the low the stop sits inside the noise, and 91 percent of those trades died on it.

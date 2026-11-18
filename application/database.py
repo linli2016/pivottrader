@@ -1,15 +1,61 @@
+import os
+import sys
 import duckdb
 from typing import List, Dict, Any, Tuple
 import pandas as pd
 
+
+def is_test_environment() -> bool:
+    """Detects whether code is running inside a test suite."""
+    if os.environ.get("PIVOTTRADER_TESTING") == "1":
+        return True
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return True
+    if "pytest" in sys.modules:
+        return True
+    if any("unittest" in arg or "pytest" in arg for arg in sys.argv):
+        return True
+    if "unittest" in sys.modules and any("test" in arg.lower() for arg in sys.argv):
+        return True
+    return False
+
+
+def check_database_safety(db_path: str) -> None:
+    """
+    Guardrail to ensure unit tests NEVER hook into or modify the production database.
+    Raises RuntimeError if a test tries to connect to data.db.
+    """
+    if os.environ.get("ALLOW_PROD_DB_IN_TESTS") == "1":
+        return
+
+    if is_test_environment():
+        canonical_target = os.path.realpath(os.path.abspath(db_path))
+        try:
+            from application.services.config import config_service
+            prod_path = config_service.load_config_raw().get("database", {}).get("db_path", "data.db")
+        except Exception:
+            prod_path = "data.db"
+        canonical_prod = os.path.realpath(os.path.abspath(prod_path))
+        canonical_local = os.path.realpath(os.path.abspath("data.db"))
+
+        if canonical_target in (canonical_prod, canonical_local):
+            raise RuntimeError(
+                f"CRITICAL SAFETY VIOLATION: Unit test attempted to connect to production database '{db_path}'! "
+                "Unit tests must NEVER hook into or modify the production database. "
+                "Use an isolated test database (e.g. tempfile, db_service.set_db_path(), or PIVOTTRADER_DB_PATH)."
+            )
+
+
 class DatabaseManager:
     def __init__(self, db_path: str, init_schema: bool = True):
+        check_database_safety(db_path)
         self.db_path = db_path
         if init_schema:
             self.initialize_schema()
 
     def get_connection(self):
         """Returns a new connection to the DuckDB file, retrying if temporarily locked by concurrent queries."""
+        check_database_safety(self.db_path)
         import time
         max_retries = 35
         for attempt in range(max_retries):
@@ -59,6 +105,7 @@ class DatabaseManager:
                     watchlist_id INTEGER NOT NULL,
                     symbol VARCHAR NOT NULL,
                     tags VARCHAR DEFAULT '',
+                    flag_color VARCHAR,
                     added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (watchlist_id, symbol)
                 );
@@ -66,6 +113,10 @@ class DatabaseManager:
 
             try:
                 conn.execute("ALTER TABLE watchlist_items ADD COLUMN tags VARCHAR DEFAULT '';")
+            except Exception:
+                pass
+            try:
+                conn.execute("ALTER TABLE watchlist_items ADD COLUMN flag_color VARCHAR;")
             except Exception:
                 pass
 
@@ -523,6 +574,24 @@ class DatabaseManager:
         # Clean dataframe to standard columns
         bars_df = df[columns].copy()
         
+        # Ensure strict NOT NULL compliance for primary daily bar columns
+        bars_df = bars_df.dropna(subset=["symbol", "date"])
+        bars_df["close"] = pd.to_numeric(bars_df["close"], errors="coerce")
+        bars_df = bars_df.dropna(subset=["close"])
+        
+        bars_df["open"] = pd.to_numeric(bars_df["open"], errors="coerce").fillna(bars_df["close"])
+        bars_df["high"] = pd.to_numeric(bars_df["high"], errors="coerce").fillna(bars_df[["open", "close"]].max(axis=1))
+        bars_df["low"] = pd.to_numeric(bars_df["low"], errors="coerce").fillna(bars_df[["open", "close"]].min(axis=1))
+        bars_df["volume"] = pd.to_numeric(bars_df["volume"], errors="coerce").fillna(0).round().astype("int64")
+        
+        # Enforce consistency in high/low relative to open/close
+        bars_df["high"] = bars_df[["high", "open", "close"]].max(axis=1)
+        bars_df["low"] = bars_df[["low", "open", "close"]].min(axis=1)
+        
+        bars_df = bars_df.dropna(subset=["symbol", "date", "open", "high", "low", "close", "volume"])
+        if bars_df.empty:
+            return
+        
         with self.get_connection() as conn:
             conn.execute("CREATE OR REPLACE TEMP TABLE temp_bars AS SELECT * FROM bars_df")
             # We insert or replace, keeping previous vol_50d_ma, rs_score, rs_rank if they exist or inserting null
@@ -966,6 +1035,12 @@ class DatabaseManager:
         with self.get_connection() as conn:
             conn.execute("DELETE FROM watchlist_items WHERE watchlist_id = ?", [watchlist_id])
             return True
+
+    def get_all_watchlist_symbols(self) -> List[str]:
+        """Returns distinct symbols currently in any watchlist."""
+        with self.get_connection() as conn:
+            rows = conn.execute("SELECT DISTINCT symbol FROM watchlist_items ORDER BY symbol").fetchall()
+            return [r[0] for r in rows if r[0]]
 
     def upsert_intraday_volume_profiles(self, profiles: List[Dict[str, Any]]) -> int:
         """Upserts 78-slot 5-minute intraday cumulative volume profiles into DuckDB."""

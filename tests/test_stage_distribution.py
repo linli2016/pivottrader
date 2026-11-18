@@ -1,7 +1,8 @@
 import unittest
+from tests.test_db_helper import IsolatedDatabaseTestCase
 from application.services import db_service
 
-class TestStageDistribution(unittest.TestCase):
+class TestStageDistribution(IsolatedDatabaseTestCase):
     def test_stage_distribution_summary_and_history(self):
         # 1. Fetch stage distribution data
         res = db_service.get_stage_distribution(limit=10)

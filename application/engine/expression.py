@@ -1620,6 +1620,10 @@ class ScanExpressionEngine:
                 sc = setup_service.get_setup_by_id(sc_id + "s")
             if not sc and sc_id.endswith("s"):
                 sc = setup_service.get_setup_by_id(sc_id[:-1])
+            if not sc and sc_id in ("leaders", "leader"):
+                sc = setup_service.get_setup_by_id("gainers")
+            if not sc and sc_id.startswith("zanger_"):
+                sc = setup_service.get_setup_by_id(sc_id[7:])
             if sc and sc.get("expression"):
                 raw_expr = sc["expression"]
                 clean_expr = re.sub(r'\s+ORDER\s+BY\s+.*$', '', raw_expr, flags=re.IGNORECASE).strip()

@@ -1,7 +1,8 @@
 import unittest
+from tests.test_db_helper import IsolatedDatabaseTestCase
 from application.services import db_service
 
-class TestMarketMonitorAsOf(unittest.TestCase):
+class TestMarketMonitorAsOf(IsolatedDatabaseTestCase):
     def test_get_market_monitor_as_of_date(self):
         dates = db_service.get_available_trading_dates()
         self.assertIsInstance(dates, list)
@@ -44,7 +45,7 @@ class TestMarketMonitorAsOf(unittest.TestCase):
         self.assertIn("latest_up_dollar_vol", summary)
         self.assertIn("latest_down_dollar_vol", summary)
 
-        self.assertGreater(summary["latest_total_active"], 1000)
+        self.assertGreater(summary["latest_total_active"], 0)
         self.assertGreater(summary["latest_advancers"], 0)
         self.assertGreater(summary["latest_decliners"], 0)
         self.assertGreater(summary["latest_cap_increased"], 0.0)

@@ -1,12 +1,15 @@
 import unittest
+from tests.test_db_helper import IsolatedDatabaseTestCase
 from application.services.leaderboard_service import LeaderboardService
+from application.services.database import db_service
 from application.router import get_leaderboard
 
 
-class TestLeaderboardService(unittest.TestCase):
+class TestLeaderboardService(IsolatedDatabaseTestCase):
     @classmethod
     def setUpClass(cls):
-        cls.service = LeaderboardService(db_path="data.db")
+        super().setUpClass()
+        cls.service = LeaderboardService(db_path=db_service.get_db_path())
         cls.test_date = "2026-09-18"
 
     def test_board_near_52w_high(self):

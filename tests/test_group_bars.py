@@ -1,11 +1,14 @@
 import unittest
+from tests.test_db_helper import IsolatedDatabaseTestCase
 from application.services.group_radar_service import GroupRadarService
+from application.services.database import db_service
 
 
-class TestGroupBars(unittest.TestCase):
+class TestGroupBars(IsolatedDatabaseTestCase):
     @classmethod
     def setUpClass(cls):
-        cls.service = GroupRadarService(db_path="data.db")
+        super().setUpClass()
+        cls.service = GroupRadarService(db_path=db_service.get_db_path())
 
     def test_get_group_bars_weekly_industry(self):
         """Test weekly synthetic bars with 40-week SMA and Mansfield RS for an industry."""
@@ -93,6 +96,9 @@ class TestGroupBars(unittest.TestCase):
             limit=52
         )
         self.assertIsNotNone(res)
+        self.assertEqual(res["name"], "Software")
+        self.assertGreater(len(res["bars"]), 20)
+        self.assertIn(res["stage_summary"]["stage_badge"], ["Stage 1", "Stage 2", "Stage 3", "Stage 4"])
         self.assertEqual(res["name"], "Software")
         self.assertGreater(len(res["bars"]), 20)
         self.assertIn(res["stage_summary"]["stage_badge"], ["Stage 1", "Stage 2", "Stage 3", "Stage 4"])

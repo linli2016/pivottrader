@@ -624,17 +624,25 @@ export function attachNormalizedRs(bars) {
  * 2. Candlesticks have full vertical range and can overlap gracefully with volume during pullbacks/lows.
  * 3. When enabled, RS panel and Mansfield Yearly Thumbnail sit cleanly at the bottom (58px).
  */
-export function getPanelMargins(containerHeight, showRs = true) {
-  const H = typeof containerHeight === 'number' && containerHeight > 100 ? containerHeight : 300;
-  const timeScaleH = 26; // standard time scale height in px
-  const plotH = Math.max(80, H - timeScaleH);
+export function getPanelMargins(containerHeight, showRs = true, isCompact = false) {
+  const H = typeof containerHeight === 'number' && containerHeight > 60 ? containerHeight : 300;
+  const timeScaleH = isCompact ? 0 : 26; // standard time scale height in px
+  const plotH = Math.max(50, H - timeScaleH);
 
   // Exact outer height of MansfieldYearlyThumbnail: 58px
   const THUMBNAIL_HEIGHT = MANSFIELD_THUMBNAIL_HEIGHT || 58;
 
   // Leave comfortable top clearance so the toolbar overlay (~32-36px) never covers candlestick bars
-  const topClearancePx = showRs ? 54 : 30;
-  const priceTop = Math.min(0.20, Math.max(0.06, topClearancePx / plotH));
+  const topClearancePx = isCompact ? 24 : (showRs ? 54 : 30);
+  const priceTop = Math.min(0.22, Math.max(0.06, topClearancePx / plotH));
+
+  if (isCompact) {
+    return {
+      price: { top: priceTop, bottom: 0.04 },
+      volume: { top: 0.98, bottom: 0.0 },
+      rs: { top: 0.98, bottom: 0.0 },
+    };
+  }
 
   // TradingView volume layout: volume bars occupy the bottom ~16-18% of the plot area,
   // creating a clean, aesthetically balanced space between normal volume bars and price candles.
@@ -1579,6 +1587,11 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   showSymbol: showSymbolProp = null, // boolean | null (controls symbol visibility in legend)
   drawings: externalDrawings = null, // Optional external drawings array
   onDrawingsChange = null, // Optional callback when drawings are created/modified/deleted
+  hideTimeScale = false, // Optional: hide bottom time axis (e.g. for SPY top overlay panel)
+  isCompact = false, // Optional: compact vertical margins & date in legend
+  isSyncedFollower = false, // Optional: let primary chart drive initial visible range
+  onVisibleLogicalRangeChange = null, // Optional callback (range, dataLookup) => void
+  onCrosshairMove = null, // Optional callback (param, dataLookup) => void
 }, ref) {
   const rootContainerRef = useRef(null);
   const chartContainerRef = useRef();
@@ -1592,6 +1605,15 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   const legendRef = useRef(null);
   const showSymbolRef = useRef(showSymbolProp);
   showSymbolRef.current = showSymbolProp;
+  const isCompactRef = useRef(isCompact);
+  isCompactRef.current = isCompact;
+  const isSyncedFollowerRef = useRef(isSyncedFollower);
+  isSyncedFollowerRef.current = isSyncedFollower;
+  const onVisibleLogicalRangeChangeRef = useRef(onVisibleLogicalRangeChange);
+  onVisibleLogicalRangeChangeRef.current = onVisibleLogicalRangeChange;
+  const onCrosshairMoveRef = useRef(onCrosshairMove);
+  onCrosshairMoveRef.current = onCrosshairMove;
+  const prevWidthRef = useRef(0);
   const dataLookupRef = useRef({ timeMap: new Map(), data: [], defaultBar: null, defaultPrevBar: null, symbol: null, timeframe: 'daily' });
   const tradePriceLinesRef = useRef([]);
   const lastCancelTimestampRef = useRef(0);
@@ -2262,6 +2284,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
 
   // Global Shift, Escape, Delete, Undo key listeners
   useEffect(() => {
+    if (hideTools) return;
     const handleKeyDown = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
         if (e.key === 'Escape') {
@@ -2432,12 +2455,17 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       }
     }
 
+    const dateLabel = isCompactRef.current && bar.time
+      ? (typeof bar.time === 'string' ? bar.time : (bar.time?.year ? `${bar.time.year}-${String(bar.time.month).padStart(2, '0')}-${String(bar.time.day).padStart(2, '0')}` : ''))
+      : '';
+
     legendRef.current.innerHTML = `
-      <div style="display: flex; align-items: center; gap: ${isM || isW ? '6px 8px' : '8px 10px'}; flex-wrap: ${isM || isW ? 'nowrap' : 'wrap'}; white-space: nowrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: ${isM || isW ? '11px' : '12px'}; font-variant-numeric: tabular-nums; line-height: 1.2;">
+      <div style="display: flex; align-items: center; gap: ${isM || isW || isCompactRef.current ? '6px 8px' : '8px 10px'}; flex-wrap: ${isM || isW || isCompactRef.current ? 'nowrap' : 'wrap'}; white-space: nowrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: ${isM || isW || isCompactRef.current ? '11px' : '12px'}; font-variant-numeric: tabular-nums; line-height: 1.2;">
         ${shouldShowSymbol && symbolStr ? `<span style="font-weight: 700; color: #f8fafc; margin-right: 2px;">${symbolStr}</span>` : ''}
         ${isM ? `<span style="background: rgba(245, 158, 11, 0.22); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;">1M</span>` : ''}
         ${isW ? `<span style="background: rgba(168, 85, 247, 0.22); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;">1W</span>` : ''}
         ${chartTimeframeRef.current === 'daily' ? `<span style="background: rgba(56, 189, 248, 0.22); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 0 5px; border-radius: 4px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px;">1D</span>` : ''}
+        ${dateLabel ? `<span style="color: #94a3b8; font-weight: 600;">${dateLabel}</span>` : ''}
         <span style="display: inline-flex; align-items: center; gap: 5px;">
           <span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">O</span><span style="color: ${ohlcColor}; font-weight: 600;">${open.toFixed(2)}</span></span>
           <span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">H</span><span style="color: ${ohlcColor}; font-weight: 600;">${high.toFixed(2)}</span></span>
@@ -2445,9 +2473,9 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           <span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">C</span><span style="color: ${ohlcColor}; font-weight: 600;">${close.toFixed(2)}</span></span>
         </span>
         <span style="color: ${changeColor}; font-weight: 700;">${changeSign}${change.toFixed(2)} (${changeSign}${changePct.toFixed(2)}%)</span>
-        <span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">Vol</span><span style="color: #38bdf8; font-weight: 700;">${volFormatted}</span></span>
+        ${!isCompactRef.current ? `<span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">Vol</span><span style="color: #38bdf8; font-weight: 700;">${volFormatted}</span></span>` : ''}
         ${hasRs && showRsLineRef.current ? `<span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">RS</span><span style="color: #38bdf8; font-weight: 700;">${hasNormRs ? (bar.normalized_rs >= 0 ? '+' : '') + bar.normalized_rs.toFixed(2) : Number(bar.rs_line).toFixed(2)}</span></span>` : ''}
-        ${extAtr !== null ? `<span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">50-ATR</span><span style="color: ${extColor}; font-weight: 700;">${extAtr > 0 ? '+' : ''}${extAtr.toFixed(1)}x${extBadge}</span></span>` : ''}
+        ${extAtr !== null && !isCompactRef.current ? `<span><span style="color: #94a3b8; font-weight: 600; margin-right: 2px;">50-ATR</span><span style="color: ${extColor}; font-weight: 700;">${extAtr > 0 ? '+' : ''}${extAtr.toFixed(1)}x${extBadge}</span></span>` : ''}
       </div>
     `;
   };
@@ -2545,10 +2573,98 @@ const CandlestickChart = forwardRef(function CandlestickChart({
   useImperativeHandle(ref, () => ({
     saveScreenshot: handleSaveScreenshot,
     getChart: () => chartRef.current,
+    getDataLookup: () => dataLookupRef.current,
     getDrawings: () => drawingsBySymbolRef.current[symbol ? symbol.toUpperCase().trim() : 'DEFAULT'] || [],
     flushDrawings: flushSaveDrawings,
     toggleScaleMode,
     isLogScale: () => isLogScale,
+    syncVisibleRangeFrom: (sourceRange, sourceDataLookup) => {
+      if (!chartRef.current || !sourceRange) return;
+      const targetLookup = dataLookupRef.current;
+      const srcData = sourceDataLookup?.data;
+      const tgtData = targetLookup?.data;
+      const tgtTimeMap = targetLookup?.timeMap;
+
+      if (!srcData || srcData.length === 0 || !tgtData || tgtData.length === 0 || !tgtTimeMap) {
+        return;
+      }
+
+      const toTimeKey = (t) =>
+        typeof t === 'string'
+          ? t
+          : t?.year
+          ? `${t.year}-${String(t.month).padStart(2, '0')}-${String(t.day).padStart(2, '0')}`
+          : String(t);
+
+      const mapLogical = (logicalVal) => {
+        const baseIdx = Math.floor(logicalVal);
+        const frac = logicalVal - baseIdx;
+        if (baseIdx >= 0 && baseIdx < srcData.length) {
+          const b = srcData[baseIdx];
+          const tgtIdx = tgtTimeMap.get(toTimeKey(b.time));
+          if (tgtIdx !== undefined) {
+            return tgtIdx + frac;
+          }
+        }
+        if (baseIdx < 0) {
+          const firstBar = srcData[0];
+          const tgtFirstIdx = tgtTimeMap.get(toTimeKey(firstBar.time));
+          if (tgtFirstIdx !== undefined) {
+            return tgtFirstIdx + logicalVal;
+          }
+        }
+        const lastSrcIdx = srcData.length - 1;
+        const lastBar = srcData[lastSrcIdx];
+        const tgtLastIdx = tgtTimeMap.get(toTimeKey(lastBar.time));
+        if (tgtLastIdx !== undefined) {
+          return tgtLastIdx + (logicalVal - lastSrcIdx);
+        }
+        const fallbackOffset = tgtData.length - 1 - lastSrcIdx;
+        return logicalVal + fallbackOffset;
+      };
+
+      const mappedFrom = mapLogical(sourceRange.from);
+      const mappedTo = mapLogical(sourceRange.to);
+      if (isFinite(mappedFrom) && isFinite(mappedTo) && mappedTo > mappedFrom) {
+        try {
+          chartRef.current.timeScale().setVisibleLogicalRange({
+            from: mappedFrom,
+            to: mappedTo,
+          });
+        } catch (_) {}
+      }
+    },
+    syncCrosshairTime: (timeParam) => {
+      if (!chartRef.current || !seriesRef.current?.candlestickSeries) return;
+      const { timeMap, data: currentData, defaultBar, defaultPrevBar, symbol: curSymbol } = dataLookupRef.current;
+      if (!timeParam || !timeMap || !currentData || currentData.length === 0) {
+        try {
+          chartRef.current.clearCrosshairPosition();
+        } catch (_) {}
+        renderLegend(defaultBar, defaultPrevBar, curSymbol);
+        return;
+      }
+      const tKey =
+        typeof timeParam === 'string'
+          ? timeParam
+          : timeParam?.year
+          ? `${timeParam.year}-${String(timeParam.month).padStart(2, '0')}-${String(timeParam.day).padStart(2, '0')}`
+          : String(timeParam);
+      const idx = timeMap.get(tKey);
+      if (idx === undefined) {
+        try {
+          chartRef.current.clearCrosshairPosition();
+        } catch (_) {}
+        renderLegend(defaultBar, defaultPrevBar, curSymbol);
+        return;
+      }
+      const bar = currentData[idx];
+      const prevBar = idx > 0 ? currentData[idx - 1] : null;
+      try {
+        chartRef.current.setCrosshairPosition(Number(bar.close), bar.time, seriesRef.current.candlestickSeries);
+      } catch (_) {}
+      renderLegend(bar, prevBar, curSymbol);
+    },
   }));
 
   useEffect(() => {
@@ -2557,7 +2673,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     // Create chart if it doesn't exist yet
     if (!chartRef.current) {
       const initialH = typeof height === 'number' ? height : (chartContainerRef.current?.clientHeight || 450);
-      const initialMargins = getPanelMargins(initialH, showRsLine);
+      const initialMargins = getPanelMargins(initialH, showRsLine, isCompactRef.current);
 
       const chart = createChart(chartContainerRef.current, {
         layout: {
@@ -2574,10 +2690,11 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         rightPriceScale: {
           mode: isLogScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
           scaleMargins: initialMargins.price,
+          minimumWidth: 68,
         },
         timeScale: {
-          visible: true,
-          height: 26,
+          visible: !hideTimeScale,
+          height: hideTimeScale ? 0 : 26,
           rightOffset: isMonthly ? 4 : (isWeekly ? 8 : 18),
           fixRightEdge: false,
         },
@@ -2589,6 +2706,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       chart.priceScale('right').applyOptions({
         mode: isLogScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
         scaleMargins: initialMargins.price,
+        minimumWidth: 68,
       });
 
       // Add Volume Histogram Series in middle panel (right above RS panel)
@@ -2625,7 +2743,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       });
 
       const ema10Series = chart.addSeries(LineSeries, {
-        color: 'rgb(255, 152, 0)',
+        color: 'rgb(189, 15, 15)',
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
@@ -2633,7 +2751,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       });
 
       const ema20Series = chart.addSeries(LineSeries, {
-        color: 'rgb(189, 15, 15)',
+        color: 'rgb(255, 152, 0)',
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
@@ -2775,12 +2893,14 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         const { timeMap, data: currentData, defaultBar, defaultPrevBar, symbol: curSymbol } = dataLookupRef.current;
         if (!param || !param.time || !param.seriesData || !seriesRef.current?.candlestickSeries) {
           renderLegend(defaultBar, defaultPrevBar, curSymbol);
+          onCrosshairMoveRef.current?.(param, dataLookupRef.current);
           return;
         }
 
         const candle = param.seriesData.get(seriesRef.current.candlestickSeries);
         if (!candle || candle.close === undefined) {
           renderLegend(defaultBar, defaultPrevBar, curSymbol);
+          onCrosshairMoveRef.current?.(param, dataLookupRef.current);
           return;
         }
 
@@ -2814,10 +2934,14 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         };
 
         renderLegend(bar, prevBar, curSymbol);
+        onCrosshairMoveRef.current?.(param, dataLookupRef.current);
       });
-      // Subscribe to Logical Range Changes for Measurement Overlay Re-projection
-      chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+      // Subscribe to Logical Range Changes for Measurement Overlay Re-projection & Sync
+      chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
         setRangeUpdateTick((t) => t + 1);
+        if (range) {
+          onVisibleLogicalRangeChangeRef.current?.(range, dataLookupRef.current);
+        }
       });
 
       // Clicking chart background without Shift dismisses pinned measurement or selected drawing
@@ -2842,10 +2966,11 @@ const CandlestickChart = forwardRef(function CandlestickChart({
       width: targetWidth,
     });
 
-    const currentMargins = getPanelMargins(targetHeight, showRsLineRef.current);
+    const currentMargins = getPanelMargins(targetHeight, showRsLineRef.current, isCompactRef.current);
     chartRef.current.priceScale('right').applyOptions({
       mode: isLogScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
       scaleMargins: currentMargins.price,
+      minimumWidth: 68,
     });
     chartRef.current.priceScale('volume').applyOptions({ scaleMargins: currentMargins.volume });
     chartRef.current.priceScale('rs_line').applyOptions({ scaleMargins: currentMargins.rs });
@@ -2877,11 +3002,24 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           rsLineSeries,
         } = seriesRef.current;
 
-        const volumeData = computeVolumeBars(chartData, chartTimeframe, showSmartVolume);
-        volumeSeries.setData(volumeData);
-        if (volumeMarkersPluginRef.current) {
-          const vMarkers = getVolumeExtremeMarkers(chartData, chartTimeframe, showSmartVolume);
-          volumeMarkersPluginRef.current.setMarkers(vMarkers);
+        if (isCompactRef.current) {
+          volumeSeries.setData([]);
+          if (volumeSeries.options().visible !== false) {
+            volumeSeries.applyOptions({ visible: false });
+          }
+          if (volumeMarkersPluginRef.current) {
+            volumeMarkersPluginRef.current.setMarkers([]);
+          }
+        } else {
+          if (volumeSeries.options().visible === false) {
+            volumeSeries.applyOptions({ visible: true });
+          }
+          const volumeData = computeVolumeBars(chartData, chartTimeframe, showSmartVolume);
+          volumeSeries.setData(volumeData);
+          if (volumeMarkersPluginRef.current) {
+            const vMarkers = getVolumeExtremeMarkers(chartData, chartTimeframe, showSmartVolume);
+            volumeMarkersPluginRef.current.setMarkers(vMarkers);
+          }
         }
 
         candlestickSeries.setData(chartData);
@@ -2890,7 +3028,15 @@ const CandlestickChart = forwardRef(function CandlestickChart({
           lastValueVisible: showPriceLine && !isWeekly && !isMonthly,
         });
 
-        if (isWeekly) {
+        if (isCompactRef.current) {
+          // Compact overlay mode (e.g. SPY panel): clean candlesticks only, no moving averages
+          [ema10Series, ema20Series, sma50Series, sma150Series, sma220Series].forEach((s) => {
+            s.setData([]);
+            if (s.options().visible !== false) {
+              s.applyOptions({ visible: false });
+            }
+          });
+        } else if (isWeekly) {
           // On weekly chart: only show 3 SMAs: 10w (yellow), 30w (cyan), and 40w (white).
           // Hide short-term EMAs (10, 20).
           ema10Series.setData([]);
@@ -3071,10 +3217,12 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         }
       };
 
-      applyTargetRange(targetWidth);
-      if (currentContainerWidth <= 0) {
-        const rafId = requestAnimationFrame(() => applyTargetRange());
-        return () => cancelAnimationFrame(rafId);
+      if (!isSyncedFollowerRef.current) {
+        applyTargetRange(targetWidth);
+        if (currentContainerWidth <= 0) {
+          const rafId = requestAnimationFrame(() => applyTargetRange());
+          return () => cancelAnimationFrame(rafId);
+        }
       }
     } else {
       renderLegend(null, null, symbol);
@@ -3083,7 +3231,7 @@ const CandlestickChart = forwardRef(function CandlestickChart({
 
   // Handle immediate toggle of Smart Volume (Pocket Pivot, VDU & 5-color volume)
   useEffect(() => {
-    if (!seriesRef.current?.volumeSeries || !dataLookupRef.current?.data || dataLookupRef.current.data.length === 0) return;
+    if (isCompactRef.current || !seriesRef.current?.volumeSeries || !dataLookupRef.current?.data || dataLookupRef.current.data.length === 0) return;
     const currentData = dataLookupRef.current.data;
     const volumeData = computeVolumeBars(currentData, chartTimeframe, showSmartVolume);
     seriesRef.current.volumeSeries.setData(volumeData);
@@ -3103,10 +3251,11 @@ const CandlestickChart = forwardRef(function CandlestickChart({
     // Dynamically adjust scaleMargins when toggling RS Line panel
     if (chartRef.current) {
       const curH = typeof height === 'number' ? height : (chartContainerRef.current?.clientHeight || 450);
-      const margins = getPanelMargins(curH, showRsLine);
+      const margins = getPanelMargins(curH, showRsLine, isCompactRef.current);
       chartRef.current.priceScale('right').applyOptions({
         mode: isLogScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
         scaleMargins: margins.price,
+        minimumWidth: 68,
       });
       chartRef.current.priceScale('volume').applyOptions({
         scaleMargins: margins.volume,
@@ -3223,15 +3372,18 @@ const CandlestickChart = forwardRef(function CandlestickChart({
         const containerH = Math.floor(container.clientHeight || entries[0].contentRect?.height);
         const newHeight = typeof height === 'number' ? height : (containerH > 0 ? containerH : 200);
         if (newWidth > 0 && newHeight > 0) {
+          const widthChanged = prevWidthRef.current !== newWidth;
+          prevWidthRef.current = newWidth;
           chartRef.current.applyOptions({ width: newWidth, height: newHeight });
-          const margins = getPanelMargins(newHeight, showRsLineRef.current);
+          const margins = getPanelMargins(newHeight, showRsLineRef.current, isCompactRef.current);
           chartRef.current.priceScale('right').applyOptions({
             mode: isLogScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
             scaleMargins: margins.price,
+            minimumWidth: 68,
           });
           chartRef.current.priceScale('volume').applyOptions({ scaleMargins: margins.volume });
           chartRef.current.priceScale('rs_line').applyOptions({ scaleMargins: margins.rs });
-          if (dataLookupRef.current?.data?.length > 0) {
+          if (widthChanged && !isSyncedFollowerRef.current && dataLookupRef.current?.data?.length > 0) {
             const currentData = dataLookupRef.current.data;
             const asOf = asOfIdxRef.current;
             const visibleBars = getResponsiveVisibleBars(newWidth, chartTimeframeRef.current, currentData.length);

@@ -184,7 +184,7 @@ def main():
     if not urls:
         # Fallback to hardcoded list if no args provided (preserving original behavior for manual run without args)
         urls = [
-            "https://www.youtube.com/watch?v=Zit5Bzbx6oQ"
+            "https://www.youtube.com/watch?v=F0vssXyWizc"
         ]
 
     # Download each video

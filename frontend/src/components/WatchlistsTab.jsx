@@ -823,7 +823,7 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
   }, [items]);
 
   useEffect(() => {
-    if (selectedIndustry !== 'ALL' && selectedIndustry !== 'MIN_3' && !industryCounts.some(ic => ic.industry === selectedIndustry)) {
+    if (selectedIndustry !== 'ALL' && selectedIndustry !== 'MIN_3' && selectedIndustry !== 'LESS_3' && !industryCounts.some(ic => ic.industry === selectedIndustry)) {
       setSelectedIndustry('ALL');
     }
   }, [industryCounts, selectedIndustry]);
@@ -836,6 +836,15 @@ export default function WatchlistsTab({ handleSelectStock, watchlists = [], fetc
     if (selectedIndustry === 'MIN_3') {
       const validIndustries = new Set(
         industryCounts.filter((ic) => ic.count >= 3).map((ic) => ic.industry)
+      );
+      return base.filter((item) => {
+        const ind = (item.industry || item.group_name || item.sector || '').trim() || 'Unclassified';
+        return validIndustries.has(ind);
+      });
+    }
+    if (selectedIndustry === 'LESS_3') {
+      const validIndustries = new Set(
+        industryCounts.filter((ic) => ic.count < 3).map((ic) => ic.industry)
       );
       return base.filter((item) => {
         const ind = (item.industry || item.group_name || item.sector || '').trim() || 'Unclassified';

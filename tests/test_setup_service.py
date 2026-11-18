@@ -133,81 +133,43 @@ class TestSetupServiceVisibility(unittest.TestCase):
         self.assertEqual(hidden_setup.get("id"), "hidden_setup")
 
 
-class TestBuyableScreener(unittest.TestCase):
-    def test_buyable_screener_config(self):
+class TestScreenerConfigurations(unittest.TestCase):
+    def test_daily_screeners_config(self):
         from application.services.setup_service import setup_service
-        sc = setup_service.get_setup_by_id("buyable")
+        from application.engine.expression import ScanExpressionEngine
+        sc = setup_service.get_setup_by_id("volume_breakout")
         self.assertIsNotNone(sc)
-        self.assertEqual(sc.get("id"), "buyable")
-        self.assertEqual(sc.get("name"), "Buyable")
-        self.assertIn("SCREENER_GAINERS", sc.get("expression", ""))
-        self.assertIn("EMA_5", sc.get("expression", ""))
-        self.assertIn("PIVOT_SPREAD", sc.get("expression", ""))
-        self.assertIn("PIVOT_CLUSTERING", sc.get("expression", ""))
-        self.assertIn("EXT_ATR_50", sc.get("expression", ""))
+        self.assertEqual(sc.get("id"), "volume_breakout")
+        self.assertIn("SCREENER_LIQUID", sc.get("expression", ""))
+        self.assertIn("PROJ_RVOL", sc.get("expression", ""))
+        self.assertIn("DIST_52W_HIGH", sc.get("expression", ""))
 
+        sql, _, _, _, _, _ = ScanExpressionEngine.transpile_to_sql(sc["expression"])
+        self.assertIn("b.dist_from_52w_high <= 15.0", sql)
 
-    def test_weekly_ema_screeners_config(self):
+    def test_episodic_pivot_and_parabolic_config(self):
         from application.services.setup_service import setup_service
         from application.engine.expression import ScanExpressionEngine
 
-        # 1. Lead screener
-        lead_sc = setup_service.get_setup_by_id("lead")
-        self.assertIsNotNone(lead_sc)
-        self.assertEqual(lead_sc.get("name"), "Lead")
-        self.assertIn("EMA_10", lead_sc.get("expression", ""))
-        self.assertIn("EMA_20", lead_sc.get("expression", ""))
-        self.assertIn("EMA_50", lead_sc.get("expression", ""))
-        self.assertIn("DOLLAR_VOL", lead_sc.get("expression", ""))
-        self.assertIn("ADR", lead_sc.get("expression", ""))
-        sql_lead, _, _, _, _, _ = ScanExpressionEngine.transpile_to_sql(lead_sc["expression"])
-        self.assertIn("b.ema_10 > b.ema_20", sql_lead)
-        self.assertIn("b.ema_20 > b.ema_50", sql_lead)
+        ep_sc = setup_service.get_setup_by_id("episodic_pivot")
+        self.assertIsNotNone(ep_sc)
+        self.assertEqual(ep_sc.get("name"), "Episodic Pivot")
+        sql_ep, _, _, _, _, _ = ScanExpressionEngine.transpile_to_sql(ep_sc["expression"])
+        self.assertIn("gap_pct >= 10.0", sql_ep)
 
-        # 2. Mediocre screener
-        med_sc = setup_service.get_setup_by_id("mediocre")
-        self.assertIsNotNone(med_sc)
-        self.assertEqual(med_sc.get("name"), "Mediocre")
-        sql_med, _, _, _, _, _ = ScanExpressionEngine.transpile_to_sql(med_sc["expression"])
-        self.assertIn("b.ema_20 < b.ema_50", sql_med)
-        self.assertIn("b.ema_20 > b.ema_50", sql_med)
-
-        # 3. Lag screener
-        lag_sc = setup_service.get_setup_by_id("lag")
-        self.assertIsNotNone(lag_sc)
-        self.assertEqual(lag_sc.get("name"), "Lag")
-        sql_lag, _, _, _, _, _ = ScanExpressionEngine.transpile_to_sql(lag_sc["expression"])
-        self.assertIn("b.ema_10 < b.ema_20", sql_lag)
-        self.assertIn("b.ema_20 < b.ema_50", sql_lag)
-
-        # 4. Actionable Martin Luk screeners: 10-EMA Pullback
-        pb_sc = setup_service.get_setup_by_id("pullback_10ema")
-        self.assertIsNotNone(pb_sc)
-        self.assertEqual(pb_sc.get("name"), "10-EMA Pullback")
-        sql_pb, _, _, _, _, _ = ScanExpressionEngine.transpile_to_sql(pb_sc["expression"])
-        self.assertIn("b.ema_10", sql_pb)
-
-        # 5. 20-EMA Reset
-        rst_sc = setup_service.get_setup_by_id("reset_20ema")
-        self.assertIsNotNone(rst_sc)
-        self.assertEqual(rst_sc.get("name"), "20-EMA Reset")
-        sql_rst, _, _, _, _, _ = ScanExpressionEngine.transpile_to_sql(rst_sc["expression"])
-        self.assertIn("b.ema_20", sql_rst)
-
-        # 6. High Tight Breakout
-        bo_sc = setup_service.get_setup_by_id("high_tight_breakout")
-        self.assertIsNotNone(bo_sc)
-        self.assertEqual(bo_sc.get("name"), "High Tight Breakout")
-        sql_bo, _, _, _, _, _ = ScanExpressionEngine.transpile_to_sql(bo_sc["expression"])
-        self.assertIn("dist_from_52w_high", sql_bo)
+        pb_short = setup_service.get_setup_by_id("parabolic_short")
+        self.assertIsNotNone(pb_short)
+        self.assertEqual(pb_short.get("name"), "Parabolic Short")
+        sql_pb, _, _, _, _, _ = ScanExpressionEngine.transpile_to_sql(pb_short["expression"])
+        self.assertIn("b.adr_20d >= 5.0", sql_pb)
 
     def test_folder_default_option(self):
         from application.services.setup_service import setup_service
         cfg = setup_service.get_setups_config(visible_only=True)
         folders = cfg.get("folders", [])
-        action_folder = next((f for f in folders if f.get("id") == "action"), None)
-        self.assertIsNotNone(action_folder)
-        self.assertTrue(action_folder.get("default"))
+        daily_folder = next((f for f in folders if f.get("id") == "daily"), None)
+        self.assertIsNotNone(daily_folder)
+        self.assertTrue(daily_folder.get("default"))
 
 
 if __name__ == "__main__":

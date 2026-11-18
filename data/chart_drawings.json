@@ -163,5 +163,247 @@
       "color": "#ffffff",
       "width": 1
     }
+  ],
+  "PRGS": [
+    {
+      "id": "line_1794680481785_yg8zg",
+      "type": "line",
+      "p1": {
+        "logical": 3485,
+        "price": 46.96088918199773,
+        "time": "2026-10-26",
+        "offsetFromBar": 0
+      },
+      "p2": {
+        "logical": 3517,
+        "price": 42.2398537974437,
+        "time": "2026-11-13",
+        "offsetFromBar": 18
+      },
+      "color": "#ffffff",
+      "width": 1
+    }
+  ],
+  "STGW": [
+    {
+      "id": "line_1794680904351_mq4ex",
+      "type": "line",
+      "p1": {
+        "logical": 1218,
+        "price": 11.851360197433314,
+        "time": "2017-10-17",
+        "offsetFromBar": 0
+      },
+      "p2": {
+        "logical": 3850,
+        "price": 9.226834135606822,
+        "time": "2026-11-13",
+        "offsetFromBar": 351
+      },
+      "color": "#ffffff",
+      "width": 1
+    },
+    {
+      "id": "text_1794681125320_g6iev",
+      "type": "text",
+      "p": {
+        "logical": 3450,
+        "price": 10.03568858757489,
+        "time": "2026-09-04",
+        "offsetFromBar": 0
+      },
+      "text": "Waiting for pllback",
+      "color": "#ffffff",
+      "fontSize": 12
+    }
+  ],
+  "GTLB": [
+    {
+      "id": "avwap_1794681384316",
+      "type": "avwap",
+      "anchorTime": "2026-09-02",
+      "color": "#f59e0b",
+      "width": 2
+    }
+  ],
+  "HIPO": [
+    {
+      "id": "line_1794682017360_hohud",
+      "type": "line",
+      "p1": {
+        "logical": 1153,
+        "price": 38.28561484792254,
+        "time": "2025-08-14",
+        "offsetFromBar": 0
+      },
+      "p2": {
+        "logical": 1656,
+        "price": 38.46401921695418,
+        "time": "2026-11-13",
+        "offsetFromBar": 188
+      },
+      "color": "#ffffff",
+      "width": 1
+    }
+  ],
+  "SIG": [
+    {
+      "id": "line_1794682168577_zj3dn",
+      "type": "line",
+      "p1": {
+        "logical": 2232,
+        "price": 106.39433944149542,
+        "time": "2021-10-27",
+        "offsetFromBar": 0
+      },
+      "p2": {
+        "logical": 3610,
+        "price": 106.36132648206033,
+        "time": "2026-11-13",
+        "offsetFromBar": 111
+      },
+      "color": "#ffffff",
+      "width": 1
+    },
+    {
+      "id": "text_1794682185757_jysx1",
+      "type": "text",
+      "p": {
+        "logical": 3292,
+        "price": 108.33356446799328,
+        "time": "2026-01-20",
+        "offsetFromBar": 0
+      },
+      "text": "Large base breakout",
+      "color": "#ffffff",
+      "fontSize": 12
+    }
+  ],
+  "CAKE": [
+    {
+      "id": "line_1794682637326_pzb6c",
+      "type": "line",
+      "p1": {
+        "logical": 3458,
+        "price": 94.02971606459306,
+        "time": "2026-09-17",
+        "offsetFromBar": 0
+      },
+      "p2": {
+        "logical": 3515,
+        "price": 109.76426304091939,
+        "time": "2026-11-13",
+        "offsetFromBar": 16
+      },
+      "color": "#ffffff",
+      "width": 1
+    },
+    {
+      "id": "line_1794682642542_eyf96",
+      "type": "line",
+      "p1": {
+        "logical": 3433,
+        "price": 118.11106117419045,
+        "time": "2026-08-12",
+        "offsetFromBar": 0
+      },
+      "p2": {
+        "logical": 3514,
+        "price": 116.43980826832428,
+        "time": "2026-11-13",
+        "offsetFromBar": 15
+      },
+      "color": "#ffffff",
+      "width": 1
+    }
+  ],
+  "ATRC": [
+    {
+      "id": "line_1794683017886_oj5j4",
+      "type": "line",
+      "p1": {
+        "logical": 3406,
+        "price": 35.50374302124204,
+        "time": "2026-07-06",
+        "offsetFromBar": 0
+      },
+      "p2": {
+        "logical": 3435,
+        "price": 35.35729638498255,
+        "time": "2026-08-14",
+        "offsetFromBar": 0
+      },
+      "color": "#ffffff",
+      "width": 1
+    },
+    {
+      "id": "line_1794683027253_lwm76",
+      "type": "line",
+      "p1": {
+        "logical": 3423,
+        "price": 41.37066921894357,
+        "time": "2026-07-29",
+        "offsetFromBar": 0
+      },
+      "p2": {
+        "logical": 3433,
+        "price": 37.5411771901425,
+        "time": "2026-08-12",
+        "offsetFromBar": 0
+      },
+      "color": "#ffffff",
+      "width": 1
+    },
+    {
+      "id": "line_1794683036152_y28b7",
+      "type": "line",
+      "p1": {
+        "logical": 3441,
+        "price": 49.930877635578064,
+        "time": "2026-08-24",
+        "offsetFromBar": 0
+      },
+      "p2": {
+        "logical": 3456,
+        "price": 47.90913058366265,
+        "time": "2026-09-15",
+        "offsetFromBar": 0
+      },
+      "color": "#ffffff",
+      "width": 1
+    },
+    {
+      "id": "text_1794683049552_k5kbj",
+      "type": "text",
+      "p": {
+        "logical": 3484,
+        "price": 50.650794342184454,
+        "time": "2026-10-23",
+        "offsetFromBar": 0
+      },
+      "text": "Late stage 2",
+      "color": "#ffffff",
+      "fontSize": 12
+    }
+  ],
+  "APPN": [
+    {
+      "id": "line_1794683554734_mi47s",
+      "type": "line",
+      "p1": {
+        "logical": 1520,
+        "price": 53.96686498481912,
+        "time": "2023-06-09",
+        "offsetFromBar": 0
+      },
+      "p2": {
+        "logical": 2675,
+        "price": 54.5849109631596,
+        "time": "2026-11-13",
+        "offsetFromBar": 294
+      },
+      "color": "#ffffff",
+      "width": 1
+    }
   ]
 }

@@ -1,8 +1,9 @@
 import unittest
+from tests.test_db_helper import IsolatedDatabaseTestCase
 from application.services.database import db_service
 
 
-class TestStockPrices(unittest.TestCase):
+class TestStockPrices(IsolatedDatabaseTestCase):
     def test_get_stock_prices_daily(self):
         prices = db_service.get_stock_prices("AAPL", limit=50, timeframe="daily")
         self.assertGreater(len(prices), 0)

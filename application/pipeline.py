@@ -203,11 +203,21 @@ def main():
 
     try:
         # 4. Synchronize Symbol Directory
-        if args.include_premarket or (args.skip_prices and not args.force_full and not args.fix_splits):
+        if args.include_premarket:
+            watchlist_syms = db.get_all_watchlist_symbols()
+            if not watchlist_syms:
+                print("\n[Step 1/5] No symbols found in watchlists. Using benchmark ETFs (SPY, QQQ)...")
+                active_symbols = ["SPY", "QQQ"]
+            else:
+                active_symbols = list(dict.fromkeys(watchlist_syms + ["SPY", "QQQ"]))
+            if getattr(args, "symbols", None):
+                custom_syms = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
+                active_symbols = custom_syms
+            print(f"\n[Step 1/5] Targeting {len(active_symbols)} watchlist (waiting list) symbols for Live Market Quotes: {active_symbols}")
+        elif args.skip_prices and not args.force_full and not args.fix_splits:
             existing_active = db.get_active_symbols()
             if existing_active and not getattr(args, "symbols", None):
-                mode_label = "pre-market" if args.include_premarket else "fundamentals/sponsorship"
-                print(f"\n[Step 1/5] Using existing active stock universe ({len(existing_active)} symbols) from database for fast {mode_label} sync...")
+                print(f"\n[Step 1/5] Using existing active stock universe ({len(existing_active)} symbols) from database for fast fundamentals/sponsorship sync...")
                 active_symbols = existing_active
             elif existing_active and getattr(args, "symbols", None):
                 custom_syms = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
@@ -225,7 +235,7 @@ def main():
                     custom_syms = set(s.strip().upper() for s in args.symbols.split(",") if s.strip())
                     universe = [u for u in universe if u["symbol"] in custom_syms]
                 db.upsert_symbols(universe)
-                if is_full:
+                if is_full and len(universe) >= 4000:
                     deactivated = db.deactivate_missing_symbols([u["symbol"] for u in universe])
                     if deactivated > 0:
                         print(f"Reconciled active universe: marked {deactivated} delisted/removed symbols as inactive.")
@@ -255,7 +265,7 @@ def main():
             db.upsert_symbols(universe)
             
             is_full_universe_sync = not getattr(args, "symbols", None) and not getattr(args, "fix_splits", False) and not getattr(args, "limit_tickers", None)
-            if is_full_universe_sync:
+            if is_full_universe_sync and len(universe) >= 4000:
                 deactivated = db.deactivate_missing_symbols([u["symbol"] for u in universe])
                 if deactivated > 0:
                     print(f"Reconciled active universe: marked {deactivated} delisted/removed symbols as inactive.")
@@ -329,32 +339,13 @@ def main():
             if target_date:
                 print(f"Target Session Date: {target_date} (Preceding Regular Close: {base_date})")
 
-            # Check if market is completely closed with no quote access
-            if state == "CLOSED":
-                print(f"\n⚡ [Sync Skipped]: {reason}")
-                print("No database modifications made. Please run 'Sync Price Data' after market close for official daily bars.")
-                return
-
-            if state == "PRE_OPEN_NO_DATA":
-                print(f"\n⚡ [Sync Skipped]: {reason}")
-                print("No database modifications made. Pre-market quotes will be available starting at 04:00 AM ET.")
-                return
-
-            if state == "POST_MARKET":
-                print(f"\n⚡ [Post-Market Sync Active]: {reason}")
-                print(f"Downloading post-market quotes for {len(active_symbols)} symbols (staged as opening prices for next session: {target_date})...")
-            elif state == "PRE_MARKET":
-                print(f"\n⚡ [Pre-Market Sync Active]: {reason}")
-                print(f"Downloading pre-market quotes for {len(active_symbols)} symbols (pre-market price -> today's session: {target_date})...")
-            else:
-                print(f"\n⚡ [Intraday Sync Active]: {reason}")
-                print(f"Downloading live market quotes for {len(active_symbols)} symbols (live price -> today's session: {target_date})...")
+            print(f"\n⚡ [Live Market Quotes Active]: Pulling latest price for {len(active_symbols)} watchlist symbols (Target Date: {target_date})...")
 
             ext_bars = price_provider.fetch_premarket_or_intraday_bars(
                 active_symbols, session_state=state, target_date=target_date, base_date=base_date
             )
             if not ext_bars.empty:
-                print(f"Upserting {len(ext_bars)} daily bars with current prices into DuckDB...")
+                print(f"Upserting {len(ext_bars)} daily bars with latest prices into DuckDB...")
                 db.upsert_daily_bars(ext_bars)
                 # Auto-heal overnight stock split anomalies only if explicitly requested (--fix-splits)
                 if getattr(args, "fix_splits", False):
@@ -364,32 +355,31 @@ def main():
         elif args.skip_prices:
             print("\n[Step 2/5] Skipping daily bars price synchronization as requested (--skip-prices).")
         else:
-            print("\n[Step 2/5] Syncing historical daily bars...")
             last_dates = db.get_last_bar_dates()
-            first_dates = db.get_first_bar_dates()
             
             history_years = args.history_years if args.history_years is not None else config.history_lookback_years
             force_full = args.force_full or args.force_backfill or bool(getattr(args, "symbols", None)) or bool(getattr(args, "fix_splits", False))
             full_lookback_date = (datetime.now() - timedelta(days=365 * history_years)).strftime("%Y-%m-%d")
             
-            print(f"Target historical lookback window: {history_years} years (since {full_lookback_date})")
+            if force_full:
+                print(f"\n[Step 2/5] Force-backfilling historical daily bars ({history_years} years since {full_lookback_date})...")
+            else:
+                print("\n[Step 2/5] Syncing daily price bars (incremental mode)...")
             
-            # Split tickers into new/backfill vs existing to optimize downloads
+            # Only fetch full lookback for brand-new symbols (no bars in DB) or when force_full is explicitly requested
             new_symbols = []
             existing_symbols = []
             
             for symbol in active_symbols:
                 if symbol not in last_dates or force_full:
                     new_symbols.append(symbol)
-                elif symbol in first_dates and first_dates[symbol] > full_lookback_date:
-                    # Stored history does not extend back to full_lookback_date -> needs backfill
-                    new_symbols.append(symbol)
                 else:
                     existing_symbols.append(symbol)
 
             # Ingest new/backfill symbols
             if new_symbols:
-                print(f"Fetching full lookback ({full_lookback_date}) for {len(new_symbols)} tickers (new or backfilling)...")
+                mode_label = "force backfill" if force_full else "newly listed tickers"
+                print(f"Fetching full lookback ({full_lookback_date}) for {len(new_symbols)} tickers ({mode_label})...")
                 new_bars = price_provider.fetch_daily_bars(new_symbols, full_lookback_date)
                 if not new_bars.empty:
                     # If force_full was used, purge previous daily bars for these tickers first to ensure clean history
@@ -417,11 +407,6 @@ def main():
                 if stale_existing:
                     print(f"\nChecking {len(stale_existing)} potentially inactive/stale symbols (last bar before {stale_cutoff_str})...")
                     stale_bars = price_provider.fetch_daily_bars(stale_existing, stale_cutoff_str)
-                    stale_returned_syms = set(stale_bars["symbol"].unique()) if not stale_bars.empty else set()
-                    delisted_candidates = [s for s in stale_existing if s not in stale_returned_syms]
-                    if delisted_candidates:
-                        deact_count = db.deactivate_symbols(delisted_candidates)
-                        print(f"Deactivated {deact_count} confirmed inactive/delisted symbols: {delisted_candidates}")
                     if not stale_bars.empty:
                         print(f"Upserting {len(stale_bars)} resumed bars for recovered symbols...")
                         db.upsert_daily_bars(stale_bars)

@@ -445,6 +445,14 @@ export default function CandidatesTab({
         const ind = (c.industry || c.group_name || '').trim() || 'Unclassified';
         return validIndustries.has(ind);
       });
+    } else if (selectedIndustry === 'LESS_3') {
+      const validIndustries = new Set(
+        industryCounts.filter((ic) => ic.count < 3).map((ic) => ic.industry)
+      );
+      list = list.filter((c) => {
+        const ind = (c.industry || c.group_name || '').trim() || 'Unclassified';
+        return validIndustries.has(ind);
+      });
     } else if (selectedIndustry && selectedIndustry !== 'ALL') {
       list = list.filter((c) => {
         const ind = (c.industry || c.group_name || '').trim() || 'Unclassified';
@@ -500,7 +508,7 @@ export default function CandidatesTab({
 
   // Reset selected industry if no longer present in candidates list
   React.useEffect(() => {
-    if (selectedIndustry !== 'ALL' && selectedIndustry !== 'MIN_3' && !industryCounts.some(ic => ic.industry === selectedIndustry)) {
+    if (selectedIndustry !== 'ALL' && selectedIndustry !== 'MIN_3' && selectedIndustry !== 'LESS_3' && !industryCounts.some(ic => ic.industry === selectedIndustry)) {
       setSelectedIndustry('ALL');
     }
   }, [industryCounts, selectedIndustry]);
@@ -1746,6 +1754,8 @@ export default function CandidatesTab({
           <p>
             {selectedIndustry === 'MIN_3'
               ? 'No industry/group has at least 3 candidates in this scan.'
+              : selectedIndustry === 'LESS_3'
+              ? 'No industry/group has less than 3 candidates in this scan.'
               : <>No candidates found in industry/group <strong>"{selectedIndustry}"</strong>.</>}
           </p>
           <button className="btn btn-secondary btn-sm" onClick={() => setSelectedIndustry('ALL')} style={{ marginTop: '10px' }}>

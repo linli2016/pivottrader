@@ -47,6 +47,7 @@ const StockView = forwardRef(function StockView({
   showSymbol = null,
   drawings = null,
   onDrawingsChange = null,
+  defaultShowSpyChart = false,
   className = '',
   style = {},
 }, ref) {
@@ -171,6 +172,45 @@ const StockView = forwardRef(function StockView({
     setMultiChartTopPct(newPct);
     try {
       localStorage.setItem('pt_markets_multichart_top_pct', String(newPct));
+    } catch (_) {}
+  }, []);
+
+  // View state 2b: S&P 500 (SPY) overlay panel above DailyChart
+  const spyStorageKey = defaultShowSpyChart ? 'pt_study_show_spy_panel' : 'pt_watchlist_show_spy_panel';
+  const [showSpyChart, setShowSpyChart] = useState(() => {
+    try {
+      const saved = localStorage.getItem(spyStorageKey);
+      return saved !== null ? saved === 'true' : Boolean(defaultShowSpyChart);
+    } catch {
+      return Boolean(defaultShowSpyChart);
+    }
+  });
+
+  const handleToggleSpyChart = useCallback(() => {
+    setShowSpyChart((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(spyStorageKey, String(next));
+      } catch (_) {}
+      return next;
+    });
+  }, [spyStorageKey]);
+
+  const [spyChartPct, setSpyChartPct] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pt_spy_chart_height_pct');
+      if (saved) {
+        const val = parseFloat(saved);
+        if (!isNaN(val) && val >= 12 && val <= 55) return val;
+      }
+    } catch (_) {}
+    return 24;
+  });
+
+  const handleSpyChartPctChange = useCallback((newPct) => {
+    setSpyChartPct(newPct);
+    try {
+      localStorage.setItem('pt_spy_chart_height_pct', String(newPct));
     } catch (_) {}
   }, []);
 
@@ -359,6 +399,10 @@ const StockView = forwardRef(function StockView({
         onToggleMultiCharts={handleToggleMultiCharts}
         multiChartTopPct={multiChartTopPct}
         onMultiChartTopPctChange={handleMultiChartTopPctChange}
+        showSpyChart={showSpyChart}
+        onToggleSpyChart={handleToggleSpyChart}
+        spyChartPct={spyChartPct}
+        onSpyChartPctChange={handleSpyChartPctChange}
         isDetailCollapsed={isDetailCollapsed}
         onToggleDetail={handleToggleDetail}
         onSelectGroup={onSelectGroup}

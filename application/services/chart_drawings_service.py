@@ -2,7 +2,9 @@
 import os
 import json
 import logging
+import tempfile
 from typing import Dict, Any, List
+from application.database import is_test_environment
 
 logger = logging.getLogger("pivottrader.chart_drawings")
 
@@ -11,8 +13,16 @@ DATA_DIR = os.path.join(REPO_ROOT, "data")
 DRAWINGS_FILE_PATH = os.path.join(DATA_DIR, "chart_drawings.json")
 
 
+def get_default_drawings_path() -> str:
+    if is_test_environment():
+        return os.path.join(tempfile.gettempdir(), "pivottrader_test_chart_drawings.json")
+    return DRAWINGS_FILE_PATH
+
+
 class ChartDrawingsService:
-    def __init__(self, file_path: str = DRAWINGS_FILE_PATH):
+    def __init__(self, file_path: str = None):
+        if file_path is None:
+            file_path = get_default_drawings_path()
         self.file_path = file_path
         self._ensure_file()
 

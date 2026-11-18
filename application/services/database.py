@@ -273,6 +273,7 @@ class WriteConnectionContext:
 class DatabaseService:
     def __init__(self, config_service):
         self.config_service = config_service
+        self._custom_db_path: Optional[str] = None
         self._market_monitor_cache: Dict[int, Dict[str, Any]] = {}
         self._cache_timestamp: float = 0.0
         self._conn = None
@@ -296,9 +297,11 @@ class DatabaseService:
     def _get_connection(self):
         with self._conn_lock:
             if self._conn is None:
+                db_path = self.get_db_path()
+                from application.database import check_database_safety
+                check_database_safety(db_path)
                 if not self._schema_ensured:
                     self.ensure_schema()
-                db_path = self.get_db_path()
                 if not os.path.exists(db_path):
                     conn = duckdb.connect(db_path)
                     conn.close()
@@ -335,8 +338,10 @@ class DatabaseService:
         if self._schema_ensured:
             return
         try:
-            from application.database import DatabaseManager
-            DatabaseManager(self.get_db_path())
+            db_path = self.get_db_path()
+            from application.database import DatabaseManager, check_database_safety
+            check_database_safety(db_path)
+            DatabaseManager(db_path)
             self._schema_ensured = True
         except Exception as e:
             logger.warning(f"Could not auto-migrate schema in ensure_schema: {e}")
@@ -408,8 +413,40 @@ class DatabaseService:
             return [r[0] for r in rows if r[0]]
 
     def get_db_path(self) -> str:
+        if self._custom_db_path:
+            return self._custom_db_path
+        if self.config_service:
+            try:
+                cfg_path = getattr(self.config_service, "get_db_path", lambda: None)()
+                if cfg_path and os.path.basename(cfg_path) != "data.db":
+                    return cfg_path
+            except Exception:
+                pass
+        env_db_path = os.environ.get("PIVOTTRADER_DB_PATH")
+        if env_db_path:
+            return env_db_path
+        from application.database import is_test_environment
+        if is_test_environment():
+            try:
+                from tests.test_db_helper import get_or_create_default_test_db
+                return get_or_create_default_test_db()
+            except Exception:
+                pass
         config = self.config_service.load_config_raw()
         return config.get("database", {}).get("db_path", "data.db")
+
+    def set_db_path(self, path: Optional[str] = None):
+        """Set a custom DB path (used primarily for test isolation)."""
+        self._rwlock.acquire_write()
+        try:
+            self.close_connection()
+            self.clear_caches()
+            self._custom_db_path = path
+            self._schema_ensured = False
+            if path:
+                self.ensure_schema()
+        finally:
+            self._rwlock.release_write()
 
     def get_read_only_conn(self):
         """Returns a thread-safe read cursor context with zero connection setup overhead."""
@@ -1172,11 +1209,12 @@ class DatabaseService:
                                 c["pp_days_since_peak"] = pp_res.get("pp_days_since_peak", c.get("pp_days_since_peak", 0))
 
                             # VCP Contraction Fingerprint Evaluation
-                            v_res = detect_vcp(h_list, l_list, dt_list, closes=cl_list, window=3)
-                            if v_res:
-                                c["vcp_is_setup"] = v_res.get("vcp_is_setup", False)
-                                c["vcp_troughs"] = v_res.get("vcp_troughs")
-                                c["vcp_depths"] = v_res.get("vcp_depths")
+                            if enable_vcp_pattern and not has_precomputed_setups:
+                                v_res = detect_vcp(h_list, l_list, dt_list, closes=cl_list, window=3)
+                                if v_res:
+                                    c["vcp_is_setup"] = v_res.get("vcp_is_setup", False)
+                                    c["vcp_troughs"] = v_res.get("vcp_troughs")
+                                    c["vcp_depths"] = v_res.get("vcp_depths")
 
                             # Episodic Pivot Evaluation
                             if require_episodic_pivot:
@@ -2168,9 +2206,99 @@ class DatabaseService:
             bars_list = bars_list[-limit:]
         return bars_list
 
+    def fetch_earnings_history(self, symbol: str, limit: int = 100) -> List[Dict[str, Any]]:
+        """Fetches up to `limit` quarterly earnings reports (up to 25 years) from yfinance and caches them in DuckDB."""
+        symbol = symbol.upper().strip()
+        import yfinance as yf
+        import pandas as pd
+        ticker = yf.Ticker(symbol)
+        try:
+            ed = ticker.get_earnings_dates(limit=limit)
+        except Exception as e:
+            logger.debug(f"get_earnings_dates(limit={limit}) failed for {symbol}: {e}, falling back to earnings_dates")
+            ed = getattr(ticker, "earnings_dates", None)
+
+        new_records = []
+        if ed is not None and not ed.empty:
+            for dt, row in ed.iterrows():
+                if pd.isna(dt):
+                    continue
+                d_str = dt.strftime("%Y-%m-%d") if hasattr(dt, "strftime") else str(dt)[:10]
+                est = float(row["EPS Estimate"]) if "EPS Estimate" in row and not pd.isna(row["EPS Estimate"]) else None
+                act = float(row["Reported EPS"]) if "Reported EPS" in row and not pd.isna(row["Reported EPS"]) else None
+                surp = float(row["Surprise(%)"]) if "Surprise(%)" in row and not pd.isna(row["Surprise(%)"]) else None
+                hour = dt.hour if hasattr(dt, "hour") else 0
+                tod = "amc" if hour >= 15 else ("bmo" if hour <= 10 and hour > 0 else None)
+                new_records.append({
+                    "symbol": symbol,
+                    "earnings_date": d_str,
+                    "eps_estimate": est,
+                    "eps_actual": act,
+                    "surprise_pct": surp,
+                    "time_of_day": tod
+                })
+
+        # Fallback to ticker.calendar for upcoming earnings date if not present
+        try:
+            cal = getattr(ticker, "calendar", None)
+            if cal is not None:
+                cal_ed = cal.get("Earnings Date") if isinstance(cal, dict) else (cal.loc["Earnings Date"] if hasattr(cal, "loc") and "Earnings Date" in cal.index else None)
+                if cal_ed is not None:
+                    first_d = cal_ed[0] if isinstance(cal_ed, (list, tuple)) and len(cal_ed) > 0 else cal_ed
+                    cal_d_str = first_d.strftime("%Y-%m-%d") if hasattr(first_d, "strftime") else str(first_d)[:10]
+                    if cal_d_str and len(cal_d_str) == 10 and not any(r["earnings_date"] == cal_d_str for r in new_records):
+                        new_records.append({
+                            "symbol": symbol,
+                            "earnings_date": cal_d_str,
+                            "eps_estimate": None,
+                            "eps_actual": None,
+                            "surprise_pct": None,
+                            "time_of_day": None
+                        })
+        except Exception:
+            pass
+
+        if not new_records:
+            return []
+
+        # Deduplicate by earnings_date, preferring entries with reported actuals
+        deduped = {}
+        for nr in new_records:
+            d = nr["earnings_date"]
+            if d not in deduped:
+                deduped[d] = nr
+            elif nr["eps_actual"] is not None and deduped[d]["eps_actual"] is None:
+                deduped[d] = nr
+
+        records_to_save = list(deduped.values())
+        try:
+            with self.get_write_conn() as write_conn:
+                df = pd.DataFrame(records_to_save)
+                columns = ["symbol", "earnings_date", "eps_estimate", "eps_actual", "surprise_pct", "time_of_day"]
+                for col in columns:
+                    if col not in df.columns:
+                        df[col] = None
+                df = df[columns]
+                write_conn.execute("CREATE OR REPLACE TEMP TABLE temp_earnings_calendar AS SELECT * FROM df")
+                write_conn.execute("""
+                    INSERT OR REPLACE INTO earnings_calendar (symbol, earnings_date, eps_estimate, eps_actual, surprise_pct, time_of_day)
+                    SELECT symbol, CAST(earnings_date AS DATE), CAST(eps_estimate AS DOUBLE), CAST(eps_actual AS DOUBLE), CAST(surprise_pct AS DOUBLE), CAST(time_of_day AS VARCHAR)
+                    FROM temp_earnings_calendar
+                """)
+        except Exception as write_err:
+            logger.warning(f"Failed to cache earnings for {symbol}: {write_err}")
+
+        return [{
+            "date": r["earnings_date"],
+            "eps_estimate": r["eps_estimate"],
+            "eps_actual": r["eps_actual"],
+            "surprise_pct": r["surprise_pct"],
+            "time_of_day": r["time_of_day"]
+        } for r in records_to_save]
+
     def get_stock_earnings(self, symbol: str, fetch_live: bool = False) -> List[Dict[str, Any]]:
         """Retrieves historical and upcoming earnings report dates, estimates, actuals, and surprise % for a symbol."""
-        symbol = symbol.upper()
+        symbol = symbol.upper().strip()
 
         # 1. First read existing records from earnings_calendar
         existing_rows = []
@@ -2195,70 +2323,27 @@ class DatabaseService:
                 "time_of_day": r[4]
             })
 
-        # 2. If records are few or empty and fetch_live is enabled, fetch from yfinance and cache in earnings_calendar
-        if fetch_live and len(records) < 4:
-            try:
-                import yfinance as yf
-                import pandas as pd
-                ticker = yf.Ticker(symbol)
-                ed = ticker.earnings_dates
-                if ed is not None and not ed.empty:
-                    new_records = []
-                    for dt, row in ed.iterrows():
-                        d_str = dt.strftime("%Y-%m-%d")
-                        est = float(row["EPS Estimate"]) if "EPS Estimate" in row and not pd.isna(row["EPS Estimate"]) else None
-                        act = float(row["Reported EPS"]) if "Reported EPS" in row and not pd.isna(row["Reported EPS"]) else None
-                        surp = float(row["Surprise(%)"]) if "Surprise(%)" in row and not pd.isna(row["Surprise(%)"]) else None
-                        hour = dt.hour if hasattr(dt, "hour") else 0
-                        tod = "amc" if hour >= 15 else ("bmo" if hour <= 10 and hour > 0 else None)
-                        new_records.append({
-                            "symbol": symbol,
-                            "earnings_date": d_str,
-                            "eps_estimate": est,
-                            "eps_actual": act,
-                            "surprise_pct": surp,
-                            "time_of_day": tod
-                        })
-                    if new_records:
-                        with self.get_write_conn() as write_conn:
-                            df = pd.DataFrame(new_records)
-                            columns = ["symbol", "earnings_date", "eps_estimate", "eps_actual", "surprise_pct", "time_of_day"]
-                            for col in columns:
-                                if col not in df.columns:
-                                    df[col] = None
-                            df = df[columns]
-                            write_conn.execute("CREATE OR REPLACE TEMP TABLE temp_earnings_calendar AS SELECT * FROM df")
-                            write_conn.execute("""
-                                INSERT OR REPLACE INTO earnings_calendar (symbol, earnings_date, eps_estimate, eps_actual, surprise_pct, time_of_day)
-                                SELECT symbol, CAST(earnings_date AS DATE), CAST(eps_estimate AS DOUBLE), CAST(eps_actual AS DOUBLE), CAST(surprise_pct AS DOUBLE), CAST(time_of_day AS VARCHAR)
-                                FROM temp_earnings_calendar
-                            """)
-                        records = [{
-                            "date": nr["earnings_date"],
-                            "eps_estimate": nr["eps_estimate"],
-                            "eps_actual": nr["eps_actual"],
-                            "surprise_pct": nr["surprise_pct"],
-                            "time_of_day": nr["time_of_day"]
-                        } for nr in new_records]
+        # 2. Determine if we should fetch deeper history from yfinance:
+        # - Explicit fetch_live=True
+        # - Empty database records
+        # - Truncated history (e.g. <= 28 legacy records starting in 2019+ for a company with older IPO)
+        should_fetch = fetch_live or (len(records) == 0)
+        if not should_fetch and len(records) <= 28:
+            earliest_d = records[0]["date"] if records else None
+            if earliest_d and earliest_d >= "2019-01-01":
+                with self.get_read_only_conn() as conn:
+                    try:
+                        row = conn.execute("SELECT ipo_date FROM symbols WHERE symbol = ?", [symbol]).fetchone()
+                        if row and row[0] and str(row[0]) < "2019-01-01":
+                            should_fetch = True
+                    except Exception:
+                        pass
 
-                # Fallback to ticker.calendar for upcoming earnings date if not present
-                try:
-                    cal = getattr(ticker, "calendar", None)
-                    if cal is not None:
-                        cal_ed = cal.get("Earnings Date") if isinstance(cal, dict) else (cal.loc["Earnings Date"] if hasattr(cal, "loc") and "Earnings Date" in cal.index else None)
-                        if cal_ed is not None:
-                            first_d = cal_ed[0] if isinstance(cal_ed, (list, tuple)) and len(cal_ed) > 0 else cal_ed
-                            cal_d_str = first_d.strftime("%Y-%m-%d") if hasattr(first_d, "strftime") else str(first_d)[:10]
-                            if cal_d_str and len(cal_d_str) == 10 and not any(r["date"] == cal_d_str for r in records):
-                                records.append({
-                                    "date": cal_d_str,
-                                    "eps_estimate": None,
-                                    "eps_actual": None,
-                                    "surprise_pct": None,
-                                    "time_of_day": None
-                                })
-                except Exception:
-                    pass
+        if should_fetch:
+            try:
+                fetched = self.fetch_earnings_history(symbol, limit=100)
+                if fetched:
+                    records = fetched
             except Exception as e:
                 logger.warning(f"Could not fetch live earnings dates for {symbol}: {e}")
 
@@ -3436,16 +3521,6 @@ class DatabaseService:
         target_date = session_info.get("target_date")
         base_date = session_info.get("base_date")
 
-        if state in ("CLOSED", "PRE_OPEN_NO_DATA"):
-            return {
-                "status": "skipped",
-                "state": state,
-                "reason": reason,
-                "target_date": target_date,
-                "updated_count": 0,
-                "intraday_vol_fraction": get_intraday_volume_fraction(target_date=target_date),
-            }
-
         ext_bars = provider.fetch_premarket_or_intraday_bars(
             symbols_to_fetch,
             session_state=state,
@@ -3532,7 +3607,7 @@ class DatabaseService:
 
             cols = [c[1] for c in conn.execute("PRAGMA table_info('watchlist_items')").fetchall()]
             tags_select = "COALESCE(tags, '') as tags" if "tags" in cols else "'' as tags"
-            flag_select = "COALESCE(flag_color, NULL) as flag_color" if "flag_color" in cols else "NULL as flag_color"
+            flag_select = "flag_color" if "flag_color" in cols else "CAST(NULL AS VARCHAR) as flag_color"
 
             query = f"""
                 WITH target_symbols AS (
